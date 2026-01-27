@@ -1,0 +1,15 @@
+{
+  "languages": [
+    "ts",
+    "tsx",
+    "js",
+    "jsx",
+    "py",
+    "rs",
+    "go"
+  ],
+  "format": "yaml",
+  "include_loc": true,
+  "include_complexity": false,
+  "max_file_size": 1024
+}
