@@ -25,7 +25,7 @@ impl FileProcessor {
             return Ok(None); // Skip files that already have frontmatter
         }
 
-        let metadata = self.extract_metadata(path, &content)?;
+        let metadata = self.extract_metadata_from_content(path, &content)?;
         let frontmatter = self.format_frontmatter(path, &metadata)?;
 
         if dry_run {
@@ -42,7 +42,14 @@ impl FileProcessor {
     pub fn update(&self, path: &Path, dry_run: bool) -> Result<Option<String>> {
         let content = fs::read_to_string(path)?;
 
-        let metadata = self.extract_metadata(path, &content)?;
+        // Strip frontmatter to get clean content for metadata extraction
+        let code = if let Some((_, rest)) = extract_frontmatter(&content) {
+            rest.clone()
+        } else {
+            content.clone()
+        };
+
+        let metadata = self.extract_metadata_from_content(path, &code)?;
         let new_frontmatter = self.format_frontmatter(path, &metadata)?;
 
         if let Some((old_fm, rest)) = extract_frontmatter(&content) {
@@ -73,8 +80,8 @@ impl FileProcessor {
     pub fn validate(&self, path: &Path) -> Result<bool> {
         let content = fs::read_to_string(path)?;
 
-        if let Some((old_fm, _)) = extract_frontmatter(&content) {
-            let metadata = self.extract_metadata(path, &content)?;
+        if let Some((old_fm, rest)) = extract_frontmatter(&content) {
+            let metadata = self.extract_metadata_from_content(path, &rest)?;
             let expected_fm = self.format_frontmatter(path, &metadata)?;
 
             Ok(old_fm.trim() == expected_fm.trim())
@@ -84,7 +91,19 @@ impl FileProcessor {
         }
     }
 
-    fn extract_metadata(&self, path: &Path, content: &str) -> Result<Metadata> {
+    /// Extract metadata from a file (public for manifest generation)
+    pub fn extract_metadata(&self, path: &Path) -> Result<Option<Metadata>> {
+        let content = std::fs::read_to_string(path)?;
+        // Strip existing frontmatter if present to get accurate metadata
+        let code = if let Some((_, rest)) = extract_frontmatter(&content) {
+            rest
+        } else {
+            content
+        };
+        Ok(Some(self.extract_metadata_from_content(path, &code)?))
+    }
+
+    fn extract_metadata_from_content(&self, path: &Path, content: &str) -> Result<Metadata> {
         let extension = path
             .extension()
             .and_then(|ext| ext.to_str())
@@ -115,9 +134,7 @@ impl FileProcessor {
             .language_from_extension(extension)
             .context("Unsupported language")?;
 
-        let relative_path = path
-            .strip_prefix(std::env::current_dir()?)
-            .unwrap_or(path);
+        let relative_path = path.strip_prefix(std::env::current_dir()?).unwrap_or(path);
 
         let frontmatter = Frontmatter::new(
             relative_path.display().to_string(),
@@ -135,9 +152,9 @@ fn has_frontmatter(content: &str) -> bool {
         return false;
     }
 
-    // Check if first line is a comment with "---"
+    // Check if first line is a comment with "--- FMM ---"
     let first = lines[0].trim();
-    first.starts_with("//") && first.contains("---") || first.starts_with("#") && first.contains("---")
+    (first.starts_with("//") || first.starts_with("#")) && first.contains("--- FMM ---")
 }
 
 fn extract_frontmatter(content: &str) -> Option<(String, String)> {
@@ -146,11 +163,20 @@ fn extract_frontmatter(content: &str) -> Option<(String, String)> {
         return None;
     }
 
-    // Find the end of frontmatter block
+    // Only extract if starts with FMM header
+    let first = lines[0].trim();
+    if !((first.starts_with("//") || first.starts_with("#")) && first.contains("--- FMM ---")) {
+        return None;
+    }
+
+    // Find the closing "---" marker
     let mut end_idx = None;
     for (i, line) in lines.iter().enumerate().skip(1) {
         let trimmed = line.trim();
-        if (trimmed.starts_with("//") || trimmed.starts_with("#")) && trimmed.contains("---") {
+        if (trimmed.starts_with("//") || trimmed.starts_with("#"))
+            && trimmed.ends_with("---")
+            && !trimmed.contains("FMM")
+        {
             end_idx = Some(i);
             break;
         }
@@ -166,5 +192,84 @@ fn extract_frontmatter(content: &str) -> Option<(String, String)> {
         Some((frontmatter, rest))
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_has_frontmatter_new_format() {
+        let content = r#"// --- FMM ---
+// file: test.ts
+// exports: [foo]
+// ---
+
+export function foo() {}"#;
+        assert!(has_frontmatter(content));
+    }
+
+    #[test]
+    fn test_has_frontmatter_legacy_format_rejected() {
+        // Old format without "FMM" is NOT supported
+        let content = r#"// ---
+// file: test.ts
+// exports: [foo]
+// ---
+
+export function foo() {}"#;
+        assert!(!has_frontmatter(content));
+    }
+
+    #[test]
+    fn test_has_frontmatter_python() {
+        let content = r#"# --- FMM ---
+# file: test.py
+# exports: [foo]
+# ---
+
+def foo(): pass"#;
+        assert!(has_frontmatter(content));
+    }
+
+    #[test]
+    fn test_has_frontmatter_none() {
+        let content = "export function foo() {}";
+        assert!(!has_frontmatter(content));
+    }
+
+    #[test]
+    fn test_extract_frontmatter_new_format() {
+        let content = r#"// --- FMM ---
+// file: test.ts
+// exports: [foo]
+// ---
+
+export function foo() {}"#;
+
+        let (fm, rest) = extract_frontmatter(content).unwrap();
+        assert!(fm.contains("// --- FMM ---"));
+        assert!(fm.contains("// exports: [foo]"));
+        assert!(rest.contains("export function foo()"));
+    }
+
+    #[test]
+    fn test_extract_frontmatter_legacy_format_rejected() {
+        // Old format without "FMM" is NOT supported
+        let content = r#"// ---
+// file: test.ts
+// exports: [bar]
+// ---
+
+export function bar() {}"#;
+
+        assert!(extract_frontmatter(content).is_none());
+    }
+
+    #[test]
+    fn test_extract_frontmatter_none() {
+        let content = "export function foo() {}";
+        assert!(extract_frontmatter(content).is_none());
     }
 }

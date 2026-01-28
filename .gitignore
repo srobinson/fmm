@@ -16,3 +16,6 @@ Thumbs.db
 
 # Testing
 /tmp
+
+# Nested fmm manifests (keep root .fmm/ but ignore in subdirs)
+*/**/.fmm/

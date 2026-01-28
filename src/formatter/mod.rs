@@ -24,7 +24,7 @@ impl Frontmatter {
         let prefix = self.language.comment_prefix();
 
         let mut lines = vec![
-            format!("{} ---", prefix),
+            format!("{} --- FMM ---", prefix),
             format!("{} file: {}", prefix, self.file_path),
         ];
 
@@ -89,7 +89,7 @@ mod tests {
 
         let rendered = fm.render();
 
-        assert!(rendered.contains("// ---"));
+        assert!(rendered.contains("// --- FMM ---"));
         assert!(rendered.contains("// file: src/auth/session.ts"));
         assert!(rendered.contains("// exports: [createSession, validateSession]"));
         assert!(rendered.contains("// imports: [jwt, redis]"));
@@ -111,7 +111,7 @@ mod tests {
 
         let rendered = fm.render();
 
-        assert!(rendered.contains("# ---"));
+        assert!(rendered.contains("# --- FMM ---"));
         assert!(rendered.contains("# file: src/processor.py"));
         assert!(rendered.contains("# exports: [process_data]"));
         assert!(rendered.contains("# imports: [pandas]"));
