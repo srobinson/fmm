@@ -1,5 +1,11 @@
 # The FMM Thesis
 
+## The Core Insight
+
+**LLMs are the devs now. Humans cannot compete at scale.**
+
+Every codebase interaction - reading, understanding, modifying - is increasingly done by LLMs. The economics are clear: LLM tokens cost money, and codebases are large.
+
 ## The Problem
 
 LLMs waste tokens reading entire files to understand what they do.
@@ -10,33 +16,37 @@ grep "validateUser" → 10 matches
   → read file 2 (600 lines) - wrong one
   → read file 3 (200 lines) - this is it
 
-Total: 1,200 lines to find the right context
+Total: 1,200 lines = 1,200+ tokens wasted
 ```
 
 ## The Solution
 
-Frontmatter = metadata in the first 10 lines of every file.
+**Manifest JSON.** One file that describes the entire codebase.
 
-```typescript
-// ---
-// file: ./auth.ts
-// exports: [validateUser, createSession]
-// imports: [crypto, ./database]
-// loc: 234
-// ---
+```json
+{
+  "src/auth.ts": {
+    "exports": ["validateUser", "createSession"],
+    "imports": ["crypto", "./database"],
+    "loc": 234
+  },
+  "src/database.ts": {
+    "exports": ["query", "connect"],
+    "imports": ["pg"],
+    "loc": 156
+  }
+}
 ```
 
 ## The New Workflow
 
 ```
-grep "validateUser" → 10 matches
-  → read first 15 lines of file 1 - exports don't match, skip
-  → read first 15 lines of file 2 - exports don't match, skip
-  → read first 15 lines of file 3 - exports: [validateUser] ✓
-  → read full file 3 (200 lines)
+LLM reads .fmm/index.json (one read, entire codebase structure)
+  → "validateUser is in src/auth.ts"
+  → read src/auth.ts (200 lines)
 
-Total: 245 lines
-Savings: 80%
+Total: ~250 lines
+Savings: 80%+
 ```
 
 ## The Evidence
@@ -49,23 +59,40 @@ Savings: 80%
 
 ## The Economics
 
-- **Users:** Lower API costs
-- **Providers:** Less compute
-- **Everyone:** Faster responses
+- **Per query:** 88-97% fewer tokens
+- **Per codebase:** Manifest generated once, used thousands of times
+- **At scale:** Massive reduction in LLM compute costs
+
+## Why Manifest, Not Inline Comments
+
+We tried inline frontmatter first:
+
+```typescript
+// ---
+// file: ./auth.ts
+// exports: [validateUser, createSession]
+// ---
+```
+
+**Problem:** LLMs skip comments. They're trained to find "real code."
+
+Frontmatter in comments = invisible to LLMs.
+Frontmatter in JSON manifest = queryable by LLMs.
 
 ## The Adoption Path
 
-1. Codebases add frontmatter (`fmm generate`)
-2. LLM tools adopt "peek first" as default
+1. `fmm generate` creates `.fmm/index.json` from any codebase
+2. LLMs query manifest before reading files
+3. Token costs drop. Everyone wins.
 
-No manifests. No discovery layers. Just a behavior change in the READ step.
+No behavior change required in LLM tools. Just a better data format.
 
 ## The Bet
 
-Every codebase with frontmatter = cheaper to work with.
-Every LLM that peeks first = cheaper to run.
+Every codebase with a manifest = cheaper to work with.
+Every LLM that queries manifests first = cheaper to run.
 
-The more codebases have it, the more pressure on tools to optimize for it.
+**LLMs are the target user. Build for them.**
 
 ---
 

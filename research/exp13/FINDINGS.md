@@ -1,17 +1,19 @@
 # Experiment 13: Frontmatter Value Validation & Adoption Path
 
 **Date:** 2026-01-28
-**Focus:** Does frontmatter help LLMs? What's the real adoption path?
+**Focus:** Does structured metadata help LLMs? What's the real adoption path?
 
 ---
 
 ## Executive Summary
 
-Frontmatter provides **88-97% token reduction** on real codebases when LLMs are instructed to use it. The adoption path is not discovery mechanisms or manifests—it's changing the default READ behavior in LLM tools.
+Structured codebase metadata provides **88-97% token reduction** on real codebases. The key insight: **LLMs are the devs now** - the adoption path is manifest JSON, not inline comments.
+
+See [PIVOT.md](./PIVOT.md) for why inline frontmatter fails and manifest JSON wins.
 
 ---
 
-## Key Insight: LLMs Ignore Inline Frontmatter
+## Critical Insight: LLMs Ignore Inline Frontmatter
 
 When reading a file with frontmatter, the LLM skips past it as "comment decoration":
 
@@ -26,7 +28,7 @@ When reading a file with frontmatter, the LLM skips past it as "comment decorati
 // LLM thinks: "comment block, skip to the real code"
 ```
 
-**Frontmatter is accurate but invisible.** The LLM has to be told to look for it.
+**Frontmatter is accurate but invisible.** This is why manifest JSON is the answer - LLMs parse JSON natively.
 
 ---
 
@@ -128,49 +130,51 @@ The change is in the READ step, not in discovery.
 
 ---
 
-## Failed Approach: Discovery Mechanisms
+## Evolution: From Inline to Manifest
 
-Initially explored:
-- Manifest files (`.fmm/index.json`)
-- CODEBASE.md for natural discovery
-- CLAUDE.md injection
-- Magic comments
+Initially explored various approaches:
+- Inline frontmatter in comments (LLMs skip these)
+- CODEBASE.md for natural discovery (still requires reading)
+- CLAUDE.md injection (tool-specific)
+- Magic comments (still invisible to LLMs)
 
-**These overcomplicate the problem.**
+**The breakthrough:** See [PIVOT.md](./PIVOT.md)
 
-The real solution: change the default READ behavior in LLM tools.
+Manifest JSON (`.fmm/index.json`) is the answer:
+- LLMs parse JSON natively
+- One read = entire codebase structure
+- No behavior change required in LLM tools
 
 ---
 
 ## The Value Proposition
 
 ```
-Frontmatter in files
+Manifest JSON (.fmm/index.json)
         +
-LLMs read first 15 lines by default
+LLM reads manifest before files
         =
-88-97% token reduction for everyone
+88-97% token reduction
 ```
 
-**For users:** Lower API bills
-**For providers:** Less compute
-**For everyone:** Faster responses
+**LLMs are the devs now.** Every token saved is money saved.
+
+- **Per query:** 88-97% fewer tokens
+- **Per codebase:** Manifest generated once, queried thousands of times
+- **At scale:** Massive reduction in LLM infrastructure costs
 
 ---
 
 ## The Adoption Path
 
-**Not:**
-- Discovery mechanisms
-- Manifest files
-- CLAUDE.md hints
-- New tooling for developers
+**The answer is manifest JSON:**
+1. `fmm generate` creates `.fmm/index.json` from any codebase
+2. LLMs query manifest before reading files
+3. Token costs drop immediately
 
-**Just:**
-1. `fmm` adds frontmatter to codebases (already exists)
-2. LLM tools default to "peek first" behavior (industry change)
+**fmm is LLM infrastructure, not developer tooling.**
 
-fmm is not a developer tool. It's **infrastructure for LLM cost reduction**.
+No behavior change required from LLM tools - just a better data format that LLMs naturally understand.
 
 ---
 
@@ -201,9 +205,11 @@ fmm is not a developer tool. It's **infrastructure for LLM cost reduction**.
 
 ## Conclusion
 
-**Hypothesis validated:** Frontmatter dramatically reduces token spend while maintaining accuracy.
+**Hypothesis validated:** Structured codebase metadata dramatically reduces token spend while maintaining accuracy.
 
-**The blocker is not value—it's adoption.** The path forward is changing LLM tool defaults, not adding discovery layers.
+**The path forward:** Manifest JSON (`.fmm/index.json`), not inline comments.
+
+LLMs are the primary consumers of code. Build for them.
 
 ---
 

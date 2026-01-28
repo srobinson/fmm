@@ -1,5 +1,7 @@
 # Benchmark Data
 
+**Key insight:** LLMs are the devs now. These benchmarks quantify the token/cost savings.
+
 ## Test Environment
 
 - **Codebase:** agentic-flow (244 TypeScript files, 81,732 lines)
@@ -90,3 +92,17 @@ FMM wins when: `files_skipped × avg_file_size > frontmatter_overhead`
 | 244 files | 335 | 5+ | Massive win |
 
 Real codebases are large. FMM wins by default.
+
+---
+
+## Cost Implications
+
+Tokens saved = money saved. At scale:
+
+| Scale | Queries/day | Lines saved/query | Annual token savings |
+|-------|-------------|-------------------|---------------------|
+| Solo dev | 50 | 2,000 | 36.5M tokens |
+| Small team | 500 | 2,000 | 365M tokens |
+| Enterprise | 10,000 | 2,000 | 7.3B tokens |
+
+**The economics are clear.** Manifest JSON is infrastructure for LLM cost reduction.
