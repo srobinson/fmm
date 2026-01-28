@@ -11,7 +11,7 @@
 **For LLMs:** When LLMs scan your codebase, they waste tokens reading 50+ lines to understand what a file does. With frontmatter in the first 5 lines, they get instant context:
 
 ```typescript
-// ---
+// --- FMM ---
 // file: src/auth/session.ts
 // exports: [createSession, validateSession, destroySession]
 // imports: [jwt, redis-client]
@@ -85,7 +85,7 @@ Create `.fmmrc.json` in your project root:
 ### TypeScript/JavaScript
 
 ```typescript
-// ---
+// --- FMM ---
 // file: src/auth/session.ts
 // exports: [createSession, validateSession, destroySession]
 // imports: [jwt, redis-client]
@@ -98,7 +98,7 @@ Create `.fmmrc.json` in your project root:
 ### Python
 
 ```python
-# ---
+# --- FMM ---
 # file: src/processor.py
 # exports: [process_data, validate_input]
 # imports: [pandas, numpy]

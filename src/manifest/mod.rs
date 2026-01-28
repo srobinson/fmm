@@ -245,4 +245,88 @@ mod tests {
         assert!(!manifest.has_file("remove.ts"));
         assert!(!manifest.export_index.contains_key("toRemove"));
     }
+
+    #[test]
+    fn test_manifest_export_index_duplicates() {
+        // When same export name exists in multiple files, last one wins
+        let mut manifest = Manifest::new();
+
+        let metadata1 = Metadata {
+            exports: vec!["sharedExport".to_string()],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 10,
+        };
+
+        let metadata2 = Metadata {
+            exports: vec!["sharedExport".to_string()],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 20,
+        };
+
+        manifest.add_file("file1.ts", metadata1);
+        manifest.add_file("file2.ts", metadata2);
+
+        // Last file added wins for the export index
+        assert_eq!(
+            manifest.export_index.get("sharedExport"),
+            Some(&"file2.ts".to_string())
+        );
+        // But both files exist in files map
+        assert!(manifest.has_file("file1.ts"));
+        assert!(manifest.has_file("file2.ts"));
+    }
+
+    #[test]
+    fn test_manifest_json_serialization() {
+        let mut manifest = Manifest::new();
+
+        let metadata = Metadata {
+            exports: vec!["myFunc".to_string()],
+            imports: vec!["lodash".to_string()],
+            dependencies: vec!["./utils".to_string()],
+            loc: 100,
+        };
+
+        manifest.add_file("src/index.ts", metadata);
+
+        // Serialize to JSON
+        let json = serde_json::to_string_pretty(&manifest).unwrap();
+
+        // Verify camelCase serialization
+        assert!(json.contains("\"exportIndex\""));
+        assert!(json.contains("\"myFunc\""));
+        assert!(json.contains("\"src/index.ts\""));
+
+        // Deserialize back
+        let loaded: Manifest = serde_json::from_str(&json).unwrap();
+        assert!(loaded.has_file("src/index.ts"));
+        assert_eq!(
+            loaded.export_index.get("myFunc"),
+            Some(&"src/index.ts".to_string())
+        );
+    }
+
+    #[test]
+    fn test_manifest_file_count() {
+        let mut manifest = Manifest::new();
+        assert_eq!(manifest.file_count(), 0);
+
+        let metadata = Metadata {
+            exports: vec![],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 10,
+        };
+
+        manifest.add_file("a.ts", metadata.clone());
+        assert_eq!(manifest.file_count(), 1);
+
+        manifest.add_file("b.ts", metadata.clone());
+        assert_eq!(manifest.file_count(), 2);
+
+        manifest.add_file("c.ts", metadata);
+        assert_eq!(manifest.file_count(), 3);
+    }
 }
