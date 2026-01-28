@@ -70,7 +70,17 @@ impl Manifest {
 
     /// Add or update a file entry in the manifest
     pub fn add_file(&mut self, path: &str, metadata: Metadata) {
-        // Build export index entries
+        // If updating an existing file, clean up old export index entries first
+        if let Some(old_entry) = self.files.get(path) {
+            for old_export in &old_entry.exports {
+                // Only remove if it points to this file (could have been overwritten)
+                if self.export_index.get(old_export) == Some(&path.to_string()) {
+                    self.export_index.remove(old_export);
+                }
+            }
+        }
+
+        // Build new export index entries
         for export in &metadata.exports {
             self.export_index.insert(export.clone(), path.to_string());
         }
@@ -331,5 +341,53 @@ mod tests {
 
         manifest.add_file("c.ts", metadata);
         assert_eq!(manifest.file_count(), 3);
+    }
+
+    #[test]
+    fn test_manifest_update_file_cleans_old_exports() {
+        // When a file is updated with different exports, old exports should be removed
+        let mut manifest = Manifest::new();
+
+        let metadata1 = Metadata {
+            exports: vec!["foo".to_string(), "bar".to_string()],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 10,
+        };
+
+        manifest.add_file("file.ts", metadata1);
+        assert_eq!(
+            manifest.export_index.get("foo"),
+            Some(&"file.ts".to_string())
+        );
+        assert_eq!(
+            manifest.export_index.get("bar"),
+            Some(&"file.ts".to_string())
+        );
+
+        // Update the file - now exports foo and baz (not bar anymore)
+        let metadata2 = Metadata {
+            exports: vec!["foo".to_string(), "baz".to_string()],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 15,
+        };
+
+        manifest.add_file("file.ts", metadata2);
+
+        // foo should still point to file.ts
+        assert_eq!(
+            manifest.export_index.get("foo"),
+            Some(&"file.ts".to_string())
+        );
+        // baz should now point to file.ts
+        assert_eq!(
+            manifest.export_index.get("baz"),
+            Some(&"file.ts".to_string())
+        );
+        // bar should be REMOVED from the export index
+        assert!(!manifest.export_index.contains_key("bar"));
+        // File count should still be 1
+        assert_eq!(manifest.file_count(), 1);
     }
 }
