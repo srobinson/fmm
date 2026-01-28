@@ -3,8 +3,9 @@ mod typescript;
 pub use typescript::TypeScriptParser;
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Metadata {
     pub exports: Vec<String>,
     pub imports: Vec<String>,

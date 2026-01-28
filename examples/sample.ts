@@ -1,9 +1,9 @@
-// ---
+// --- FMM ---
 // file: examples/sample.ts
 // exports: [SessionConfig, SessionManager, refreshToken]
 // imports: [jsonwebtoken, redis]
 // loc: 43
-// modified: 2026-01-27
+// modified: 2026-01-28
 // ---
 
 import jwt from 'jsonwebtoken'
