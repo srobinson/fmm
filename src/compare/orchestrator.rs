@@ -90,10 +90,15 @@ impl Orchestrator {
         sandbox.clone_repo(url, self.options.branch.as_deref())?;
 
         let commit_sha = sandbox.get_commit_sha(&sandbox.control_dir)?;
+        let sha_display = if commit_sha.len() >= 8 {
+            &commit_sha[..8]
+        } else {
+            &commit_sha
+        };
         println!(
             "  {} Cloned at commit {}",
             "✓".green(),
-            &commit_sha[..8].dimmed()
+            sha_display.dimmed()
         );
 
         // Step 2: Generate FMM manifest for FMM variant
