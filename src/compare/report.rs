@@ -541,6 +541,9 @@ mod tests {
         assert_eq!(report.summary.tasks_run, 1);
         assert_eq!(report.summary.fmm_wins, 1);
         assert_eq!(report.summary.control_wins, 0);
-        assert_eq!(report.task_results[0].savings.tool_calls_reduction_pct, 50.0);
+        assert_eq!(
+            report.task_results[0].savings.tool_calls_reduction_pct,
+            50.0
+        );
     }
 }
