@@ -316,7 +316,7 @@ fn collect_files(path: &str, config: &Config) -> Result<Vec<PathBuf>> {
 
     let files: Vec<PathBuf> = walker
         .filter_map(|entry| entry.ok())
-        .filter(|entry| entry.file_type().map_or(false, |ft| ft.is_file()))
+        .filter(|entry| entry.file_type().is_some_and(|ft| ft.is_file()))
         .filter(|entry| {
             if let Some(ext) = entry.path().extension() {
                 config.is_supported_language(ext.to_str().unwrap_or(""))
