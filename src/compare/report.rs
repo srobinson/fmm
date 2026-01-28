@@ -371,11 +371,14 @@ impl ComparisonReport {
             s.overall_savings.duration_reduction_pct
         ));
 
+        let win_percentage = if s.tasks_run > 0 {
+            (s.fmm_wins as f64 / s.tasks_run as f64) * 100.0
+        } else {
+            0.0
+        };
         md.push_str(&format!(
             "**FMM Wins:** {} / {} tasks ({:.0}%)\n\n",
-            s.fmm_wins,
-            s.tasks_run,
-            (s.fmm_wins as f64 / s.tasks_run as f64) * 100.0
+            s.fmm_wins, s.tasks_run, win_percentage
         ));
 
         md.push_str("## Task Details\n\n");
@@ -463,11 +466,81 @@ fn truncate(s: &str, max_len: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn test_reduction_calculation() {
         assert_eq!(calculate_reduction_pct(100.0, 50.0), 50.0);
         assert_eq!(calculate_reduction_pct(8.0, 1.0), 87.5);
         assert_eq!(calculate_reduction_pct(0.0, 10.0), 0.0);
+    }
+
+    #[test]
+    fn test_empty_report_markdown_no_panic() {
+        // Empty results should not panic on division by zero
+        let report = ComparisonReport::new(
+            "test-job".to_string(),
+            "https://github.com/test/repo".to_string(),
+            "abc123".to_string(),
+            "main".to_string(),
+            vec![], // Empty results
+        );
+
+        // Should not panic - just verify it runs without crashing
+        let markdown = report.to_markdown();
+        // The key test is that to_markdown() doesn't panic with empty results
+        assert!(!markdown.is_empty());
+        assert!(markdown.contains("Summary"));
+    }
+
+    fn create_test_run_result(task_id: &str, variant: &str, tool_calls: u32) -> RunResult {
+        RunResult {
+            task_id: task_id.to_string(),
+            variant: variant.to_string(),
+            tool_calls,
+            tools_by_name: HashMap::new(),
+            files_accessed: vec![],
+            read_calls: tool_calls / 2,
+            input_tokens: 1000,
+            output_tokens: 500,
+            cache_read_tokens: 0,
+            total_cost_usd: 0.01,
+            duration_ms: 1000,
+            num_turns: 2,
+            response: "test".to_string(),
+            success: true,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn test_report_with_results() {
+        use super::super::tasks::{Task, TaskCategory};
+
+        let task = Task {
+            id: "test_task".to_string(),
+            name: "Test Task".to_string(),
+            prompt: "Test prompt".to_string(),
+            category: TaskCategory::Exploration,
+            expected_patterns: vec![],
+            max_turns: 10,
+            max_budget_usd: 1.0,
+        };
+
+        let control = create_test_run_result("test_task", "control", 10);
+        let fmm = create_test_run_result("test_task", "fmm", 5);
+
+        let report = ComparisonReport::new(
+            "test-job".to_string(),
+            "https://github.com/test/repo".to_string(),
+            "abc123".to_string(),
+            "main".to_string(),
+            vec![(task, control, fmm)],
+        );
+
+        assert_eq!(report.summary.tasks_run, 1);
+        assert_eq!(report.summary.fmm_wins, 1);
+        assert_eq!(report.summary.control_wins, 0);
+        assert_eq!(report.task_results[0].savings.tool_calls_reduction_pct, 50.0);
     }
 }
