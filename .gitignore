@@ -1,3 +1,5 @@
+.nancy/
+
 # Rust
 /target
 Cargo.lock
@@ -35,3 +37,7 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+# Experiment test artifacts (cloned repos)
+experiments/*/control/
+experiments/*/fmm/
