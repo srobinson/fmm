@@ -3,6 +3,7 @@ mod config;
 mod extractor;
 mod formatter;
 mod manifest;
+mod mcp;
 mod parser;
 
 use anyhow::Result;
@@ -37,6 +38,22 @@ fn main() -> Result<()> {
         Commands::Init => {
             println!("{}", "Initializing fmm configuration...".green().bold());
             cli::init()?;
+        }
+        Commands::Status => {
+            cli::status()?;
+        }
+        Commands::Search {
+            export,
+            imports,
+            loc,
+            depends_on,
+            json,
+        } => {
+            cli::search(export, imports, loc, depends_on, json)?;
+        }
+        Commands::Mcp => {
+            let mut server = mcp::McpServer::new();
+            server.run()?;
         }
     }
 

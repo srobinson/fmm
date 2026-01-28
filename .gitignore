@@ -19,3 +19,19 @@ Thumbs.db
 
 # Nested fmm manifests (keep root .fmm/ but ignore in subdirs)
 */**/.fmm/
+
+# Nancy task runtime (keep structure, ignore runtime files)
+.nancy/tasks/*/logs/
+.nancy/tasks/*/session-state/
+.nancy/tasks/*/sessions/
+.nancy/tasks/*/.token_watcher_pid
+.nancy/tasks/*/token-usage*.json
+.nancy/tasks/*/comms/worker/
+.nancy/tasks/*/comms/orchestrator/inbox/
+.nancy/tasks/*/comms/archive/
+.nancy/tasks/interactive_session_id.txt
+.nancy/tasks/*/interactive_session_id.txt
+
+# Environment
+.env
+.env.local

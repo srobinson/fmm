@@ -175,6 +175,13 @@ Create `.fmmrc.json` in your project root:
 | 78K tokens left for reasoning | 126.5K tokens for reasoning |
 | LLM spends capacity parsing | LLM spends capacity solving |
 
+## How It Works
+
+1. **Parse:** Uses tree-sitter to parse code into AST
+2. **Extract:** Identifies exports, imports, dependencies
+3. **Generate:** Creates `.fmm/index.json` manifest (primary) and inline comments (optional)
+4. **Query:** LLMs use manifest for navigation, read files only when needed
+
 ## Performance
 
 - **Speed:** ~1000 files/second on M1 Mac
@@ -226,18 +233,53 @@ repos:
 3. **Generate:** Creates structured manifest JSON
 4. **Optionally:** Embeds YAML frontmatter in source files
 
+## Claude Code Integration
+
+### MCP Server
+
+Add to your Claude Code MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "fmm": {
+      "command": "fmm",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Available MCP tools:
+- `fmm_find_export(name)` - Find file by export name
+- `fmm_list_exports(file)` - List exports from a file
+- `fmm_search(query)` - Search manifest with filters
+- `fmm_get_manifest()` - Get full project structure
+- `fmm_file_info(file)` - Get file metadata
+
+### Search CLI
+
+```bash
+fmm search --export validateUser    # Find file by export
+fmm search --imports crypto         # Files importing crypto
+fmm search --loc ">500"             # Large files
+fmm search --depends-on ./types     # Files depending on module
+fmm search --json                   # Output as JSON
+```
+
 ## Roadmap
 
 - [x] TypeScript/JavaScript support
 - [x] CLI with generate/update/validate
 - [x] Parallel processing
 - [x] Configuration file
-- [ ] Manifest JSON output
+- [x] Manifest JSON output
+- [x] Search CLI
+- [x] MCP server (LLMs query manifest directly)
 - [ ] Python support (tree-sitter-python)
 - [ ] Rust support (tree-sitter-rust)
 - [ ] Go support (tree-sitter-go)
 - [ ] Watch mode (auto-update on save)
-- [ ] MCP server (LLMs query manifest directly)
 - [ ] Complexity metrics (cyclomatic complexity)
 - [ ] VS Code extension
 

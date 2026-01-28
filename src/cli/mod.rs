@@ -63,6 +63,35 @@ pub enum Commands {
 
     /// Initialize .fmmrc.json configuration file
     Init,
+
+    /// Show current fmm status and configuration
+    Status,
+
+    /// Search the manifest for files and exports
+    Search {
+        /// Find file by export name
+        #[arg(short = 'e', long = "export")]
+        export: Option<String>,
+
+        /// Find files that import a module
+        #[arg(short = 'i', long = "imports")]
+        imports: Option<String>,
+
+        /// Filter by line count (e.g., ">500", "<100", "=200")
+        #[arg(short = 'l', long = "loc")]
+        loc: Option<String>,
+
+        /// Find files that depend on a path
+        #[arg(short = 'd', long = "depends-on")]
+        depends_on: Option<String>,
+
+        /// Output as JSON
+        #[arg(short = 'j', long = "json")]
+        json: bool,
+    },
+
+    /// Start MCP (Model Context Protocol) server for LLM integration
+    Mcp,
 }
 
 pub fn generate(path: &str, dry_run: bool, manifest_only: bool) -> Result<()> {
@@ -306,6 +335,53 @@ pub fn init() -> Result<()> {
     Ok(())
 }
 
+pub fn status() -> Result<()> {
+    let config_path = Path::new(".fmmrc.json");
+    let config_exists = config_path.exists();
+    let config = Config::load().unwrap_or_default();
+
+    println!("{}", "fmm Status".cyan().bold());
+    println!("{}", "=".repeat(40).dimmed());
+
+    println!("\n{}", "Configuration:".yellow().bold());
+    if config_exists {
+        println!("  {} .fmmrc.json found", "✓".green());
+    } else {
+        println!("  {} No .fmmrc.json (using defaults)", "!".yellow());
+    }
+
+    println!("\n{}", "Settings:".yellow().bold());
+    let format_str = match config.format {
+        crate::config::FrontmatterFormat::Yaml => "YAML",
+        crate::config::FrontmatterFormat::Json => "JSON",
+    };
+    println!("  Format:         {}", format_str.white().bold());
+    println!("  Include LOC:    {}", if config.include_loc { "yes".green() } else { "no".dimmed() });
+    println!("  Complexity:     {}", if config.include_complexity { "yes".green() } else { "no".dimmed() });
+    println!("  Max file size:  {} KB", config.max_file_size);
+
+    println!("\n{}", "Supported Languages:".yellow().bold());
+    let mut langs: Vec<_> = config.languages.iter().collect();
+    langs.sort();
+    println!("  {}", langs.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "));
+
+    println!("\n{}", "Workspace:".yellow().bold());
+    let cwd = std::env::current_dir().unwrap_or_default();
+    println!("  Path: {}", cwd.display());
+
+    match collect_files(".", &config) {
+        Ok(files) => {
+            println!("  {} processable files found", files.len().to_string().white().bold());
+        }
+        Err(e) => {
+            println!("  {} Error scanning: {}", "✗".red(), e);
+        }
+    }
+
+    println!();
+    Ok(())
+}
+
 fn collect_files(path: &str, config: &Config) -> Result<Vec<PathBuf>> {
     let path = Path::new(path);
 
@@ -332,4 +408,192 @@ fn collect_files(path: &str, config: &Config) -> Result<Vec<PathBuf>> {
         .collect();
 
     Ok(files)
+}
+
+/// Search result for JSON output
+#[derive(serde::Serialize)]
+struct SearchResult {
+    file: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    exports: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    imports: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dependencies: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    loc: Option<usize>,
+}
+
+pub fn search(
+    export: Option<String>,
+    imports: Option<String>,
+    loc: Option<String>,
+    depends_on: Option<String>,
+    json_output: bool,
+) -> Result<()> {
+    let root = std::env::current_dir()?;
+    let manifest = Manifest::load(&root)?
+        .ok_or_else(|| anyhow::anyhow!("No manifest found. Run 'fmm generate' first."))?;
+
+    let mut results: Vec<SearchResult> = Vec::new();
+
+    // Search by export name (uses reverse index)
+    if let Some(ref export_name) = export {
+        if let Some(file_path) = manifest.export_index.get(export_name) {
+            if let Some(entry) = manifest.files.get(file_path) {
+                results.push(SearchResult {
+                    file: file_path.clone(),
+                    exports: Some(entry.exports.clone()),
+                    imports: Some(entry.imports.clone()),
+                    dependencies: Some(entry.dependencies.clone()),
+                    loc: Some(entry.loc),
+                });
+            }
+        }
+    }
+
+    // Search by imports
+    if let Some(ref import_name) = imports {
+        for (file_path, entry) in &manifest.files {
+            if entry.imports.iter().any(|i| i.contains(import_name.as_str())) {
+                // Skip if already added
+                if results.iter().any(|r| r.file == *file_path) {
+                    continue;
+                }
+                results.push(SearchResult {
+                    file: file_path.clone(),
+                    exports: Some(entry.exports.clone()),
+                    imports: Some(entry.imports.clone()),
+                    dependencies: Some(entry.dependencies.clone()),
+                    loc: Some(entry.loc),
+                });
+            }
+        }
+    }
+
+    // Search by dependencies
+    if let Some(ref dep_path) = depends_on {
+        for (file_path, entry) in &manifest.files {
+            if entry.dependencies.iter().any(|d| d.contains(dep_path.as_str())) {
+                // Skip if already added
+                if results.iter().any(|r| r.file == *file_path) {
+                    continue;
+                }
+                results.push(SearchResult {
+                    file: file_path.clone(),
+                    exports: Some(entry.exports.clone()),
+                    imports: Some(entry.imports.clone()),
+                    dependencies: Some(entry.dependencies.clone()),
+                    loc: Some(entry.loc),
+                });
+            }
+        }
+    }
+
+    // Filter by LOC
+    if let Some(ref loc_expr) = loc {
+        let (op, value) = parse_loc_expr(loc_expr)?;
+
+        // If no other filters, search all files
+        if export.is_none() && imports.is_none() && depends_on.is_none() {
+            for (file_path, entry) in &manifest.files {
+                if matches_loc_filter(entry.loc, &op, value) {
+                    results.push(SearchResult {
+                        file: file_path.clone(),
+                        exports: Some(entry.exports.clone()),
+                        imports: Some(entry.imports.clone()),
+                        dependencies: Some(entry.dependencies.clone()),
+                        loc: Some(entry.loc),
+                    });
+                }
+            }
+        } else {
+            // Filter existing results by LOC
+            results.retain(|r| {
+                r.loc.map_or(false, |l| matches_loc_filter(l, &op, value))
+            });
+        }
+    }
+
+    // If no filters provided, list all files
+    if export.is_none() && imports.is_none() && depends_on.is_none() && loc.is_none() {
+        for (file_path, entry) in &manifest.files {
+            results.push(SearchResult {
+                file: file_path.clone(),
+                exports: Some(entry.exports.clone()),
+                imports: Some(entry.imports.clone()),
+                dependencies: Some(entry.dependencies.clone()),
+                loc: Some(entry.loc),
+            });
+        }
+    }
+
+    // Sort results by file path
+    results.sort_by(|a, b| a.file.cmp(&b.file));
+
+    // Output
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(&results)?);
+    } else {
+        if results.is_empty() {
+            println!("{} No matches found", "!".yellow());
+        } else {
+            println!("{} {} file(s) found:\n", "✓".green(), results.len());
+            for result in &results {
+                println!("{}", result.file.white().bold());
+                if let Some(ref exports) = result.exports {
+                    if !exports.is_empty() {
+                        println!("  {} {}", "exports:".dimmed(), exports.join(", "));
+                    }
+                }
+                if let Some(ref imports) = result.imports {
+                    if !imports.is_empty() {
+                        println!("  {} {}", "imports:".dimmed(), imports.join(", "));
+                    }
+                }
+                if let Some(loc_val) = result.loc {
+                    println!("  {} {}", "loc:".dimmed(), loc_val);
+                }
+                println!();
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn parse_loc_expr(expr: &str) -> Result<(String, usize)> {
+    let expr = expr.trim();
+
+    if let Some(rest) = expr.strip_prefix(">=") {
+        let value: usize = rest.trim().parse().context("Invalid LOC value")?;
+        Ok((">=".to_string(), value))
+    } else if let Some(rest) = expr.strip_prefix("<=") {
+        let value: usize = rest.trim().parse().context("Invalid LOC value")?;
+        Ok(("<=".to_string(), value))
+    } else if let Some(rest) = expr.strip_prefix('>') {
+        let value: usize = rest.trim().parse().context("Invalid LOC value")?;
+        Ok((">".to_string(), value))
+    } else if let Some(rest) = expr.strip_prefix('<') {
+        let value: usize = rest.trim().parse().context("Invalid LOC value")?;
+        Ok(("<".to_string(), value))
+    } else if let Some(rest) = expr.strip_prefix('=') {
+        let value: usize = rest.trim().parse().context("Invalid LOC value")?;
+        Ok(("=".to_string(), value))
+    } else {
+        // Default to exact match
+        let value: usize = expr.parse().context("Invalid LOC expression. Use: >500, <100, =200, >=50, <=1000")?;
+        Ok(("=".to_string(), value))
+    }
+}
+
+fn matches_loc_filter(loc: usize, op: &str, value: usize) -> bool {
+    match op {
+        ">" => loc > value,
+        "<" => loc < value,
+        ">=" => loc >= value,
+        "<=" => loc <= value,
+        "=" => loc == value,
+        _ => false,
+    }
 }
