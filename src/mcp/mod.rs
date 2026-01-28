@@ -307,11 +307,10 @@ impl McpServer {
         // Search by imports
         if let Some(import_name) = args.get("imports").and_then(|v| v.as_str()) {
             for (file_path, entry) in &manifest.files {
-                if entry.imports.iter().any(|i| i.contains(import_name)) {
-                    if !results.iter().any(|(f, _)| *f == file_path) {
+                if entry.imports.iter().any(|i| i.contains(import_name))
+                    && !results.iter().any(|(f, _)| *f == file_path) {
                         results.push((file_path, entry));
                     }
-                }
             }
         }
 
@@ -328,8 +327,8 @@ impl McpServer {
             }
 
             results.retain(|(_, entry)| {
-                let passes_min = min_loc.map_or(true, |min| entry.loc >= min);
-                let passes_max = max_loc.map_or(true, |max| entry.loc <= max);
+                let passes_min = min_loc.is_none_or(|min| entry.loc >= min);
+                let passes_max = max_loc.is_none_or(|max| entry.loc <= max);
                 passes_min && passes_max
             });
         }

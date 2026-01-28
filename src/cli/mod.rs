@@ -510,7 +510,7 @@ pub fn search(
         } else {
             // Filter existing results by LOC
             results.retain(|r| {
-                r.loc.map_or(false, |l| matches_loc_filter(l, &op, value))
+                r.loc.is_some_and(|l| matches_loc_filter(l, &op, value))
             });
         }
     }
@@ -534,28 +534,26 @@ pub fn search(
     // Output
     if json_output {
         println!("{}", serde_json::to_string_pretty(&results)?);
+    } else if results.is_empty() {
+        println!("{} No matches found", "!".yellow());
     } else {
-        if results.is_empty() {
-            println!("{} No matches found", "!".yellow());
-        } else {
-            println!("{} {} file(s) found:\n", "✓".green(), results.len());
-            for result in &results {
-                println!("{}", result.file.white().bold());
-                if let Some(ref exports) = result.exports {
-                    if !exports.is_empty() {
-                        println!("  {} {}", "exports:".dimmed(), exports.join(", "));
-                    }
+        println!("{} {} file(s) found:\n", "✓".green(), results.len());
+        for result in &results {
+            println!("{}", result.file.white().bold());
+            if let Some(ref exports) = result.exports {
+                if !exports.is_empty() {
+                    println!("  {} {}", "exports:".dimmed(), exports.join(", "));
                 }
-                if let Some(ref imports) = result.imports {
-                    if !imports.is_empty() {
-                        println!("  {} {}", "imports:".dimmed(), imports.join(", "));
-                    }
-                }
-                if let Some(loc_val) = result.loc {
-                    println!("  {} {}", "loc:".dimmed(), loc_val);
-                }
-                println!();
             }
+            if let Some(ref imports) = result.imports {
+                if !imports.is_empty() {
+                    println!("  {} {}", "imports:".dimmed(), imports.join(", "));
+                }
+            }
+            if let Some(loc_val) = result.loc {
+                println!("  {} {}", "loc:".dimmed(), loc_val);
+            }
+            println!();
         }
     }
 
