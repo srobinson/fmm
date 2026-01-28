@@ -134,9 +134,7 @@ impl FileProcessor {
             .language_from_extension(extension)
             .context("Unsupported language")?;
 
-        let relative_path = path
-            .strip_prefix(std::env::current_dir()?)
-            .unwrap_or(path);
+        let relative_path = path.strip_prefix(std::env::current_dir()?).unwrap_or(path);
 
         let frontmatter = Frontmatter::new(
             relative_path.display().to_string(),

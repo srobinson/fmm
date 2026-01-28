@@ -60,11 +60,10 @@ impl Manifest {
             return Ok(None);
         }
 
-        let content = fs::read_to_string(&manifest_path)
-            .context("Failed to read manifest file")?;
+        let content = fs::read_to_string(&manifest_path).context("Failed to read manifest file")?;
 
-        let manifest: Manifest = serde_json::from_str(&content)
-            .context("Failed to parse manifest JSON")?;
+        let manifest: Manifest =
+            serde_json::from_str(&content).context("Failed to parse manifest JSON")?;
 
         Ok(Some(manifest))
     }
@@ -77,7 +76,8 @@ impl Manifest {
         }
 
         // Add the file entry
-        self.files.insert(path.to_string(), FileEntry::from(metadata));
+        self.files
+            .insert(path.to_string(), FileEntry::from(metadata));
     }
 
     /// Remove a file from the manifest
@@ -102,16 +102,13 @@ impl Manifest {
 
         // Create .fmm directory if it doesn't exist
         if !manifest_dir.exists() {
-            fs::create_dir_all(&manifest_dir)
-                .context("Failed to create .fmm directory")?;
+            fs::create_dir_all(&manifest_dir).context("Failed to create .fmm directory")?;
         }
 
         let manifest_path = manifest_dir.join(MANIFEST_FILE);
-        let json = serde_json::to_string_pretty(self)
-            .context("Failed to serialize manifest")?;
+        let json = serde_json::to_string_pretty(self).context("Failed to serialize manifest")?;
 
-        fs::write(&manifest_path, json)
-            .context("Failed to write manifest file")?;
+        fs::write(&manifest_path, json).context("Failed to write manifest file")?;
 
         Ok(())
     }
@@ -177,8 +174,14 @@ mod tests {
         manifest.add_file("src/auth.ts", metadata);
 
         assert!(manifest.has_file("src/auth.ts"));
-        assert_eq!(manifest.export_index.get("validateUser"), Some(&"src/auth.ts".to_string()));
-        assert_eq!(manifest.export_index.get("createSession"), Some(&"src/auth.ts".to_string()));
+        assert_eq!(
+            manifest.export_index.get("validateUser"),
+            Some(&"src/auth.ts".to_string())
+        );
+        assert_eq!(
+            manifest.export_index.get("createSession"),
+            Some(&"src/auth.ts".to_string())
+        );
     }
 
     #[test]
