@@ -112,7 +112,9 @@ pub fn generate(path: &str, dry_run: bool, manifest_only: bool) -> Result<()> {
 
     // Save manifest
     if !dry_run {
-        let mut m = manifest.lock().unwrap();
+        let mut m = manifest
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Mutex poisoned while accessing manifest"))?;
         m.touch();
         m.save(&root)?;
         println!(
@@ -179,7 +181,9 @@ pub fn update(path: &str, dry_run: bool, manifest_only: bool) -> Result<()> {
 
     // Save manifest
     if !dry_run {
-        let mut m = manifest.lock().unwrap();
+        let mut m = manifest
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Mutex poisoned while accessing manifest"))?;
         m.touch();
         m.save(&root)?;
         println!(
@@ -256,7 +260,7 @@ pub fn validate(path: &str) -> Result<()> {
         .collect();
 
     // Check if manifest exists
-    let manifest_missing = has_manifest.then_some(()).is_none() && !files.is_empty();
+    let manifest_missing = !has_manifest && !files.is_empty();
 
     if invalid.is_empty() && !manifest_missing {
         println!("{} All frontmatter is up to date!", "✓".green().bold());
