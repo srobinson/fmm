@@ -118,7 +118,9 @@ impl Manifest {
         let manifest_path = manifest_dir.join(MANIFEST_FILE);
         let json = serde_json::to_string_pretty(self).context("Failed to serialize manifest")?;
 
-        fs::write(&manifest_path, json).context("Failed to write manifest file")?;
+        // Add trailing newline for POSIX compliance
+        fs::write(&manifest_path, format!("{}\n", json))
+            .context("Failed to write manifest file")?;
 
         Ok(())
     }
