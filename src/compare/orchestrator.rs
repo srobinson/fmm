@@ -379,6 +379,7 @@ fn generate_job_id() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn test_job_id_generation() {
@@ -386,8 +387,21 @@ mod tests {
 
         assert!(id1.starts_with("cmp-"));
         assert!(!id1.is_empty());
-        // Just verify format, not uniqueness (timing-dependent)
         assert!(id1.len() > 10);
+    }
+
+    #[test]
+    fn test_job_id_format_safe_for_paths() {
+        // Job IDs should only contain path-safe characters
+        for _ in 0..10 {
+            let id = generate_job_id();
+            assert!(
+                id.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+                "Job ID contains unsafe chars: {}",
+                id
+            );
+        }
     }
 
     #[test]
@@ -396,5 +410,171 @@ mod tests {
         assert_eq!(opts.runs, 1);
         assert_eq!(opts.max_budget, 10.0);
         assert!(opts.use_cache);
+        assert!(!opts.quick);
+        assert_eq!(opts.task_set, "standard");
+        assert_eq!(opts.model, "sonnet");
+    }
+
+    #[test]
+    fn test_orchestrator_creation() {
+        let opts = CompareOptions::default();
+        let orchestrator = Orchestrator::new(opts).unwrap();
+        assert!((orchestrator.total_cost - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_budget_tracking_logic() {
+        // Test that the budget check logic works correctly
+        let opts = CompareOptions {
+            max_budget: 0.05,
+            ..Default::default()
+        };
+
+        let orchestrator = Orchestrator::new(opts).unwrap();
+
+        // Initially under budget
+        assert!(orchestrator.total_cost < orchestrator.options.max_budget);
+    }
+
+    // Integration test: report generation with real data structures
+    #[test]
+    fn test_report_generation_integration() {
+        use super::super::report::ComparisonReport;
+        use super::super::runner::RunResult;
+        use super::super::tasks::{Task, TaskCategory};
+
+        let task = Task {
+            id: "find_entry".to_string(),
+            name: "Find Entry Point".to_string(),
+            prompt: "What is the main entry point?".to_string(),
+            category: TaskCategory::Exploration,
+            expected_patterns: vec!["main".to_string()],
+            max_turns: 10,
+            max_budget_usd: 1.0,
+        };
+
+        let control = RunResult {
+            task_id: "find_entry".to_string(),
+            variant: "control".to_string(),
+            tool_calls: 8,
+            tools_by_name: HashMap::from([
+                ("Read".to_string(), 5),
+                ("Glob".to_string(), 2),
+                ("Grep".to_string(), 1),
+            ]),
+            files_accessed: vec!["src/main.rs".to_string(), "src/lib.rs".to_string()],
+            read_calls: 5,
+            input_tokens: 5000,
+            output_tokens: 1200,
+            cache_read_tokens: 0,
+            total_cost_usd: 0.02,
+            duration_ms: 15000,
+            num_turns: 4,
+            response: "The main entry point is src/main.rs".to_string(),
+            success: true,
+            error: None,
+        };
+
+        let fmm = RunResult {
+            task_id: "find_entry".to_string(),
+            variant: "fmm".to_string(),
+            tool_calls: 1,
+            tools_by_name: HashMap::from([("Read".to_string(), 1)]),
+            files_accessed: vec!["src/main.rs".to_string()],
+            read_calls: 1,
+            input_tokens: 2000,
+            output_tokens: 800,
+            cache_read_tokens: 500,
+            total_cost_usd: 0.005,
+            duration_ms: 5000,
+            num_turns: 1,
+            response: "The main entry point is src/main.rs".to_string(),
+            success: true,
+            error: None,
+        };
+
+        let report = ComparisonReport::new(
+            "integration-test".to_string(),
+            "https://github.com/test/repo".to_string(),
+            "abc123def456".to_string(),
+            "main".to_string(),
+            vec![(task, control, fmm)],
+        );
+
+        assert_eq!(report.summary.tasks_run, 1);
+        assert_eq!(report.summary.fmm_wins, 1);
+        assert_eq!(report.summary.control_wins, 0);
+        assert_eq!(report.summary.control_totals.total_tool_calls, 8);
+        assert_eq!(report.summary.fmm_totals.total_tool_calls, 1);
+
+        // Verify savings
+        let savings = &report.task_results[0].savings;
+        assert!((savings.tool_calls_reduction_pct - 87.5).abs() < 0.1);
+        assert!((savings.read_calls_reduction_pct - 80.0).abs() < 0.1);
+
+        // Verify markdown generation doesn't panic
+        let md = report.to_markdown();
+        assert!(md.contains("integration-test"));
+        assert!(md.contains("87.5%") || md.contains("87.50%"));
+
+        // Verify JSON serialization round-trip
+        let json = serde_json::to_string(&report).unwrap();
+        let deserialized: ComparisonReport = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.job_id, "integration-test");
+        assert_eq!(deserialized.summary.fmm_wins, 1);
+    }
+
+    // Integration test: custom task loading
+    #[test]
+    fn test_custom_task_loading() {
+        let temp = tempfile::tempdir().unwrap();
+        let task_file = temp.path().join("custom_tasks.json");
+
+        let tasks_json = serde_json::json!({
+            "name": "custom",
+            "description": "Custom test tasks",
+            "tasks": [
+                {
+                    "id": "custom_task",
+                    "name": "Custom Task",
+                    "prompt": "Test prompt",
+                    "category": "exploration",
+                    "expected_patterns": ["test"],
+                    "max_turns": 5,
+                    "max_budget_usd": 0.5
+                }
+            ]
+        });
+
+        std::fs::write(&task_file, tasks_json.to_string()).unwrap();
+
+        let orchestrator = Orchestrator::new(CompareOptions::default()).unwrap();
+        let loaded = orchestrator
+            .load_custom_tasks(task_file.to_str().unwrap())
+            .unwrap();
+
+        assert_eq!(loaded.name, "custom");
+        assert_eq!(loaded.tasks.len(), 1);
+        assert_eq!(loaded.tasks[0].id, "custom_task");
+    }
+
+    #[test]
+    fn test_custom_task_loading_invalid_file() {
+        let orchestrator = Orchestrator::new(CompareOptions::default()).unwrap();
+        assert!(orchestrator
+            .load_custom_tasks("/nonexistent/path.json")
+            .is_err());
+    }
+
+    #[test]
+    fn test_custom_task_loading_invalid_json() {
+        let temp = tempfile::tempdir().unwrap();
+        let task_file = temp.path().join("bad.json");
+        std::fs::write(&task_file, "not valid json").unwrap();
+
+        let orchestrator = Orchestrator::new(CompareOptions::default()).unwrap();
+        assert!(orchestrator
+            .load_custom_tasks(task_file.to_str().unwrap())
+            .is_err());
     }
 }

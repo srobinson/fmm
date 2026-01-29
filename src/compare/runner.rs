@@ -110,6 +110,11 @@ impl ClaudeRunner {
         self
     }
 
+    /// Maximum prompt size in bytes (100KB)
+    const MAX_PROMPT_SIZE: usize = 100 * 1024;
+    /// Maximum FMM context size in bytes (500KB — manifests can be large)
+    const MAX_CONTEXT_SIZE: usize = 500 * 1024;
+
     /// Run a task and collect metrics
     pub fn run_task(
         &self,
@@ -118,6 +123,23 @@ impl ClaudeRunner {
         variant: &str,
         fmm_context: Option<&str>,
     ) -> Result<RunResult> {
+        if task.prompt.len() > Self::MAX_PROMPT_SIZE {
+            anyhow::bail!(
+                "Task prompt exceeds size limit ({} > {} bytes)",
+                task.prompt.len(),
+                Self::MAX_PROMPT_SIZE
+            );
+        }
+        if let Some(ctx) = fmm_context {
+            if ctx.len() > Self::MAX_CONTEXT_SIZE {
+                anyhow::bail!(
+                    "FMM context exceeds size limit ({} > {} bytes)",
+                    ctx.len(),
+                    Self::MAX_CONTEXT_SIZE
+                );
+            }
+        }
+
         let start = Instant::now();
 
         let mut cmd = Command::new("claude");
@@ -167,7 +189,9 @@ impl ClaudeRunner {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
-        if !output.status.success() && stdout.is_empty() {
+        let cli_success = output.status.success();
+
+        if !cli_success && stdout.is_empty() {
             return Ok(RunResult {
                 task_id: task.id.clone(),
                 variant: variant.to_string(),
@@ -187,8 +211,18 @@ impl ClaudeRunner {
             });
         }
 
-        // Parse stream-json output
-        self.parse_stream_json(&stdout, &task.id, variant, duration)
+        // Parse stream-json output, but override success if CLI exited non-zero
+        let mut result = self.parse_stream_json(&stdout, &task.id, variant, duration)?;
+        if !cli_success {
+            result.success = false;
+            if result.error.is_none() {
+                result.error = Some(format!(
+                    "CLI exited with status {}",
+                    output.status.code().unwrap_or(-1)
+                ));
+            }
+        }
+        Ok(result)
     }
 
     fn parse_stream_json(
@@ -336,5 +370,185 @@ mod tests {
     fn test_runner_creation() {
         let runner = ClaudeRunner::new();
         assert!(!runner.allowed_tools.is_empty());
+    }
+
+    fn make_runner() -> ClaudeRunner {
+        ClaudeRunner::new()
+    }
+
+    fn dur(ms: u64) -> Duration {
+        Duration::from_millis(ms)
+    }
+
+    // --- Stream-JSON parsing tests ---
+
+    #[test]
+    fn test_parse_stream_json_tool_calls() {
+        let runner = make_runner();
+        let output = r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"src/main.rs"}},{"type":"tool_use","name":"Glob","input":{"pattern":"**/*.ts"}}]}}
+{"type":"result","is_error":false,"result":"done","usage":{"input_tokens":500,"output_tokens":200,"cache_read_input_tokens":50},"total_cost_usd":0.005,"num_turns":1,"duration_ms":1200}"#;
+
+        let result = runner
+            .parse_stream_json(output, "test", "control", dur(1200))
+            .unwrap();
+
+        assert_eq!(result.tool_calls, 2);
+        assert_eq!(result.tools_by_name["Read"], 1);
+        assert_eq!(result.tools_by_name["Glob"], 1);
+        assert_eq!(result.read_calls, 1);
+        assert_eq!(result.files_accessed, vec!["src/main.rs"]);
+        assert_eq!(result.input_tokens, 500);
+        assert_eq!(result.output_tokens, 200);
+        assert_eq!(result.cache_read_tokens, 50);
+        assert!((result.total_cost_usd - 0.005).abs() < f64::EPSILON);
+        assert!(result.success);
+        assert!(result.error.is_none());
+    }
+
+    #[test]
+    fn test_parse_stream_json_multiple_tool_types() {
+        let runner = make_runner();
+        let output = r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"a.rs"}},{"type":"tool_use","name":"Read","input":{"file_path":"b.rs"}},{"type":"tool_use","name":"Grep","input":{"pattern":"foo"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Glob","input":{"pattern":"*.rs"}}]}}
+{"type":"result","is_error":false,"usage":{"input_tokens":100,"output_tokens":50},"total_cost_usd":0.001,"num_turns":2,"duration_ms":500}"#;
+
+        let result = runner
+            .parse_stream_json(output, "multi", "fmm", dur(500))
+            .unwrap();
+
+        assert_eq!(result.tool_calls, 4);
+        assert_eq!(result.tools_by_name["Read"], 2);
+        assert_eq!(result.tools_by_name["Grep"], 1);
+        assert_eq!(result.tools_by_name["Glob"], 1);
+        assert_eq!(result.read_calls, 2);
+        assert_eq!(result.files_accessed.len(), 2);
+        assert!(result.files_accessed.contains(&"a.rs".to_string()));
+        assert!(result.files_accessed.contains(&"b.rs".to_string()));
+        assert_eq!(result.num_turns, 2);
+    }
+
+    #[test]
+    fn test_parse_stream_json_error_result() {
+        let runner = make_runner();
+        let output = r#"{"type":"result","is_error":true,"subtype":"budget_exceeded","usage":{"input_tokens":100,"output_tokens":50},"total_cost_usd":2.0,"num_turns":5,"duration_ms":10000}"#;
+
+        let result = runner
+            .parse_stream_json(output, "fail", "control", dur(10000))
+            .unwrap();
+
+        assert!(!result.success);
+        assert_eq!(result.error.as_deref(), Some("budget_exceeded"));
+        assert!((result.total_cost_usd - 2.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_parse_stream_json_no_result_event() {
+        let runner = make_runner();
+        // No "result" type event at all — should treat as not successful
+        let output =
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Hello"}]}}"#;
+
+        let result = runner
+            .parse_stream_json(output, "noresult", "control", dur(100))
+            .unwrap();
+
+        assert!(!result.success);
+        assert_eq!(result.tool_calls, 0);
+    }
+
+    #[test]
+    fn test_parse_stream_json_malformed_lines() {
+        let runner = make_runner();
+        let output = "not valid json\n{broken\n\n{\"type\":\"result\",\"is_error\":false,\"usage\":{\"input_tokens\":10,\"output_tokens\":5},\"total_cost_usd\":0.001,\"num_turns\":1,\"duration_ms\":100}";
+
+        let result = runner
+            .parse_stream_json(output, "malformed", "control", dur(100))
+            .unwrap();
+
+        // Should gracefully skip bad lines and still parse the valid result
+        assert!(result.success);
+        assert_eq!(result.input_tokens, 10);
+    }
+
+    #[test]
+    fn test_parse_stream_json_text_response() {
+        let runner = make_runner();
+        let output = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"The entry point is main.rs"}]}}
+{"type":"result","is_error":false,"usage":{"input_tokens":50,"output_tokens":30},"total_cost_usd":0.001,"num_turns":1,"duration_ms":100}"#;
+
+        let result = runner
+            .parse_stream_json(output, "text", "fmm", dur(100))
+            .unwrap();
+
+        assert_eq!(result.response, "The entry point is main.rs");
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_parse_stream_json_empty_output() {
+        let runner = make_runner();
+        let result = runner
+            .parse_stream_json("", "empty", "control", dur(0))
+            .unwrap();
+
+        assert!(!result.success);
+        assert_eq!(result.tool_calls, 0);
+        assert_eq!(result.input_tokens, 0);
+    }
+
+    #[test]
+    fn test_parse_stream_json_view_tracked_as_read() {
+        let runner = make_runner();
+        let output = r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"View","input":{"path":"src/lib.rs"}}]}}
+{"type":"result","is_error":false,"usage":{"input_tokens":10,"output_tokens":5},"total_cost_usd":0.001,"num_turns":1,"duration_ms":100}"#;
+
+        let result = runner
+            .parse_stream_json(output, "view", "control", dur(100))
+            .unwrap();
+
+        assert_eq!(result.read_calls, 1);
+        assert_eq!(result.files_accessed, vec!["src/lib.rs"]);
+    }
+
+    // --- Prompt size limit tests ---
+
+    #[test]
+    fn test_prompt_size_limit() {
+        let runner = make_runner();
+        let big_prompt = "x".repeat(ClaudeRunner::MAX_PROMPT_SIZE + 1);
+        let task = super::super::tasks::Task {
+            id: "big".to_string(),
+            name: "Big".to_string(),
+            prompt: big_prompt,
+            category: super::super::tasks::TaskCategory::Exploration,
+            expected_patterns: vec![],
+            max_turns: 1,
+            max_budget_usd: 0.01,
+        };
+
+        let err = runner
+            .run_task(&task, Path::new("/tmp"), "control", None)
+            .unwrap_err();
+        assert!(err.to_string().contains("prompt exceeds size limit"));
+    }
+
+    #[test]
+    fn test_context_size_limit() {
+        let runner = make_runner();
+        let task = super::super::tasks::Task {
+            id: "ctx".to_string(),
+            name: "Ctx".to_string(),
+            prompt: "small prompt".to_string(),
+            category: super::super::tasks::TaskCategory::Exploration,
+            expected_patterns: vec![],
+            max_turns: 1,
+            max_budget_usd: 0.01,
+        };
+        let big_context = "y".repeat(ClaudeRunner::MAX_CONTEXT_SIZE + 1);
+
+        let err = runner
+            .run_task(&task, Path::new("/tmp"), "fmm", Some(&big_context))
+            .unwrap_err();
+        assert!(err.to_string().contains("FMM context exceeds size limit"));
     }
 }

@@ -125,7 +125,9 @@ impl CacheManager {
     /// Store a result in cache
     pub fn set(&mut self, key: CacheKey, result: RunResult) -> Result<()> {
         let now = chrono::Utc::now();
-        let expires = now + chrono::Duration::from_std(self.ttl).unwrap_or_default();
+        let expires = now
+            + chrono::Duration::from_std(self.ttl)
+                .context("Cache TTL duration out of range for chrono")?;
 
         let cached = CachedResult {
             key: key.clone(),
@@ -162,8 +164,7 @@ impl CacheManager {
         let mut cleared = 0u32;
 
         // Clear from memory
-        self.memory_cache
-            .retain(|k, _| !k.repo_url.contains(repo_url));
+        self.memory_cache.retain(|k, _| k.repo_url != repo_url);
 
         // Clear from disk
         for entry in fs::read_dir(&self.cache_dir)? {
@@ -197,6 +198,7 @@ impl CacheManager {
 
     /// Save a full comparison report
     pub fn save_report(&self, report: &ComparisonReport) -> Result<PathBuf> {
+        validate_path_component(&report.job_id)?;
         let reports_dir = self.cache_dir.join("reports");
         fs::create_dir_all(&reports_dir)?;
 
@@ -212,6 +214,7 @@ impl CacheManager {
     /// Load a comparison report by job ID
     #[allow(dead_code)]
     pub fn load_report(&self, job_id: &str) -> Result<Option<ComparisonReport>> {
+        validate_path_component(job_id)?;
         let report_path = self
             .cache_dir
             .join("reports")
@@ -316,6 +319,23 @@ impl CacheManager {
     }
 }
 
+/// Validate a string is safe for use in file paths (no traversal attacks)
+fn validate_path_component(s: &str) -> Result<()> {
+    if s.is_empty() {
+        anyhow::bail!("Path component must not be empty");
+    }
+    if !s
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        anyhow::bail!(
+            "Invalid path component '{}': only alphanumeric, hyphens, and underscores allowed",
+            s
+        );
+    }
+    Ok(())
+}
+
 /// Simple string hash for cache filenames
 fn simple_hash(s: &str) -> String {
     let mut hash = 0u64;
@@ -373,5 +393,214 @@ mod tests {
         assert!(filename.contains("abc123"));
         assert!(filename.contains("task1"));
         assert!(filename.contains("fmm"));
+    }
+
+    #[test]
+    fn test_cache_miss() {
+        let temp = tempdir().unwrap();
+        let mut cache = CacheManager::new(Some(temp.path().to_path_buf())).unwrap();
+
+        let key = CacheKey::new("https://github.com/test/repo", "abc123", "task1", "control");
+        assert!(cache.get(&key).is_none());
+    }
+
+    #[test]
+    fn test_cache_disk_persistence() {
+        let temp = tempdir().unwrap();
+        let key = CacheKey::new("https://github.com/test/repo", "abc123", "task1", "control");
+        let result = create_test_result("task1", "control");
+
+        // Write with one cache instance
+        {
+            let mut cache = CacheManager::new(Some(temp.path().to_path_buf())).unwrap();
+            cache.set(key.clone(), result.clone()).unwrap();
+        }
+
+        // Read with a fresh cache instance (no memory cache)
+        {
+            let mut cache = CacheManager::new(Some(temp.path().to_path_buf())).unwrap();
+            let retrieved = cache.get(&key).unwrap();
+            assert_eq!(retrieved.task_id, "task1");
+            assert_eq!(retrieved.tool_calls, 5);
+        }
+    }
+
+    #[test]
+    fn test_cache_expiration() {
+        let temp = tempdir().unwrap();
+        let mut cache = CacheManager::new(Some(temp.path().to_path_buf()))
+            .unwrap()
+            .with_ttl(Duration::from_secs(0)); // Expire immediately
+
+        let key = CacheKey::new("https://github.com/test/repo", "abc123", "task1", "control");
+        let result = create_test_result("task1", "control");
+
+        cache.set(key.clone(), result).unwrap();
+
+        // Memory cache has the entry, but expires_at is already in the past
+        // We need to clear memory cache to test disk expiration
+        cache.memory_cache.clear();
+
+        // Should be expired — note: the TTL=0 means expires_at == cached_at,
+        // so it depends on timing. Use a small sleep to ensure it's expired.
+        std::thread::sleep(Duration::from_millis(10));
+        assert!(cache.get(&key).is_none());
+    }
+
+    #[test]
+    fn test_cache_clear_repo_exact_match() {
+        let temp = tempdir().unwrap();
+        let mut cache = CacheManager::new(Some(temp.path().to_path_buf())).unwrap();
+
+        let key1 = CacheKey::new("https://github.com/test/foo", "abc", "t1", "control");
+        let key2 = CacheKey::new("https://github.com/test/foobar", "abc", "t1", "control");
+
+        cache
+            .set(key1.clone(), create_test_result("t1", "control"))
+            .unwrap();
+        cache
+            .set(key2.clone(), create_test_result("t1", "control"))
+            .unwrap();
+
+        // Clear "foo" should NOT clear "foobar" (exact match)
+        cache.clear_repo("https://github.com/test/foo").unwrap();
+
+        // foobar should still be in memory cache
+        assert!(cache.memory_cache.contains_key(&key2));
+        // foo should be gone
+        assert!(!cache.memory_cache.contains_key(&key1));
+    }
+
+    #[test]
+    fn test_cache_clear_all() {
+        let temp = tempdir().unwrap();
+        let mut cache = CacheManager::new(Some(temp.path().to_path_buf())).unwrap();
+
+        for i in 0..5 {
+            let key = CacheKey::new(
+                "https://github.com/test/repo",
+                &format!("sha{}", i),
+                "t1",
+                "control",
+            );
+            cache.set(key, create_test_result("t1", "control")).unwrap();
+        }
+
+        let cleared = cache.clear_all().unwrap();
+        assert_eq!(cleared, 5);
+        assert!(cache.memory_cache.is_empty());
+    }
+
+    #[test]
+    fn test_cache_eviction() {
+        let temp = tempdir().unwrap();
+        let mut cache = CacheManager::new(Some(temp.path().to_path_buf()))
+            .unwrap()
+            .with_max_size(0); // 0 MB limit forces eviction on every set
+
+        let key = CacheKey::new("https://github.com/test/repo", "abc", "t1", "control");
+        // This should not panic even with 0 MB limit
+        cache.set(key, create_test_result("t1", "control")).unwrap();
+    }
+
+    #[test]
+    fn test_cache_report_save_and_load() {
+        let temp = tempdir().unwrap();
+        let cache = CacheManager::new(Some(temp.path().to_path_buf())).unwrap();
+
+        let report = ComparisonReport::new(
+            "test-job-123".to_string(),
+            "https://github.com/test/repo".to_string(),
+            "abc123".to_string(),
+            "main".to_string(),
+            vec![],
+        );
+
+        let saved_path = cache.save_report(&report).unwrap();
+        assert!(saved_path.exists());
+
+        let loaded = cache.load_report("test-job-123").unwrap().unwrap();
+        assert_eq!(loaded.job_id, "test-job-123");
+        assert_eq!(loaded.repo_url, "https://github.com/test/repo");
+    }
+
+    #[test]
+    fn test_cache_list_reports() {
+        let temp = tempdir().unwrap();
+        let cache = CacheManager::new(Some(temp.path().to_path_buf())).unwrap();
+
+        for i in 0..3 {
+            let report = ComparisonReport::new(
+                format!("job-{}", i),
+                "https://github.com/test/repo".to_string(),
+                "abc".to_string(),
+                "main".to_string(),
+                vec![],
+            );
+            cache.save_report(&report).unwrap();
+        }
+
+        let reports = cache.list_reports().unwrap();
+        assert_eq!(reports.len(), 3);
+    }
+
+    #[test]
+    fn test_cache_load_nonexistent_report() {
+        let temp = tempdir().unwrap();
+        let cache = CacheManager::new(Some(temp.path().to_path_buf())).unwrap();
+
+        let result = cache.load_report("nonexistent").unwrap();
+        assert!(result.is_none());
+    }
+
+    // --- Path validation tests ---
+
+    #[test]
+    fn test_validate_path_component_valid() {
+        assert!(validate_path_component("cmp-abc123-0f3a").is_ok());
+        assert!(validate_path_component("simple_id").is_ok());
+        assert!(validate_path_component("abc123").is_ok());
+    }
+
+    #[test]
+    fn test_validate_path_component_traversal() {
+        assert!(validate_path_component("../etc/passwd").is_err());
+        assert!(validate_path_component("foo/../bar").is_err());
+    }
+
+    #[test]
+    fn test_validate_path_component_empty() {
+        assert!(validate_path_component("").is_err());
+    }
+
+    #[test]
+    fn test_validate_path_component_special_chars() {
+        assert!(validate_path_component("foo/bar").is_err());
+        assert!(validate_path_component("foo bar").is_err());
+        assert!(validate_path_component("foo;bar").is_err());
+    }
+
+    #[test]
+    fn test_save_report_rejects_traversal_job_id() {
+        let temp = tempdir().unwrap();
+        let cache = CacheManager::new(Some(temp.path().to_path_buf())).unwrap();
+
+        let report = ComparisonReport::new(
+            "../../../etc/evil".to_string(),
+            "https://github.com/test/repo".to_string(),
+            "abc".to_string(),
+            "main".to_string(),
+            vec![],
+        );
+
+        assert!(cache.save_report(&report).is_err());
+    }
+
+    #[test]
+    fn test_load_report_rejects_traversal_job_id() {
+        let temp = tempdir().unwrap();
+        let cache = CacheManager::new(Some(temp.path().to_path_buf())).unwrap();
+
+        assert!(cache.load_report("../../../etc/passwd").is_err());
     }
 }

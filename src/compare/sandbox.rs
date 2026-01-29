@@ -67,6 +67,7 @@ impl Default for ResourceLimits {
 impl Sandbox {
     /// Create a new sandbox for a job
     pub fn new(job_id: &str) -> Result<Self> {
+        validate_job_id(job_id)?;
         let root = std::env::temp_dir().join(format!("fmm-compare-{}", job_id));
         fs::create_dir_all(&root).context("Failed to create sandbox root")?;
 
@@ -87,6 +88,7 @@ impl Sandbox {
 
     /// Clone a repository into the sandbox
     pub fn clone_repo(&self, url: &str, branch: Option<&str>) -> Result<()> {
+        validate_repo_url(url)?;
         // Clone for control variant
         self.clone_to_dir(url, branch, &self.control_dir)?;
 
@@ -245,6 +247,43 @@ fn count_files_in_dir(path: &Path) -> Result<u64> {
     Ok(count)
 }
 
+/// Validate job_id contains only safe path characters
+fn validate_job_id(job_id: &str) -> Result<()> {
+    if job_id.is_empty() {
+        anyhow::bail!("Job ID must not be empty");
+    }
+    if !job_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        anyhow::bail!(
+            "Invalid job ID '{}': only alphanumeric, hyphens, and underscores allowed",
+            job_id
+        );
+    }
+    Ok(())
+}
+
+/// Validate repository URL is a safe HTTPS git URL
+fn validate_repo_url(url: &str) -> Result<()> {
+    if !url.starts_with("https://") {
+        anyhow::bail!("Repository URL must use HTTPS: {}", url);
+    }
+    // Ensure it looks like a valid git host URL (github, gitlab, bitbucket, etc.)
+    let host = url
+        .strip_prefix("https://")
+        .and_then(|s| s.split('/').next())
+        .unwrap_or("");
+    if host.is_empty() || !host.contains('.') {
+        anyhow::bail!("Invalid repository host in URL: {}", url);
+    }
+    // Reject URLs with suspicious characters that could be used for injection
+    if url.contains("..") || url.contains('\0') || url.contains(';') || url.contains('|') {
+        anyhow::bail!("Repository URL contains invalid characters: {}", url);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,5 +296,87 @@ mod tests {
         // Cleanup
         sandbox.cleanup();
         assert!(!sandbox.root.exists());
+    }
+
+    #[test]
+    fn test_sandbox_rejects_traversal_job_id() {
+        assert!(Sandbox::new("../escape").is_err());
+        assert!(Sandbox::new("foo/../bar").is_err());
+        assert!(Sandbox::new("").is_err());
+    }
+
+    #[test]
+    fn test_sandbox_accepts_valid_job_id() {
+        let sandbox = Sandbox::new("cmp-abc123-0f3a").unwrap();
+        assert!(sandbox.root.exists());
+        sandbox.cleanup();
+    }
+
+    #[test]
+    fn test_validate_repo_url_https_required() {
+        assert!(validate_repo_url("http://github.com/foo/bar").is_err());
+        assert!(validate_repo_url("git@github.com:foo/bar.git").is_err());
+        assert!(validate_repo_url("ftp://github.com/foo/bar").is_err());
+    }
+
+    #[test]
+    fn test_validate_repo_url_valid() {
+        assert!(validate_repo_url("https://github.com/pmndrs/zustand").is_ok());
+        assert!(validate_repo_url("https://gitlab.com/user/project").is_ok());
+        assert!(validate_repo_url("https://bitbucket.org/team/repo").is_ok());
+    }
+
+    #[test]
+    fn test_validate_repo_url_injection() {
+        assert!(validate_repo_url("https://github.com/foo;rm -rf /").is_err());
+        assert!(validate_repo_url("https://github.com/foo|cat /etc/passwd").is_err());
+        assert!(validate_repo_url("https://github.com/../../../etc").is_err());
+    }
+
+    #[test]
+    fn test_validate_repo_url_invalid_host() {
+        assert!(validate_repo_url("https:///no-host").is_err());
+        assert!(validate_repo_url("https://noperiod/repo").is_err());
+    }
+
+    #[test]
+    fn test_validate_job_id_valid() {
+        assert!(validate_job_id("cmp-abc-123").is_ok());
+        assert!(validate_job_id("simple").is_ok());
+        assert!(validate_job_id("with_underscore").is_ok());
+    }
+
+    #[test]
+    fn test_validate_job_id_invalid() {
+        assert!(validate_job_id("").is_err());
+        assert!(validate_job_id("../escape").is_err());
+        assert!(validate_job_id("has space").is_err());
+        assert!(validate_job_id("has;semicolon").is_err());
+    }
+
+    #[test]
+    fn test_sandbox_auto_cleanup_on_drop() {
+        let root_path;
+        {
+            let sandbox = Sandbox::new("drop-test-001").unwrap();
+            root_path = sandbox.root.clone();
+            assert!(root_path.exists());
+            // sandbox drops here
+        }
+        assert!(!root_path.exists());
+    }
+
+    #[test]
+    fn test_sandbox_keep_on_drop() {
+        let root_path;
+        {
+            let mut sandbox = Sandbox::new("keep-test-001").unwrap();
+            sandbox.keep_on_drop();
+            root_path = sandbox.root.clone();
+            // sandbox drops here but should NOT cleanup
+        }
+        assert!(root_path.exists());
+        // Manual cleanup
+        let _ = fs::remove_dir_all(&root_path);
     }
 }
