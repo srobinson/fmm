@@ -1,0 +1,127 @@
+{
+  "variant": "clean",
+  "run_id": "1",
+  "task": "Find all files that export authentication-related functions. List each file path and the specific exports.",
+  "duration_seconds": 31,
+  "tool_calls_count": 14,
+  "tool_calls_summary": {},
+  "tool_calls": [
+    {
+      "tool": "Grep",
+      "input": {
+        "pattern": "export.*(auth|login|logout|signin|signout|signup|register|token|credential|password)",
+        "output_mode": "files_with_matches",
+        "glob": "*.{js,ts,jsx,tsx}",
+        "-i": true
+      }
+    },
+    {
+      "tool": "Grep",
+      "input": {
+        "pattern": "(auth|login|logout|signin|signout|signup|register|token|credential|password).*export",
+        "output_mode": "files_with_matches",
+        "glob": "*.{js,ts,jsx,tsx}",
+        "-i": true
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/api/routes/auth.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/api/controllers/authController.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/api/models/session.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/signup.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/types.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/login.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/password.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/jwt.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/middleware/auth.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/middleware/rateLimit.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/services/audit.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/services/email.ts"
+      }
+    }
+  ],
+  "files_read": [
+    "src/api/models/session.ts",
+    "src/auth/login.ts",
+    "src/auth/jwt.ts",
+    "src/auth/types.ts",
+    "src/services/email.ts",
+    "src/middleware/rateLimit.ts",
+    "src/api/controllers/authController.ts",
+    "src/api/routes/auth.ts",
+    "src/middleware/auth.ts",
+    "src/auth/password.ts",
+    "src/auth/signup.ts",
+    "src/services/audit.ts"
+  ],
+  "files_read_count": 12,
+  "total_tool_calls_by_type": {
+    "Grep": 2,
+    "Read": 12
+  },
+  "tokens_in": 124867,
+  "tokens_out": 1719,
+  "tokens_total": 126586,
+  "cost_usd": 0.06422385,
+  "discovered_fmm": false,
+  "used_manifest": false,
+  "noticed_inline_comments": false,
+  "assistant_response": "I'll help you find all files that export authentication-related functions. Let me search for authentication-related exports in the codebase.\nNow let me read each of these files to identify the specific authentication-related exports:\nPerfect! I've analyzed all the files that export authentication-related functions. Here's a comprehensive list organized by file:\n\n## Files with Authentication-Related Exports\n\n### **1. src/api/routes/auth.ts**\n- `getAuthRoutes()` - Returns array of auth route configurations\n\n### **2. src/api/controllers/authController.ts**\n- `AuthController` (class) - Main auth controller with login, signup, logout methods\n- `createAuthController()` - Factory function to create AuthController instance\n\n### **3. src/api/models/session.ts**\n- `Session` (interface) - Session data structure\n- `createSession()` - Creates a new user session\n- `findSessionByToken()` - Finds session by token\n- `deleteSessionsByUser()` - Deletes all sessions for a user\n- `cleanExpiredSessions()` - Removes expired sessions\n\n### **4. src/auth/signup.ts**\n- `registerUser()` - Registers a new user\n- `validateSignupData()` - Validates signup form data\n\n### **5. src/auth/types.ts**\n- `UserPayload` (interface) - User JWT payload structure\n- `UserRole` (type) - User role type definition\n- `AuthResult` (interface) - Authentication result structure\n- `LoginCredentials` (interface) - Login credentials structure\n- `SignupData` (interface) - Signup data structure\n- `PasswordResetRequest` (interface) - Password reset request structure\n\n### **6. src/auth/login.ts**\n- `authenticateUser()` - Authenticates user with credentials\n- `validateSession()` - Validates a session token\n\n### **7. src/auth/password.ts**\n- `hashPassword()` - Hashes a password\n- `verifyPassword()` - Verifies password against stored hash\n- `validatePasswordStrength()` - Validates password strength requirements\n\n### **8. src/auth/jwt.ts**\n- `generateToken()` - Generates JWT token\n- `verifyToken()` - Verifies and decodes JWT token\n- `refreshToken()` - Refreshes an existing token\n\n### **9. src/middleware/auth.ts**\n- `authMiddleware` - Middleware to verify authentication\n- `requireRole()` - Middleware factory to require specific roles\n- `optionalAuth` - Middleware for optional authentication\n- `AuthenticatedRequest` (interface) - Request with user payload\n- `Response` (interface) - Response interface\n\n### **10. src/middleware/rateLimit.ts**\n- `rateLimiter()` - Generic rate limiter middleware factory\n- `authRateLimiter()` - Pre-configured rate limiter for auth endpoints\n- `clearRateLimitStore()` - Clears rate limit data\n\n### **11. src/services/audit.ts**\n- `logAuthEvent()` - Logs authentication events\n- `getAuditLog()` - Retrieves audit log entries with optional filters\n- `clearAuditLog()` - Clears audit log\n- `AuditEntry` (interface) - Audit entry structure\n\n### **12. src/services/email.ts**\n- `sendWelcomeEmail()` - Sends welcome email to new users\n- `sendPasswordResetEmail()` - Sends password reset email\n- `sendEmail()` - Generic email sending function\n- `getSentEmails()` - Retrieves sent emails\n- `clearSentEmails()` - Clears sent emails\n- `EmailMessage` (interface) - Email message structure\n\nThis codebase has a well-organized authentication system with functions for user registration, login, JWT token management, password handling, session management, middleware, rate limiting, auditing, and email notifications."
+}
