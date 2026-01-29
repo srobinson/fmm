@@ -151,8 +151,8 @@ Create `.fmmrc.json` in your project root:
 ## Supported Languages
 
 - TypeScript/JavaScript (`.ts`, `.tsx`, `.js`, `.jsx`)
-- Python (`.py`) - Coming soon
-- Rust (`.rs`) - Coming soon
+- Python (`.py`)
+- Rust (`.rs`)
 - Go (`.go`) - Coming soon
 
 ## The Economics
@@ -161,11 +161,13 @@ Create `.fmmrc.json` in your project root:
 
 | Model | Cost per 1M tokens | 100-file scan without fmm | With fmm manifest |
 |-------|-------------------|--------------------------|-------------------|
-| GPT-4 | $30 input | $1.50 | $0.045 |
-| Claude | $15 input | $0.75 | $0.023 |
-| GPT-4o | $5 input | $0.25 | $0.008 |
+| Claude Opus 4.5 | $5.00 input | $0.25 | $0.008 |
+| Claude Sonnet 4.5 | $3.00 input | $0.15 | $0.005 |
+| GPT-4o | $2.50 input | $0.13 | $0.004 |
+| Gemini 3 Pro | $2.00 input | $0.10 | $0.003 |
+| GPT-5 | $1.25 input | $0.06 | $0.002 |
 
-**At scale:** A coding assistant that scans your codebase 100 times/day saves $40-145/day on a 100-file project.
+**At scale:** A coding assistant that scans your codebase 100 times/day saves $6-25/day on a 100-file project.
 
 ### Context Window Economics
 
@@ -276,8 +278,8 @@ fmm search --json                   # Output as JSON
 - [x] Manifest JSON output
 - [x] Search CLI
 - [x] MCP server (LLMs query manifest directly)
-- [ ] Python support (tree-sitter-python)
-- [ ] Rust support (tree-sitter-rust)
+- [x] Python support (tree-sitter-python)
+- [x] Rust support (tree-sitter-rust)
 - [ ] Go support (tree-sitter-go)
 - [ ] Watch mode (auto-update on save)
 - [ ] Complexity metrics (cyclomatic complexity)
