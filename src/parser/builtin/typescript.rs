@@ -1,5 +1,6 @@
-use super::{Metadata, Parser};
+use crate::parser::{Metadata, Parser};
 use anyhow::Result;
+use std::collections::HashMap;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
@@ -20,17 +21,11 @@ impl TypeScriptParser {
     }
 
     fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        // Query for various export patterns
         let queries = [
-            // export function foo() {}
             "(export_statement (function_declaration name: (identifier) @name))",
-            // export const foo = ...
             "(export_statement (lexical_declaration (variable_declarator name: (identifier) @name)))",
-            // export class Foo {}
             "(export_statement (class_declaration name: (type_identifier) @name))",
-            // export interface Foo {}
             "(export_statement (interface_declaration name: (type_identifier) @name))",
-            // export { foo }
             "(export_statement (export_clause (export_specifier name: (identifier) @name)))",
         ];
 
@@ -55,17 +50,13 @@ impl TypeScriptParser {
             }
         }
 
-        // Sort and deduplicate
         exports.sort();
         exports.dedup();
         exports
     }
 
     fn extract_imports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        // Query for import statements
-        let query_str = r#"
-            (import_statement source: (string) @source)
-        "#;
+        let query_str = r#"(import_statement source: (string) @source)"#;
 
         let mut imports = Vec::new();
         let source_bytes = source.as_bytes();
@@ -77,7 +68,6 @@ impl TypeScriptParser {
             while let Some(m) = iter.next() {
                 for capture in m.captures {
                     if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                        // Remove quotes
                         let cleaned = text.trim_matches('\'').trim_matches('"').to_string();
                         if !imports.contains(&cleaned) {
                             imports.push(cleaned);
@@ -87,7 +77,6 @@ impl TypeScriptParser {
             }
         }
 
-        // External imports only (npm packages)
         imports
             .into_iter()
             .filter(|imp| !imp.starts_with('.') && !imp.starts_with('/'))
@@ -95,9 +84,7 @@ impl TypeScriptParser {
     }
 
     fn extract_dependencies(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let query_str = r#"
-            (import_statement source: (string) @source)
-        "#;
+        let query_str = r#"(import_statement source: (string) @source)"#;
 
         let mut dependencies = Vec::new();
         let source_bytes = source.as_bytes();
@@ -110,7 +97,6 @@ impl TypeScriptParser {
                 for capture in m.captures {
                     if let Ok(text) = capture.node.utf8_text(source_bytes) {
                         let cleaned = text.trim_matches('\'').trim_matches('"').to_string();
-                        // Only local dependencies (relative imports)
                         if (cleaned.starts_with('.') || cleaned.starts_with('/'))
                             && !dependencies.contains(&cleaned)
                         {
@@ -147,5 +133,17 @@ impl Parser for TypeScriptParser {
             dependencies,
             loc,
         })
+    }
+
+    fn language_id(&self) -> &'static str {
+        "typescript"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["ts", "tsx", "js", "jsx"]
+    }
+
+    fn custom_fields(&self, _source: &str) -> Option<HashMap<String, serde_json::Value>> {
+        None
     }
 }

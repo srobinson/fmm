@@ -1,14 +1,16 @@
 use anyhow::{Context, Result};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use crate::config::{Config, Language};
+use crate::config::Config;
 use crate::formatter::Frontmatter;
-use crate::parser::{Metadata, Parser, TypeScriptParser};
+use crate::parser::{Metadata, ParserRegistry};
 
 pub struct FileProcessor {
     config: Config,
     root: std::path::PathBuf,
+    registry: ParserRegistry,
 }
 
 impl FileProcessor {
@@ -16,25 +18,26 @@ impl FileProcessor {
         Self {
             config: config.clone(),
             root: root.to_path_buf(),
+            registry: ParserRegistry::with_builtins(),
         }
     }
 
     pub fn generate(&self, path: &Path, dry_run: bool) -> Result<Option<String>> {
         let content = fs::read_to_string(path)?;
 
-        // Check if frontmatter already exists
         if has_frontmatter(&content) {
-            return Ok(None); // Skip files that already have frontmatter
+            return Ok(None);
         }
 
-        let metadata = self.extract_metadata_from_content(path, &content)?;
-        let frontmatter = self.format_frontmatter(path, &metadata)?;
+        let code = &content;
+        let metadata = self.extract_metadata_from_content(path, code)?;
+        let custom_fields = self.extract_custom_fields(path, code);
+        let frontmatter = self.format_frontmatter(path, &metadata, custom_fields.as_ref())?;
 
         if dry_run {
             return Ok(Some(format!("Would add:\n{}", frontmatter)));
         }
 
-        // Prepend frontmatter to file
         let new_content = format!("{}\n\n{}", frontmatter, content);
         fs::write(path, new_content)?;
 
@@ -44,7 +47,6 @@ impl FileProcessor {
     pub fn update(&self, path: &Path, dry_run: bool) -> Result<Option<String>> {
         let content = fs::read_to_string(path)?;
 
-        // Strip frontmatter to get clean content for metadata extraction
         let code = if let Some((_, rest)) = extract_frontmatter(&content) {
             rest.clone()
         } else {
@@ -52,12 +54,12 @@ impl FileProcessor {
         };
 
         let metadata = self.extract_metadata_from_content(path, &code)?;
-        let new_frontmatter = self.format_frontmatter(path, &metadata)?;
+        let custom_fields = self.extract_custom_fields(path, &code);
+        let new_frontmatter = self.format_frontmatter(path, &metadata, custom_fields.as_ref())?;
 
         if let Some((old_fm, rest)) = extract_frontmatter(&content) {
-            // Compare old and new
             if old_fm.trim() == new_frontmatter.trim() {
-                return Ok(None); // No changes needed
+                return Ok(None);
             }
 
             if dry_run {
@@ -68,13 +70,11 @@ impl FileProcessor {
                 )));
             }
 
-            // Replace frontmatter
             let new_content = format!("{}\n\n{}", new_frontmatter, rest);
             fs::write(path, new_content)?;
 
             Ok(Some("Updated frontmatter".to_string()))
         } else {
-            // No existing frontmatter, add it
             self.generate(path, dry_run)
         }
     }
@@ -84,11 +84,11 @@ impl FileProcessor {
 
         if let Some((old_fm, rest)) = extract_frontmatter(&content) {
             let metadata = self.extract_metadata_from_content(path, &rest)?;
-            let expected_fm = self.format_frontmatter(path, &metadata)?;
+            let custom_fields = self.extract_custom_fields(path, &rest);
+            let expected_fm = self.format_frontmatter(path, &metadata, custom_fields.as_ref())?;
 
             Ok(old_fm.trim() == expected_fm.trim())
         } else {
-            // No frontmatter exists
             Ok(false)
         }
     }
@@ -96,7 +96,6 @@ impl FileProcessor {
     /// Extract metadata from a file (public for manifest generation)
     pub fn extract_metadata(&self, path: &Path) -> Result<Option<Metadata>> {
         let content = std::fs::read_to_string(path)?;
-        // Strip existing frontmatter if present to get accurate metadata
         let code = if let Some((_, rest)) = extract_frontmatter(&content) {
             rest
         } else {
@@ -105,27 +104,43 @@ impl FileProcessor {
         Ok(Some(self.extract_metadata_from_content(path, &code)?))
     }
 
+    /// Extract custom fields from a file's source code
+    pub fn extract_custom_fields(
+        &self,
+        path: &Path,
+        content: &str,
+    ) -> Option<HashMap<String, serde_json::Value>> {
+        let extension = path.extension().and_then(|ext| ext.to_str())?;
+        let mut parser = self.registry.get_parser(extension).ok()?;
+        // We need to parse first to populate internal state, then get custom fields
+        let _ = parser.parse(content).ok()?;
+        parser.custom_fields(content)
+    }
+
+    /// Get the language ID for a file extension
+    #[allow(dead_code)]
+    pub fn language_id_for(&self, path: &Path) -> Option<String> {
+        let extension = path.extension().and_then(|ext| ext.to_str())?;
+        let parser = self.registry.get_parser(extension).ok()?;
+        Some(parser.language_id().to_string())
+    }
+
     fn extract_metadata_from_content(&self, path: &Path, content: &str) -> Result<Metadata> {
         let extension = path
             .extension()
             .and_then(|ext| ext.to_str())
             .context("Invalid file extension")?;
 
-        let language = self
-            .config
-            .language_from_extension(extension)
-            .context("Unsupported language")?;
-
-        match language {
-            Language::TypeScript | Language::JavaScript => {
-                let mut parser = TypeScriptParser::new()?;
-                parser.parse(content)
-            }
-            _ => anyhow::bail!("Parser not yet implemented for {:?}", language),
-        }
+        let mut parser = self.registry.get_parser(extension)?;
+        parser.parse(content)
     }
 
-    fn format_frontmatter(&self, path: &Path, metadata: &Metadata) -> Result<String> {
+    fn format_frontmatter(
+        &self,
+        path: &Path,
+        metadata: &Metadata,
+        custom_fields: Option<&HashMap<String, serde_json::Value>>,
+    ) -> Result<String> {
         let extension = path
             .extension()
             .and_then(|ext| ext.to_str())
@@ -148,11 +163,19 @@ impl FileProcessor {
             }
         };
 
+        let language_id = self
+            .registry
+            .get_parser(extension)
+            .ok()
+            .map(|p| p.language_id().to_string());
+
         let frontmatter = Frontmatter::new(
             relative_path.display().to_string(),
             metadata.clone(),
             language,
-        );
+        )
+        .with_version("v0.2")
+        .with_custom_fields(language_id.as_deref(), custom_fields);
 
         Ok(frontmatter.render())
     }
@@ -164,7 +187,6 @@ fn has_frontmatter(content: &str) -> bool {
         return false;
     }
 
-    // Check if first line is a comment with "--- FMM ---"
     let first = lines[0].trim();
     (first.starts_with("//") || first.starts_with("#")) && first.contains("--- FMM ---")
 }
@@ -175,13 +197,11 @@ fn extract_frontmatter(content: &str) -> Option<(String, String)> {
         return None;
     }
 
-    // Only extract if starts with FMM header
     let first = lines[0].trim();
     if !((first.starts_with("//") || first.starts_with("#")) && first.contains("--- FMM ---")) {
         return None;
     }
 
-    // Find the closing "---" marker
     let mut end_idx = None;
     for (i, line) in lines.iter().enumerate().skip(1) {
         let trimmed = line.trim();
@@ -224,7 +244,6 @@ export function foo() {}"#;
 
     #[test]
     fn test_has_frontmatter_legacy_format_rejected() {
-        // Old format without "FMM" is NOT supported
         let content = r#"// ---
 // file: test.ts
 // exports: [foo]
@@ -268,7 +287,6 @@ export function foo() {}"#;
 
     #[test]
     fn test_extract_frontmatter_legacy_format_rejected() {
-        // Old format without "FMM" is NOT supported
         let content = r#"// ---
 // file: test.ts
 // exports: [bar]
