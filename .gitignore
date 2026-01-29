@@ -11,6 +11,7 @@ Cargo.lock
 .vscode/
 *.swp
 *.swo
+__pycache__/
 
 # OS
 .DS_Store
