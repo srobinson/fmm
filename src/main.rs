@@ -1,4 +1,5 @@
 mod cli;
+mod compare;
 mod config;
 mod extractor;
 mod formatter;
@@ -8,7 +9,7 @@ mod parser;
 
 use anyhow::Result;
 use clap::Parser as ClapParser;
-use cli::{Cli, Commands};
+use cli::{Cli, Commands, OutputFormat};
 use colored::Colorize;
 
 fn main() -> Result<()> {
@@ -54,6 +55,40 @@ fn main() -> Result<()> {
         Commands::Mcp => {
             let mut server = mcp::McpServer::new();
             server.run()?;
+        }
+        Commands::Compare {
+            url,
+            branch,
+            src_path,
+            tasks,
+            runs,
+            output,
+            format,
+            max_budget,
+            no_cache,
+            quick,
+            model,
+        } => {
+            let report_format = match format {
+                OutputFormat::Json => compare::ReportFormat::Json,
+                OutputFormat::Markdown => compare::ReportFormat::Markdown,
+                OutputFormat::Both => compare::ReportFormat::Both,
+            };
+
+            let options = compare::CompareOptions {
+                branch,
+                src_path,
+                task_set: tasks,
+                runs,
+                output,
+                format: report_format,
+                max_budget,
+                use_cache: !no_cache,
+                quick,
+                model,
+            };
+
+            compare::compare(&url, options)?;
         }
     }
 

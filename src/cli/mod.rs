@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use colored::Colorize;
 use ignore::WalkBuilder;
 use rayon::prelude::*;
@@ -92,6 +92,60 @@ pub enum Commands {
 
     /// Start MCP (Model Context Protocol) server for LLM integration
     Mcp,
+
+    /// Compare FMM vs control performance on a GitHub repository
+    Compare {
+        /// GitHub repository URL (e.g., https://github.com/owner/repo)
+        url: String,
+
+        /// Branch to compare (default: main)
+        #[arg(short, long)]
+        branch: Option<String>,
+
+        /// Path within repo to analyze
+        #[arg(long)]
+        src_path: Option<String>,
+
+        /// Task set to use (standard, quick, or path to custom JSON)
+        #[arg(long, default_value = "standard")]
+        tasks: String,
+
+        /// Number of runs per task
+        #[arg(long, default_value = "1")]
+        runs: u32,
+
+        /// Output directory for results
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Output format
+        #[arg(long, value_enum, default_value = "both")]
+        format: OutputFormat,
+
+        /// Maximum budget in USD
+        #[arg(long, default_value = "10.0")]
+        max_budget: f64,
+
+        /// Skip cache (always re-run tasks)
+        #[arg(long)]
+        no_cache: bool,
+
+        /// Quick mode (fewer tasks, faster results)
+        #[arg(long)]
+        quick: bool,
+
+        /// Model to use
+        #[arg(long, default_value = "sonnet")]
+        model: String,
+    },
+}
+
+/// Output format for comparison reports
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum OutputFormat {
+    Json,
+    Markdown,
+    Both,
 }
 
 pub fn generate(path: &str, dry_run: bool, manifest_only: bool) -> Result<()> {
@@ -356,14 +410,35 @@ pub fn status() -> Result<()> {
         crate::config::FrontmatterFormat::Json => "JSON",
     };
     println!("  Format:         {}", format_str.white().bold());
-    println!("  Include LOC:    {}", if config.include_loc { "yes".green() } else { "no".dimmed() });
-    println!("  Complexity:     {}", if config.include_complexity { "yes".green() } else { "no".dimmed() });
+    println!(
+        "  Include LOC:    {}",
+        if config.include_loc {
+            "yes".green()
+        } else {
+            "no".dimmed()
+        }
+    );
+    println!(
+        "  Complexity:     {}",
+        if config.include_complexity {
+            "yes".green()
+        } else {
+            "no".dimmed()
+        }
+    );
     println!("  Max file size:  {} KB", config.max_file_size);
 
     println!("\n{}", "Supported Languages:".yellow().bold());
     let mut langs: Vec<_> = config.languages.iter().collect();
     langs.sort();
-    println!("  {}", langs.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "));
+    println!(
+        "  {}",
+        langs
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
 
     println!("\n{}", "Workspace:".yellow().bold());
     let cwd = std::env::current_dir().unwrap_or_default();
@@ -371,7 +446,10 @@ pub fn status() -> Result<()> {
 
     match collect_files(".", &config) {
         Ok(files) => {
-            println!("  {} processable files found", files.len().to_string().white().bold());
+            println!(
+                "  {} processable files found",
+                files.len().to_string().white().bold()
+            );
         }
         Err(e) => {
             println!("  {} Error scanning: {}", "✗".red(), e);
@@ -455,7 +533,11 @@ pub fn search(
     // Search by imports
     if let Some(ref import_name) = imports {
         for (file_path, entry) in &manifest.files {
-            if entry.imports.iter().any(|i| i.contains(import_name.as_str())) {
+            if entry
+                .imports
+                .iter()
+                .any(|i| i.contains(import_name.as_str()))
+            {
                 // Skip if already added
                 if results.iter().any(|r| r.file == *file_path) {
                     continue;
@@ -474,7 +556,11 @@ pub fn search(
     // Search by dependencies
     if let Some(ref dep_path) = depends_on {
         for (file_path, entry) in &manifest.files {
-            if entry.dependencies.iter().any(|d| d.contains(dep_path.as_str())) {
+            if entry
+                .dependencies
+                .iter()
+                .any(|d| d.contains(dep_path.as_str()))
+            {
                 // Skip if already added
                 if results.iter().any(|r| r.file == *file_path) {
                     continue;
@@ -509,9 +595,7 @@ pub fn search(
             }
         } else {
             // Filter existing results by LOC
-            results.retain(|r| {
-                r.loc.is_some_and(|l| matches_loc_filter(l, &op, value))
-            });
+            results.retain(|r| r.loc.is_some_and(|l| matches_loc_filter(l, &op, value)));
         }
     }
 
@@ -580,7 +664,9 @@ fn parse_loc_expr(expr: &str) -> Result<(String, usize)> {
         Ok(("=".to_string(), value))
     } else {
         // Default to exact match
-        let value: usize = expr.parse().context("Invalid LOC expression. Use: >500, <100, =200, >=50, <=1000")?;
+        let value: usize = expr
+            .parse()
+            .context("Invalid LOC expression. Use: >500, <100, =200, >=50, <=1000")?;
         Ok(("=".to_string(), value))
     }
 }

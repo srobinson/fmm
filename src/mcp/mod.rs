@@ -228,11 +228,15 @@ impl McpServer {
             data: None,
         })?;
 
-        let tool_name = params.get("name").and_then(|v| v.as_str()).ok_or_else(|| JsonRpcError {
-            code: -32602,
-            message: "Missing tool name".to_string(),
-            data: None,
-        })?;
+        let tool_name =
+            params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| JsonRpcError {
+                    code: -32602,
+                    message: "Missing tool name".to_string(),
+                    data: None,
+                })?;
 
         let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
 
@@ -263,9 +267,15 @@ impl McpServer {
     }
 
     fn tool_find_export(&self, args: &Value) -> Result<String, String> {
-        let manifest = self.manifest.as_ref().ok_or("No manifest found. Run 'fmm generate' first.")?;
+        let manifest = self
+            .manifest
+            .as_ref()
+            .ok_or("No manifest found. Run 'fmm generate' first.")?;
 
-        let name = args.get("name").and_then(|v| v.as_str()).ok_or("Missing 'name' argument")?;
+        let name = args
+            .get("name")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing 'name' argument")?;
 
         match manifest.export_index.get(name) {
             Some(file) => Ok(file.clone()),
@@ -274,9 +284,15 @@ impl McpServer {
     }
 
     fn tool_list_exports(&self, args: &Value) -> Result<String, String> {
-        let manifest = self.manifest.as_ref().ok_or("No manifest found. Run 'fmm generate' first.")?;
+        let manifest = self
+            .manifest
+            .as_ref()
+            .ok_or("No manifest found. Run 'fmm generate' first.")?;
 
-        let file = args.get("file").and_then(|v| v.as_str()).ok_or("Missing 'file' argument")?;
+        let file = args
+            .get("file")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing 'file' argument")?;
 
         match manifest.files.get(file) {
             Some(entry) => {
@@ -291,7 +307,10 @@ impl McpServer {
     }
 
     fn tool_search(&self, args: &Value) -> Result<String, String> {
-        let manifest = self.manifest.as_ref().ok_or("No manifest found. Run 'fmm generate' first.")?;
+        let manifest = self
+            .manifest
+            .as_ref()
+            .ok_or("No manifest found. Run 'fmm generate' first.")?;
 
         let mut results: Vec<(&String, &crate::manifest::FileEntry)> = Vec::new();
 
@@ -308,15 +327,22 @@ impl McpServer {
         if let Some(import_name) = args.get("imports").and_then(|v| v.as_str()) {
             for (file_path, entry) in &manifest.files {
                 if entry.imports.iter().any(|i| i.contains(import_name))
-                    && !results.iter().any(|(f, _)| *f == file_path) {
-                        results.push((file_path, entry));
-                    }
+                    && !results.iter().any(|(f, _)| *f == file_path)
+                {
+                    results.push((file_path, entry));
+                }
             }
         }
 
         // Filter by LOC
-        let min_loc = args.get("min_loc").and_then(|v| v.as_u64()).map(|v| v as usize);
-        let max_loc = args.get("max_loc").and_then(|v| v.as_u64()).map(|v| v as usize);
+        let min_loc = args
+            .get("min_loc")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
+        let max_loc = args
+            .get("max_loc")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
 
         if min_loc.is_some() || max_loc.is_some() {
             // If no other filters, search all files
@@ -363,27 +389,46 @@ impl McpServer {
     }
 
     fn tool_get_manifest(&self) -> Result<String, String> {
-        let manifest = self.manifest.as_ref().ok_or("No manifest found. Run 'fmm generate' first.")?;
+        let manifest = self
+            .manifest
+            .as_ref()
+            .ok_or("No manifest found. Run 'fmm generate' first.")?;
 
         serde_json::to_string_pretty(manifest).map_err(|e| e.to_string())
     }
 
     fn tool_file_info(&self, args: &Value) -> Result<String, String> {
-        let manifest = self.manifest.as_ref().ok_or("No manifest found. Run 'fmm generate' first.")?;
+        let manifest = self
+            .manifest
+            .as_ref()
+            .ok_or("No manifest found. Run 'fmm generate' first.")?;
 
-        let file = args.get("file").and_then(|v| v.as_str()).ok_or("Missing 'file' argument")?;
+        let file = args
+            .get("file")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing 'file' argument")?;
 
         match manifest.files.get(file) {
-            Some(entry) => {
-                Ok(format!(
-                    "File: {}\nExports: {}\nImports: {}\nDependencies: {}\nLOC: {}",
-                    file,
-                    if entry.exports.is_empty() { "none".to_string() } else { entry.exports.join(", ") },
-                    if entry.imports.is_empty() { "none".to_string() } else { entry.imports.join(", ") },
-                    if entry.dependencies.is_empty() { "none".to_string() } else { entry.dependencies.join(", ") },
-                    entry.loc
-                ))
-            }
+            Some(entry) => Ok(format!(
+                "File: {}\nExports: {}\nImports: {}\nDependencies: {}\nLOC: {}",
+                file,
+                if entry.exports.is_empty() {
+                    "none".to_string()
+                } else {
+                    entry.exports.join(", ")
+                },
+                if entry.imports.is_empty() {
+                    "none".to_string()
+                } else {
+                    entry.imports.join(", ")
+                },
+                if entry.dependencies.is_empty() {
+                    "none".to_string()
+                } else {
+                    entry.dependencies.join(", ")
+                },
+                entry.loc
+            )),
             None => Err(format!("File '{}' not found in manifest", file)),
         }
     }
