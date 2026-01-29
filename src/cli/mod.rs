@@ -427,13 +427,19 @@ pub fn validate(path: &str) -> Result<()> {
 pub fn init(skill: bool, mcp: bool, all: bool) -> Result<()> {
     let specific = skill || mcp;
 
-    // If no specific flag, install config (default behavior) + all if --all
-    let install_config = !specific || all;
-    let install_skill = skill || all;
-    let install_mcp = mcp || all;
+    // No flags or --all = full setup (config + manifest + skill + MCP)
+    let full_setup = !specific || all;
+
+    let install_config = full_setup;
+    let install_manifest = full_setup;
+    let install_skill = skill || full_setup;
+    let install_mcp = mcp || full_setup;
 
     if install_config {
         init_config()?;
+    }
+    if install_manifest {
+        init_manifest()?;
     }
     if install_skill {
         init_skill()?;
@@ -442,6 +448,66 @@ pub fn init(skill: bool, mcp: bool, all: bool) -> Result<()> {
         init_mcp_config()?;
     }
 
+    println!();
+    println!("{}", "Setup complete!".green().bold());
+    if install_manifest {
+        println!("  Manifest: .fmm/index.json");
+    }
+    if install_skill {
+        println!("  Skill:    .claude/skills/fmm-navigate.md");
+    }
+    if install_mcp {
+        println!("  MCP:      .mcp.json");
+    }
+
+    Ok(())
+}
+
+fn init_manifest() -> Result<()> {
+    let root = std::env::current_dir()?;
+    let manifest_path = root.join(".fmm").join("index.json");
+
+    if manifest_path.exists() {
+        println!("{} .fmm/index.json already exists (updating)", "!".yellow());
+    }
+
+    let config = Config::load().unwrap_or_default();
+    let files = collect_files(".", &config)?;
+
+    if files.is_empty() {
+        println!(
+            "{} No supported files found (skipping manifest generation)",
+            "!".yellow()
+        );
+        return Ok(());
+    }
+
+    let manifest = Mutex::new(crate::manifest::Manifest::new());
+
+    files.par_iter().for_each(|file| {
+        let processor = FileProcessor::new(&config, &root);
+        if let Ok(Some(metadata)) = processor.extract_metadata(file) {
+            let relative_path = match file.strip_prefix(&root) {
+                Ok(rel) => rel.display().to_string(),
+                Err(_) => file.display().to_string(),
+            };
+            if let Ok(mut m) = manifest.lock() {
+                m.add_file(&relative_path, metadata);
+            }
+        }
+    });
+
+    let mut m = manifest
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
+    m.touch();
+    m.save(&root)?;
+
+    println!(
+        "{} Generated .fmm/index.json ({} files)",
+        "✓".green(),
+        m.file_count()
+    );
     Ok(())
 }
 
