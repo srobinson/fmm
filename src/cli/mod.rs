@@ -483,7 +483,8 @@ fn collect_files(path: &str, config: &Config) -> Result<Vec<PathBuf>> {
     let path = Path::new(path);
 
     if path.is_file() {
-        return Ok(vec![path.to_path_buf()]);
+        let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        return Ok(vec![canonical]);
     }
 
     let walker = WalkBuilder::new(path)
@@ -501,7 +502,12 @@ fn collect_files(path: &str, config: &Config) -> Result<Vec<PathBuf>> {
                 false
             }
         })
-        .map(|entry| entry.path().to_path_buf())
+        .map(|entry| {
+            entry
+                .path()
+                .canonicalize()
+                .unwrap_or_else(|_| entry.path().to_path_buf())
+        })
         .collect();
 
     Ok(files)
