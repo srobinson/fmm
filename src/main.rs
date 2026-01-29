@@ -29,9 +29,9 @@ fn main() -> Result<()> {
             println!("{}", "Validating frontmatter...".green().bold());
             cli::validate(&path)?;
         }
-        Commands::Init => {
-            println!("{}", "Initializing fmm configuration...".green().bold());
-            cli::init()?;
+        Commands::Init { skill, mcp, all } => {
+            println!("{}", "Initializing fmm...".green().bold());
+            cli::init(skill, mcp, all)?;
         }
         Commands::Status => {
             cli::status()?;
@@ -45,7 +45,7 @@ fn main() -> Result<()> {
         } => {
             cli::search(export, imports, loc, depends_on, json)?;
         }
-        Commands::Mcp => {
+        Commands::Mcp | Commands::Serve => {
             let mut server = mcp::McpServer::new();
             server.run()?;
         }
