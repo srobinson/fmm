@@ -6,54 +6,105 @@ use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
 pub struct RustParser {
     parser: TSParser,
-    language: Language,
+    export_queries: Vec<Query>,
+    unsafe_query: Query,
+    trait_impl_queries: Vec<Query>,
+    lifetime_query: Query,
+    async_query: Query,
+    derive_query: Query,
 }
 
 impl RustParser {
     pub fn new() -> Result<Self> {
-        let language = tree_sitter_rust::LANGUAGE.into();
+        let language: Language = tree_sitter_rust::LANGUAGE.into();
         let mut parser = TSParser::new();
         parser
             .set_language(&language)
             .map_err(|e| anyhow::anyhow!("Failed to set Rust language: {}", e))?;
 
-        Ok(Self { parser, language })
+        let export_query_strs = [
+            "(function_item (visibility_modifier) @vis name: (identifier) @name)",
+            "(struct_item (visibility_modifier) @vis name: (type_identifier) @name)",
+            "(enum_item (visibility_modifier) @vis name: (type_identifier) @name)",
+            "(trait_item (visibility_modifier) @vis name: (type_identifier) @name)",
+            "(type_item (visibility_modifier) @vis name: (type_identifier) @name)",
+            "(const_item (visibility_modifier) @vis name: (identifier) @name)",
+            "(static_item (visibility_modifier) @vis name: (identifier) @name)",
+            "(mod_item (visibility_modifier) @vis name: (identifier) @name)",
+        ];
+
+        let export_queries: Vec<Query> = export_query_strs
+            .iter()
+            .map(|q| Query::new(&language, q))
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("Failed to compile export query: {}", e))?;
+
+        let unsafe_query = Query::new(&language, "(unsafe_block) @block")
+            .map_err(|e| anyhow::anyhow!("Failed to compile unsafe query: {}", e))?;
+
+        let trait_impl_queries = vec![
+            Query::new(
+                &language,
+                "(impl_item trait: (type_identifier) @trait type: (type_identifier) @type)",
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to compile trait_impl query: {}", e))?,
+            Query::new(
+                &language,
+                "(impl_item trait: (scoped_type_identifier) @trait type: (type_identifier) @type)",
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to compile scoped trait_impl query: {}", e))?,
+        ];
+
+        let lifetime_query = Query::new(&language, "(lifetime (identifier) @name)")
+            .map_err(|e| anyhow::anyhow!("Failed to compile lifetime query: {}", e))?;
+
+        let async_query = Query::new(&language, "(function_item (function_modifiers) @mods)")
+            .map_err(|e| anyhow::anyhow!("Failed to compile async query: {}", e))?;
+
+        let derive_query = Query::new(
+            &language,
+            "(attribute_item (attribute (identifier) @attr_name arguments: (token_tree) @args))",
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to compile derive query: {}", e))?;
+
+        Ok(Self {
+            parser,
+            export_queries,
+            unsafe_query,
+            trait_impl_queries,
+            lifetime_query,
+            async_query,
+            derive_query,
+        })
     }
 
     fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
         let mut exports = Vec::new();
         let source_bytes = source.as_bytes();
 
-        let queries = [
-            // pub fn foo()
-            "(function_item (visibility_modifier) name: (identifier) @name)",
-            // pub struct Foo
-            "(struct_item (visibility_modifier) name: (type_identifier) @name)",
-            // pub enum Foo
-            "(enum_item (visibility_modifier) name: (type_identifier) @name)",
-            // pub trait Foo
-            "(trait_item (visibility_modifier) name: (type_identifier) @name)",
-            // pub type Foo = ...
-            "(type_item (visibility_modifier) name: (type_identifier) @name)",
-            // pub const FOO: ...
-            "(const_item (visibility_modifier) name: (identifier) @name)",
-            // pub static FOO: ...
-            "(static_item (visibility_modifier) name: (identifier) @name)",
-            // pub mod foo
-            "(mod_item (visibility_modifier) name: (identifier) @name)",
-        ];
+        for query in &self.export_queries {
+            let mut cursor = QueryCursor::new();
+            let mut iter = cursor.matches(query, root_node, source_bytes);
+            while let Some(m) = iter.next() {
+                let vis_capture = m
+                    .captures
+                    .iter()
+                    .find(|c| query.capture_names()[c.index as usize] == "vis");
+                let name_capture = m
+                    .captures
+                    .iter()
+                    .find(|c| query.capture_names()[c.index as usize] == "name");
 
-        for query_str in queries {
-            if let Ok(query) = Query::new(&self.language, query_str) {
-                let mut cursor = QueryCursor::new();
-                let mut iter = cursor.matches(&query, root_node, source_bytes);
-                while let Some(m) = iter.next() {
-                    for capture in m.captures {
-                        if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                            let name = text.to_string();
-                            if !exports.contains(&name) {
-                                exports.push(name);
-                            }
+                if let (Some(vis), Some(name)) = (vis_capture, name_capture) {
+                    if let Ok(vis_text) = vis.node.utf8_text(source_bytes) {
+                        if vis_text != "pub" {
+                            continue;
+                        }
+                    }
+                    if let Ok(text) = name.node.utf8_text(source_bytes) {
+                        let name = text.to_string();
+                        if !exports.contains(&name) {
+                            exports.push(name);
                         }
                     }
                 }
@@ -68,15 +119,39 @@ impl RustParser {
     fn extract_imports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
         let mut imports = Vec::new();
         let source_bytes = source.as_bytes();
+
         let roots = self.extract_use_roots(source_bytes, root_node);
         for root in roots {
-            if !["self", "crate", "super"].contains(&root.as_str()) && !imports.contains(&root) {
+            if !Self::is_local_or_std(&root) && !imports.contains(&root) {
                 imports.push(root);
             }
         }
+
+        // extern crate declarations
+        let mut cursor = root_node.walk();
+        for child in root_node.children(&mut cursor) {
+            if child.kind() == "extern_crate_declaration" {
+                let mut inner = child.walk();
+                for c in child.children(&mut inner) {
+                    if c.kind() == "identifier" {
+                        if let Ok(name) = c.utf8_text(source_bytes) {
+                            let name = name.to_string();
+                            if !Self::is_local_or_std(&name) && !imports.contains(&name) {
+                                imports.push(name);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         imports.sort();
         imports.dedup();
         imports
+    }
+
+    fn is_local_or_std(name: &str) -> bool {
+        matches!(name, "self" | "crate" | "super" | "std" | "core" | "alloc")
     }
 
     fn extract_dependencies(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
@@ -93,8 +168,6 @@ impl RustParser {
         deps
     }
 
-    /// Walk all use_declaration nodes and extract the root crate/module name
-    /// by recursively descending into scoped_identifier until we hit a leaf.
     fn extract_use_roots(&self, source_bytes: &[u8], root_node: tree_sitter::Node) -> Vec<String> {
         let mut roots = Vec::new();
         let mut cursor = root_node.walk();
@@ -108,7 +181,6 @@ impl RustParser {
         roots
     }
 
-    /// Find the leftmost leaf of a use_declaration's path (the crate name).
     fn use_declaration_root(&self, source_bytes: &[u8], node: tree_sitter::Node) -> Option<String> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -125,7 +197,6 @@ impl RustParser {
         None
     }
 
-    /// Recursively descend the leftmost path: child to find the root identifier/crate node.
     fn leftmost_path_leaf(&self, source_bytes: &[u8], node: tree_sitter::Node) -> Option<String> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -144,52 +215,114 @@ impl RustParser {
 
     fn count_unsafe_blocks(&self, source: &str, root_node: tree_sitter::Node) -> usize {
         let source_bytes = source.as_bytes();
-        let query_str = "(unsafe_block) @block";
-        if let Ok(query) = Query::new(&self.language, query_str) {
-            let mut cursor = QueryCursor::new();
-            let mut iter = cursor.matches(&query, root_node, source_bytes);
-            let mut count = 0;
-            while iter.next().is_some() {
-                count += 1;
-            }
-            count
-        } else {
-            0
+        let mut cursor = QueryCursor::new();
+        let mut iter = cursor.matches(&self.unsafe_query, root_node, source_bytes);
+        let mut count = 0;
+        while iter.next().is_some() {
+            count += 1;
         }
+        count
+    }
+
+    fn extract_trait_impls(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+        let mut impls = Vec::new();
+        let source_bytes = source.as_bytes();
+
+        for query in &self.trait_impl_queries {
+            let mut cursor = QueryCursor::new();
+            let mut iter = cursor.matches(query, root_node, source_bytes);
+            while let Some(m) = iter.next() {
+                let trait_name = m
+                    .captures
+                    .iter()
+                    .find(|c| query.capture_names()[c.index as usize] == "trait")
+                    .and_then(|c| c.node.utf8_text(source_bytes).ok());
+                let type_name = m
+                    .captures
+                    .iter()
+                    .find(|c| query.capture_names()[c.index as usize] == "type")
+                    .and_then(|c| c.node.utf8_text(source_bytes).ok());
+
+                if let (Some(t), Some(ty)) = (trait_name, type_name) {
+                    let trait_short = t.rsplit("::").next().unwrap_or(t);
+                    let entry = format!("{} for {}", trait_short, ty);
+                    if !impls.contains(&entry) {
+                        impls.push(entry);
+                    }
+                }
+            }
+        }
+
+        impls.sort();
+        impls
+    }
+
+    fn extract_lifetimes(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+        let mut lifetimes = Vec::new();
+        let source_bytes = source.as_bytes();
+
+        let mut cursor = QueryCursor::new();
+        let mut iter = cursor.matches(&self.lifetime_query, root_node, source_bytes);
+        while let Some(m) = iter.next() {
+            for capture in m.captures {
+                if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                    if text == "_" {
+                        continue;
+                    }
+                    let lt = format!("'{}", text);
+                    if !lifetimes.contains(&lt) {
+                        lifetimes.push(lt);
+                    }
+                }
+            }
+        }
+
+        lifetimes.sort();
+        lifetimes
+    }
+
+    fn count_async_functions(&self, source: &str, root_node: tree_sitter::Node) -> usize {
+        let source_bytes = source.as_bytes();
+        let mut cursor = QueryCursor::new();
+        let mut iter = cursor.matches(&self.async_query, root_node, source_bytes);
+        let mut count = 0;
+        while let Some(m) = iter.next() {
+            for capture in m.captures {
+                if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                    if text.contains("async") {
+                        count += 1;
+                    }
+                }
+            }
+        }
+        count
     }
 
     fn extract_derives(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
         let mut derives = Vec::new();
         let source_bytes = source.as_bytes();
 
-        // Match attribute_item containing derive
-        let query_str =
-            "(attribute_item (attribute (identifier) @attr_name arguments: (token_tree) @args))";
-        if let Ok(query) = Query::new(&self.language, query_str) {
-            let mut cursor = QueryCursor::new();
-            let mut iter = cursor.matches(&query, root_node, source_bytes);
-            while let Some(m) = iter.next() {
-                // Check if attr_name is "derive"
-                let attr_name = m
-                    .captures
-                    .iter()
-                    .find(|c| query.capture_names()[c.index as usize] == "attr_name");
-                let args = m
-                    .captures
-                    .iter()
-                    .find(|c| query.capture_names()[c.index as usize] == "args");
+        let mut cursor = QueryCursor::new();
+        let mut iter = cursor.matches(&self.derive_query, root_node, source_bytes);
+        while let Some(m) = iter.next() {
+            let attr_name = m
+                .captures
+                .iter()
+                .find(|c| self.derive_query.capture_names()[c.index as usize] == "attr_name");
+            let args = m
+                .captures
+                .iter()
+                .find(|c| self.derive_query.capture_names()[c.index as usize] == "args");
 
-                if let (Some(name_capture), Some(args_capture)) = (attr_name, args) {
-                    if let Ok(name) = name_capture.node.utf8_text(source_bytes) {
-                        if name == "derive" {
-                            if let Ok(args_text) = args_capture.node.utf8_text(source_bytes) {
-                                // Parse "(Debug, Clone, Serialize)" -> ["Debug", "Clone", "Serialize"]
-                                let inner = args_text.trim_start_matches('(').trim_end_matches(')');
-                                for d in inner.split(',') {
-                                    let d = d.trim().to_string();
-                                    if !d.is_empty() && !derives.contains(&d) {
-                                        derives.push(d);
-                                    }
+            if let (Some(name_capture), Some(args_capture)) = (attr_name, args) {
+                if let Ok(name) = name_capture.node.utf8_text(source_bytes) {
+                    if name == "derive" {
+                        if let Ok(args_text) = args_capture.node.utf8_text(source_bytes) {
+                            let inner = args_text.trim_start_matches('(').trim_end_matches(')');
+                            for d in inner.split(',') {
+                                let d = d.trim().to_string();
+                                if !d.is_empty() && !derives.contains(&d) {
+                                    derives.push(d);
                                 }
                             }
                         }
@@ -218,11 +351,19 @@ impl Parser for RustParser {
         let dependencies = self.extract_dependencies(source, root_node);
         let loc = source.lines().count();
 
-        // Extract custom fields from the same AST — no second parse
         let unsafe_count = self.count_unsafe_blocks(source, root_node);
         let derives = self.extract_derives(source, root_node);
+        let trait_impls = self.extract_trait_impls(source, root_node);
+        let lifetimes = self.extract_lifetimes(source, root_node);
+        let async_count = self.count_async_functions(source, root_node);
 
-        let custom_fields = if unsafe_count == 0 && derives.is_empty() {
+        let has_custom = unsafe_count > 0
+            || !derives.is_empty()
+            || !trait_impls.is_empty()
+            || !lifetimes.is_empty()
+            || async_count > 0;
+
+        let custom_fields = if !has_custom {
             None
         } else {
             let mut fields = HashMap::new();
@@ -238,6 +379,34 @@ impl Parser for RustParser {
                     serde_json::Value::Array(
                         derives.into_iter().map(serde_json::Value::String).collect(),
                     ),
+                );
+            }
+            if !trait_impls.is_empty() {
+                fields.insert(
+                    "trait_impls".to_string(),
+                    serde_json::Value::Array(
+                        trait_impls
+                            .into_iter()
+                            .map(serde_json::Value::String)
+                            .collect(),
+                    ),
+                );
+            }
+            if !lifetimes.is_empty() {
+                fields.insert(
+                    "lifetimes".to_string(),
+                    serde_json::Value::Array(
+                        lifetimes
+                            .into_iter()
+                            .map(serde_json::Value::String)
+                            .collect(),
+                    ),
+                );
+            }
+            if async_count > 0 {
+                fields.insert(
+                    "async_functions".to_string(),
+                    serde_json::Value::Number(async_count.into()),
                 );
             }
             Some(fields)
@@ -293,9 +462,40 @@ mod tests {
         let source =
             "use std::collections::HashMap;\nuse anyhow::Result;\nuse crate::config::Config;";
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.imports.contains(&"std".to_string()));
+        assert!(!result.metadata.imports.contains(&"std".to_string()));
         assert!(result.metadata.imports.contains(&"anyhow".to_string()));
         assert!(!result.metadata.imports.contains(&"crate".to_string()));
+    }
+
+    #[test]
+    fn parse_rust_extern_crate() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "extern crate serde;\nextern crate log;\nuse serde::Deserialize;";
+        let result = parser.parse(source).unwrap();
+        assert!(result.metadata.imports.contains(&"serde".to_string()));
+        assert!(result.metadata.imports.contains(&"log".to_string()));
+    }
+
+    #[test]
+    fn parse_rust_filters_std_core_alloc() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "use std::io;\nuse core::fmt;\nuse alloc::vec::Vec;\nuse tokio::runtime;";
+        let result = parser.parse(source).unwrap();
+        assert!(!result.metadata.imports.contains(&"std".to_string()));
+        assert!(!result.metadata.imports.contains(&"core".to_string()));
+        assert!(!result.metadata.imports.contains(&"alloc".to_string()));
+        assert!(result.metadata.imports.contains(&"tokio".to_string()));
+    }
+
+    #[test]
+    fn parse_rust_pub_crate_excluded() {
+        let mut parser = RustParser::new().unwrap();
+        let source =
+            "pub fn visible() {}\npub(crate) fn internal() {}\npub(super) fn parent_only() {}";
+        let result = parser.parse(source).unwrap();
+        assert!(result.metadata.exports.contains(&"visible".to_string()));
+        assert!(!result.metadata.exports.contains(&"internal".to_string()));
+        assert!(!result.metadata.exports.contains(&"parent_only".to_string()));
     }
 
     #[test]
@@ -343,5 +543,66 @@ mod tests {
         let source = "pub fn hello() {\n    42\n}\n";
         let result = parser.parse(source).unwrap();
         assert_eq!(result.metadata.loc, 3);
+    }
+
+    #[test]
+    fn rust_custom_fields_trait_impls() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "struct Foo {}\nimpl Display for Foo {\n    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result { Ok(()) }\n}\nimpl Clone for Foo {\n    fn clone(&self) -> Self { Foo {} }\n}";
+        let result = parser.parse(source).unwrap();
+        let fields = result.custom_fields.unwrap();
+        let impls = fields.get("trait_impls").unwrap().as_array().unwrap();
+        let names: Vec<&str> = impls.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(names.contains(&"Clone for Foo"));
+        assert!(names.contains(&"Display for Foo"));
+    }
+
+    #[test]
+    fn rust_custom_fields_lifetimes() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub struct Ref<'a> {\n    data: &'a str,\n}";
+        let result = parser.parse(source).unwrap();
+        let fields = result.custom_fields.unwrap();
+        let lifetimes = fields.get("lifetimes").unwrap().as_array().unwrap();
+        let names: Vec<&str> = lifetimes.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(names.contains(&"'a"));
+    }
+
+    #[test]
+    fn rust_custom_fields_async_functions() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "async fn fetch() {}\nasync fn process() {}\nfn sync_fn() {}";
+        let result = parser.parse(source).unwrap();
+        let fields = result.custom_fields.unwrap();
+        assert_eq!(fields.get("async_functions").unwrap().as_u64().unwrap(), 2);
+    }
+
+    #[test]
+    fn rust_scoped_trait_impl() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "struct Foo {}\nimpl std::fmt::Display for Foo {\n    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { Ok(()) }\n}";
+        let result = parser.parse(source).unwrap();
+        let fields = result.custom_fields.unwrap();
+        let impls = fields.get("trait_impls").unwrap().as_array().unwrap();
+        let names: Vec<&str> = impls.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(names.contains(&"Display for Foo"));
+    }
+
+    #[test]
+    fn rust_anonymous_lifetime_filtered() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "fn foo(x: &'_ str) {}";
+        let result = parser.parse(source).unwrap();
+        if let Some(fields) = result.custom_fields {
+            if let Some(lts) = fields.get("lifetimes") {
+                let names: Vec<&str> = lts
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_str().unwrap())
+                    .collect();
+                assert!(!names.contains(&"'_"));
+            }
+        }
     }
 }

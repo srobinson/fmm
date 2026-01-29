@@ -49,10 +49,12 @@ The real value is the manifest - a single JSON file LLMs can query:
 
 ### 2. Inline Comments (Optional, for Humans)
 
-Optionally embed frontmatter in source files:
+Optionally embed frontmatter in source files, using each language's native comment syntax:
 
+**TypeScript/JavaScript:**
 ```typescript
 // --- FMM ---
+// fmm: v0.2
 // file: src/auth/session.ts
 // exports: [createSession, validateSession, destroySession]
 // imports: [jwt, redis-client]
@@ -60,9 +62,38 @@ Optionally embed frontmatter in source files:
 // loc: 234
 // modified: 2026-01-27
 // ---
+```
 
-import jwt from 'jsonwebtoken'
-// ... rest of file
+**Python:**
+```python
+# --- FMM ---
+# fmm: v0.2
+# file: src/processor.py
+# exports: [DataProcessor, fetch_data, transform]
+# imports: [pandas, requests]
+# dependencies: [.utils, ..models]
+# loc: 156
+# python:
+#   decorators: [property, staticmethod]
+# ---
+```
+
+**Rust:**
+```rust
+// --- FMM ---
+// fmm: v0.2
+// file: src/lib.rs
+// exports: [Config, Pipeline, process]
+// imports: [anyhow, serde, tokio]
+// dependencies: [crate, super]
+// loc: 280
+// rust:
+//   async_functions: 2
+//   derives: [Clone, Debug, Deserialize, Serialize]
+//   lifetimes: ['a, 'static]
+//   trait_impls: [Display for Error]
+//   unsafe_blocks: 1
+// ---
 ```
 
 This is secondary - useful when humans read code or for tools that process files individually.
@@ -150,10 +181,25 @@ Create `.fmmrc.json` in your project root:
 
 ## Supported Languages
 
-- TypeScript/JavaScript (`.ts`, `.tsx`, `.js`, `.jsx`)
-- Python (`.py`)
-- Rust (`.rs`)
-- Go (`.go`) - Coming soon
+| Language | Extensions | Exports | Imports | Dependencies | Custom Fields |
+|----------|-----------|---------|---------|-------------|---------------|
+| TypeScript | `.ts`, `.tsx` | Functions, classes, interfaces, variables | Package imports | Relative imports | - |
+| JavaScript | `.js`, `.jsx` | Functions, classes, variables | Package imports | Relative imports | - |
+| Python | `.py` | Functions, classes, constants, `__all__` | External packages | Relative imports | `decorators` |
+| Rust | `.rs` | `pub` items (excludes `pub(crate)`) | External crates (excludes `std`) | `crate::`, `super::` | `derives`, `unsafe_blocks`, `trait_impls`, `lifetimes`, `async_functions` |
+| Go | `.go` | - | - | - | Coming soon |
+
+### Language-Specific Fields
+
+**Python** includes a `python:` section with:
+- `decorators` - List of decorators used (e.g., `staticmethod`, `property`, `app.route`)
+
+**Rust** includes a `rust:` section with:
+- `derives` - Derive macros used (e.g., `Debug`, `Clone`, `Serialize`)
+- `unsafe_blocks` - Count of `unsafe` blocks
+- `trait_impls` - Trait implementations (e.g., `Display for Error`)
+- `lifetimes` - Lifetime parameters used (e.g., `'a`, `'static`)
+- `async_functions` - Count of `async fn` declarations
 
 ## The Economics
 
@@ -186,10 +232,14 @@ Create `.fmmrc.json` in your project root:
 
 ## Performance
 
-- **Speed:** ~1000 files/second on M1 Mac
-- **Parallel:** Processes files in parallel (all CPU cores)
+- **Speed:** ~1000 files/second on Apple Silicon (benchmarked with Criterion)
+- **Single file parse:** <1ms per file (TypeScript, Python, Rust)
+- **Batch 1000 files:** <100ms total
+- **Parallel:** Processes files in parallel (all CPU cores via rayon)
 - **Incremental:** Only updates files that changed
 - **Memory:** Constant memory usage (streams files)
+
+Run benchmarks yourself: `cargo bench`
 
 ## CI/CD Integration
 
@@ -288,7 +338,7 @@ fmm search --json                   # Output as JSON
 ## Contributing
 
 PRs welcome! Especially for:
-- New language support (Python, Rust, Go, Java)
+- New language support (Go, Java, C/C++)
 - Manifest format improvements
 - LLM integration examples
 - Token reduction benchmarks

@@ -47,6 +47,12 @@ pub struct McpServer {
     manifest: Option<Manifest>,
 }
 
+impl Default for McpServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl McpServer {
     pub fn new() -> Self {
         let root = std::env::current_dir().unwrap_or_default();
