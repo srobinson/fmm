@@ -8,12 +8,14 @@ use crate::parser::{Metadata, Parser, TypeScriptParser};
 
 pub struct FileProcessor {
     config: Config,
+    root: std::path::PathBuf,
 }
 
 impl FileProcessor {
-    pub fn new(config: &Config) -> Self {
+    pub fn new(config: &Config, root: &Path) -> Self {
         Self {
             config: config.clone(),
+            root: root.to_path_buf(),
         }
     }
 
@@ -134,7 +136,7 @@ impl FileProcessor {
             .language_from_extension(extension)
             .context("Unsupported language")?;
 
-        let relative_path = path.strip_prefix(std::env::current_dir()?).unwrap_or(path);
+        let relative_path = path.strip_prefix(&self.root).unwrap_or(path);
 
         let frontmatter = Frontmatter::new(
             relative_path.display().to_string(),

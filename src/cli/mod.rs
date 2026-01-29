@@ -148,10 +148,29 @@ pub enum OutputFormat {
     Both,
 }
 
+/// Resolve the root directory from the target path.
+/// If a directory, use it directly. If a file, use its parent.
+/// Falls back to CWD if the path doesn't exist.
+fn resolve_root(path: &str) -> Result<PathBuf> {
+    let target = Path::new(path)
+        .canonicalize()
+        .unwrap_or_else(|_| PathBuf::from(path));
+    if target.is_dir() {
+        Ok(target)
+    } else if target.is_file() {
+        Ok(target
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default()))
+    } else {
+        std::env::current_dir().context("Failed to get current directory")
+    }
+}
+
 pub fn generate(path: &str, dry_run: bool, manifest_only: bool) -> Result<()> {
     let config = Config::load().unwrap_or_default();
     let files = collect_files(path, &config)?;
-    let root = std::env::current_dir()?;
+    let root = resolve_root(path)?;
 
     println!("Found {} files to process", files.len());
 
@@ -161,7 +180,7 @@ pub fn generate(path: &str, dry_run: bool, manifest_only: bool) -> Result<()> {
     let results: Vec<_> = files
         .par_iter()
         .filter_map(|file| {
-            let processor = FileProcessor::new(&config);
+            let processor = FileProcessor::new(&config, &root);
 
             // Extract metadata for manifest
             if let Ok(Some(metadata)) = processor.extract_metadata(file) {
@@ -220,7 +239,7 @@ pub fn generate(path: &str, dry_run: bool, manifest_only: bool) -> Result<()> {
 pub fn update(path: &str, dry_run: bool, manifest_only: bool) -> Result<()> {
     let config = Config::load().unwrap_or_default();
     let files = collect_files(path, &config)?;
-    let root = std::env::current_dir()?;
+    let root = resolve_root(path)?;
 
     println!("Found {} files to process", files.len());
 
@@ -230,7 +249,7 @@ pub fn update(path: &str, dry_run: bool, manifest_only: bool) -> Result<()> {
     let results: Vec<_> = files
         .par_iter()
         .filter_map(|file| {
-            let processor = FileProcessor::new(&config);
+            let processor = FileProcessor::new(&config, &root);
 
             // Extract metadata for manifest
             if let Ok(Some(metadata)) = processor.extract_metadata(file) {
@@ -289,7 +308,7 @@ pub fn update(path: &str, dry_run: bool, manifest_only: bool) -> Result<()> {
 pub fn validate(path: &str) -> Result<()> {
     let config = Config::load().unwrap_or_default();
     let files = collect_files(path, &config)?;
-    let root = std::env::current_dir()?;
+    let root = resolve_root(path)?;
 
     println!("Validating {} files...", files.len());
 
@@ -300,7 +319,7 @@ pub fn validate(path: &str) -> Result<()> {
     let invalid: Vec<_> = files
         .par_iter()
         .filter_map(|file| {
-            let processor = FileProcessor::new(&config);
+            let processor = FileProcessor::new(&config, &root);
 
             // Validate inline frontmatter
             let inline_valid = match processor.validate(file) {

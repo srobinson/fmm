@@ -1,7 +1,1931 @@
 {
   "version": "1.0",
-  "generated": "2026-01-28T06:20:52.917491Z",
+  "generated": "2026-01-29T06:01:52.065693Z",
   "files": {
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/vector-store.ts": {
+      "exports": [
+        "HnswBuildOptions",
+        "HnswMismatchWarning",
+        "HnswVectorStore",
+        "VectorSearchOptions",
+        "VectorSearchResult",
+        "VectorSearchResultWithStats",
+        "VectorStore",
+        "VectorStoreLoadResult",
+        "VectorStoreStats",
+        "createNamespacedVectorStore",
+        "createVectorStore"
+      ],
+      "imports": [
+        "node:fs/promises",
+        "node:path",
+        "@msgpack/msgpack",
+        "effect",
+        "hnswlib-node"
+      ],
+      "dependencies": [
+        "../errors/index.js",
+        "../index/types.js",
+        "./embedding-namespace.js",
+        "./types.js"
+      ],
+      "loc": 708
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/fuzzy-search.test.ts": {
+      "exports": [],
+      "imports": [
+        "vitest"
+      ],
+      "dependencies": [
+        "./fuzzy-search.js"
+      ],
+      "loc": 419
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/__tests__/hybrid-search.test.ts": {
+      "exports": [],
+      "imports": [
+        "node:fs/promises",
+        "node:path",
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "../../index/storage.js",
+        "../bm25-store.js",
+        "../hybrid-search.js"
+      ],
+      "loc": 650
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/path-matcher.ts": {
+      "exports": [
+        "matchPath"
+      ],
+      "imports": [],
+      "dependencies": [],
+      "loc": 33
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/cli.test.ts": {
+      "exports": [],
+      "imports": [
+        "node:child_process",
+        "node:path",
+        "node:util",
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "../embeddings/semantic-search.js",
+        "../index/indexer.js",
+        "../utils/tokens.js"
+      ],
+      "loc": 627
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/testing.ts": {
+      "exports": [
+        "TestConfigLayer",
+        "runWithConfig",
+        "runWithConfigSync",
+        "withTestConfig"
+      ],
+      "imports": [
+        "effect"
+      ],
+      "dependencies": [
+        "./schema.js",
+        "./service.js"
+      ],
+      "loc": 110
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/vitest.config.ts": {
+      "exports": [],
+      "imports": [
+        "vitest/config"
+      ],
+      "dependencies": [],
+      "loc": 16
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/duplicates.ts": {
+      "exports": [
+        "duplicatesCommand"
+      ],
+      "imports": [
+        "node:path",
+        "@effect/cli",
+        "effect"
+      ],
+      "dependencies": [
+        "../../duplicates/index.js",
+        "../options.js",
+        "../utils.js"
+      ],
+      "loc": 122
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/duplicates/detector.test.ts": {
+      "exports": [],
+      "imports": [
+        "vitest"
+      ],
+      "dependencies": [
+        "./detector.js"
+      ],
+      "loc": 183
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/index-cmd.ts": {
+      "exports": [
+        "indexCommand"
+      ],
+      "imports": [
+        "node:path",
+        "node:readline",
+        "@effect/cli",
+        "effect"
+      ],
+      "dependencies": [
+        "../../embeddings/semantic-search.js",
+        "../../index/indexer.js",
+        "../../index/watcher.js",
+        "../options.js",
+        "../shared-error-handling.js",
+        "../utils.js"
+      ],
+      "loc": 480
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/cross-encoder.ts": {
+      "exports": [
+        "ModelProgress",
+        "RerankedResult",
+        "Reranker",
+        "RerankerError",
+        "RerankerOptions",
+        "getReranker",
+        "initializeReranker",
+        "isRerankerAvailable",
+        "rerankResults",
+        "unloadReranker"
+      ],
+      "imports": [
+        "node:path",
+        "effect"
+      ],
+      "dependencies": [
+        "../index/types.js"
+      ],
+      "loc": 406
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/index.ts": {
+      "exports": [
+        "AssembleContextOptions",
+        "AssembledContext",
+        "CompressionLevel",
+        "DocumentSummary",
+        "SectionSummary",
+        "SourceContext",
+        "SummarizeOptions",
+        "TokenReductionReport",
+        "assembleContext",
+        "formatAssembledContext",
+        "formatSummary",
+        "measureReduction",
+        "summarizeDocument",
+        "summarizeFile"
+      ],
+      "imports": [],
+      "dependencies": [],
+      "loc": 20
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/backlinks.ts": {
+      "exports": [
+        "backlinksCommand"
+      ],
+      "imports": [
+        "node:path",
+        "@effect/cli",
+        "effect"
+      ],
+      "dependencies": [
+        "../../index/indexer.js",
+        "../options.js",
+        "../utils.js"
+      ],
+      "loc": 54
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/index.ts": {
+      "exports": [],
+      "imports": [],
+      "dependencies": [],
+      "loc": 10
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/file-provider.test.ts": {
+      "exports": [],
+      "imports": [
+        "node:fs",
+        "node:os",
+        "node:path",
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "./file-provider.js",
+        "./schema.js"
+      ],
+      "loc": 320
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/cost.ts": {
+      "exports": [
+        "API_PRICING",
+        "CostEstimate",
+        "estimateSummaryCost",
+        "estimateTokens",
+        "formatCostDisplay"
+      ],
+      "imports": [],
+      "dependencies": [
+        "./types.js"
+      ],
+      "loc": 102
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-factory.test.ts": {
+      "exports": [],
+      "imports": [
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "./provider-factory.js"
+      ],
+      "loc": 240
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/utils/tokens.ts": {
+      "exports": [
+        "countTokens",
+        "countTokensApprox",
+        "countWords",
+        "freeEncoder"
+      ],
+      "imports": [
+        "effect"
+      ],
+      "dependencies": [],
+      "loc": 186
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts": {
+      "exports": [
+        "ApiKeyInvalidError",
+        "ApiKeyMissingError",
+        "CliValidationError",
+        "ConfigError",
+        "DimensionMismatchError",
+        "DirectoryCreateError",
+        "DirectoryWalkError",
+        "DocumentNotFoundError",
+        "EmbeddingError",
+        "EmbeddingsNotFoundError",
+        "ErrorCode",
+        "FileReadError",
+        "FileWriteError",
+        "IndexBuildError",
+        "IndexCorruptedError",
+        "IndexNotFoundError",
+        "ParseError",
+        "VectorStoreError",
+        "WatchError"
+      ],
+      "imports": [
+        "effect"
+      ],
+      "dependencies": [],
+      "loc": 533
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.test.ts": {
+      "exports": [],
+      "imports": [
+        "node:path",
+        "vitest"
+      ],
+      "dependencies": [
+        "./embedding-namespace.js"
+      ],
+      "loc": 300
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/fuzzy-search.ts": {
+      "exports": [
+        "MatchOptions",
+        "buildFuzzyHighlightPattern",
+        "findFuzzyMatches",
+        "findMatchesInLine",
+        "getStems",
+        "isFuzzyMatch",
+        "levenshteinDistance",
+        "matchesWithOptions",
+        "stem",
+        "stemText"
+      ],
+      "imports": [
+        "stemmer"
+      ],
+      "dependencies": [],
+      "loc": 273
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/query-parser.test.ts": {
+      "exports": [],
+      "imports": [
+        "vitest"
+      ],
+      "dependencies": [
+        "./query-parser.js"
+      ],
+      "loc": 260
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/hyde.test.ts": {
+      "exports": [],
+      "imports": [
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "./hyde.js",
+        "./types.js"
+      ],
+      "loc": 272
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-integration.test.ts": {
+      "exports": [],
+      "imports": [
+        "node:fs",
+        "node:os",
+        "node:path",
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "../config/index.js",
+        "../config/schema.js",
+        "./provider-factory.js",
+        "./types.js"
+      ],
+      "loc": 788
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/integration.test.ts": {
+      "exports": [],
+      "imports": [
+        "node:fs",
+        "node:os",
+        "node:path",
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "./index.js",
+        "./schema.js",
+        "./service.js"
+      ],
+      "loc": 667
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/summarizer.ts": {
+      "exports": [
+        "AssembleContextOptions",
+        "AssembledContext",
+        "DocumentSummary",
+        "FormatSummaryOptions",
+        "SectionSummary",
+        "SourceContext",
+        "SummarizeOptions",
+        "TokenReductionReport",
+        "assembleContext",
+        "formatAssembledContext",
+        "formatSummary",
+        "measureReduction",
+        "summarizeDocument",
+        "summarizeFile"
+      ],
+      "imports": [
+        "node:fs/promises",
+        "node:path",
+        "effect"
+      ],
+      "dependencies": [
+        "../core/types.js",
+        "../errors/index.js",
+        "../parser/parser.js",
+        "../parser/section-filter.js",
+        "../utils/tokens.js",
+        "./formatters.js"
+      ],
+      "loc": 597
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/provider-factory.ts": {
+      "exports": [
+        "createSummarizer",
+        "getBestAvailableSummarizer"
+      ],
+      "imports": [],
+      "dependencies": [
+        "./cli-providers/claude.js",
+        "./cli-providers/detection.js",
+        "./types.js"
+      ],
+      "loc": 178
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/utils/index.ts": {
+      "exports": [],
+      "imports": [],
+      "dependencies": [],
+      "loc": 1
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/typo-suggester.ts": {
+      "exports": [
+        "Suggestion",
+        "formatValidFlags",
+        "levenshteinDistance",
+        "suggestFlag"
+      ],
+      "imports": [],
+      "dependencies": [
+        "./flag-schemas.js"
+      ],
+      "loc": 130
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/errors.test.ts": {
+      "exports": [],
+      "imports": [
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "../cli/error-handler.js",
+        "./index.js"
+      ],
+      "loc": 845
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/duplicates/index.ts": {
+      "exports": [
+        "CollapseOptions",
+        "CollapsedResult",
+        "DuplicateDetectionOptions",
+        "DuplicateDetectionResult",
+        "DuplicateGroup",
+        "DuplicateSectionInfo",
+        "collapseDuplicates",
+        "detectDuplicates",
+        "detectExactDuplicates"
+      ],
+      "imports": [],
+      "dependencies": [],
+      "loc": 18
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/budget-bugs.test.ts": {
+      "exports": [],
+      "imports": [
+        "vitest"
+      ],
+      "dependencies": [
+        "../utils/tokens.js",
+        "./formatters.js",
+        "./summarizer.js"
+      ],
+      "loc": 620
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/context.ts": {
+      "exports": [
+        "contextCommand"
+      ],
+      "imports": [
+        "node:path",
+        "@effect/cli",
+        "effect"
+      ],
+      "dependencies": [
+        "../../errors/index.js",
+        "../../parser/parser.js",
+        "../../parser/section-filter.js",
+        "../../summarize/summarizer.js",
+        "../options.js",
+        "../utils.js"
+      ],
+      "loc": 285
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/precedence.ts": {
+      "exports": [
+        "CONFIG_SCHEMA_KEYS",
+        "ConfigProviderOptions",
+        "createCliConfigProvider",
+        "createConfigProvider",
+        "createConfigProviderSync",
+        "createEnvConfigProvider",
+        "createTestConfigProvider",
+        "flattenConfig",
+        "readEnvConfig"
+      ],
+      "imports": [
+        "effect"
+      ],
+      "dependencies": [
+        "../errors/index.js",
+        "./file-provider.js",
+        "./service.js"
+      ],
+      "loc": 451
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/verify-bugs.test.ts": {
+      "exports": [],
+      "imports": [
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "../utils/tokens.js",
+        "./formatters.js",
+        "./summarizer.js"
+      ],
+      "loc": 238
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/search.ts": {
+      "exports": [
+        "searchCommand"
+      ],
+      "imports": [
+        "node:fs/promises",
+        "node:path",
+        "node:readline",
+        "@effect/cli",
+        "effect"
+      ],
+      "dependencies": [
+        "../../config/index.js",
+        "../../embeddings/semantic-search.js",
+        "../../embeddings/types.js",
+        "../../index/storage.js",
+        "../../index/types.js",
+        "../../search/cross-encoder.js",
+        "../../search/hybrid-search.js",
+        "../../search/query-parser.js",
+        "../../search/searcher.js",
+        "../../summarization/index.js",
+        "../options.js",
+        "../shared-error-handling.js",
+        "../utils.js"
+      ],
+      "loc": 1281
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/cli-providers/detection.ts": {
+      "exports": [
+        "KNOWN_CLIS",
+        "detectInstalledCLIs",
+        "getCLIInfo",
+        "isCLIInstalled"
+      ],
+      "imports": [
+        "node:child_process"
+      ],
+      "dependencies": [
+        "../types.js"
+      ],
+      "loc": 118
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts": {
+      "exports": [
+        "CONFIG_FILE_NAMES",
+        "ConfigFileFormat",
+        "ConfigFileName",
+        "ConfigProviderOptions",
+        "ConfigService",
+        "ConfigServiceDefault",
+        "ConfigServiceLive",
+        "EmbeddingProvider",
+        "EmbeddingsConfig",
+        "IndexConfig",
+        "LoadConfigResult",
+        "MdContextConfig",
+        "OpenAIEmbeddingModel",
+        "OutputConfig",
+        "OutputFormat",
+        "PartialMdContextConfig",
+        "PathsConfig",
+        "SearchConfig",
+        "SummarizationConfig",
+        "TestConfigLayer",
+        "createCliConfigProvider",
+        "createConfigProvider",
+        "createConfigProviderSync",
+        "createEnvConfigProvider",
+        "createFileConfigProvider",
+        "createTestConfigProvider",
+        "defaultConfig",
+        "findConfigFile",
+        "flattenConfig",
+        "getConfig",
+        "getConfigSection",
+        "getConfigValue",
+        "loadConfigFile",
+        "loadConfigFromPath",
+        "loadFileConfigProvider",
+        "loadFileConfigProviderFromPath",
+        "makeConfigLayer",
+        "makeConfigLayerPartial",
+        "mergeWithDefaults",
+        "readEnvConfig",
+        "runWithConfig",
+        "runWithConfigSync",
+        "withTestConfig"
+      ],
+      "imports": [],
+      "dependencies": [],
+      "loc": 72
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/config-layer.ts": {
+      "exports": [
+        "defaultCliConfigLayer",
+        "defaultCliConfigLayerSync",
+        "getIndexConfig",
+        "getOutputConfig",
+        "getSearchConfig",
+        "makeCliConfigLayer",
+        "withCliOverride"
+      ],
+      "imports": [
+        "effect"
+      ],
+      "dependencies": [
+        "../config/index.js"
+      ],
+      "loc": 176
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/error-handler.test.ts": {
+      "exports": [],
+      "imports": [
+        "vitest"
+      ],
+      "dependencies": [
+        "./error-handler.js"
+      ],
+      "loc": 235
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/types.ts": {
+      "exports": [
+        "BatchProgress",
+        "ContextLine",
+        "EmbedOptions",
+        "EmbeddingProvider",
+        "EmbeddingProviderWithMetadata",
+        "EmbeddingResult",
+        "HnswIndexParams",
+        "QUALITY_EF_SEARCH",
+        "SemanticSearchOptions",
+        "SemanticSearchResult",
+        "SemanticSearchResultWithStats",
+        "VectorEntry",
+        "VectorIndex",
+        "calculateFileImportanceBoost",
+        "calculateHeadingBoost",
+        "calculateRankingBoost",
+        "hasProviderMetadata",
+        "preprocessQuery"
+      ],
+      "imports": [],
+      "dependencies": [],
+      "loc": 359
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/cli-providers/index.ts": {
+      "exports": [],
+      "imports": [],
+      "dependencies": [],
+      "loc": 8
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/searcher.test.ts": {
+      "exports": [],
+      "imports": [
+        "node:fs/promises",
+        "node:path",
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "../index/indexer.js",
+        "./searcher.js"
+      ],
+      "loc": 280
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/wink-bm25.d.ts": {
+      "exports": [],
+      "imports": [],
+      "dependencies": [],
+      "loc": 30
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/tests/integration/search-semantic.test.ts": {
+      "exports": [],
+      "imports": [
+        "node:fs/promises",
+        "node:path",
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "../../src/embeddings/semantic-search.js",
+        "../../src/index/indexer.js"
+      ],
+      "loc": 522
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/formatters.ts": {
+      "exports": [
+        "FormatSummaryOptions",
+        "formatAssembledContext",
+        "formatSummary"
+      ],
+      "imports": [],
+      "dependencies": [
+        "../utils/tokens.js",
+        "./summarizer.js"
+      ],
+      "loc": 419
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/typo-suggester.test.ts": {
+      "exports": [],
+      "imports": [
+        "vitest"
+      ],
+      "dependencies": [
+        "./flag-schemas.js",
+        "./typo-suggester.js"
+      ],
+      "loc": 105
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/error-handler.ts": {
+      "exports": [
+        "displaySummarizationError",
+        "formatSummarizationError",
+        "isRecoverableError"
+      ],
+      "imports": [],
+      "dependencies": [
+        "./types.js"
+      ],
+      "loc": 111
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/hnsw-build-options.test.ts": {
+      "exports": [],
+      "imports": [
+        "node:path",
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "./vector-store.js"
+      ],
+      "loc": 198
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/summarizer.test.ts": {
+      "exports": [],
+      "imports": [
+        "vitest"
+      ],
+      "dependencies": [
+        "../utils/tokens.js",
+        "./formatters.js",
+        "./summarizer.js"
+      ],
+      "loc": 275
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/tree.ts": {
+      "exports": [
+        "treeCommand"
+      ],
+      "imports": [
+        "node:fs",
+        "node:path",
+        "@effect/cli",
+        "effect"
+      ],
+      "dependencies": [
+        "../../core/types.js",
+        "../../errors/index.js",
+        "../../parser/parser.js",
+        "../options.js",
+        "../utils.js"
+      ],
+      "loc": 128
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/file-provider.ts": {
+      "exports": [
+        "CONFIG_FILE_NAMES",
+        "createFileConfigProvider",
+        "findConfigFile",
+        "loadConfigFile",
+        "loadConfigFromFile",
+        "loadConfigFromPath",
+        "loadFileConfigProvider",
+        "loadFileConfigProviderFromPath"
+      ],
+      "imports": [
+        "node:fs",
+        "node:path",
+        "effect"
+      ],
+      "dependencies": [
+        "../errors/index.js",
+        "./service.js"
+      ],
+      "loc": 273
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/query-preprocessing.test.ts": {
+      "exports": [],
+      "imports": [
+        "vitest"
+      ],
+      "dependencies": [
+        "./types.js"
+      ],
+      "loc": 187
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/prompts.test.ts": {
+      "exports": [],
+      "imports": [
+        "vitest"
+      ],
+      "dependencies": [
+        "./prompts.js"
+      ],
+      "loc": 269
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/index.ts": {
+      "exports": [],
+      "imports": [],
+      "dependencies": [],
+      "loc": 4
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/semantic-search.ts": {
+      "exports": [
+        "BuildEmbeddingsOptions",
+        "BuildEmbeddingsResult",
+        "DirectoryEstimate",
+        "EmbeddingBatchProgress",
+        "EmbeddingEstimate",
+        "EmbeddingStats",
+        "FileProgress",
+        "buildEmbeddings",
+        "checkPricingFreshness",
+        "estimateEmbeddingCost",
+        "getEmbeddingStats",
+        "getPricingDate",
+        "semanticSearch",
+        "semanticSearchWithContent",
+        "semanticSearchWithStats"
+      ],
+      "imports": [
+        "node:fs/promises",
+        "node:path",
+        "effect"
+      ],
+      "dependencies": [
+        "../errors/index.js",
+        "../index/storage.js",
+        "../index/types.js",
+        "./embedding-namespace.js",
+        "./hyde.js",
+        "./openai-provider.js",
+        "./provider-factory.js",
+        "./types.js",
+        "./vector-store.js"
+      ],
+      "loc": 1270
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/argv-preprocessor.ts": {
+      "exports": [
+        "PreprocessResult",
+        "preprocessArgv",
+        "preprocessArgvWithValidation"
+      ],
+      "imports": [],
+      "dependencies": [
+        "./flag-schemas.js",
+        "./typo-suggester.js"
+      ],
+      "loc": 202
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-errors.test.ts": {
+      "exports": [],
+      "imports": [
+        "vitest"
+      ],
+      "dependencies": [
+        "./provider-errors.js"
+      ],
+      "loc": 967
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/cli-providers/claude.ts": {
+      "exports": [
+        "ClaudeCLISummarizer"
+      ],
+      "imports": [
+        "node:child_process"
+      ],
+      "dependencies": [
+        "../types.js"
+      ],
+      "loc": 202
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/parser/index.ts": {
+      "exports": [],
+      "imports": [],
+      "dependencies": [],
+      "loc": 1
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/utils.ts": {
+      "exports": [
+        "IndexInfo",
+        "findIndexRoot",
+        "formatJson",
+        "getIndexInfo",
+        "hasEmbeddings",
+        "isMarkdownFile",
+        "isRegexPattern",
+        "walkDir",
+        "walkDirEffect"
+      ],
+      "imports": [
+        "node:fs/promises",
+        "node:path",
+        "effect"
+      ],
+      "dependencies": [
+        "../embeddings/embedding-namespace.js",
+        "../errors/index.js"
+      ],
+      "loc": 259
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/searcher.ts": {
+      "exports": [
+        "ContentMatch",
+        "ContextLine",
+        "ContextOptions",
+        "DocumentContext",
+        "SearchOptions",
+        "SearchResult",
+        "SectionContext",
+        "formatContextForLLM",
+        "getContext",
+        "search",
+        "searchContent",
+        "searchWithContent"
+      ],
+      "imports": [
+        "node:fs/promises",
+        "node:path",
+        "effect"
+      ],
+      "dependencies": [
+        "../errors/index.js",
+        "../index/storage.js",
+        "../index/types.js",
+        "./fuzzy-search.js",
+        "./path-matcher.js",
+        "./query-parser.js"
+      ],
+      "loc": 724
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/path-matcher.test.ts": {
+      "exports": [],
+      "imports": [
+        "vitest"
+      ],
+      "dependencies": [
+        "./path-matcher.js"
+      ],
+      "loc": 276
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/options.ts": {
+      "exports": [
+        "configOption",
+        "forceOption",
+        "jsonOption",
+        "prettyOption"
+      ],
+      "imports": [
+        "@effect/cli"
+      ],
+      "dependencies": [],
+      "loc": 41
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/main.ts": {
+      "exports": [],
+      "imports": [
+        "node:fs",
+        "node:module",
+        "node:path",
+        "node:util",
+        "@effect/cli",
+        "@effect/platform-node",
+        "effect"
+      ],
+      "dependencies": [
+        "../config/index.js",
+        "../config/schema.js",
+        "../config/service.js",
+        "./argv-preprocessor.js",
+        "./commands/index.js",
+        "./config-layer.js",
+        "./error-handler.js",
+        "./help.js"
+      ],
+      "loc": 435
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-errors.ts": {
+      "exports": [
+        "ProviderError",
+        "RECOMMENDED_OLLAMA_MODELS",
+        "detectProviderError",
+        "detectProviderFromError",
+        "getProviderErrorTitle",
+        "getProviderSuggestions"
+      ],
+      "imports": [],
+      "dependencies": [
+        "../config/schema.js",
+        "./provider-constants.js"
+      ],
+      "loc": 565
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/semantic-search-threshold.test.ts": {
+      "exports": [],
+      "imports": [
+        "node:path",
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "./vector-store.js"
+      ],
+      "loc": 508
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/pipeline.test.ts": {
+      "exports": [],
+      "imports": [
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "./cost.js",
+        "./pipeline.js",
+        "./prompts.js",
+        "./provider-factory.js",
+        "./types.js"
+      ],
+      "loc": 498
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts": {
+      "exports": [
+        "ActiveProvider",
+        "EmbeddingNamespace",
+        "EmbeddingNamespaceError",
+        "generateNamespace",
+        "getActiveNamespace",
+        "getActiveProviderPath",
+        "getEmbeddingsDir",
+        "getLegacyMetaJsonPath",
+        "getLegacyMetaPath",
+        "getLegacyVectorPath",
+        "getMetaPath",
+        "getNamespaceDir",
+        "getVectorPath",
+        "hasLegacyEmbeddings",
+        "listNamespaces",
+        "migrateLegacyEmbeddings",
+        "parseNamespace",
+        "readActiveProvider",
+        "removeNamespace",
+        "switchNamespace",
+        "writeActiveProvider"
+      ],
+      "imports": [
+        "node:fs/promises",
+        "node:path",
+        "@msgpack/msgpack",
+        "effect"
+      ],
+      "dependencies": [
+        "../index/types.js",
+        "./types.js"
+      ],
+      "loc": 947
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/index.ts": {
+      "exports": [
+        "backlinksCommand",
+        "configCommand",
+        "contextCommand",
+        "duplicatesCommand",
+        "embeddingsCommand",
+        "indexCommand",
+        "linksCommand",
+        "searchCommand",
+        "statsCommand",
+        "treeCommand"
+      ],
+      "imports": [],
+      "dependencies": [],
+      "loc": 16
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/shared-error-handling.ts": {
+      "exports": [
+        "ErrorHandlerOptions",
+        "createCostEstimateErrorHandler",
+        "createEmbeddingErrorHandler",
+        "createIndexErrorHandler"
+      ],
+      "imports": [
+        "effect"
+      ],
+      "dependencies": [
+        "../embeddings/semantic-search.js",
+        "../errors/index.js"
+      ],
+      "loc": 199
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/scripts/prototype-summarization.ts": {
+      "exports": [],
+      "imports": [
+        "node:child_process",
+        "node:path",
+        "node:fs"
+      ],
+      "dependencies": [],
+      "loc": 346
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/hyde.ts": {
+      "exports": [
+        "HydeOptions",
+        "HydeResult",
+        "generateHypotheticalDocument",
+        "isHydeAvailable",
+        "shouldUseHyde"
+      ],
+      "imports": [
+        "effect",
+        "openai"
+      ],
+      "dependencies": [
+        "../errors/index.js"
+      ],
+      "loc": 264
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/types.ts": {
+      "exports": [
+        "DocumentEntry",
+        "DocumentIndex",
+        "FileProcessingError",
+        "INDEX_DIR",
+        "INDEX_VERSION",
+        "IndexConfig",
+        "IndexResult",
+        "LinkIndex",
+        "SectionEntry",
+        "SectionIndex",
+        "SkipSummary",
+        "SkippedFile",
+        "getIndexPaths"
+      ],
+      "imports": [],
+      "dependencies": [],
+      "loc": 147
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index.ts": {
+      "exports": [
+        "PartialMdContextConfig",
+        "defineConfig"
+      ],
+      "imports": [],
+      "dependencies": [],
+      "loc": 30
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/hybrid-search.ts": {
+      "exports": [
+        "ContextLine",
+        "HybridSearchOptions",
+        "HybridSearchResult",
+        "HybridSearchStats",
+        "detectSearchModes",
+        "hybridSearch"
+      ],
+      "imports": [
+        "node:path",
+        "effect"
+      ],
+      "dependencies": [
+        "../embeddings/embedding-namespace.js",
+        "../embeddings/semantic-search.js",
+        "../embeddings/types.js",
+        "../errors/index.js",
+        "./bm25-store.js",
+        "./cross-encoder.js",
+        "./path-matcher.js"
+      ],
+      "loc": 448
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/core/index.ts": {
+      "exports": [],
+      "imports": [],
+      "dependencies": [],
+      "loc": 1
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/utils/tokens.test.ts": {
+      "exports": [],
+      "imports": [
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "./tokens.js"
+      ],
+      "loc": 142
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/help.ts": {
+      "exports": [
+        "checkBareSubcommandHelp",
+        "checkSubcommandHelp",
+        "helpContent",
+        "shouldShowMainHelp",
+        "showMainHelp",
+        "showSubcommandHelp"
+      ],
+      "imports": [],
+      "dependencies": [],
+      "loc": 588
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/mcp/server.ts": {
+      "exports": [],
+      "imports": [
+        "node:module",
+        "node:path",
+        "@modelcontextprotocol/sdk/server/index.js",
+        "@modelcontextprotocol/sdk/server/stdio.js",
+        "@modelcontextprotocol/sdk/types.js",
+        "effect"
+      ],
+      "dependencies": [
+        "../core/types.js",
+        "../embeddings/semantic-search.js",
+        "../index/indexer.js",
+        "../parser/parser.js",
+        "../search/searcher.js",
+        "../summarize/summarizer.js"
+      ],
+      "loc": 612
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/voyage-provider.ts": {
+      "exports": [
+        "DEFAULT_VOYAGE_MODEL",
+        "VOYAGE_MODELS",
+        "VoyageProvider",
+        "VoyageProviderOptions",
+        "createVoyageProvider"
+      ],
+      "imports": [
+        "effect"
+      ],
+      "dependencies": [
+        "../errors/index.js",
+        "./pricing.json",
+        "./types.js"
+      ],
+      "loc": 313
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/config-cmd.ts": {
+      "exports": [
+        "configCommand"
+      ],
+      "imports": [
+        "node:fs",
+        "node:path",
+        "@effect/cli",
+        "effect"
+      ],
+      "dependencies": [
+        "../../config/index.js",
+        "../../config/service.js",
+        "../options.js",
+        "../utils.js"
+      ],
+      "loc": 642
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/cross-encoder.test.ts": {
+      "exports": [],
+      "imports": [
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "./cross-encoder.js"
+      ],
+      "loc": 253
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/cli-providers/detection.test.ts": {
+      "exports": [],
+      "imports": [
+        "node:child_process",
+        "node:events",
+        "vitest"
+      ],
+      "dependencies": [
+        "../types.js",
+        "./detection.js"
+      ],
+      "loc": 273
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/service.ts": {
+      "exports": [
+        "ConfigService",
+        "ConfigServiceDefault",
+        "ConfigServiceLive",
+        "getConfig",
+        "getConfigSection",
+        "getConfigValue",
+        "makeConfigLayer",
+        "makeConfigLayerPartial",
+        "mergeWithDefaults"
+      ],
+      "imports": [
+        "effect"
+      ],
+      "dependencies": [
+        "./schema.js"
+      ],
+      "loc": 243
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-factory.ts": {
+      "exports": [
+        "PROVIDER_BASE_URLS",
+        "ProviderFactoryConfig",
+        "createEmbeddingProvider",
+        "createEmbeddingProviderDirect",
+        "getProviderBaseURL"
+      ],
+      "imports": [
+        "effect"
+      ],
+      "dependencies": [
+        "../config/index.js",
+        "../config/schema.js",
+        "../errors/index.js",
+        "./openai-provider.js",
+        "./provider-constants.js",
+        "./types.js",
+        "./voyage-provider.js"
+      ],
+      "loc": 225
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/testing.test.ts": {
+      "exports": [],
+      "imports": [
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "./schema.js",
+        "./service.js",
+        "./testing.js"
+      ],
+      "loc": 264
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/index.ts": {
+      "exports": [],
+      "imports": [],
+      "dependencies": [],
+      "loc": 9
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/scripts/rebuild-hnswlib.js": {
+      "exports": [],
+      "imports": [
+        "node:child_process",
+        "node:fs",
+        "node:path"
+      ],
+      "dependencies": [],
+      "loc": 58
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/tests/integration/embed-index.test.ts": {
+      "exports": [],
+      "imports": [
+        "node:fs",
+        "node:os",
+        "node:path",
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "../../src/embeddings/vector-store.js",
+        "../../src/index/indexer.js",
+        "../../src/index/storage.js"
+      ],
+      "loc": 712
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/parser/parser.ts": {
+      "exports": [
+        "ParseOptions",
+        "parse",
+        "parseFile"
+      ],
+      "imports": [
+        "node:crypto",
+        "effect",
+        "gray-matter",
+        "mdast",
+        "remark-gfm",
+        "remark-parse",
+        "unified",
+        "unist-util-visit"
+      ],
+      "dependencies": [
+        "../core/types.js",
+        "../errors/index.js",
+        "../utils/tokens.js"
+      ],
+      "loc": 394
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/embeddings.ts": {
+      "exports": [
+        "embeddingsCommand"
+      ],
+      "imports": [
+        "node:path",
+        "@clack/prompts",
+        "@effect/cli",
+        "effect"
+      ],
+      "dependencies": [
+        "../../embeddings/embedding-namespace.js",
+        "../options.js",
+        "../utils.js"
+      ],
+      "loc": 529
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/cost.test.ts": {
+      "exports": [],
+      "imports": [
+        "vitest"
+      ],
+      "dependencies": [
+        "./cost.js"
+      ],
+      "loc": 139
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/schema.test.ts": {
+      "exports": [],
+      "imports": [
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "./schema.js"
+      ],
+      "loc": 414
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/error-handler.ts": {
+      "exports": [
+        "EXIT_CODE",
+        "FormattedError",
+        "createErrorHandler",
+        "displayError",
+        "displayErrorDebug",
+        "formatEffectCliError",
+        "formatError",
+        "handleError",
+        "isEffectCliValidationError"
+      ],
+      "imports": [
+        "effect"
+      ],
+      "dependencies": [
+        "../config/schema.js",
+        "../embeddings/provider-errors.js",
+        "../errors/index.js"
+      ],
+      "loc": 655
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/duplicates/detector.ts": {
+      "exports": [
+        "CollapseOptions",
+        "CollapsedResult",
+        "DuplicateDetectionOptions",
+        "DuplicateDetectionResult",
+        "DuplicateGroup",
+        "DuplicateSectionInfo",
+        "collapseDuplicates",
+        "detectDuplicates",
+        "detectExactDuplicates"
+      ],
+      "imports": [
+        "node:crypto",
+        "node:fs/promises",
+        "node:path",
+        "effect"
+      ],
+      "dependencies": [
+        "../errors/index.js",
+        "../index/storage.js"
+      ],
+      "loc": 414
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/schema.ts": {
+      "exports": [
+        "AISummarizationConfig",
+        "EmbeddingsConfig",
+        "IndexConfig",
+        "MdContextConfig",
+        "OutputConfig",
+        "PathsConfig",
+        "SearchConfig",
+        "SummarizationConfig",
+        "defaultConfig"
+      ],
+      "imports": [
+        "effect"
+      ],
+      "dependencies": [],
+      "loc": 603
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/service.test.ts": {
+      "exports": [],
+      "imports": [
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "./schema.js",
+        "./service.js"
+      ],
+      "loc": 320
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/pipeline.ts": {
+      "exports": [
+        "PipelineOptions",
+        "PipelineResult",
+        "SummarizableResult",
+        "formatResultsForSummary",
+        "runSummarizationPipeline",
+        "summarizeResults"
+      ],
+      "imports": [
+        "effect"
+      ],
+      "dependencies": [
+        "./cost.js",
+        "./prompts.js",
+        "./provider-factory.js",
+        "./types.js"
+      ],
+      "loc": 231
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/ignore-patterns.ts": {
+      "exports": [
+        "DEFAULT_IGNORE_PATTERNS",
+        "IgnoreFilterResult",
+        "IgnoreOptions",
+        "createFilterFunction",
+        "createIgnoreFilter",
+        "getChokidarIgnorePatterns",
+        "shouldIgnore"
+      ],
+      "imports": [
+        "node:fs/promises",
+        "node:path",
+        "effect",
+        "ignore"
+      ],
+      "dependencies": [],
+      "loc": 305
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/indexer.ts": {
+      "exports": [
+        "BuildBM25Options",
+        "BuildBM25Result",
+        "IndexOptions",
+        "IndexProgress",
+        "buildBM25Index",
+        "buildIndex",
+        "getBrokenLinks",
+        "getIncomingLinks",
+        "getOutgoingLinks"
+      ],
+      "imports": [
+        "node:fs/promises",
+        "node:path",
+        "effect",
+        "ignore"
+      ],
+      "dependencies": [
+        "../core/types.js",
+        "../errors/index.js",
+        "../parser/parser.js",
+        "../search/bm25-store.js",
+        "./ignore-patterns.js",
+        "./storage.js",
+        "./types.js"
+      ],
+      "loc": 684
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/query-parser.ts": {
+      "exports": [
+        "ParsedQuery",
+        "buildHighlightPattern",
+        "evaluateQuery",
+        "isAdvancedQuery",
+        "parseQuery"
+      ],
+      "imports": [],
+      "dependencies": [],
+      "loc": 319
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/precedence.test.ts": {
+      "exports": [],
+      "imports": [
+        "node:fs",
+        "node:os",
+        "node:path",
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "./precedence.js",
+        "./schema.js"
+      ],
+      "loc": 277
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/stats.ts": {
+      "exports": [
+        "statsCommand"
+      ],
+      "imports": [
+        "node:path",
+        "@effect/cli",
+        "effect"
+      ],
+      "dependencies": [
+        "../../embeddings/semantic-search.js",
+        "../../index/storage.js",
+        "../options.js",
+        "../utils.js"
+      ],
+      "loc": 149
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/argv-preprocessor.test.ts": {
+      "exports": [],
+      "imports": [
+        "vitest"
+      ],
+      "dependencies": [
+        "./argv-preprocessor.js"
+      ],
+      "loc": 210
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/vitest.setup.ts": {
+      "exports": [],
+      "imports": [
+        "vitest"
+      ],
+      "dependencies": [],
+      "loc": 12
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/openai-provider.ts": {
+      "exports": [
+        "OpenAIProvider",
+        "OpenAIProviderOptions",
+        "PRICING_DATA",
+        "checkPricingFreshness",
+        "createOpenAIProvider",
+        "getPricingDate",
+        "wrapEmbedding"
+      ],
+      "imports": [
+        "effect",
+        "openai"
+      ],
+      "dependencies": [
+        "../errors/index.js",
+        "./pricing.json",
+        "./provider-constants.js",
+        "./types.js"
+      ],
+      "loc": 414
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/parser/section-filter.test.ts": {
+      "exports": [],
+      "imports": [
+        "vitest"
+      ],
+      "dependencies": [
+        "../core/types.js",
+        "./section-filter.js"
+      ],
+      "loc": 277
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/error-handler.test.ts": {
+      "exports": [],
+      "imports": [
+        "vitest"
+      ],
+      "dependencies": [
+        "./error-handler.js",
+        "./types.js"
+      ],
+      "loc": 127
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/bm25-store.ts": {
+      "exports": [
+        "BM25Document",
+        "BM25SearchResult",
+        "BM25Stats",
+        "BM25Store",
+        "bm25IndexExists",
+        "bm25Search",
+        "createBM25Store"
+      ],
+      "imports": [
+        "node:fs/promises",
+        "node:path",
+        "effect",
+        "wink-bm25-text-search"
+      ],
+      "dependencies": [
+        "../errors/index.js",
+        "../index/types.js"
+      ],
+      "loc": 366
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/heading-boost.test.ts": {
+      "exports": [],
+      "imports": [
+        "vitest"
+      ],
+      "dependencies": [
+        "./types.js"
+      ],
+      "loc": 222
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/prompts.ts": {
+      "exports": [
+        "ACTIONABLE_PROMPT",
+        "CONCISE_PROMPT",
+        "DEFAULT_PROMPT",
+        "DETAILED_PROMPT",
+        "SearchContext",
+        "TECHNICAL_PROMPT",
+        "buildPrompt",
+        "getPromptTemplate"
+      ],
+      "imports": [],
+      "dependencies": [],
+      "loc": 133
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/types/huggingface-transformers.d.ts": {
+      "exports": [
+        "AutoModelForSequenceClassification",
+        "AutoModelOptions",
+        "AutoTokenizer",
+        "AutoTokenizerOptions",
+        "ModelOutput",
+        "ProgressCallbackData",
+        "TokenizerOutput",
+        "env"
+      ],
+      "imports": [],
+      "dependencies": [],
+      "loc": 66
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/watcher.ts": {
+      "exports": [
+        "Watcher",
+        "WatcherOptions",
+        "watchDirectory"
+      ],
+      "imports": [
+        "node:path",
+        "chokidar",
+        "effect"
+      ],
+      "dependencies": [
+        "../errors/index.js",
+        "./ignore-patterns.js",
+        "./indexer.js",
+        "./storage.js"
+      ],
+      "loc": 189
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/storage.ts": {
+      "exports": [
+        "IndexStorage",
+        "computeHash",
+        "createEmptyDocumentIndex",
+        "createEmptyLinkIndex",
+        "createEmptySectionIndex",
+        "createStorage",
+        "indexExists",
+        "initializeIndex",
+        "loadConfig",
+        "loadDocumentIndex",
+        "loadLinkIndex",
+        "loadSectionIndex",
+        "saveConfig",
+        "saveDocumentIndex",
+        "saveLinkIndex",
+        "saveSectionIndex"
+      ],
+      "imports": [
+        "node:crypto",
+        "node:fs/promises",
+        "node:path",
+        "effect"
+      ],
+      "dependencies": [
+        "../errors/index.js",
+        "./types.js"
+      ],
+      "loc": 260
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-constants.ts": {
+      "exports": [
+        "MATRYOSHKA_MODELS",
+        "MODEL_DIMENSIONS",
+        "PROVIDER_BASE_URLS",
+        "PROVIDER_PORTS",
+        "getModelNativeDimensions",
+        "getRecommendedDimensions",
+        "inferProviderFromUrl",
+        "supportsMatryoshka",
+        "validateModelDimensions"
+      ],
+      "imports": [],
+      "dependencies": [
+        "../config/schema.js"
+      ],
+      "loc": 204
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/ignore-patterns.test.ts": {
+      "exports": [],
+      "imports": [
+        "node:fs/promises",
+        "node:os",
+        "node:path",
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "./ignore-patterns.js"
+      ],
+      "loc": 354
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/flag-schemas.ts": {
+      "exports": [
+        "CommandSchema",
+        "FlagSpec",
+        "backlinksSchema",
+        "commandSchemas",
+        "contextSchema",
+        "flagTakesValue",
+        "getCanonicalFlagName",
+        "getCommandSchema",
+        "getValidFlags",
+        "indexSchema",
+        "linksSchema",
+        "searchSchema",
+        "statsSchema",
+        "treeSchema"
+      ],
+      "imports": [],
+      "dependencies": [],
+      "loc": 341
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/parser/section-filter.ts": {
+      "exports": [
+        "SectionFilterOptions",
+        "SectionListItem",
+        "buildSectionList",
+        "extractSectionContent",
+        "filterDocumentSections",
+        "filterExcludedSections",
+        "findMatchingSections",
+        "formatExtractedSections",
+        "formatSectionList"
+      ],
+      "imports": [],
+      "dependencies": [
+        "../core/types.js"
+      ],
+      "loc": 392
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/types.ts": {
+      "exports": [
+        "AISummarizationConfig",
+        "APIProviderPricing",
+        "CLIInfo",
+        "StreamOptions",
+        "StreamingSummarizer",
+        "SummarizationError",
+        "Summarizer",
+        "SummaryResult"
+      ],
+      "imports": [],
+      "dependencies": [],
+      "loc": 184
+    },
     "examples/sample.ts": {
       "exports": [
         "SessionConfig",
@@ -14,11 +1938,567 @@
       ],
       "dependencies": [],
       "loc": 43
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/provider-factory.test.ts": {
+      "exports": [],
+      "imports": [
+        "vitest"
+      ],
+      "dependencies": [
+        "./cli-providers/detection.js",
+        "./provider-factory.js",
+        "./types.js"
+      ],
+      "loc": 396
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/links.ts": {
+      "exports": [
+        "linksCommand"
+      ],
+      "imports": [
+        "node:path",
+        "@effect/cli",
+        "effect"
+      ],
+      "dependencies": [
+        "../../index/indexer.js",
+        "../options.js",
+        "../utils.js"
+      ],
+      "loc": 52
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/integration/search-keyword.test.ts": {
+      "exports": [],
+      "imports": [
+        "node:fs/promises",
+        "node:path",
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "../index/indexer.js",
+        "../search/searcher.js"
+      ],
+      "loc": 678
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/parser/parser.test.ts": {
+      "exports": [],
+      "imports": [
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "./parser.js"
+      ],
+      "loc": 291
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/core/types.ts": {
+      "exports": [
+        "DocumentMetadata",
+        "MdCodeBlock",
+        "MdDocument",
+        "MdLink",
+        "MdSection",
+        "ParseError",
+        "SectionMetadata"
+      ],
+      "imports": [],
+      "dependencies": [],
+      "loc": 113
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/index.ts": {
+      "exports": [
+        "ACTIONABLE_PROMPT",
+        "AISummarizationConfig",
+        "APIProviderName",
+        "APIProviderPricing",
+        "API_PRICING",
+        "CLIInfo",
+        "CLIProviderName",
+        "CONCISE_PROMPT",
+        "ClaudeCLISummarizer",
+        "CostEstimate",
+        "DEFAULT_PROMPT",
+        "DETAILED_PROMPT",
+        "KNOWN_CLIS",
+        "PipelineOptions",
+        "PipelineResult",
+        "PromptTemplate",
+        "SearchContext",
+        "StreamOptions",
+        "StreamingSummarizer",
+        "SummarizableResult",
+        "SummarizationError",
+        "SummarizationErrorCode",
+        "SummarizationMode",
+        "Summarizer",
+        "SummarizerFactory",
+        "SummaryResult",
+        "TECHNICAL_PROMPT",
+        "buildPrompt",
+        "createSummarizer",
+        "detectInstalledCLIs",
+        "displaySummarizationError",
+        "estimateSummaryCost",
+        "estimateTokens",
+        "formatCostDisplay",
+        "formatResultsForSummary",
+        "formatSummarizationError",
+        "getBestAvailableSummarizer",
+        "getCLIInfo",
+        "getPromptTemplate",
+        "isCLIInstalled",
+        "isRecoverableError",
+        "runSummarizationPipeline",
+        "summarizeResults"
+      ],
+      "imports": [],
+      "dependencies": [],
+      "loc": 102
+    },
+    "/Users/alphab/Dev/LLM/DEV/mdcontext/tests/integration/search-context.test.ts": {
+      "exports": [],
+      "imports": [
+        "node:fs/promises",
+        "node:path",
+        "effect",
+        "vitest"
+      ],
+      "dependencies": [
+        "../../src/index/indexer.js",
+        "../../src/search/searcher.js"
+      ],
+      "loc": 469
     }
   },
   "exportIndex": {
+    "ContextLine": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/searcher.ts",
+    "jsonOption": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/options.ts",
+    "ConfigService": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/service.ts",
+    "EmbedOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/types.ts",
+    "backlinksCommand": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/backlinks.ts",
     "refreshToken": "examples/sample.ts",
+    "loadConfigFromPath": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/file-provider.ts",
+    "ParseOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/parser/parser.ts",
+    "configCommand": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/config-cmd.ts",
+    "generateNamespace": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "prettyOption": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/options.ts",
+    "withTestConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts",
+    "loadFileConfigProvider": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/file-provider.ts",
+    "SearchConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/schema.ts",
+    "SemanticSearchOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/types.ts",
+    "getLegacyMetaJsonPath": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "withCliOverride": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/config-layer.ts",
+    "detectDuplicates": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/duplicates/detector.ts",
+    "getNamespaceDir": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "searchContent": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/searcher.ts",
+    "ParsedQuery": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/query-parser.ts",
+    "collapseDuplicates": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/duplicates/detector.ts",
+    "shouldShowMainHelp": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/help.ts",
+    "mergeWithDefaults": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/service.ts",
+    "ACTIONABLE_PROMPT": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/prompts.ts",
+    "FlagSpec": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/flag-schemas.ts",
+    "ActiveProvider": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "createVoyageProvider": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/voyage-provider.ts",
+    "TestConfigLayer": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts",
+    "DEFAULT_PROMPT": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/prompts.ts",
+    "flattenConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts",
+    "ConfigProviderOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts",
+    "INDEX_DIR": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/types.ts",
+    "CompressionLevel": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/index.ts",
+    "HydeOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/hyde.ts",
+    "commandSchemas": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/flag-schemas.ts",
+    "defineConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index.ts",
+    "getConfigSection": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/service.ts",
+    "formatSummarizationError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/error-handler.ts",
+    "removeNamespace": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "createEmbeddingErrorHandler": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/shared-error-handling.ts",
+    "watchDirectory": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/watcher.ts",
+    "unloadReranker": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/cross-encoder.ts",
+    "showMainHelp": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/help.ts",
+    "parseQuery": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/query-parser.ts",
+    "initializeReranker": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/cross-encoder.ts",
+    "loadConfigFile": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/file-provider.ts",
+    "indexSchema": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/flag-schemas.ts",
+    "assembleContext": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/summarizer.ts",
+    "getBestAvailableSummarizer": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/index.ts",
+    "estimateEmbeddingCost": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/semantic-search.ts",
+    "ProviderError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-errors.ts",
+    "showSubcommandHelp": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/help.ts",
+    "getBrokenLinks": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/indexer.ts",
+    "loadDocumentIndex": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/storage.ts",
+    "measureReduction": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/summarizer.ts",
+    "getOutgoingLinks": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/indexer.ts",
+    "bm25IndexExists": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/bm25-store.ts",
+    "TokenizerOutput": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/types/huggingface-transformers.d.ts",
+    "isMarkdownFile": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/utils.ts",
+    "stem": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/fuzzy-search.ts",
+    "getValidFlags": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/flag-schemas.ts",
+    "createOpenAIProvider": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/openai-provider.ts",
+    "createEnvConfigProvider": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts",
+    "LinkIndex": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/types.ts",
+    "parse": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/parser/parser.ts",
+    "getIndexInfo": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/utils.ts",
+    "writeActiveProvider": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "DEFAULT_IGNORE_PATTERNS": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/ignore-patterns.ts",
+    "OutputFormat": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts",
+    "getConfigValue": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/service.ts",
+    "HnswVectorStore": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/vector-store.ts",
+    "ConfigServiceDefault": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/service.ts",
+    "createIgnoreFilter": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/ignore-patterns.ts",
+    "saveSectionIndex": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/storage.ts",
+    "isRecoverableError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/error-handler.ts",
+    "linksSchema": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/flag-schemas.ts",
+    "ProgressCallbackData": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/types/huggingface-transformers.d.ts",
+    "getLegacyMetaPath": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "ConfigFileName": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts",
+    "SectionSummary": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/summarizer.ts",
+    "EmbeddingNamespaceError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "EmbeddingStats": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/semantic-search.ts",
+    "getRecommendedDimensions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-constants.ts",
+    "IndexConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/schema.ts",
+    "levenshteinDistance": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/typo-suggester.ts",
+    "IndexResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/types.ts",
+    "PreprocessResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/argv-preprocessor.ts",
+    "createEmptyLinkIndex": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/storage.ts",
+    "TECHNICAL_PROMPT": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/prompts.ts",
+    "WatchError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts",
+    "getModelNativeDimensions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-constants.ts",
+    "DocumentNotFoundError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts",
+    "buildHighlightPattern": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/query-parser.ts",
+    "initializeIndex": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/storage.ts",
+    "BM25Stats": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/bm25-store.ts",
+    "hasLegacyEmbeddings": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "createVectorStore": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/vector-store.ts",
+    "QUALITY_EF_SEARCH": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/types.ts",
+    "helpContent": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/help.ts",
+    "summarizeDocument": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/summarizer.ts",
+    "getIndexConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/config-layer.ts",
+    "ApiKeyInvalidError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts",
+    "BM25Document": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/bm25-store.ts",
+    "createCliConfigProvider": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts",
+    "FileProcessingError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/types.ts",
+    "detectExactDuplicates": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/duplicates/detector.ts",
+    "isEffectCliValidationError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/error-handler.ts",
+    "runSummarizationPipeline": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/pipeline.ts",
+    "MdDocument": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/core/types.ts",
+    "AutoTokenizer": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/types/huggingface-transformers.d.ts",
+    "SessionConfig": "examples/sample.ts",
+    "contextCommand": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/context.ts",
+    "BuildEmbeddingsResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/semantic-search.ts",
+    "EmbeddingBatchProgress": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/semantic-search.ts",
+    "VectorSearchOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/vector-store.ts",
+    "summarizeFile": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/summarizer.ts",
+    "SectionMetadata": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/core/types.ts",
+    "indexCommand": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/index-cmd.ts",
+    "buildIndex": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/indexer.ts",
+    "formatAssembledContext": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/formatters.ts",
+    "loadFileConfigProviderFromPath": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/file-provider.ts",
+    "ParseError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/core/types.ts",
+    "SearchContext": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/prompts.ts",
+    "FormattedError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/error-handler.ts",
+    "ContentMatch": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/searcher.ts",
+    "CostEstimate": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/cost.ts",
+    "preprocessArgvWithValidation": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/argv-preprocessor.ts",
+    "isCLIInstalled": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/index.ts",
     "SessionManager": "examples/sample.ts",
-    "SessionConfig": "examples/sample.ts"
+    "WatcherOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/watcher.ts",
+    "matchesWithOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/fuzzy-search.ts",
+    "createEmbeddingProvider": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-factory.ts",
+    "DirectoryCreateError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts",
+    "HydeResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/hyde.ts",
+    "IndexInfo": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/utils.ts",
+    "forceOption": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/options.ts",
+    "IgnoreFilterResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/ignore-patterns.ts",
+    "computeHash": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/storage.ts",
+    "SummarizableResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/pipeline.ts",
+    "getContext": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/searcher.ts",
+    "findConfigFile": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/file-provider.ts",
+    "migrateLegacyEmbeddings": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "VoyageProvider": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/voyage-provider.ts",
+    "parseNamespace": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "ConfigServiceLive": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/service.ts",
+    "switchNamespace": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "PROVIDER_BASE_URLS": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-factory.ts",
+    "DirectoryWalkError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts",
+    "shouldUseHyde": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/hyde.ts",
+    "IndexBuildError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts",
+    "BuildEmbeddingsOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/semantic-search.ts",
+    "configOption": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/options.ts",
+    "suggestFlag": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/typo-suggester.ts",
+    "CLIProviderName": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/index.ts",
+    "checkSubcommandHelp": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/help.ts",
+    "AutoModelOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/types/huggingface-transformers.d.ts",
+    "buildPrompt": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/prompts.ts",
+    "PipelineResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/pipeline.ts",
+    "HybridSearchOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/hybrid-search.ts",
+    "semanticSearchWithStats": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/semantic-search.ts",
+    "CONFIG_FILE_NAMES": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/file-provider.ts",
+    "treeCommand": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/tree.ts",
+    "FormatSummaryOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/formatters.ts",
+    "Suggestion": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/typo-suggester.ts",
+    "MODEL_DIMENSIONS": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-constants.ts",
+    "VectorEntry": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/types.ts",
+    "SummarizationError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/types.ts",
+    "matchPath": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/path-matcher.ts",
+    "createTestConfigProvider": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts",
+    "OutputConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/schema.ts",
+    "APIProviderPricing": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/types.ts",
+    "loadSectionIndex": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/storage.ts",
+    "defaultConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/schema.ts",
+    "CLIInfo": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/types.ts",
+    "ModelOutput": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/types/huggingface-transformers.d.ts",
+    "HybridSearchResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/hybrid-search.ts",
+    "linksCommand": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/links.ts",
+    "semanticSearchWithContent": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/semantic-search.ts",
+    "DuplicateDetectionOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/duplicates/detector.ts",
+    "DuplicateDetectionResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/duplicates/detector.ts",
+    "DocumentContext": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/searcher.ts",
+    "AssembleContextOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/summarizer.ts",
+    "RECOMMENDED_OLLAMA_MODELS": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-errors.ts",
+    "APIProviderName": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/index.ts",
+    "IndexProgress": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/indexer.ts",
+    "getProviderErrorTitle": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-errors.ts",
+    "VectorStore": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/vector-store.ts",
+    "VectorIndex": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/types.ts",
+    "preprocessArgv": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/argv-preprocessor.ts",
+    "createNamespacedVectorStore": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/vector-store.ts",
+    "extractSectionContent": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/parser/section-filter.ts",
+    "getCommandSchema": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/flag-schemas.ts",
+    "calculateFileImportanceBoost": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/types.ts",
+    "RerankedResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/cross-encoder.ts",
+    "summarizeResults": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/pipeline.ts",
+    "createErrorHandler": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/error-handler.ts",
+    "CollapseOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/duplicates/detector.ts",
+    "isFuzzyMatch": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/fuzzy-search.ts",
+    "CollapsedResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/duplicates/detector.ts",
+    "VoyageProviderOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/voyage-provider.ts",
+    "SummarizationConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/schema.ts",
+    "createEmbeddingProviderDirect": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-factory.ts",
+    "MATRYOSHKA_MODELS": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-constants.ts",
+    "filterDocumentSections": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/parser/section-filter.ts",
+    "PathsConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/schema.ts",
+    "saveLinkIndex": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/storage.ts",
+    "AutoModelForSequenceClassification": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/types/huggingface-transformers.d.ts",
+    "calculateRankingBoost": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/types.ts",
+    "EmbeddingEstimate": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/semantic-search.ts",
+    "IndexNotFoundError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts",
+    "formatSectionList": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/parser/section-filter.ts",
+    "RerankerError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/cross-encoder.ts",
+    "HnswIndexParams": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/types.ts",
+    "getIndexPaths": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/types.ts",
+    "IgnoreOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/ignore-patterns.ts",
+    "indexExists": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/storage.ts",
+    "walkDir": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/utils.ts",
+    "getVectorPath": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "shouldIgnore": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/ignore-patterns.ts",
+    "getCanonicalFlagName": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/flag-schemas.ts",
+    "saveDocumentIndex": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/storage.ts",
+    "createCostEstimateErrorHandler": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/shared-error-handling.ts",
+    "Summarizer": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/types.ts",
+    "getLegacyVectorPath": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "IndexStorage": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/storage.ts",
+    "ConfigError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts",
+    "estimateTokens": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/cost.ts",
+    "inferProviderFromUrl": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-constants.ts",
+    "TokenReductionReport": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/summarizer.ts",
+    "EmbeddingProvider": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/types.ts",
+    "findFuzzyMatches": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/fuzzy-search.ts",
+    "stemText": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/fuzzy-search.ts",
+    "searchWithContent": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/searcher.ts",
+    "EmbeddingsConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/schema.ts",
+    "SkipSummary": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/types.ts",
+    "isRerankerAvailable": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/cross-encoder.ts",
+    "SourceContext": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/summarizer.ts",
+    "getProviderSuggestions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-errors.ts",
+    "readActiveProvider": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "getReranker": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/cross-encoder.ts",
+    "estimateSummaryCost": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/cost.ts",
+    "runWithConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts",
+    "loadConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/storage.ts",
+    "bm25Search": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/bm25-store.ts",
+    "BatchProgress": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/types.ts",
+    "VectorStoreError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts",
+    "supportsMatryoshka": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-constants.ts",
+    "EXIT_CODE": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/error-handler.ts",
+    "StreamingSummarizer": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/types.ts",
+    "HybridSearchStats": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/hybrid-search.ts",
+    "getChokidarIgnorePatterns": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/ignore-patterns.ts",
+    "parseFile": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/parser/parser.ts",
+    "EmbeddingError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts",
+    "Watcher": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/watcher.ts",
+    "flagTakesValue": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/flag-schemas.ts",
+    "embeddingsCommand": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/embeddings.ts",
+    "API_PRICING": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/cost.ts",
+    "statsCommand": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/stats.ts",
+    "DETAILED_PROMPT": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/prompts.ts",
+    "makeConfigLayer": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/service.ts",
+    "isRegexPattern": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/utils.ts",
+    "createConfigProvider": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts",
+    "createSummarizer": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/index.ts",
+    "AutoTokenizerOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/types/huggingface-transformers.d.ts",
+    "createEmptySectionIndex": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/storage.ts",
+    "SectionEntry": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/types.ts",
+    "checkPricingFreshness": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/openai-provider.ts",
+    "makeConfigLayerPartial": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/service.ts",
+    "ErrorHandlerOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/shared-error-handling.ts",
+    "getSearchConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/config-layer.ts",
+    "PipelineOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/pipeline.ts",
+    "INDEX_VERSION": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/types.ts",
+    "checkBareSubcommandHelp": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/help.ts",
+    "DEFAULT_VOYAGE_MODEL": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/voyage-provider.ts",
+    "evaluateQuery": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/query-parser.ts",
+    "EmbeddingResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/types.ts",
+    "validateModelDimensions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-constants.ts",
+    "DuplicateGroup": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/duplicates/detector.ts",
+    "VOYAGE_MODELS": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/voyage-provider.ts",
+    "SectionIndex": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/types.ts",
+    "BuildBM25Result": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/indexer.ts",
+    "SkippedFile": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/types.ts",
+    "AISummarizationConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/schema.ts",
+    "buildFuzzyHighlightPattern": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/fuzzy-search.ts",
+    "FileProgress": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/semantic-search.ts",
+    "makeCliConfigLayer": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/config-layer.ts",
+    "SectionListItem": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/parser/section-filter.ts",
+    "detectInstalledCLIs": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/index.ts",
+    "findMatchesInLine": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/fuzzy-search.ts",
+    "DirectoryEstimate": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/semantic-search.ts",
+    "DimensionMismatchError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts",
+    "findIndexRoot": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/utils.ts",
+    "freeEncoder": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/utils/tokens.ts",
+    "createEmptyDocumentIndex": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/storage.ts",
+    "getCLIInfo": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/index.ts",
+    "ProviderFactoryConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-factory.ts",
+    "HnswMismatchWarning": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/vector-store.ts",
+    "IndexCorruptedError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts",
+    "semanticSearch": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/semantic-search.ts",
+    "getIncomingLinks": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/indexer.ts",
+    "hasProviderMetadata": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/types.ts",
+    "runWithConfigSync": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts",
+    "Reranker": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/cross-encoder.ts",
+    "IndexOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/indexer.ts",
+    "CONFIG_SCHEMA_KEYS": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/precedence.ts",
+    "CommandSchema": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/flag-schemas.ts",
+    "VectorStoreLoadResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/vector-store.ts",
+    "formatJson": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/utils.ts",
+    "env": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/types/huggingface-transformers.d.ts",
+    "KNOWN_CLIS": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/index.ts",
+    "BM25SearchResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/bm25-store.ts",
+    "getActiveProviderPath": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "saveConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/storage.ts",
+    "buildBM25Index": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/indexer.ts",
+    "hasEmbeddings": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/utils.ts",
+    "createFilterFunction": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/ignore-patterns.ts",
+    "treeSchema": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/flag-schemas.ts",
+    "findMatchingSections": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/parser/section-filter.ts",
+    "createBM25Store": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/bm25-store.ts",
+    "getEmbeddingsDir": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "EmbeddingsNotFoundError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts",
+    "getProviderBaseURL": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-factory.ts",
+    "SearchResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/searcher.ts",
+    "formatEffectCliError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/error-handler.ts",
+    "formatSummary": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/formatters.ts",
+    "EmbeddingNamespace": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "FileReadError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts",
+    "ContextOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/searcher.ts",
+    "getStems": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/fuzzy-search.ts",
+    "SemanticSearchResultWithStats": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/types.ts",
+    "VectorSearchResultWithStats": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/vector-store.ts",
+    "FileWriteError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts",
+    "DuplicateSectionInfo": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/duplicates/detector.ts",
+    "StreamOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/types.ts",
+    "SectionFilterOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/parser/section-filter.ts",
+    "MdContextConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/schema.ts",
+    "detectProviderFromError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-errors.ts",
+    "isHydeAvailable": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/hyde.ts",
+    "ModelProgress": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/cross-encoder.ts",
+    "defaultCliConfigLayer": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/config-layer.ts",
+    "formatResultsForSummary": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/pipeline.ts",
+    "BM25Store": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/bm25-store.ts",
+    "DocumentIndex": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/types.ts",
+    "PRICING_DATA": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/openai-provider.ts",
+    "handleError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/error-handler.ts",
+    "DocumentEntry": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/types.ts",
+    "EmbeddingProviderWithMetadata": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/types.ts",
+    "ConfigFileFormat": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts",
+    "SearchOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/searcher.ts",
+    "DocumentMetadata": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/core/types.ts",
+    "filterExcludedSections": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/parser/section-filter.ts",
+    "MdSection": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/core/types.ts",
+    "VectorStoreStats": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/vector-store.ts",
+    "search": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/searcher.ts",
+    "defaultCliConfigLayerSync": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/config-layer.ts",
+    "getMetaPath": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "buildSectionList": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/parser/section-filter.ts",
+    "formatValidFlags": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/typo-suggester.ts",
+    "getActiveNamespace": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "LoadConfigResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts",
+    "hybridSearch": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/hybrid-search.ts",
+    "HnswBuildOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/vector-store.ts",
+    "DocumentSummary": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/summarizer.ts",
+    "ClaudeCLISummarizer": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/cli-providers/claude.ts",
+    "OpenAIProvider": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/openai-provider.ts",
+    "backlinksSchema": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/flag-schemas.ts",
+    "SummarizationErrorCode": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/index.ts",
+    "createFileConfigProvider": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/file-provider.ts",
+    "duplicatesCommand": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/duplicates.ts",
+    "getConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/service.ts",
+    "detectProviderError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-errors.ts",
+    "BuildBM25Options": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/indexer.ts",
+    "countTokensApprox": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/utils/tokens.ts",
+    "buildEmbeddings": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/semantic-search.ts",
+    "PromptTemplate": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/index.ts",
+    "displayErrorDebug": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/error-handler.ts",
+    "generateHypotheticalDocument": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/hyde.ts",
+    "walkDirEffect": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/utils.ts",
+    "ApiKeyMissingError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts",
+    "calculateHeadingBoost": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/types.ts",
+    "MatchOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/fuzzy-search.ts",
+    "CONCISE_PROMPT": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/prompts.ts",
+    "displaySummarizationError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/error-handler.ts",
+    "CliValidationError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts",
+    "getEmbeddingStats": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/semantic-search.ts",
+    "getOutputConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/config-layer.ts",
+    "ErrorCode": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/errors/index.ts",
+    "detectSearchModes": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/hybrid-search.ts",
+    "loadConfigFromFile": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/file-provider.ts",
+    "OpenAIEmbeddingModel": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts",
+    "formatContextForLLM": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/searcher.ts",
+    "SummarizerFactory": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/index.ts",
+    "isAdvancedQuery": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/query-parser.ts",
+    "searchSchema": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/flag-schemas.ts",
+    "SummarizeOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/summarizer.ts",
+    "searchCommand": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/commands/search.ts",
+    "formatExtractedSections": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/parser/section-filter.ts",
+    "createConfigProviderSync": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts",
+    "getPromptTemplate": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/prompts.ts",
+    "contextSchema": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/flag-schemas.ts",
+    "countTokens": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/utils/tokens.ts",
+    "OpenAIProviderOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/openai-provider.ts",
+    "SemanticSearchResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/types.ts",
+    "wrapEmbedding": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/openai-provider.ts",
+    "formatError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/error-handler.ts",
+    "RerankerOptions": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/cross-encoder.ts",
+    "displayError": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/error-handler.ts",
+    "SummaryResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/types.ts",
+    "SectionContext": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/searcher.ts",
+    "SummarizationMode": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/index.ts",
+    "AssembledContext": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarize/summarizer.ts",
+    "statsSchema": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/flag-schemas.ts",
+    "PROVIDER_PORTS": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/provider-constants.ts",
+    "createStorage": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/storage.ts",
+    "PartialMdContextConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts",
+    "rerankResults": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/search/cross-encoder.ts",
+    "createIndexErrorHandler": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/cli/shared-error-handling.ts",
+    "formatCostDisplay": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/summarization/cost.ts",
+    "preprocessQuery": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/types.ts",
+    "countWords": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/utils/tokens.ts",
+    "MdLink": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/core/types.ts",
+    "getPricingDate": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/openai-provider.ts",
+    "VectorSearchResult": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/vector-store.ts",
+    "listNamespaces": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/embeddings/embedding-namespace.ts",
+    "loadLinkIndex": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/index/storage.ts",
+    "readEnvConfig": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/config/index.ts",
+    "MdCodeBlock": "/Users/alphab/Dev/LLM/DEV/mdcontext/src/core/types.ts"
   }
 }
