@@ -11,7 +11,12 @@
 //!
 //! Using inline snippets (not git clones) so tests are hermetic and CI-friendly.
 
+use fmm::parser::builtin::cpp::CppParser;
+use fmm::parser::builtin::csharp::CSharpParser;
+use fmm::parser::builtin::go::GoParser;
+use fmm::parser::builtin::java::JavaParser;
 use fmm::parser::builtin::python::PythonParser;
+use fmm::parser::builtin::ruby::RubyParser;
 use fmm::parser::builtin::rust::RustParser;
 use fmm::parser::builtin::typescript::TypeScriptParser;
 use fmm::parser::Parser;
@@ -617,4 +622,450 @@ function mergeConfig(base: Record<string, unknown>, overrides: Record<string, un
     );
     assert!(result.metadata.imports.contains(&"fs".to_string()));
     assert!(result.metadata.imports.contains(&"path".to_string()));
+}
+
+// =============================================================================
+// Go validation — snippets from real-world Go patterns
+// =============================================================================
+
+/// Standard Go HTTP handler pattern with exported types and functions
+#[test]
+fn go_real_repo_http_handler() {
+    let source = r#"
+package handlers
+
+import (
+    "encoding/json"
+    "net/http"
+    "log"
+)
+
+type Response struct {
+    Status  string      `json:"status"`
+    Data    interface{} `json:"data,omitempty"`
+    Error   string      `json:"error,omitempty"`
+}
+
+type Handler struct {
+    logger *log.Logger
+}
+
+func NewHandler(logger *log.Logger) *Handler {
+    return &Handler{logger: logger}
+}
+
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+    h.logger.Printf("Request: %s %s", r.Method, r.URL.Path)
+    json.NewEncoder(w).Encode(Response{Status: "ok"})
+}
+
+func healthCheck(w http.ResponseWriter, r *http.Request) {
+    w.WriteHeader(http.StatusOK)
+}
+"#;
+    let mut parser = GoParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    assert!(result.metadata.exports.contains(&"Response".to_string()));
+    assert!(result.metadata.exports.contains(&"Handler".to_string()));
+    assert!(result.metadata.exports.contains(&"NewHandler".to_string()));
+    // healthCheck is unexported (lowercase)
+    assert!(!result.metadata.exports.contains(&"healthCheck".to_string()));
+
+    assert!(result
+        .metadata
+        .imports
+        .contains(&"encoding/json".to_string()));
+    assert!(result.metadata.imports.contains(&"net/http".to_string()));
+    assert!(result.metadata.imports.contains(&"log".to_string()));
+}
+
+/// Go interface pattern with multiple exported types
+#[test]
+fn go_real_repo_interface_pattern() {
+    let source = r#"
+package storage
+
+import (
+    "context"
+    "time"
+
+    "github.com/jackc/pgx/v5/pgxpool"
+)
+
+type Store interface {
+    Get(ctx context.Context, key string) (string, error)
+    Set(ctx context.Context, key string, value string, ttl time.Duration) error
+    Delete(ctx context.Context, key string) error
+}
+
+type PostgresStore struct {
+    pool *pgxpool.Pool
+}
+
+func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
+    return &PostgresStore{pool: pool}
+}
+
+type cacheEntry struct {
+    value     string
+    expiresAt time.Time
+}
+"#;
+    let mut parser = GoParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    assert!(result.metadata.exports.contains(&"Store".to_string()));
+    assert!(result
+        .metadata
+        .exports
+        .contains(&"PostgresStore".to_string()));
+    assert!(result
+        .metadata
+        .exports
+        .contains(&"NewPostgresStore".to_string()));
+    assert!(!result.metadata.exports.contains(&"cacheEntry".to_string()));
+
+    assert!(result.metadata.imports.contains(&"context".to_string()));
+    assert!(result.metadata.imports.contains(&"time".to_string()));
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"github.com/jackc/pgx/v5/pgxpool".to_string()));
+}
+
+// =============================================================================
+// Java validation — Spring Boot style patterns
+// =============================================================================
+
+/// Spring Boot controller with annotations
+#[test]
+fn java_real_repo_spring_controller() {
+    let source = r#"
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import java.util.List;
+
+@RestController
+public class UserController {
+    @GetMapping
+    public List<String> getUsers() {
+        return List.of("alice", "bob");
+    }
+
+    @PostMapping
+    public String createUser(String name) {
+        return name;
+    }
+
+    private void validate(String name) {
+        if (name == null) throw new IllegalArgumentException();
+    }
+}
+"#;
+    let mut parser = JavaParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    assert!(result
+        .metadata
+        .exports
+        .contains(&"UserController".to_string()));
+    assert!(result.metadata.exports.contains(&"getUsers".to_string()));
+    assert!(result.metadata.exports.contains(&"createUser".to_string()));
+    assert!(!result.metadata.exports.contains(&"validate".to_string()));
+
+    let fields = result.custom_fields.unwrap();
+    let annotations = fields.get("annotations").unwrap().as_array().unwrap();
+    let names: Vec<&str> = annotations.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(names.contains(&"RestController"));
+    assert!(names.contains(&"GetMapping"));
+    assert!(names.contains(&"PostMapping"));
+}
+
+/// Java generics and interface patterns
+#[test]
+fn java_real_repo_generics_and_interfaces() {
+    let source = r#"
+import java.util.Optional;
+import java.util.function.Predicate;
+
+public interface Validator<T> {
+    boolean validate(T item);
+    default boolean isValid(T item) {
+        return validate(item);
+    }
+}
+
+public enum Priority {
+    LOW, MEDIUM, HIGH, CRITICAL
+}
+
+public class StringValidator implements Validator<String> {
+    @Override
+    public boolean validate(String item) {
+        return item != null && !item.isBlank();
+    }
+}
+"#;
+    let mut parser = JavaParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    assert!(result.metadata.exports.contains(&"Validator".to_string()));
+    assert!(result.metadata.exports.contains(&"Priority".to_string()));
+    assert!(result
+        .metadata
+        .exports
+        .contains(&"StringValidator".to_string()));
+}
+
+// =============================================================================
+// C++ validation — modern C++ patterns
+// =============================================================================
+
+/// Modern C++ with templates and smart pointers
+#[test]
+fn cpp_real_repo_modern_patterns() {
+    let source = r#"
+#include <memory>
+#include <vector>
+#include <functional>
+#include "event.h"
+
+namespace events {
+
+class EventBus {
+public:
+    using Handler = std::function<void(const Event&)>;
+
+    void subscribe(Handler handler) {
+        handlers_.push_back(std::move(handler));
+    }
+
+    void publish(const Event& event) {
+        for (auto& handler : handlers_) {
+            handler(event);
+        }
+    }
+
+private:
+    std::vector<Handler> handlers_;
+};
+
+template <typename T>
+class Observable {
+public:
+    void notify(const T& value) {
+        for (auto& obs : observers_) {
+            obs(value);
+        }
+    }
+
+private:
+    std::vector<std::function<void(const T&)>> observers_;
+};
+
+struct EventData {
+    int id;
+    std::string payload;
+};
+
+} // namespace events
+"#;
+    let mut parser = CppParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    assert!(result.metadata.exports.contains(&"EventBus".to_string()));
+    assert!(result.metadata.exports.contains(&"Observable".to_string()));
+    assert!(result.metadata.exports.contains(&"EventData".to_string()));
+
+    assert!(result.metadata.imports.contains(&"memory".to_string()));
+    assert!(result.metadata.imports.contains(&"vector".to_string()));
+    assert!(result.metadata.imports.contains(&"functional".to_string()));
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"event.h".to_string()));
+
+    let fields = result.custom_fields.unwrap();
+    let namespaces = fields.get("namespaces").unwrap().as_array().unwrap();
+    let ns: Vec<&str> = namespaces.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(ns.contains(&"events"));
+}
+
+// =============================================================================
+// C# validation — .NET patterns
+// =============================================================================
+
+/// ASP.NET style service with DI and async
+#[test]
+fn csharp_real_repo_aspnet_service() {
+    let source = r#"
+using System;
+using System.Threading.Tasks;
+
+namespace MyApp.Services
+{
+    public interface IUserService
+    {
+        Task<string> GetUserAsync(int id);
+    }
+
+    public class UserService : IUserService
+    {
+        public async Task<string> GetUserAsync(int id)
+        {
+            await Task.Delay(100);
+            return $"User {id}";
+        }
+
+        public void Delete(int id) { }
+
+        private bool Validate(int id) => id > 0;
+    }
+
+    internal class CacheHelper
+    {
+        internal void Clear() { }
+    }
+}
+"#;
+    let mut parser = CSharpParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    assert!(result
+        .metadata
+        .exports
+        .contains(&"IUserService".to_string()));
+    assert!(result.metadata.exports.contains(&"UserService".to_string()));
+    assert!(result
+        .metadata
+        .exports
+        .contains(&"GetUserAsync".to_string()));
+    assert!(result.metadata.exports.contains(&"Delete".to_string()));
+    assert!(!result.metadata.exports.contains(&"Validate".to_string()));
+    assert!(!result.metadata.exports.contains(&"CacheHelper".to_string()));
+}
+
+// =============================================================================
+// Ruby validation — Rails-style patterns
+// =============================================================================
+
+/// Rails-style ActiveRecord model
+#[test]
+fn ruby_real_repo_rails_model() {
+    let source = r#"
+require 'json'
+require_relative 'concerns/searchable'
+
+module Searchable
+  def search(query)
+    # search logic
+  end
+end
+
+class User
+  include Searchable
+
+  attr_accessor :name, :email
+  attr_reader :id
+
+  def initialize(name:, email:)
+    @name = name
+    @email = email
+    @id = generate_id
+  end
+
+  def to_json
+    JSON.generate({ name: @name, email: @email })
+  end
+
+  def valid?
+    !@name.nil? && !@email.nil?
+  end
+
+  private
+
+  def generate_id
+    SecureRandom.uuid
+  end
+end
+
+def create_user(name:, email:)
+  User.new(name: name, email: email)
+end
+"#;
+    let mut parser = RubyParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    assert!(result.metadata.exports.contains(&"User".to_string()));
+    assert!(result.metadata.exports.contains(&"Searchable".to_string()));
+    assert!(result.metadata.exports.contains(&"create_user".to_string()));
+
+    assert!(result.metadata.imports.contains(&"json".to_string()));
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"concerns/searchable".to_string()));
+
+    let fields = result.custom_fields.unwrap();
+    let mixins = fields.get("mixins").unwrap().as_array().unwrap();
+    let mixin_names: Vec<&str> = mixins.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(mixin_names.contains(&"Searchable"));
+}
+
+/// Ruby module with mixins and metaprogramming
+#[test]
+fn ruby_real_repo_module_mixins() {
+    let source = r#"
+require 'logger'
+
+module Loggable
+  def log(message)
+    logger.info(message)
+  end
+
+  def logger
+    @logger ||= Logger.new($stdout)
+  end
+end
+
+module Configurable
+  def configure
+    yield self if block_given?
+  end
+end
+
+class Application
+  include Loggable
+  include Configurable
+  extend Configurable
+
+  def initialize
+    @started = false
+  end
+
+  def start
+    log("Starting application")
+    @started = true
+  end
+end
+"#;
+    let mut parser = RubyParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    assert!(result.metadata.exports.contains(&"Loggable".to_string()));
+    assert!(result
+        .metadata
+        .exports
+        .contains(&"Configurable".to_string()));
+    assert!(result.metadata.exports.contains(&"Application".to_string()));
+
+    assert!(result.metadata.imports.contains(&"logger".to_string()));
+
+    let fields = result.custom_fields.unwrap();
+    let mixins = fields.get("mixins").unwrap().as_array().unwrap();
+    let mixin_names: Vec<&str> = mixins.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(mixin_names.contains(&"Loggable"));
+    assert!(mixin_names.contains(&"Configurable"));
 }

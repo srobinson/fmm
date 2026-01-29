@@ -1,7 +1,11 @@
+use std::collections::HashSet;
+
 use crate::parser::{Metadata, ParseResult, Parser};
 use anyhow::Result;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
+
+use super::query_helpers::collect_matches;
 
 pub struct TypeScriptParser {
     parser: TSParser,
@@ -42,33 +46,23 @@ impl TypeScriptParser {
     }
 
     fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut exports = Vec::new();
         let source_bytes = source.as_bytes();
+        let mut seen: HashSet<String> = HashSet::new();
 
         for query in &self.export_queries {
-            let mut cursor = QueryCursor::new();
-            let mut iter = cursor.matches(query, root_node, source_bytes);
-
-            while let Some(m) = iter.next() {
-                for capture in m.captures {
-                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                        let text_string = text.to_string();
-                        if !exports.contains(&text_string) {
-                            exports.push(text_string);
-                        }
-                    }
-                }
+            for name in collect_matches(query, root_node, source_bytes) {
+                seen.insert(name);
             }
         }
 
+        let mut exports: Vec<String> = seen.into_iter().collect();
         exports.sort();
-        exports.dedup();
         exports
     }
 
     fn extract_imports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut imports = Vec::new();
         let source_bytes = source.as_bytes();
+        let mut seen = HashSet::new();
 
         let mut cursor = QueryCursor::new();
         let mut iter = cursor.matches(&self.import_query, root_node, source_bytes);
@@ -77,22 +71,21 @@ impl TypeScriptParser {
             for capture in m.captures {
                 if let Ok(text) = capture.node.utf8_text(source_bytes) {
                     let cleaned = text.trim_matches('\'').trim_matches('"').to_string();
-                    if !imports.contains(&cleaned) {
-                        imports.push(cleaned);
+                    if !cleaned.starts_with('.') && !cleaned.starts_with('/') {
+                        seen.insert(cleaned);
                     }
                 }
             }
         }
 
+        let mut imports: Vec<String> = seen.into_iter().collect();
+        imports.sort();
         imports
-            .into_iter()
-            .filter(|imp| !imp.starts_with('.') && !imp.starts_with('/'))
-            .collect()
     }
 
     fn extract_dependencies(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut dependencies = Vec::new();
         let source_bytes = source.as_bytes();
+        let mut seen = HashSet::new();
 
         let mut cursor = QueryCursor::new();
         let mut iter = cursor.matches(&self.import_query, root_node, source_bytes);
@@ -101,17 +94,15 @@ impl TypeScriptParser {
             for capture in m.captures {
                 if let Ok(text) = capture.node.utf8_text(source_bytes) {
                     let cleaned = text.trim_matches('\'').trim_matches('"').to_string();
-                    if (cleaned.starts_with('.') || cleaned.starts_with('/'))
-                        && !dependencies.contains(&cleaned)
-                    {
-                        dependencies.push(cleaned);
+                    if cleaned.starts_with('.') || cleaned.starts_with('/') {
+                        seen.insert(cleaned);
                     }
                 }
             }
         }
 
+        let mut dependencies: Vec<String> = seen.into_iter().collect();
         dependencies.sort();
-        dependencies.dedup();
         dependencies
     }
 }

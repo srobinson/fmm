@@ -187,7 +187,13 @@ Create `.fmmrc.json` in your project root:
 | JavaScript | `.js`, `.jsx` | Functions, classes, variables | Package imports | Relative imports | - |
 | Python | `.py` | Functions, classes, constants, `__all__` | External packages | Relative imports | `decorators` |
 | Rust | `.rs` | `pub` items (excludes `pub(crate)`) | External crates (excludes `std`) | `crate::`, `super::` | `derives`, `unsafe_blocks`, `trait_impls`, `lifetimes`, `async_functions` |
-| Go | `.go` | - | - | - | Coming soon |
+| Go | `.go` | Capitalized functions, types, consts, vars | Standard library packages | External modules (e.g., `github.com/...`) | - |
+| Java | `.java` | Classes, interfaces, enums, public methods | Root packages | Full import paths | `annotations` |
+| C++ | `.cpp`, `.hpp`, `.cc`, `.hh`, `.cxx`, `.hxx` | Functions, classes, structs, enums, templates | System headers (`<...>`) | Local headers (`"..."`) | `namespaces` |
+| C# | `.cs` | Public classes, interfaces, structs, enums, methods | `using` namespaces | - | `namespaces`, `attributes` |
+| Ruby | `.rb` | Classes, modules, top-level methods | `require` gems | `require_relative` paths | `mixins` |
+
+**10 languages = ~95% GitHub codebase coverage.**
 
 ### Language-Specific Fields
 
@@ -200,6 +206,19 @@ Create `.fmmrc.json` in your project root:
 - `trait_impls` - Trait implementations (e.g., `Display for Error`)
 - `lifetimes` - Lifetime parameters used (e.g., `'a`, `'static`)
 - `async_functions` - Count of `async fn` declarations
+
+**Java** includes a `java:` section with:
+- `annotations` - Annotations used (e.g., `Service`, `Override`, `Deprecated`)
+
+**C++** includes a `cpp:` section with:
+- `namespaces` - Namespace definitions (e.g., `engine`, `utils`)
+
+**C#** includes a `csharp:` section with:
+- `namespaces` - Namespace declarations (e.g., `MyApp.Services`)
+- `attributes` - Attributes used (e.g., `Serializable`, `Required`)
+
+**Ruby** includes a `ruby:` section with:
+- `mixins` - Included/extended/prepended modules (e.g., `Comparable`, `Enumerable`)
 
 ## The Economics
 
@@ -330,7 +349,11 @@ fmm search --json                   # Output as JSON
 - [x] MCP server (LLMs query manifest directly)
 - [x] Python support (tree-sitter-python)
 - [x] Rust support (tree-sitter-rust)
-- [ ] Go support (tree-sitter-go)
+- [x] Go support (tree-sitter-go)
+- [x] Java support (tree-sitter-java)
+- [x] C++ support (tree-sitter-cpp)
+- [x] C# support (tree-sitter-c-sharp)
+- [x] Ruby support (tree-sitter-ruby)
 - [ ] Watch mode (auto-update on save)
 - [ ] Complexity metrics (cyclomatic complexity)
 - [ ] VS Code extension
@@ -338,7 +361,7 @@ fmm search --json                   # Output as JSON
 ## Contributing
 
 PRs welcome! Especially for:
-- New language support (Go, Java, C/C++)
+- New language support
 - Manifest format improvements
 - LLM integration examples
 - Token reduction benchmarks
