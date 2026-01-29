@@ -1,0 +1,109 @@
+{
+  "variant": "hint",
+  "run_id": "2",
+  "task": "Find all files that export authentication-related functions. List each file path and the specific exports.",
+  "duration_seconds": 27,
+  "tool_calls_count": 12,
+  "tool_calls_summary": {},
+  "tool_calls": [
+    {
+      "tool": "Grep",
+      "input": {
+        "pattern": "export.*(auth|Auth|login|Login|logout|Logout|signin|Signin|signout|Signout|token|Token|credential|Credential)",
+        "output_mode": "files_with_matches"
+      }
+    },
+    {
+      "tool": "Grep",
+      "input": {
+        "pattern": "export\\s+(default\\s+)?(class|function|const|let|var).*(auth|Auth|login|Login|logout|Logout|signin|Signin|signout|Signout|token|Token|credential|Credential)",
+        "output_mode": "files_with_matches"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/services/audit.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/api/routes/auth.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/api/controllers/authController.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/api/models/session.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/signup.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/types.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/login.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/jwt.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/middleware/auth.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/middleware/rateLimit.ts"
+      }
+    }
+  ],
+  "files_read": [
+    "src/auth/signup.ts",
+    "src/auth/jwt.ts",
+    "src/middleware/rateLimit.ts",
+    "src/auth/types.ts",
+    "src/auth/login.ts",
+    "src/middleware/auth.ts",
+    "src/api/models/session.ts",
+    "src/api/routes/auth.ts",
+    "src/api/controllers/authController.ts",
+    "src/services/audit.ts"
+  ],
+  "files_read_count": 10,
+  "total_tool_calls_by_type": {
+    "Grep": 2,
+    "Read": 10
+  },
+  "tokens_in": 109740,
+  "tokens_out": 1387,
+  "tokens_total": 111127,
+  "cost_usd": 0.054059249999999996,
+  "discovered_fmm": false,
+  "used_manifest": false,
+  "noticed_inline_comments": false,
+  "assistant_response": "I'll help you find all files that export authentication-related functions. Let me search for authentication-related exports in the codebase.\nNow let me read each of these files to identify the specific exports:\nPerfect! Here's a comprehensive list of all files that export authentication-related functions, along with their specific exports:\n\n## Authentication-Related Exports by File\n\n### 1. **src/services/audit.ts**\n- `AuditEntry` (interface)\n- `logAuthEvent(event: string, data: Record<string, unknown>): Promise<void>`\n- `getAuditLog(filters?: {...}): Promise<AuditEntry[]>`\n- `clearAuditLog(): void`\n\n### 2. **src/api/routes/auth.ts**\n- `getAuthRoutes(): Route[]`\n\n### 3. **src/api/controllers/authController.ts**\n- `AuthController` (class with login, signup, logout methods)\n- `createAuthController(): AuthController`\n\n### 4. **src/api/models/session.ts**\n- `Session` (interface)\n- `createSession(userId: string, token: string, meta: {...}): Promise<Session>`\n- `findSessionByToken(token: string): Promise<Session | undefined>`\n- `deleteSessionsByUser(userId: string): Promise<number>`\n- `cleanExpiredSessions(): Promise<number>`\n\n### 5. **src/auth/signup.ts**\n- `registerUser(data: SignupData): Promise<AuthResult>`\n- `validateSignupData(data: Partial<SignupData>): string[]`\n\n### 6. **src/auth/types.ts**\n- `UserPayload` (interface)\n- `UserRole` (type)\n- `AuthResult` (interface)\n- `LoginCredentials` (interface)\n- `SignupData` (interface)\n- `PasswordResetRequest` (interface)\n\n### 7. **src/auth/login.ts**\n- `authenticateUser(credentials: LoginCredentials): Promise<AuthResult>`\n- `validateSession(token: string): Promise<UserPayload | null>`\n\n### 8. **src/auth/jwt.ts**\n- `generateToken(payload: UserPayload): string`\n- `verifyToken(token: string): UserPayload | null`\n- `refreshToken(token: string): string | null`\n\n### 9. **src/middleware/auth.ts**\n- `AuthenticatedRequest` (interface)\n- `Response` (interface)\n- `authMiddleware(req, res, next): void`\n- `requireRole(...roles: UserRole[]): Function`\n- `optionalAuth(req, res, next): void`\n\n### 10. **src/middleware/rateLimit.ts**\n- `rateLimiter(maxRequests: number, windowMs: number): Function`\n- `authRateLimiter(): Function`\n- `clearRateLimitStore(): void`\n\nThese files collectively handle authentication, authorization, session management, rate limiting, and audit logging for the application."
+}
