@@ -1,21 +1,14 @@
-mod cli;
-mod compare;
-mod config;
-mod extractor;
-mod formatter;
-mod manifest;
-mod mcp;
-mod parser;
-
 use anyhow::Result;
 use clap::Parser as ClapParser;
-use cli::{Cli, Commands, OutputFormat};
 use colored::Colorize;
+use fmm::cli::{self, Cli, Commands, OutputFormat};
+use fmm::compare;
+use fmm::mcp;
 
 fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let cli_args = Cli::parse();
 
-    match cli.command {
+    match cli_args.command {
         Commands::Generate {
             path,
             dry_run,

@@ -6,75 +6,131 @@ use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
 pub struct PythonParser {
     parser: TSParser,
-    language: Language,
+    func_query: Query,
+    class_query: Query,
+    assign_query: Query,
+    dunder_all_query: Query,
+    import_queries: Vec<Query>,
+    from_import_query: Query,
+    relative_import_query: Query,
+    decorator_query: Query,
+    dotted_decorator_query: Query,
 }
 
 impl PythonParser {
     pub fn new() -> Result<Self> {
-        let language = tree_sitter_python::LANGUAGE.into();
+        let language: Language = tree_sitter_python::LANGUAGE.into();
         let mut parser = TSParser::new();
         parser
             .set_language(&language)
             .map_err(|e| anyhow::anyhow!("Failed to set Python language: {}", e))?;
 
-        Ok(Self { parser, language })
+        let func_query = Query::new(
+            &language,
+            "(module (function_definition name: (identifier) @name))",
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to compile func query: {}", e))?;
+        let class_query = Query::new(
+            &language,
+            "(module (class_definition name: (identifier) @name))",
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to compile class query: {}", e))?;
+        let assign_query = Query::new(
+            &language,
+            "(module (expression_statement (assignment left: (identifier) @name)))",
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to compile assign query: {}", e))?;
+        let dunder_all_query = Query::new(&language, "(module (expression_statement (assignment left: (identifier) @name right: (list) @values)))")
+            .map_err(|e| anyhow::anyhow!("Failed to compile dunder_all query: {}", e))?;
+
+        let import_queries = vec![
+            Query::new(&language, "(import_statement name: (dotted_name) @name)")
+                .map_err(|e| anyhow::anyhow!("Failed to compile import query: {}", e))?,
+            Query::new(
+                &language,
+                "(import_statement name: (aliased_import name: (dotted_name) @name))",
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to compile aliased import query: {}", e))?,
+        ];
+
+        let from_import_query = Query::new(
+            &language,
+            "(import_from_statement module_name: (dotted_name) @name)",
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to compile from_import query: {}", e))?;
+        let relative_import_query = Query::new(
+            &language,
+            "(import_from_statement module_name: (relative_import) @name)",
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to compile relative_import query: {}", e))?;
+        let decorator_query = Query::new(&language, "(decorator (identifier) @name)")
+            .map_err(|e| anyhow::anyhow!("Failed to compile decorator query: {}", e))?;
+        let dotted_decorator_query = Query::new(&language, "(decorator (attribute) @name)")
+            .map_err(|e| anyhow::anyhow!("Failed to compile dotted_decorator query: {}", e))?;
+
+        Ok(Self {
+            parser,
+            func_query,
+            class_query,
+            assign_query,
+            dunder_all_query,
+            import_queries,
+            from_import_query,
+            relative_import_query,
+            decorator_query,
+            dotted_decorator_query,
+        })
     }
 
     fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+        if let Some(all_exports) = self.extract_dunder_all(source, root_node) {
+            return all_exports;
+        }
+
         let mut exports = Vec::new();
         let source_bytes = source.as_bytes();
 
         // Top-level function definitions
-        let func_query = "(module (function_definition name: (identifier) @name))";
-        if let Ok(query) = Query::new(&self.language, func_query) {
-            let mut cursor = QueryCursor::new();
-            let mut iter = cursor.matches(&query, root_node, source_bytes);
-            while let Some(m) = iter.next() {
-                for capture in m.captures {
-                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                        let name = text.to_string();
-                        if !name.starts_with('_') && !exports.contains(&name) {
-                            exports.push(name);
-                        }
+        let mut cursor = QueryCursor::new();
+        let mut iter = cursor.matches(&self.func_query, root_node, source_bytes);
+        while let Some(m) = iter.next() {
+            for capture in m.captures {
+                if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                    let name = text.to_string();
+                    if !name.starts_with('_') && !exports.contains(&name) {
+                        exports.push(name);
                     }
                 }
             }
         }
 
         // Top-level class definitions
-        let class_query = "(module (class_definition name: (identifier) @name))";
-        if let Ok(query) = Query::new(&self.language, class_query) {
-            let mut cursor = QueryCursor::new();
-            let mut iter = cursor.matches(&query, root_node, source_bytes);
-            while let Some(m) = iter.next() {
-                for capture in m.captures {
-                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                        let name = text.to_string();
-                        if !name.starts_with('_') && !exports.contains(&name) {
-                            exports.push(name);
-                        }
+        let mut cursor = QueryCursor::new();
+        let mut iter = cursor.matches(&self.class_query, root_node, source_bytes);
+        while let Some(m) = iter.next() {
+            for capture in m.captures {
+                if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                    let name = text.to_string();
+                    if !name.starts_with('_') && !exports.contains(&name) {
+                        exports.push(name);
                     }
                 }
             }
         }
 
         // Top-level assignments (module-level constants)
-        let assign_query = "(module (expression_statement (assignment left: (identifier) @name)))";
-        if let Ok(query) = Query::new(&self.language, assign_query) {
-            let mut cursor = QueryCursor::new();
-            let mut iter = cursor.matches(&query, root_node, source_bytes);
-            while let Some(m) = iter.next() {
-                for capture in m.captures {
-                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                        let name = text.to_string();
-                        // Only UPPER_CASE constants or public names
-                        if !name.starts_with('_')
-                            && (name.chars().all(|c| c.is_uppercase() || c == '_')
-                                || name.chars().next().is_some_and(|c| c.is_uppercase()))
-                            && !exports.contains(&name)
-                        {
-                            exports.push(name);
-                        }
+        let mut cursor = QueryCursor::new();
+        let mut iter = cursor.matches(&self.assign_query, root_node, source_bytes);
+        while let Some(m) = iter.next() {
+            for capture in m.captures {
+                if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                    let name = text.to_string();
+                    if !name.starts_with('_')
+                        && (name.chars().all(|c| c.is_uppercase() || c == '_')
+                            || name.chars().next().is_some_and(|c| c.is_uppercase()))
+                        && !exports.contains(&name)
+                    {
+                        exports.push(name);
                     }
                 }
             }
@@ -85,15 +141,55 @@ impl PythonParser {
         exports
     }
 
+    /// Extract names from `__all__ = [...]` if present.
+    fn extract_dunder_all(
+        &self,
+        source: &str,
+        root_node: tree_sitter::Node,
+    ) -> Option<Vec<String>> {
+        let source_bytes = source.as_bytes();
+        let mut cursor = QueryCursor::new();
+        let mut iter = cursor.matches(&self.dunder_all_query, root_node, source_bytes);
+        while let Some(m) = iter.next() {
+            let name_capture = m
+                .captures
+                .iter()
+                .find(|c| self.dunder_all_query.capture_names()[c.index as usize] == "name")?;
+            let values_capture = m
+                .captures
+                .iter()
+                .find(|c| self.dunder_all_query.capture_names()[c.index as usize] == "values")?;
+
+            if name_capture.node.utf8_text(source_bytes).ok()? != "__all__" {
+                continue;
+            }
+
+            let mut exports = Vec::new();
+            let list_node = values_capture.node;
+            let mut child_cursor = list_node.walk();
+            for child in list_node.children(&mut child_cursor) {
+                if child.kind() == "string" {
+                    if let Ok(text) = child.utf8_text(source_bytes) {
+                        let name = text.trim_matches('\'').trim_matches('"').to_string();
+                        if !name.is_empty() && !exports.contains(&name) {
+                            exports.push(name);
+                        }
+                    }
+                }
+            }
+            exports.sort();
+            return Some(exports);
+        }
+        None
+    }
+
     fn extract_imports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
         let mut imports = Vec::new();
         let source_bytes = source.as_bytes();
 
-        // import foo
-        let import_query = "(import_statement name: (dotted_name) @name)";
-        if let Ok(query) = Query::new(&self.language, import_query) {
+        for query in &self.import_queries {
             let mut cursor = QueryCursor::new();
-            let mut iter = cursor.matches(&query, root_node, source_bytes);
+            let mut iter = cursor.matches(query, root_node, source_bytes);
             while let Some(m) = iter.next() {
                 for capture in m.captures {
                     if let Ok(text) = capture.node.utf8_text(source_bytes) {
@@ -107,21 +203,16 @@ impl PythonParser {
         }
 
         // from foo import bar
-        let from_query = "(import_from_statement module_name: (dotted_name) @name)";
-        if let Ok(query) = Query::new(&self.language, from_query) {
-            let mut cursor = QueryCursor::new();
-            let mut iter = cursor.matches(&query, root_node, source_bytes);
-            while let Some(m) = iter.next() {
-                for capture in m.captures {
-                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                        let module = text.to_string();
-                        // Skip relative imports (they're dependencies)
-                        if !module.starts_with('.') {
-                            let root_module =
-                                module.split('.').next().unwrap_or(&module).to_string();
-                            if !imports.contains(&root_module) {
-                                imports.push(root_module);
-                            }
+        let mut cursor = QueryCursor::new();
+        let mut iter = cursor.matches(&self.from_import_query, root_node, source_bytes);
+        while let Some(m) = iter.next() {
+            for capture in m.captures {
+                if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                    let module = text.to_string();
+                    if !module.starts_with('.') {
+                        let root_module = module.split('.').next().unwrap_or(&module).to_string();
+                        if !imports.contains(&root_module) {
+                            imports.push(root_module);
                         }
                     }
                 }
@@ -136,18 +227,14 @@ impl PythonParser {
         let mut deps = Vec::new();
         let source_bytes = source.as_bytes();
 
-        // from .foo import bar (relative imports)
-        let from_query = "(import_from_statement module_name: (relative_import) @name)";
-        if let Ok(query) = Query::new(&self.language, from_query) {
-            let mut cursor = QueryCursor::new();
-            let mut iter = cursor.matches(&query, root_node, source_bytes);
-            while let Some(m) = iter.next() {
-                for capture in m.captures {
-                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                        let dep = text.to_string();
-                        if !deps.contains(&dep) {
-                            deps.push(dep);
-                        }
+        let mut cursor = QueryCursor::new();
+        let mut iter = cursor.matches(&self.relative_import_query, root_node, source_bytes);
+        while let Some(m) = iter.next() {
+            for capture in m.captures {
+                if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                    let dep = text.to_string();
+                    if !deps.contains(&dep) {
+                        deps.push(dep);
                     }
                 }
             }
@@ -162,34 +249,27 @@ impl PythonParser {
         let mut decorators = Vec::new();
         let source_bytes = source.as_bytes();
 
-        let query_str = "(decorator (identifier) @name)";
-        if let Ok(query) = Query::new(&self.language, query_str) {
-            let mut cursor = QueryCursor::new();
-            let mut iter = cursor.matches(&query, root_node, source_bytes);
-            while let Some(m) = iter.next() {
-                for capture in m.captures {
-                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                        let name = text.to_string();
-                        if !decorators.contains(&name) {
-                            decorators.push(name);
-                        }
+        let mut cursor = QueryCursor::new();
+        let mut iter = cursor.matches(&self.decorator_query, root_node, source_bytes);
+        while let Some(m) = iter.next() {
+            for capture in m.captures {
+                if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                    let name = text.to_string();
+                    if !decorators.contains(&name) {
+                        decorators.push(name);
                     }
                 }
             }
         }
 
-        // Also handle dotted decorators like @app.route
-        let dotted_query = "(decorator (attribute) @name)";
-        if let Ok(query) = Query::new(&self.language, dotted_query) {
-            let mut cursor = QueryCursor::new();
-            let mut iter = cursor.matches(&query, root_node, source_bytes);
-            while let Some(m) = iter.next() {
-                for capture in m.captures {
-                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                        let name = text.to_string();
-                        if !decorators.contains(&name) {
-                            decorators.push(name);
-                        }
+        let mut cursor = QueryCursor::new();
+        let mut iter = cursor.matches(&self.dotted_decorator_query, root_node, source_bytes);
+        while let Some(m) = iter.next() {
+            for capture in m.captures {
+                if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                    let name = text.to_string();
+                    if !decorators.contains(&name) {
+                        decorators.push(name);
                     }
                 }
             }
@@ -214,7 +294,6 @@ impl Parser for PythonParser {
         let dependencies = self.extract_dependencies(source, root_node);
         let loc = source.lines().count();
 
-        // Extract custom fields from the same AST — no second parse
         let decorators = self.extract_decorators(source, root_node);
         let custom_fields = if decorators.is_empty() {
             None
@@ -284,7 +363,6 @@ mod tests {
         assert!(result.metadata.imports.contains(&"os".to_string()));
         assert!(result.metadata.imports.contains(&"json".to_string()));
         assert!(result.metadata.imports.contains(&"pathlib".to_string()));
-        // Relative imports should be in dependencies, not imports
         assert!(!result.metadata.imports.contains(&".utils".to_string()));
     }
 
@@ -324,5 +402,54 @@ mod tests {
         let source = "def foo():\n    pass\n";
         let result = parser.parse(source).unwrap();
         assert!(result.custom_fields.is_none());
+    }
+
+    #[test]
+    fn parse_python_dunder_all() {
+        let mut parser = PythonParser::new().unwrap();
+        let source = r#"
+__all__ = ["public_func", "PublicClass"]
+
+def public_func():
+    pass
+
+def _private_func():
+    pass
+
+class PublicClass:
+    pass
+
+class _InternalClass:
+    pass
+"#;
+        let result = parser.parse(source).unwrap();
+        assert_eq!(result.metadata.exports, vec!["PublicClass", "public_func"]);
+    }
+
+    #[test]
+    fn parse_python_aliased_import() {
+        let mut parser = PythonParser::new().unwrap();
+        let source = "import pandas as pd\nimport numpy as np\nimport os\n";
+        let result = parser.parse(source).unwrap();
+        assert!(result.metadata.imports.contains(&"pandas".to_string()));
+        assert!(result.metadata.imports.contains(&"numpy".to_string()));
+        assert!(result.metadata.imports.contains(&"os".to_string()));
+    }
+
+    #[test]
+    fn parse_python_dunder_all_overrides_discovery() {
+        let mut parser = PythonParser::new().unwrap();
+        let source = r#"
+__all__ = ["only_this"]
+
+def only_this():
+    pass
+
+def also_public():
+    pass
+"#;
+        let result = parser.parse(source).unwrap();
+        assert_eq!(result.metadata.exports, vec!["only_this"]);
+        assert!(!result.metadata.exports.contains(&"also_public".to_string()));
     }
 }

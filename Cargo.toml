@@ -48,13 +48,22 @@ dirs = "5.0"
 
 [dev-dependencies]
 tempfile = "3.14"
+criterion = { version = "0.5", features = ["html_reports"] }
 
 [[bin]]
 name = "fmm"
 path = "src/main.rs"
+
+[[bench]]
+name = "parser_benchmarks"
+harness = false
 
 [profile.release]
 lto = true
 codegen-units = 1
 strip = true
 opt-level = "z"
+
+[profile.bench]
+opt-level = 3
+lto = false
