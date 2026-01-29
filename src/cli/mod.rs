@@ -61,8 +61,20 @@ pub enum Commands {
         path: String,
     },
 
-    /// Initialize .fmmrc.json configuration file
-    Init,
+    /// Initialize fmm in this project (config, skill, MCP)
+    Init {
+        /// Install Claude Code skill only (.claude/skills/fmm-navigate.md)
+        #[arg(long)]
+        skill: bool,
+
+        /// Install MCP server config only
+        #[arg(long)]
+        mcp: bool,
+
+        /// Install all integrations (non-interactive)
+        #[arg(long)]
+        all: bool,
+    },
 
     /// Show current fmm status and configuration
     Status,
@@ -412,18 +424,126 @@ pub fn validate(path: &str) -> Result<()> {
     }
 }
 
-pub fn init() -> Result<()> {
+pub fn init(skill: bool, mcp: bool, all: bool) -> Result<()> {
+    let specific = skill || mcp;
+
+    // If no specific flag, install config (default behavior) + all if --all
+    let install_config = !specific || all;
+    let install_skill = skill || all;
+    let install_mcp = mcp || all;
+
+    if install_config {
+        init_config()?;
+    }
+    if install_skill {
+        init_skill()?;
+    }
+    if install_mcp {
+        init_mcp_config()?;
+    }
+
+    Ok(())
+}
+
+fn init_config() -> Result<()> {
     let config_path = Path::new(".fmmrc.json");
     if config_path.exists() {
-        anyhow::bail!(".fmmrc.json already exists");
+        println!("{} .fmmrc.json already exists (skipping)", "!".yellow());
+        return Ok(());
     }
 
     let default_config = Config::default();
     let json = serde_json::to_string_pretty(&default_config)?;
-    std::fs::write(config_path, json).context("Failed to write .fmmrc.json")?;
+    std::fs::write(config_path, format!("{}\n", json)).context("Failed to write .fmmrc.json")?;
 
     println!(
         "{} Created .fmmrc.json with default configuration",
+        "✓".green()
+    );
+    Ok(())
+}
+
+const SKILL_CONTENT: &str = include_str!("../../docs/fmm-navigate.md");
+
+pub fn init_skill() -> Result<()> {
+    let skill_dir = Path::new(".claude").join("skills");
+    let skill_path = skill_dir.join("fmm-navigate.md");
+
+    std::fs::create_dir_all(&skill_dir).context("Failed to create .claude/skills/ directory")?;
+
+    if skill_path.exists() {
+        let existing =
+            std::fs::read_to_string(&skill_path).context("Failed to read existing skill file")?;
+        if existing == SKILL_CONTENT {
+            println!(
+                "{} .claude/skills/fmm-navigate.md already up to date (skipping)",
+                "!".yellow()
+            );
+            return Ok(());
+        }
+    }
+
+    std::fs::write(&skill_path, SKILL_CONTENT).context("Failed to write skill file")?;
+
+    println!(
+        "{} Installed Claude skill at .claude/skills/fmm-navigate.md",
+        "✓".green()
+    );
+    Ok(())
+}
+
+fn init_mcp_config() -> Result<()> {
+    let mcp_path = Path::new(".mcp.json");
+
+    let mcp_config = serde_json::json!({
+        "mcpServers": {
+            "fmm": {
+                "command": "fmm",
+                "args": ["serve"]
+            }
+        }
+    });
+
+    if mcp_path.exists() {
+        let existing =
+            std::fs::read_to_string(mcp_path).context("Failed to read existing .mcp.json")?;
+        if let Ok(mut existing_json) = serde_json::from_str::<serde_json::Value>(&existing) {
+            if let Some(servers) = existing_json.get("mcpServers").and_then(|s| s.as_object()) {
+                if servers.contains_key("fmm") {
+                    println!(
+                        "{} .mcp.json already has fmm server configured (skipping)",
+                        "!".yellow()
+                    );
+                    return Ok(());
+                }
+            }
+            // Merge: add fmm to existing mcpServers
+            if let Some(obj) = existing_json.as_object_mut() {
+                let servers = obj
+                    .entry("mcpServers")
+                    .or_insert_with(|| serde_json::json!({}));
+                if let Some(servers_obj) = servers.as_object_mut() {
+                    servers_obj.insert(
+                        "fmm".to_string(),
+                        serde_json::json!({
+                            "command": "fmm",
+                            "args": ["serve"]
+                        }),
+                    );
+                }
+            }
+            let json = serde_json::to_string_pretty(&existing_json)?;
+            std::fs::write(mcp_path, format!("{}\n", json)).context("Failed to write .mcp.json")?;
+            println!("{} Added fmm server to existing .mcp.json", "✓".green());
+            return Ok(());
+        }
+    }
+
+    let json = serde_json::to_string_pretty(&mcp_config)?;
+    std::fs::write(mcp_path, format!("{}\n", json)).context("Failed to write .mcp.json")?;
+
+    println!(
+        "{} Created .mcp.json with fmm server configuration",
         "✓".green()
     );
     Ok(())

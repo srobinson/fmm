@@ -29,9 +29,9 @@ fn main() -> Result<()> {
             println!("{}", "Validating frontmatter...".green().bold());
             cli::validate(&path)?;
         }
-        Commands::Init => {
-            println!("{}", "Initializing fmm configuration...".green().bold());
-            cli::init()?;
+        Commands::Init { skill, mcp, all } => {
+            println!("{}", "Initializing fmm...".green().bold());
+            cli::init(skill, mcp, all)?;
         }
         Commands::Status => {
             cli::status()?;
