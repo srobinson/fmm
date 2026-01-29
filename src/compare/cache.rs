@@ -286,7 +286,7 @@ impl CacheManager {
             }
 
             if let Ok(metadata) = fs::metadata(&path) {
-                current_size -= metadata.len();
+                current_size = current_size.saturating_sub(metadata.len());
                 let _ = fs::remove_file(&path);
             }
         }
