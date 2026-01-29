@@ -1,4 +1,4 @@
-use crate::parser::{Metadata, Parser};
+use crate::parser::{Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::HashMap;
 use streaming_iterator::StreamingIterator;
@@ -201,7 +201,7 @@ impl PythonParser {
 }
 
 impl Parser for PythonParser {
-    fn parse(&mut self, source: &str) -> Result<Metadata> {
+    fn parse(&mut self, source: &str) -> Result<ParseResult> {
         let tree = self
             .parser
             .parse(source, None)
@@ -214,11 +214,32 @@ impl Parser for PythonParser {
         let dependencies = self.extract_dependencies(source, root_node);
         let loc = source.lines().count();
 
-        Ok(Metadata {
-            exports,
-            imports,
-            dependencies,
-            loc,
+        // Extract custom fields from the same AST — no second parse
+        let decorators = self.extract_decorators(source, root_node);
+        let custom_fields = if decorators.is_empty() {
+            None
+        } else {
+            let mut fields = HashMap::new();
+            fields.insert(
+                "decorators".to_string(),
+                serde_json::Value::Array(
+                    decorators
+                        .into_iter()
+                        .map(serde_json::Value::String)
+                        .collect(),
+                ),
+            );
+            Some(fields)
+        };
+
+        Ok(ParseResult {
+            metadata: Metadata {
+                exports,
+                imports,
+                dependencies,
+                loc,
+            },
+            custom_fields,
         })
     }
 
@@ -228,34 +249,6 @@ impl Parser for PythonParser {
 
     fn extensions(&self) -> &'static [&'static str] {
         &["py"]
-    }
-
-    fn custom_fields(&self, source: &str) -> Option<HashMap<String, serde_json::Value>> {
-        // Re-parse to get decorators (we don't cache the tree for thread safety)
-        let language: Language = tree_sitter_python::LANGUAGE.into();
-        let mut parser = TSParser::new();
-        if parser.set_language(&language).is_err() {
-            return None;
-        }
-        let tree = parser.parse(source, None)?;
-        let root_node = tree.root_node();
-
-        let decorators = self.extract_decorators(source, root_node);
-        if decorators.is_empty() {
-            return None;
-        }
-
-        let mut fields = HashMap::new();
-        fields.insert(
-            "decorators".to_string(),
-            serde_json::Value::Array(
-                decorators
-                    .into_iter()
-                    .map(serde_json::Value::String)
-                    .collect(),
-            ),
-        );
-        Some(fields)
     }
 }
 
@@ -267,19 +260,19 @@ mod tests {
     fn parse_python_functions() {
         let mut parser = PythonParser::new().unwrap();
         let source = "def hello():\n    pass\n\ndef world():\n    pass\n";
-        let metadata = parser.parse(source).unwrap();
-        assert!(metadata.exports.contains(&"hello".to_string()));
-        assert!(metadata.exports.contains(&"world".to_string()));
-        assert_eq!(metadata.loc, 5);
+        let result = parser.parse(source).unwrap();
+        assert!(result.metadata.exports.contains(&"hello".to_string()));
+        assert!(result.metadata.exports.contains(&"world".to_string()));
+        assert_eq!(result.metadata.loc, 5);
     }
 
     #[test]
     fn parse_python_classes() {
         let mut parser = PythonParser::new().unwrap();
         let source = "class MyClass:\n    pass\n\nclass _Private:\n    pass\n";
-        let metadata = parser.parse(source).unwrap();
-        assert!(metadata.exports.contains(&"MyClass".to_string()));
-        assert!(!metadata.exports.contains(&"_Private".to_string()));
+        let result = parser.parse(source).unwrap();
+        assert!(result.metadata.exports.contains(&"MyClass".to_string()));
+        assert!(!result.metadata.exports.contains(&"_Private".to_string()));
     }
 
     #[test]
@@ -287,39 +280,38 @@ mod tests {
         let mut parser = PythonParser::new().unwrap();
         let source =
             "import os\nimport json\nfrom pathlib import Path\nfrom .utils import helper\n";
-        let metadata = parser.parse(source).unwrap();
-        assert!(metadata.imports.contains(&"os".to_string()));
-        assert!(metadata.imports.contains(&"json".to_string()));
-        assert!(metadata.imports.contains(&"pathlib".to_string()));
+        let result = parser.parse(source).unwrap();
+        assert!(result.metadata.imports.contains(&"os".to_string()));
+        assert!(result.metadata.imports.contains(&"json".to_string()));
+        assert!(result.metadata.imports.contains(&"pathlib".to_string()));
         // Relative imports should be in dependencies, not imports
-        assert!(!metadata.imports.contains(&".utils".to_string()));
+        assert!(!result.metadata.imports.contains(&".utils".to_string()));
     }
 
     #[test]
     fn parse_python_relative_deps() {
         let mut parser = PythonParser::new().unwrap();
         let source = "from .utils import helper\nfrom ..models import User\n";
-        let metadata = parser.parse(source).unwrap();
-        assert!(!metadata.dependencies.is_empty());
+        let result = parser.parse(source).unwrap();
+        assert!(!result.metadata.dependencies.is_empty());
     }
 
     #[test]
     fn parse_python_private_excluded() {
         let mut parser = PythonParser::new().unwrap();
         let source = "def _private():\n    pass\n\ndef public():\n    pass\n";
-        let metadata = parser.parse(source).unwrap();
-        assert!(!metadata.exports.contains(&"_private".to_string()));
-        assert!(metadata.exports.contains(&"public".to_string()));
+        let result = parser.parse(source).unwrap();
+        assert!(!result.metadata.exports.contains(&"_private".to_string()));
+        assert!(result.metadata.exports.contains(&"public".to_string()));
     }
 
     #[test]
     fn python_custom_fields_decorators() {
-        let parser = PythonParser::new().unwrap();
+        let mut parser = PythonParser::new().unwrap();
         let source =
             "@staticmethod\ndef foo():\n    pass\n\n@property\ndef bar(self):\n    return 1\n";
-        let fields = parser.custom_fields(source);
-        assert!(fields.is_some());
-        let fields = fields.unwrap();
+        let result = parser.parse(source).unwrap();
+        let fields = result.custom_fields.unwrap();
         let decorators = fields.get("decorators").unwrap().as_array().unwrap();
         let names: Vec<&str> = decorators.iter().map(|v| v.as_str().unwrap()).collect();
         assert!(names.contains(&"staticmethod"));
@@ -328,8 +320,9 @@ mod tests {
 
     #[test]
     fn python_no_custom_fields_when_no_decorators() {
-        let parser = PythonParser::new().unwrap();
+        let mut parser = PythonParser::new().unwrap();
         let source = "def foo():\n    pass\n";
-        assert!(parser.custom_fields(source).is_none());
+        let result = parser.parse(source).unwrap();
+        assert!(result.custom_fields.is_none());
     }
 }

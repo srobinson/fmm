@@ -1,6 +1,5 @@
-use crate::parser::{Metadata, Parser};
+use crate::parser::{Metadata, ParseResult, Parser};
 use anyhow::Result;
-use std::collections::HashMap;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
@@ -114,7 +113,7 @@ impl TypeScriptParser {
 }
 
 impl Parser for TypeScriptParser {
-    fn parse(&mut self, source: &str) -> Result<Metadata> {
+    fn parse(&mut self, source: &str) -> Result<ParseResult> {
         let tree = self
             .parser
             .parse(source, None)
@@ -127,11 +126,14 @@ impl Parser for TypeScriptParser {
         let dependencies = self.extract_dependencies(source, root_node);
         let loc = source.lines().count();
 
-        Ok(Metadata {
-            exports,
-            imports,
-            dependencies,
-            loc,
+        Ok(ParseResult {
+            metadata: Metadata {
+                exports,
+                imports,
+                dependencies,
+                loc,
+            },
+            custom_fields: None,
         })
     }
 
@@ -141,9 +143,5 @@ impl Parser for TypeScriptParser {
 
     fn extensions(&self) -> &'static [&'static str] {
         &["ts", "tsx", "js", "jsx"]
-    }
-
-    fn custom_fields(&self, _source: &str) -> Option<HashMap<String, serde_json::Value>> {
-        None
     }
 }

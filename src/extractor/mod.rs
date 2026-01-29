@@ -5,7 +5,7 @@ use std::path::Path;
 
 use crate::config::Config;
 use crate::formatter::Frontmatter;
-use crate::parser::{Metadata, ParserRegistry};
+use crate::parser::{Metadata, ParseResult, ParserRegistry};
 
 pub struct FileProcessor {
     config: Config,
@@ -29,10 +29,9 @@ impl FileProcessor {
             return Ok(None);
         }
 
-        let code = &content;
-        let metadata = self.extract_metadata_from_content(path, code)?;
-        let custom_fields = self.extract_custom_fields(path, code);
-        let frontmatter = self.format_frontmatter(path, &metadata, custom_fields.as_ref())?;
+        let result = self.parse_content(path, &content)?;
+        let frontmatter =
+            self.format_frontmatter(path, &result.metadata, result.custom_fields.as_ref())?;
 
         if dry_run {
             return Ok(Some(format!("Would add:\n{}", frontmatter)));
@@ -53,9 +52,9 @@ impl FileProcessor {
             content.clone()
         };
 
-        let metadata = self.extract_metadata_from_content(path, &code)?;
-        let custom_fields = self.extract_custom_fields(path, &code);
-        let new_frontmatter = self.format_frontmatter(path, &metadata, custom_fields.as_ref())?;
+        let result = self.parse_content(path, &code)?;
+        let new_frontmatter =
+            self.format_frontmatter(path, &result.metadata, result.custom_fields.as_ref())?;
 
         if let Some((old_fm, rest)) = extract_frontmatter(&content) {
             if old_fm.trim() == new_frontmatter.trim() {
@@ -83,9 +82,9 @@ impl FileProcessor {
         let content = fs::read_to_string(path)?;
 
         if let Some((old_fm, rest)) = extract_frontmatter(&content) {
-            let metadata = self.extract_metadata_from_content(path, &rest)?;
-            let custom_fields = self.extract_custom_fields(path, &rest);
-            let expected_fm = self.format_frontmatter(path, &metadata, custom_fields.as_ref())?;
+            let result = self.parse_content(path, &rest)?;
+            let expected_fm =
+                self.format_frontmatter(path, &result.metadata, result.custom_fields.as_ref())?;
 
             Ok(old_fm.trim() == expected_fm.trim())
         } else {
@@ -101,20 +100,8 @@ impl FileProcessor {
         } else {
             content
         };
-        Ok(Some(self.extract_metadata_from_content(path, &code)?))
-    }
-
-    /// Extract custom fields from a file's source code
-    pub fn extract_custom_fields(
-        &self,
-        path: &Path,
-        content: &str,
-    ) -> Option<HashMap<String, serde_json::Value>> {
-        let extension = path.extension().and_then(|ext| ext.to_str())?;
-        let mut parser = self.registry.get_parser(extension).ok()?;
-        // We need to parse first to populate internal state, then get custom fields
-        let _ = parser.parse(content).ok()?;
-        parser.custom_fields(content)
+        let result = self.parse_content(path, &code)?;
+        Ok(Some(result.metadata))
     }
 
     /// Get the language ID for a file extension
@@ -125,7 +112,8 @@ impl FileProcessor {
         Some(parser.language_id().to_string())
     }
 
-    fn extract_metadata_from_content(&self, path: &Path, content: &str) -> Result<Metadata> {
+    /// Single-pass parse: metadata + custom fields from one tree-sitter invocation.
+    fn parse_content(&self, path: &Path, content: &str) -> Result<ParseResult> {
         let extension = path
             .extension()
             .and_then(|ext| ext.to_str())

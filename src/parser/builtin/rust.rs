@@ -1,4 +1,4 @@
-use crate::parser::{Metadata, Parser};
+use crate::parser::{Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::HashMap;
 use streaming_iterator::StreamingIterator;
@@ -205,7 +205,7 @@ impl RustParser {
 }
 
 impl Parser for RustParser {
-    fn parse(&mut self, source: &str) -> Result<Metadata> {
+    fn parse(&mut self, source: &str) -> Result<ParseResult> {
         let tree = self
             .parser
             .parse(source, None)
@@ -218,11 +218,39 @@ impl Parser for RustParser {
         let dependencies = self.extract_dependencies(source, root_node);
         let loc = source.lines().count();
 
-        Ok(Metadata {
-            exports,
-            imports,
-            dependencies,
-            loc,
+        // Extract custom fields from the same AST — no second parse
+        let unsafe_count = self.count_unsafe_blocks(source, root_node);
+        let derives = self.extract_derives(source, root_node);
+
+        let custom_fields = if unsafe_count == 0 && derives.is_empty() {
+            None
+        } else {
+            let mut fields = HashMap::new();
+            if unsafe_count > 0 {
+                fields.insert(
+                    "unsafe_blocks".to_string(),
+                    serde_json::Value::Number(unsafe_count.into()),
+                );
+            }
+            if !derives.is_empty() {
+                fields.insert(
+                    "derives".to_string(),
+                    serde_json::Value::Array(
+                        derives.into_iter().map(serde_json::Value::String).collect(),
+                    ),
+                );
+            }
+            Some(fields)
+        };
+
+        Ok(ParseResult {
+            metadata: Metadata {
+                exports,
+                imports,
+                dependencies,
+                loc,
+            },
+            custom_fields,
         })
     }
 
@@ -232,40 +260,6 @@ impl Parser for RustParser {
 
     fn extensions(&self) -> &'static [&'static str] {
         &["rs"]
-    }
-
-    fn custom_fields(&self, source: &str) -> Option<HashMap<String, serde_json::Value>> {
-        let language: Language = tree_sitter_rust::LANGUAGE.into();
-        let mut parser = TSParser::new();
-        if parser.set_language(&language).is_err() {
-            return None;
-        }
-        let tree = parser.parse(source, None)?;
-        let root_node = tree.root_node();
-
-        let unsafe_count = self.count_unsafe_blocks(source, root_node);
-        let derives = self.extract_derives(source, root_node);
-
-        if unsafe_count == 0 && derives.is_empty() {
-            return None;
-        }
-
-        let mut fields = HashMap::new();
-        if unsafe_count > 0 {
-            fields.insert(
-                "unsafe_blocks".to_string(),
-                serde_json::Value::Number(unsafe_count.into()),
-            );
-        }
-        if !derives.is_empty() {
-            fields.insert(
-                "derives".to_string(),
-                serde_json::Value::Array(
-                    derives.into_iter().map(serde_json::Value::String).collect(),
-                ),
-            );
-        }
-        Some(fields)
     }
 }
 
@@ -277,20 +271,20 @@ mod tests {
     fn parse_rust_pub_functions() {
         let mut parser = RustParser::new().unwrap();
         let source = "pub fn hello() {}\nfn private() {}\npub fn world() {}";
-        let metadata = parser.parse(source).unwrap();
-        assert!(metadata.exports.contains(&"hello".to_string()));
-        assert!(metadata.exports.contains(&"world".to_string()));
-        assert!(!metadata.exports.contains(&"private".to_string()));
+        let result = parser.parse(source).unwrap();
+        assert!(result.metadata.exports.contains(&"hello".to_string()));
+        assert!(result.metadata.exports.contains(&"world".to_string()));
+        assert!(!result.metadata.exports.contains(&"private".to_string()));
     }
 
     #[test]
     fn parse_rust_pub_structs_and_enums() {
         let mut parser = RustParser::new().unwrap();
         let source = "pub struct Foo {}\npub enum Bar { A, B }\nstruct Private {}";
-        let metadata = parser.parse(source).unwrap();
-        assert!(metadata.exports.contains(&"Foo".to_string()));
-        assert!(metadata.exports.contains(&"Bar".to_string()));
-        assert!(!metadata.exports.contains(&"Private".to_string()));
+        let result = parser.parse(source).unwrap();
+        assert!(result.metadata.exports.contains(&"Foo".to_string()));
+        assert!(result.metadata.exports.contains(&"Bar".to_string()));
+        assert!(!result.metadata.exports.contains(&"Private".to_string()));
     }
 
     #[test]
@@ -298,38 +292,36 @@ mod tests {
         let mut parser = RustParser::new().unwrap();
         let source =
             "use std::collections::HashMap;\nuse anyhow::Result;\nuse crate::config::Config;";
-        let metadata = parser.parse(source).unwrap();
-        assert!(metadata.imports.contains(&"std".to_string()));
-        assert!(metadata.imports.contains(&"anyhow".to_string()));
-        assert!(!metadata.imports.contains(&"crate".to_string()));
+        let result = parser.parse(source).unwrap();
+        assert!(result.metadata.imports.contains(&"std".to_string()));
+        assert!(result.metadata.imports.contains(&"anyhow".to_string()));
+        assert!(!result.metadata.imports.contains(&"crate".to_string()));
     }
 
     #[test]
     fn parse_rust_crate_deps() {
         let mut parser = RustParser::new().unwrap();
         let source = "use crate::config::Config;\nuse super::utils;";
-        let metadata = parser.parse(source).unwrap();
-        assert!(metadata.dependencies.contains(&"crate".to_string()));
-        assert!(metadata.dependencies.contains(&"super".to_string()));
+        let result = parser.parse(source).unwrap();
+        assert!(result.metadata.dependencies.contains(&"crate".to_string()));
+        assert!(result.metadata.dependencies.contains(&"super".to_string()));
     }
 
     #[test]
     fn rust_custom_fields_unsafe() {
-        let parser = RustParser::new().unwrap();
+        let mut parser = RustParser::new().unwrap();
         let source = "fn foo() { unsafe { std::ptr::null() }; }\nfn bar() { unsafe { 1 }; }";
-        let fields = parser.custom_fields(source);
-        assert!(fields.is_some());
-        let fields = fields.unwrap();
+        let result = parser.parse(source).unwrap();
+        let fields = result.custom_fields.unwrap();
         assert_eq!(fields.get("unsafe_blocks").unwrap().as_u64().unwrap(), 2);
     }
 
     #[test]
     fn rust_custom_fields_derives() {
-        let parser = RustParser::new().unwrap();
+        let mut parser = RustParser::new().unwrap();
         let source = "#[derive(Debug, Clone, Serialize)]\npub struct Foo {}";
-        let fields = parser.custom_fields(source);
-        assert!(fields.is_some());
-        let fields = fields.unwrap();
+        let result = parser.parse(source).unwrap();
+        let fields = result.custom_fields.unwrap();
         let derives = fields.get("derives").unwrap().as_array().unwrap();
         let names: Vec<&str> = derives.iter().map(|v| v.as_str().unwrap()).collect();
         assert!(names.contains(&"Debug"));
@@ -339,16 +331,17 @@ mod tests {
 
     #[test]
     fn rust_no_custom_fields_when_clean() {
-        let parser = RustParser::new().unwrap();
+        let mut parser = RustParser::new().unwrap();
         let source = "pub fn hello() {}";
-        assert!(parser.custom_fields(source).is_none());
+        let result = parser.parse(source).unwrap();
+        assert!(result.custom_fields.is_none());
     }
 
     #[test]
     fn parse_rust_loc() {
         let mut parser = RustParser::new().unwrap();
         let source = "pub fn hello() {\n    42\n}\n";
-        let metadata = parser.parse(source).unwrap();
-        assert_eq!(metadata.loc, 3);
+        let result = parser.parse(source).unwrap();
+        assert_eq!(result.metadata.loc, 3);
     }
 }

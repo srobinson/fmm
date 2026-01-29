@@ -13,14 +13,16 @@ pub struct Metadata {
     pub loc: usize,
 }
 
-pub trait Parser: Send + Sync {
-    fn parse(&mut self, source: &str) -> Result<Metadata>;
+/// Result of parsing a source file: metadata plus optional language-specific fields.
+#[derive(Debug, Clone)]
+pub struct ParseResult {
+    pub metadata: Metadata,
+    pub custom_fields: Option<HashMap<String, serde_json::Value>>,
+}
 
-    /// Return language-specific custom fields (e.g., rust: unsafe_blocks, python: decorators).
-    /// Parsers that don't support custom fields return None (the default).
-    fn custom_fields(&self, _source: &str) -> Option<HashMap<String, serde_json::Value>> {
-        None
-    }
+pub trait Parser: Send + Sync {
+    /// Parse source in a single tree-sitter pass, returning metadata and custom fields together.
+    fn parse(&mut self, source: &str) -> Result<ParseResult>;
 
     /// The language identifier used in frontmatter sections (e.g., "rust", "python").
     fn language_id(&self) -> &'static str;
@@ -137,27 +139,27 @@ mod tests {
     fn registry_creates_working_typescript_parser() {
         let registry = ParserRegistry::with_builtins();
         let mut parser = registry.get_parser("ts").unwrap();
-        let metadata = parser.parse("export function hello() {}").unwrap();
-        assert_eq!(metadata.exports, vec!["hello"]);
+        let result = parser.parse("export function hello() {}").unwrap();
+        assert_eq!(result.metadata.exports, vec!["hello"]);
     }
 
     #[test]
     fn registry_creates_working_python_parser() {
         let registry = ParserRegistry::with_builtins();
         let mut parser = registry.get_parser("py").unwrap();
-        let metadata = parser
+        let result = parser
             .parse("def hello():\n    pass\n\ndef world():\n    pass")
             .unwrap();
-        assert!(metadata.exports.contains(&"hello".to_string()));
-        assert!(metadata.exports.contains(&"world".to_string()));
+        assert!(result.metadata.exports.contains(&"hello".to_string()));
+        assert!(result.metadata.exports.contains(&"world".to_string()));
     }
 
     #[test]
     fn registry_creates_working_rust_parser() {
         let registry = ParserRegistry::with_builtins();
         let mut parser = registry.get_parser("rs").unwrap();
-        let metadata = parser.parse("pub fn hello() {}").unwrap();
-        assert_eq!(metadata.exports, vec!["hello"]);
+        let result = parser.parse("pub fn hello() {}").unwrap();
+        assert_eq!(result.metadata.exports, vec!["hello"]);
     }
 
     #[test]
