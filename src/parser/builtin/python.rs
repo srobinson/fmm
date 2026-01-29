@@ -1,6 +1,7 @@
+use super::query_helpers::collect_matches;
 use crate::parser::{Metadata, ParseResult, Parser};
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
@@ -87,57 +88,37 @@ impl PythonParser {
             return all_exports;
         }
 
+        let mut seen = HashSet::new();
         let mut exports = Vec::new();
         let source_bytes = source.as_bytes();
 
-        // Top-level function definitions
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.func_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let name = text.to_string();
-                    if !name.starts_with('_') && !exports.contains(&name) {
-                        exports.push(name);
+        let mut collect_filtered = |query: &Query, filter: fn(&str) -> bool| {
+            let mut cursor = QueryCursor::new();
+            let mut iter = cursor.matches(query, root_node, source_bytes);
+            while let Some(m) = iter.next() {
+                for capture in m.captures {
+                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                        if !text.starts_with('_') && filter(text) && seen.insert(text.to_string()) {
+                            exports.push(text.to_string());
+                        }
                     }
                 }
             }
-        }
+        };
+
+        // Top-level function definitions
+        collect_filtered(&self.func_query, |_| true);
 
         // Top-level class definitions
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.class_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let name = text.to_string();
-                    if !name.starts_with('_') && !exports.contains(&name) {
-                        exports.push(name);
-                    }
-                }
-            }
-        }
+        collect_filtered(&self.class_query, |_| true);
 
         // Top-level assignments (module-level constants)
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.assign_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let name = text.to_string();
-                    if !name.starts_with('_')
-                        && (name.chars().all(|c| c.is_uppercase() || c == '_')
-                            || name.chars().next().is_some_and(|c| c.is_uppercase()))
-                        && !exports.contains(&name)
-                    {
-                        exports.push(name);
-                    }
-                }
-            }
-        }
+        collect_filtered(&self.assign_query, |name| {
+            name.chars().all(|c| c.is_uppercase() || c == '_')
+                || name.chars().next().is_some_and(|c| c.is_uppercase())
+        });
 
         exports.sort();
-        exports.dedup();
         exports
     }
 
@@ -148,22 +129,24 @@ impl PythonParser {
         root_node: tree_sitter::Node,
     ) -> Option<Vec<String>> {
         let source_bytes = source.as_bytes();
+        let capture_names = self.dunder_all_query.capture_names();
         let mut cursor = QueryCursor::new();
         let mut iter = cursor.matches(&self.dunder_all_query, root_node, source_bytes);
         while let Some(m) = iter.next() {
-            let name_capture = m
-                .captures
-                .iter()
-                .find(|c| self.dunder_all_query.capture_names()[c.index as usize] == "name")?;
-            let values_capture = m
-                .captures
-                .iter()
-                .find(|c| self.dunder_all_query.capture_names()[c.index as usize] == "values")?;
+            let name_capture = m.captures.iter().find(|c| {
+                let idx = c.index as usize;
+                idx < capture_names.len() && capture_names[idx] == "name"
+            })?;
+            let values_capture = m.captures.iter().find(|c| {
+                let idx = c.index as usize;
+                idx < capture_names.len() && capture_names[idx] == "values"
+            })?;
 
             if name_capture.node.utf8_text(source_bytes).ok()? != "__all__" {
                 continue;
             }
 
+            let mut seen = HashSet::new();
             let mut exports = Vec::new();
             let list_node = values_capture.node;
             let mut child_cursor = list_node.walk();
@@ -171,7 +154,7 @@ impl PythonParser {
                 if child.kind() == "string" {
                     if let Ok(text) = child.utf8_text(source_bytes) {
                         let name = text.trim_matches('\'').trim_matches('"').to_string();
-                        if !name.is_empty() && !exports.contains(&name) {
+                        if !name.is_empty() && seen.insert(name.clone()) {
                             exports.push(name);
                         }
                     }
@@ -184,6 +167,7 @@ impl PythonParser {
     }
 
     fn extract_imports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+        let mut seen = HashSet::new();
         let mut imports = Vec::new();
         let source_bytes = source.as_bytes();
 
@@ -194,7 +178,7 @@ impl PythonParser {
                 for capture in m.captures {
                     if let Ok(text) = capture.node.utf8_text(source_bytes) {
                         let root_module = text.split('.').next().unwrap_or(text).to_string();
-                        if !imports.contains(&root_module) {
+                        if seen.insert(root_module.clone()) {
                             imports.push(root_module);
                         }
                     }
@@ -208,10 +192,9 @@ impl PythonParser {
         while let Some(m) = iter.next() {
             for capture in m.captures {
                 if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let module = text.to_string();
-                    if !module.starts_with('.') {
-                        let root_module = module.split('.').next().unwrap_or(&module).to_string();
-                        if !imports.contains(&root_module) {
+                    if !text.starts_with('.') {
+                        let root_module = text.split('.').next().unwrap_or(text).to_string();
+                        if seen.insert(root_module.clone()) {
                             imports.push(root_module);
                         }
                     }
@@ -224,59 +207,19 @@ impl PythonParser {
     }
 
     fn extract_dependencies(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut deps = Vec::new();
-        let source_bytes = source.as_bytes();
-
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.relative_import_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let dep = text.to_string();
-                    if !deps.contains(&dep) {
-                        deps.push(dep);
-                    }
-                }
-            }
-        }
-
-        deps.sort();
-        deps.dedup();
-        deps
+        collect_matches(&self.relative_import_query, root_node, source.as_bytes())
     }
 
     fn extract_decorators(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut decorators = Vec::new();
         let source_bytes = source.as_bytes();
+        let simple = collect_matches(&self.decorator_query, root_node, source_bytes);
+        let dotted = collect_matches(&self.dotted_decorator_query, root_node, source_bytes);
 
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.decorator_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let name = text.to_string();
-                    if !decorators.contains(&name) {
-                        decorators.push(name);
-                    }
-                }
-            }
-        }
-
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.dotted_decorator_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let name = text.to_string();
-                    if !decorators.contains(&name) {
-                        decorators.push(name);
-                    }
-                }
-            }
-        }
-
-        decorators.sort();
-        decorators
+        let seen: HashSet<String> = simple.iter().cloned().collect();
+        let mut merged = simple;
+        merged.extend(dotted.into_iter().filter(|d| !seen.contains(d)));
+        merged.sort();
+        merged
     }
 }
 

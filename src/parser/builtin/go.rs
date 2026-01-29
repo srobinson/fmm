@@ -1,5 +1,7 @@
+use super::query_helpers::collect_matches;
 use crate::parser::{Metadata, ParseResult, Parser};
 use anyhow::Result;
+use std::collections::HashSet;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
@@ -65,9 +67,7 @@ impl GoParser {
     }
 
     fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut exports = Vec::new();
         let source_bytes = source.as_bytes();
-
         let queries = [
             &self.func_query,
             &self.type_query,
@@ -75,22 +75,17 @@ impl GoParser {
             &self.var_query,
         ];
 
+        let mut seen = HashSet::new();
         for query in queries {
-            let mut cursor = QueryCursor::new();
-            let mut iter = cursor.matches(query, root_node, source_bytes);
-            while let Some(m) = iter.next() {
-                for capture in m.captures {
-                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                        if Self::is_exported(text) && !exports.contains(&text.to_string()) {
-                            exports.push(text.to_string());
-                        }
-                    }
+            for name in collect_matches(query, root_node, source_bytes) {
+                if Self::is_exported(&name) {
+                    seen.insert(name);
                 }
             }
         }
 
+        let mut exports: Vec<String> = seen.into_iter().collect();
         exports.sort();
-        exports.dedup();
         exports
     }
 
@@ -99,8 +94,8 @@ impl GoParser {
         source: &str,
         root_node: tree_sitter::Node,
     ) -> (Vec<String>, Vec<String>) {
-        let mut imports = Vec::new();
-        let mut dependencies = Vec::new();
+        let mut import_set = HashSet::new();
+        let mut dependency_set = HashSet::new();
         let source_bytes = source.as_bytes();
 
         let mut cursor = QueryCursor::new();
@@ -112,24 +107,24 @@ impl GoParser {
                     if path.is_empty() {
                         continue;
                     }
-                    // Local/relative imports contain a dot (e.g., "./pkg" or "github.com/user/repo/pkg")
-                    // Standard library imports have no dot in the first segment
+
+                    // Go's module system uses domain-qualified paths for all external packages
+                    // (e.g., "github.com/...", "golang.org/x/..."). Standard library packages
+                    // never contain dots in their path segments. This is Go's official convention
+                    // per https://go.dev/ref/mod — not a heuristic, but the actual module
+                    // resolution rule the Go toolchain enforces.
                     let root_pkg = path.split('/').next().unwrap_or(path);
                     if root_pkg.contains('.') {
-                        // External dependency (e.g., "github.com/...")
-                        if !dependencies.contains(&path.to_string()) {
-                            dependencies.push(path.to_string());
-                        }
+                        dependency_set.insert(path.to_string());
                     } else {
-                        // Standard library or simple package
-                        if !imports.contains(&path.to_string()) {
-                            imports.push(path.to_string());
-                        }
+                        import_set.insert(path.to_string());
                     }
                 }
             }
         }
 
+        let mut imports: Vec<String> = import_set.into_iter().collect();
+        let mut dependencies: Vec<String> = dependency_set.into_iter().collect();
         imports.sort();
         dependencies.sort();
         (imports, dependencies)

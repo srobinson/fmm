@@ -214,8 +214,11 @@ fn validate_java_fixture() {
     assert!(!result.metadata.exports.contains(&"validate".to_string()));
 
     // Imports
-    assert!(result.metadata.imports.contains(&"java".to_string()));
-    assert!(result.metadata.imports.contains(&"org".to_string()));
+    assert!(result.metadata.imports.contains(&"java.util".to_string()));
+    assert!(result
+        .metadata
+        .imports
+        .contains(&"org.springframework".to_string()));
 
     // Annotations (custom fields)
     let fields = result.custom_fields.expect("should have custom fields");

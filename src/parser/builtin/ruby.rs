@@ -1,6 +1,7 @@
+use super::query_helpers::{collect_matches, collect_named_matches};
 use crate::parser::{Metadata, ParseResult, Parser};
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
@@ -53,33 +54,18 @@ impl RubyParser {
     }
 
     fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut exports = Vec::new();
         let source_bytes = source.as_bytes();
 
+        let mut seen: HashSet<String> = HashSet::new();
+
         // Top-level classes
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.class_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    if !exports.contains(&text.to_string()) {
-                        exports.push(text.to_string());
-                    }
-                }
-            }
+        for name in collect_matches(&self.class_query, root_node, source_bytes) {
+            seen.insert(name);
         }
 
         // Top-level modules
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.module_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    if !exports.contains(&text.to_string()) {
-                        exports.push(text.to_string());
-                    }
-                }
-            }
+        for name in collect_matches(&self.module_query, root_node, source_bytes) {
+            seen.insert(name);
         }
 
         // Top-level methods (not starting with _)
@@ -88,73 +74,39 @@ impl RubyParser {
         while let Some(m) = iter.next() {
             for capture in m.captures {
                 if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let name = text.to_string();
-                    if !name.starts_with('_') && !exports.contains(&name) {
-                        exports.push(name);
+                    if !text.starts_with('_') {
+                        seen.insert(text.to_string());
                     }
                 }
             }
         }
 
+        let mut exports: Vec<String> = seen.into_iter().collect();
         exports.sort();
-        exports.dedup();
         exports
     }
 
     fn extract_imports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut imports = Vec::new();
-        let source_bytes = source.as_bytes();
-
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.require_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if self.require_query.capture_names()[capture.index as usize] == "path" {
-                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                        let path = text.to_string();
-                        if !imports.contains(&path) {
-                            imports.push(path);
-                        }
-                    }
-                }
-            }
-        }
-
-        imports.sort();
-        imports
+        collect_named_matches(&self.require_query, "path", root_node, source.as_bytes())
     }
 
     fn extract_dependencies(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut deps = Vec::new();
-        let source_bytes = source.as_bytes();
-
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.require_relative_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if self.require_relative_query.capture_names()[capture.index as usize] == "path" {
-                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                        let path = text.to_string();
-                        if !deps.contains(&path) {
-                            deps.push(path);
-                        }
-                    }
-                }
-            }
-        }
-
-        deps.sort();
-        deps
+        collect_named_matches(
+            &self.require_relative_query,
+            "path",
+            root_node,
+            source.as_bytes(),
+        )
     }
 
     fn extract_mixins(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut mixins = Vec::new();
+        let mut seen = HashSet::new();
         let source_bytes = source.as_bytes();
 
-        // Walk tree manually to find include/extend calls inside classes/modules
-        self.collect_mixins(root_node, source_bytes, &mut mixins);
+        self.collect_mixins(root_node, source_bytes, &mut seen);
+
+        let mut mixins: Vec<String> = seen.into_iter().collect();
         mixins.sort();
-        mixins.dedup();
         mixins
     }
 
@@ -162,7 +114,7 @@ impl RubyParser {
         &self,
         node: tree_sitter::Node,
         source_bytes: &[u8],
-        mixins: &mut Vec<String>,
+        mixins: &mut HashSet<String>,
     ) {
         if node.kind() == "call" {
             let mut cursor = node.walk();
@@ -180,10 +132,7 @@ impl RubyParser {
                     for arg in child.children(&mut arg_cursor) {
                         if arg.kind() == "constant" || arg.kind() == "scope_resolution" {
                             if let Ok(text) = arg.utf8_text(source_bytes) {
-                                let name = text.to_string();
-                                if !mixins.contains(&name) {
-                                    mixins.push(name);
-                                }
+                                mixins.insert(text.to_string());
                             }
                         }
                     }

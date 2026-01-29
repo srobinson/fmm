@@ -1,6 +1,6 @@
 use crate::parser::{Metadata, ParseResult, Parser};
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
@@ -79,21 +79,23 @@ impl RustParser {
     }
 
     fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+        let mut seen = HashSet::new();
         let mut exports = Vec::new();
         let source_bytes = source.as_bytes();
 
         for query in &self.export_queries {
+            let capture_names = query.capture_names();
             let mut cursor = QueryCursor::new();
             let mut iter = cursor.matches(query, root_node, source_bytes);
             while let Some(m) = iter.next() {
-                let vis_capture = m
-                    .captures
-                    .iter()
-                    .find(|c| query.capture_names()[c.index as usize] == "vis");
-                let name_capture = m
-                    .captures
-                    .iter()
-                    .find(|c| query.capture_names()[c.index as usize] == "name");
+                let vis_capture = m.captures.iter().find(|c| {
+                    let idx = c.index as usize;
+                    idx < capture_names.len() && capture_names[idx] == "vis"
+                });
+                let name_capture = m.captures.iter().find(|c| {
+                    let idx = c.index as usize;
+                    idx < capture_names.len() && capture_names[idx] == "name"
+                });
 
                 if let (Some(vis), Some(name)) = (vis_capture, name_capture) {
                     if let Ok(vis_text) = vis.node.utf8_text(source_bytes) {
@@ -103,7 +105,7 @@ impl RustParser {
                     }
                     if let Ok(text) = name.node.utf8_text(source_bytes) {
                         let name = text.to_string();
-                        if !exports.contains(&name) {
+                        if seen.insert(name.clone()) {
                             exports.push(name);
                         }
                     }
@@ -117,17 +119,17 @@ impl RustParser {
     }
 
     fn extract_imports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+        let mut seen = HashSet::new();
         let mut imports = Vec::new();
         let source_bytes = source.as_bytes();
 
         let roots = self.extract_use_roots(source_bytes, root_node);
         for root in roots {
-            if !Self::is_local_or_std(&root) && !imports.contains(&root) {
+            if !Self::is_local_or_std(&root) && seen.insert(root.clone()) {
                 imports.push(root);
             }
         }
 
-        // extern crate declarations
         let mut cursor = root_node.walk();
         for child in root_node.children(&mut cursor) {
             if child.kind() == "extern_crate_declaration" {
@@ -136,7 +138,7 @@ impl RustParser {
                     if c.kind() == "identifier" {
                         if let Ok(name) = c.utf8_text(source_bytes) {
                             let name = name.to_string();
-                            if !Self::is_local_or_std(&name) && !imports.contains(&name) {
+                            if !Self::is_local_or_std(&name) && seen.insert(name.clone()) {
                                 imports.push(name);
                             }
                         }
@@ -155,11 +157,12 @@ impl RustParser {
     }
 
     fn extract_dependencies(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+        let mut seen = HashSet::new();
         let mut deps = Vec::new();
         let source_bytes = source.as_bytes();
         let roots = self.extract_use_roots(source_bytes, root_node);
         for root in roots {
-            if ["crate", "super"].contains(&root.as_str()) && !deps.contains(&root) {
+            if ["crate", "super"].contains(&root.as_str()) && seen.insert(root.clone()) {
                 deps.push(root);
             }
         }
@@ -225,28 +228,36 @@ impl RustParser {
     }
 
     fn extract_trait_impls(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+        let mut seen = HashSet::new();
         let mut impls = Vec::new();
         let source_bytes = source.as_bytes();
 
         for query in &self.trait_impl_queries {
+            let capture_names = query.capture_names();
             let mut cursor = QueryCursor::new();
             let mut iter = cursor.matches(query, root_node, source_bytes);
             while let Some(m) = iter.next() {
                 let trait_name = m
                     .captures
                     .iter()
-                    .find(|c| query.capture_names()[c.index as usize] == "trait")
+                    .find(|c| {
+                        let idx = c.index as usize;
+                        idx < capture_names.len() && capture_names[idx] == "trait"
+                    })
                     .and_then(|c| c.node.utf8_text(source_bytes).ok());
                 let type_name = m
                     .captures
                     .iter()
-                    .find(|c| query.capture_names()[c.index as usize] == "type")
+                    .find(|c| {
+                        let idx = c.index as usize;
+                        idx < capture_names.len() && capture_names[idx] == "type"
+                    })
                     .and_then(|c| c.node.utf8_text(source_bytes).ok());
 
                 if let (Some(t), Some(ty)) = (trait_name, type_name) {
                     let trait_short = t.rsplit("::").next().unwrap_or(t);
                     let entry = format!("{} for {}", trait_short, ty);
-                    if !impls.contains(&entry) {
+                    if seen.insert(entry.clone()) {
                         impls.push(entry);
                     }
                 }
@@ -258,6 +269,7 @@ impl RustParser {
     }
 
     fn extract_lifetimes(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+        let mut seen = HashSet::new();
         let mut lifetimes = Vec::new();
         let source_bytes = source.as_bytes();
 
@@ -270,7 +282,7 @@ impl RustParser {
                         continue;
                     }
                     let lt = format!("'{}", text);
-                    if !lifetimes.contains(&lt) {
+                    if seen.insert(lt.clone()) {
                         lifetimes.push(lt);
                     }
                 }
@@ -299,20 +311,22 @@ impl RustParser {
     }
 
     fn extract_derives(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+        let mut seen = HashSet::new();
         let mut derives = Vec::new();
         let source_bytes = source.as_bytes();
+        let capture_names = self.derive_query.capture_names();
 
         let mut cursor = QueryCursor::new();
         let mut iter = cursor.matches(&self.derive_query, root_node, source_bytes);
         while let Some(m) = iter.next() {
-            let attr_name = m
-                .captures
-                .iter()
-                .find(|c| self.derive_query.capture_names()[c.index as usize] == "attr_name");
-            let args = m
-                .captures
-                .iter()
-                .find(|c| self.derive_query.capture_names()[c.index as usize] == "args");
+            let attr_name = m.captures.iter().find(|c| {
+                let idx = c.index as usize;
+                idx < capture_names.len() && capture_names[idx] == "attr_name"
+            });
+            let args = m.captures.iter().find(|c| {
+                let idx = c.index as usize;
+                idx < capture_names.len() && capture_names[idx] == "args"
+            });
 
             if let (Some(name_capture), Some(args_capture)) = (attr_name, args) {
                 if let Ok(name) = name_capture.node.utf8_text(source_bytes) {
@@ -321,7 +335,7 @@ impl RustParser {
                             let inner = args_text.trim_start_matches('(').trim_end_matches(')');
                             for d in inner.split(',') {
                                 let d = d.trim().to_string();
-                                if !d.is_empty() && !derives.contains(&d) {
+                                if !d.is_empty() && seen.insert(d.clone()) {
                                     derives.push(d);
                                 }
                             }

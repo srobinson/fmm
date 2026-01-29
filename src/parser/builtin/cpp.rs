@@ -1,6 +1,7 @@
+use super::query_helpers::collect_matches;
 use crate::parser::{Metadata, ParseResult, Parser};
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
@@ -78,9 +79,7 @@ impl CppParser {
     }
 
     fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut exports = Vec::new();
         let source_bytes = source.as_bytes();
-
         let queries = [
             &self.func_query,
             &self.class_query,
@@ -89,91 +88,62 @@ impl CppParser {
             &self.template_query,
         ];
 
+        let mut seen = HashSet::new();
         for query in queries {
-            let mut cursor = QueryCursor::new();
-            let mut iter = cursor.matches(query, root_node, source_bytes);
-            while let Some(m) = iter.next() {
-                for capture in m.captures {
-                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                        if !exports.contains(&text.to_string()) {
-                            exports.push(text.to_string());
-                        }
-                    }
-                }
+            for name in collect_matches(query, root_node, source_bytes) {
+                seen.insert(name);
             }
         }
 
+        let mut exports: Vec<String> = seen.into_iter().collect();
         exports.sort();
-        exports.dedup();
         exports
     }
 
     fn extract_imports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut imports = Vec::new();
         let source_bytes = source.as_bytes();
+        let mut seen = HashSet::new();
 
-        // System includes: #include <header>
         let mut cursor = QueryCursor::new();
         let mut iter = cursor.matches(&self.system_include_query, root_node, source_bytes);
         while let Some(m) = iter.next() {
             for capture in m.captures {
                 if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let header = text
-                        .trim_start_matches('<')
-                        .trim_end_matches('>')
-                        .to_string();
-                    if !imports.contains(&header) {
-                        imports.push(header);
-                    }
+                    seen.insert(
+                        text.trim_start_matches('<')
+                            .trim_end_matches('>')
+                            .to_string(),
+                    );
                 }
             }
         }
 
+        let mut imports: Vec<String> = seen.into_iter().collect();
         imports.sort();
         imports
     }
 
     fn extract_dependencies(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut deps = Vec::new();
         let source_bytes = source.as_bytes();
+        let mut seen = HashSet::new();
 
-        // Local includes: #include "header.h"
         let mut cursor = QueryCursor::new();
         let mut iter = cursor.matches(&self.local_include_query, root_node, source_bytes);
         while let Some(m) = iter.next() {
             for capture in m.captures {
                 if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let header = text.trim_matches('"').to_string();
-                    if !deps.contains(&header) {
-                        deps.push(header);
-                    }
+                    seen.insert(text.trim_matches('"').to_string());
                 }
             }
         }
 
+        let mut deps: Vec<String> = seen.into_iter().collect();
         deps.sort();
         deps
     }
 
     fn extract_namespaces(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut namespaces = Vec::new();
-        let source_bytes = source.as_bytes();
-
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.namespace_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let name = text.to_string();
-                    if !namespaces.contains(&name) {
-                        namespaces.push(name);
-                    }
-                }
-            }
-        }
-
-        namespaces.sort();
-        namespaces
+        collect_matches(&self.namespace_query, root_node, source.as_bytes())
     }
 }
 

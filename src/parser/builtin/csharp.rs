@@ -1,8 +1,10 @@
 use crate::parser::{Metadata, ParseResult, Parser};
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
+
+use super::query_helpers::collect_matches;
 
 pub struct CSharpParser {
     parser: TSParser,
@@ -78,161 +80,58 @@ impl CSharpParser {
         false
     }
 
+    fn collect_public_declarations(
+        query: &Query,
+        root_node: tree_sitter::Node,
+        source_bytes: &[u8],
+        seen: &mut HashSet<String>,
+    ) {
+        let mut cursor = QueryCursor::new();
+        let mut iter = cursor.matches(query, root_node, source_bytes);
+        while let Some(m) = iter.next() {
+            for capture in m.captures {
+                if let Some(parent) = capture.node.parent() {
+                    if Self::has_public_modifier(parent, source_bytes) {
+                        if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                            seen.insert(text.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut exports = Vec::new();
         let source_bytes = source.as_bytes();
+        let mut seen = HashSet::new();
 
-        // Public classes
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.class_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Some(parent) = capture.node.parent() {
-                    if Self::has_public_modifier(parent, source_bytes) {
-                        if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                            if !exports.contains(&text.to_string()) {
-                                exports.push(text.to_string());
-                            }
-                        }
-                    }
-                }
-            }
+        let queries = [
+            &self.class_query,
+            &self.interface_query,
+            &self.struct_query,
+            &self.enum_query,
+            &self.method_query,
+        ];
+
+        for query in queries {
+            Self::collect_public_declarations(query, root_node, source_bytes, &mut seen);
         }
 
-        // Public interfaces
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.interface_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Some(parent) = capture.node.parent() {
-                    if Self::has_public_modifier(parent, source_bytes) {
-                        if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                            if !exports.contains(&text.to_string()) {
-                                exports.push(text.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Public structs
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.struct_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Some(parent) = capture.node.parent() {
-                    if Self::has_public_modifier(parent, source_bytes) {
-                        if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                            if !exports.contains(&text.to_string()) {
-                                exports.push(text.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Public enums
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.enum_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Some(parent) = capture.node.parent() {
-                    if Self::has_public_modifier(parent, source_bytes) {
-                        if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                            if !exports.contains(&text.to_string()) {
-                                exports.push(text.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Public methods
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.method_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Some(parent) = capture.node.parent() {
-                    if Self::has_public_modifier(parent, source_bytes) {
-                        if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                            if !exports.contains(&text.to_string()) {
-                                exports.push(text.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
+        let mut exports: Vec<String> = seen.into_iter().collect();
         exports.sort();
-        exports.dedup();
         exports
     }
 
     fn extract_imports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut imports = Vec::new();
-        let source_bytes = source.as_bytes();
-
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.using_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let ns = text.to_string();
-                    if !imports.contains(&ns) {
-                        imports.push(ns);
-                    }
-                }
-            }
-        }
-
-        imports.sort();
-        imports
+        collect_matches(&self.using_query, root_node, source.as_bytes())
     }
 
     fn extract_namespaces(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut namespaces = Vec::new();
-        let source_bytes = source.as_bytes();
-
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.namespace_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let name = text.to_string();
-                    if !namespaces.contains(&name) {
-                        namespaces.push(name);
-                    }
-                }
-            }
-        }
-
-        namespaces.sort();
-        namespaces
+        collect_matches(&self.namespace_query, root_node, source.as_bytes())
     }
 
     fn extract_attributes(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut attributes = Vec::new();
-        let source_bytes = source.as_bytes();
-
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.attribute_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let name = text.to_string();
-                    if !attributes.contains(&name) {
-                        attributes.push(name);
-                    }
-                }
-            }
-        }
-
-        attributes.sort();
-        attributes
+        collect_matches(&self.attribute_query, root_node, source.as_bytes())
     }
 }
 

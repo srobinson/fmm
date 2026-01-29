@@ -1,8 +1,10 @@
 use crate::parser::{Metadata, ParseResult, Parser};
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
+
+use super::query_helpers::collect_matches;
 
 pub struct JavaParser {
     parser: TSParser,
@@ -65,60 +67,39 @@ impl JavaParser {
     }
 
     fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut exports = Vec::new();
         let source_bytes = source.as_bytes();
+        let mut seen = HashSet::new();
+        let mut exports = Vec::new();
 
-        // Top-level classes
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.class_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    if !exports.contains(&text.to_string()) {
-                        exports.push(text.to_string());
-                    }
-                }
+        // Top-level classes, interfaces, enums via collect_matches
+        for name in collect_matches(&self.class_query, root_node, source_bytes) {
+            if seen.insert(name.clone()) {
+                exports.push(name);
+            }
+        }
+        for name in collect_matches(&self.interface_query, root_node, source_bytes) {
+            if seen.insert(name.clone()) {
+                exports.push(name);
+            }
+        }
+        for name in collect_matches(&self.enum_query, root_node, source_bytes) {
+            if seen.insert(name.clone()) {
+                exports.push(name);
             }
         }
 
-        // Top-level interfaces
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.interface_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    if !exports.contains(&text.to_string()) {
-                        exports.push(text.to_string());
-                    }
-                }
-            }
-        }
-
-        // Top-level enums
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.enum_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    if !exports.contains(&text.to_string()) {
-                        exports.push(text.to_string());
-                    }
-                }
-            }
-        }
-
-        // Public methods in top-level classes
+        // Public methods in top-level classes (needs manual cursor for has_public_modifier check)
         let mut cursor = QueryCursor::new();
         let mut iter = cursor.matches(&self.method_query, root_node, source_bytes);
         while let Some(m) = iter.next() {
             for capture in m.captures {
                 let method_node = capture.node;
-                // Check if the method declaration has public modifier
                 if let Some(method_decl) = method_node.parent() {
                     if self.has_public_modifier(method_decl, source_bytes) {
                         if let Ok(text) = method_node.utf8_text(source_bytes) {
-                            if !exports.contains(&text.to_string()) {
-                                exports.push(text.to_string());
+                            let name = text.to_string();
+                            if seen.insert(name.clone()) {
+                                exports.push(name);
                             }
                         }
                     }
@@ -127,7 +108,6 @@ impl JavaParser {
         }
 
         exports.sort();
-        exports.dedup();
         exports
     }
 
@@ -152,21 +132,20 @@ impl JavaParser {
     }
 
     fn extract_imports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut imports = Vec::new();
         let source_bytes = source.as_bytes();
+        let raw = collect_matches(&self.import_query, root_node, source_bytes);
 
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.import_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let pkg = text.to_string();
-                    // Extract root package (e.g., "java" from "java.util.List")
-                    let root_pkg = pkg.split('.').next().unwrap_or(&pkg).to_string();
-                    if !imports.contains(&root_pkg) {
-                        imports.push(root_pkg);
-                    }
-                }
+        let mut seen = HashSet::new();
+        let mut imports = Vec::new();
+        for full_path in &raw {
+            let segments: Vec<&str> = full_path.split('.').collect();
+            let pkg = if segments.len() >= 2 {
+                format!("{}.{}", segments[0], segments[1])
+            } else {
+                segments[0].to_string()
+            };
+            if seen.insert(pkg.clone()) {
+                imports.push(pkg);
             }
         }
 
@@ -175,45 +154,11 @@ impl JavaParser {
     }
 
     fn extract_dependencies(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut deps = Vec::new();
-        let source_bytes = source.as_bytes();
-
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.import_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let full_path = text.to_string();
-                    if !deps.contains(&full_path) {
-                        deps.push(full_path);
-                    }
-                }
-            }
-        }
-
-        deps.sort();
-        deps
+        collect_matches(&self.import_query, root_node, source.as_bytes())
     }
 
     fn extract_annotations(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        let mut annotations = Vec::new();
-        let source_bytes = source.as_bytes();
-
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.annotation_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let name = text.to_string();
-                    if !annotations.contains(&name) {
-                        annotations.push(name);
-                    }
-                }
-            }
-        }
-
-        annotations.sort();
-        annotations
+        collect_matches(&self.annotation_query, root_node, source.as_bytes())
     }
 }
 
@@ -310,8 +255,11 @@ import org.springframework.stereotype.Service;
 public class App {}
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.imports.contains(&"java".to_string()));
-        assert!(result.metadata.imports.contains(&"org".to_string()));
+        assert!(result.metadata.imports.contains(&"java.util".to_string()));
+        assert!(result
+            .metadata
+            .imports
+            .contains(&"org.springframework".to_string()));
     }
 
     #[test]
