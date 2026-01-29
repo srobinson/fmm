@@ -93,6 +93,9 @@ pub enum Commands {
     /// Start MCP (Model Context Protocol) server for LLM integration
     Mcp,
 
+    /// Start MCP server for LLM integration (alias for 'mcp')
+    Serve,
+
     /// Compare FMM vs control performance on a GitHub repository
     Compare {
         /// GitHub repository URL (e.g., https://github.com/owner/repo)

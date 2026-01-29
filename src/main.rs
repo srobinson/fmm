@@ -45,7 +45,7 @@ fn main() -> Result<()> {
         } => {
             cli::search(export, imports, loc, depends_on, json)?;
         }
-        Commands::Mcp => {
+        Commands::Mcp | Commands::Serve => {
             let mut server = mcp::McpServer::new();
             server.run()?;
         }

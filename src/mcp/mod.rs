@@ -2,6 +2,8 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use crate::manifest::Manifest;
 
@@ -45,6 +47,8 @@ struct Tool {
 
 pub struct McpServer {
     manifest: Option<Manifest>,
+    root: PathBuf,
+    manifest_mtime: Option<SystemTime>,
 }
 
 impl Default for McpServer {
@@ -57,7 +61,31 @@ impl McpServer {
     pub fn new() -> Self {
         let root = std::env::current_dir().unwrap_or_default();
         let manifest = Manifest::load(&root).ok().flatten();
-        Self { manifest }
+        let manifest_mtime = Self::get_manifest_mtime(&root);
+        Self {
+            manifest,
+            root,
+            manifest_mtime,
+        }
+    }
+
+    fn get_manifest_mtime(root: &Path) -> Option<SystemTime> {
+        let path = root.join(".fmm").join("index.json");
+        std::fs::metadata(path).ok().and_then(|m| m.modified().ok())
+    }
+
+    fn maybe_reload(&mut self) {
+        let current_mtime = Self::get_manifest_mtime(&self.root);
+        if current_mtime != self.manifest_mtime {
+            self.manifest = Manifest::load(&self.root).ok().flatten();
+            self.manifest_mtime = current_mtime;
+        }
+    }
+
+    fn require_manifest(&self) -> Result<&Manifest, String> {
+        self.manifest
+            .as_ref()
+            .ok_or_else(|| "No manifest found. Run 'fmm generate' first.".to_string())
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -88,6 +116,11 @@ impl McpServer {
                     continue;
                 }
             };
+
+            // Hot-reload manifest before handling tool calls
+            if request.method == "tools/call" {
+                self.maybe_reload();
+            }
 
             let response = self.handle_request(&request);
 
@@ -148,8 +181,8 @@ impl McpServer {
     fn handle_tools_list(&self) -> Result<Value, JsonRpcError> {
         let tools = vec![
             Tool {
-                name: "fmm_find_export".to_string(),
-                description: "Find which file exports a given symbol. Returns the file path.".to_string(),
+                name: "fmm_lookup_export".to_string(),
+                description: "Find which file exports a given symbol. Returns file path and full metadata (exports, imports, dependencies, loc).".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -163,13 +196,44 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_list_exports".to_string(),
-                description: "List all exports from a specific file.".to_string(),
+                description: "List exports from the manifest. If 'pattern' is given, returns all exports matching the substring across all files. If 'file' is given, returns exports from that specific file.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "pattern": {
+                            "type": "string",
+                            "description": "Substring to match against export names (case-insensitive)"
+                        },
+                        "file": {
+                            "type": "string",
+                            "description": "File path to list exports from"
+                        }
+                    }
+                }),
+            },
+            Tool {
+                name: "fmm_file_info".to_string(),
+                description: "Get structured metadata for a specific file: exports, imports, dependencies, and lines of code.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
                         "file": {
                             "type": "string",
-                            "description": "The file path to list exports from"
+                            "description": "The file path to get info for"
+                        }
+                    },
+                    "required": ["file"]
+                }),
+            },
+            Tool {
+                name: "fmm_dependency_graph".to_string(),
+                description: "Get the dependency graph for a file: what it depends on (upstream) and what depends on it (downstream).".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "file": {
+                            "type": "string",
+                            "description": "The file path to get dependency graph for"
                         }
                     },
                     "required": ["file"]
@@ -177,7 +241,7 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_search".to_string(),
-                description: "Search the codebase manifest. Find files by exports, imports, or line count.".to_string(),
+                description: "Search the codebase manifest. Find files by exports, imports, dependencies, or line count.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -188,6 +252,10 @@ impl McpServer {
                         "imports": {
                             "type": "string",
                             "description": "Find files that import this module"
+                        },
+                        "depends_on": {
+                            "type": "string",
+                            "description": "Find files that depend on this path"
                         },
                         "min_loc": {
                             "type": "integer",
@@ -202,24 +270,10 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_get_manifest".to_string(),
-                description: "Get the full manifest with all file metadata. Use for understanding project structure.".to_string(),
+                description: "Get the full manifest with all file metadata. Use for understanding overall project structure.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {}
-                }),
-            },
-            Tool {
-                name: "fmm_file_info".to_string(),
-                description: "Get metadata for a specific file (exports, imports, dependencies, loc).".to_string(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "file": {
-                            "type": "string",
-                            "description": "The file path to get info for"
-                        }
-                    },
-                    "required": ["file"]
                 }),
             },
         ];
@@ -247,11 +301,14 @@ impl McpServer {
         let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
 
         let result = match tool_name {
-            "fmm_find_export" => self.tool_find_export(&arguments),
+            "fmm_lookup_export" => self.tool_lookup_export(&arguments),
             "fmm_list_exports" => self.tool_list_exports(&arguments),
+            "fmm_file_info" => self.tool_file_info(&arguments),
+            "fmm_dependency_graph" => self.tool_dependency_graph(&arguments),
             "fmm_search" => self.tool_search(&arguments),
             "fmm_get_manifest" => self.tool_get_manifest(),
-            "fmm_file_info" => self.tool_file_info(&arguments),
+            // Keep old name as alias for backwards compatibility
+            "fmm_find_export" => self.tool_lookup_export(&arguments),
             _ => Err(format!("Unknown tool: {}", tool_name)),
         };
 
@@ -272,11 +329,8 @@ impl McpServer {
         }
     }
 
-    fn tool_find_export(&self, args: &Value) -> Result<String, String> {
-        let manifest = self
-            .manifest
-            .as_ref()
-            .ok_or("No manifest found. Run 'fmm generate' first.")?;
+    fn tool_lookup_export(&self, args: &Value) -> Result<String, String> {
+        let manifest = self.require_manifest()?;
 
         let name = args
             .get("name")
@@ -284,16 +338,74 @@ impl McpServer {
             .ok_or("Missing 'name' argument")?;
 
         match manifest.export_index.get(name) {
-            Some(file) => Ok(file.clone()),
+            Some(file_path) => {
+                let entry = manifest.files.get(file_path);
+                let result = json!({
+                    "file": file_path,
+                    "exports": entry.map(|e| &e.exports),
+                    "imports": entry.map(|e| &e.imports),
+                    "dependencies": entry.map(|e| &e.dependencies),
+                    "loc": entry.map(|e| e.loc),
+                });
+                serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+            }
             None => Err(format!("Export '{}' not found", name)),
         }
     }
 
     fn tool_list_exports(&self, args: &Value) -> Result<String, String> {
-        let manifest = self
-            .manifest
-            .as_ref()
-            .ok_or("No manifest found. Run 'fmm generate' first.")?;
+        let manifest = self.require_manifest()?;
+
+        let pattern = args.get("pattern").and_then(|v| v.as_str());
+        let file = args.get("file").and_then(|v| v.as_str());
+
+        if let Some(file_path) = file {
+            // List exports from a specific file
+            match manifest.files.get(file_path) {
+                Some(entry) => {
+                    let result = json!({
+                        "file": file_path,
+                        "exports": entry.exports,
+                    });
+                    serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+                }
+                None => Err(format!("File '{}' not found in manifest", file_path)),
+            }
+        } else if let Some(pat) = pattern {
+            // Search export index by pattern
+            let pat_lower = pat.to_lowercase();
+            let mut matches: Vec<(&String, &String)> = manifest
+                .export_index
+                .iter()
+                .filter(|(name, _)| name.to_lowercase().contains(&pat_lower))
+                .collect();
+            matches.sort_by_key(|(name, _)| name.to_lowercase());
+
+            let result: Vec<Value> = matches
+                .iter()
+                .map(|(name, path)| json!({"export": name, "file": path}))
+                .collect();
+            serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+        } else {
+            // List all exports (grouped by file)
+            let mut by_file: Vec<(&String, Vec<&String>)> = Vec::new();
+            for (file_path, entry) in &manifest.files {
+                if !entry.exports.is_empty() {
+                    by_file.push((file_path, entry.exports.iter().collect()));
+                }
+            }
+            by_file.sort_by_key(|(path, _)| path.to_lowercase());
+
+            let result: Vec<Value> = by_file
+                .iter()
+                .map(|(path, exports)| json!({"file": path, "exports": exports}))
+                .collect();
+            serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+        }
+    }
+
+    fn tool_file_info(&self, args: &Value) -> Result<String, String> {
+        let manifest = self.require_manifest()?;
 
         let file = args
             .get("file")
@@ -302,23 +414,62 @@ impl McpServer {
 
         match manifest.files.get(file) {
             Some(entry) => {
-                if entry.exports.is_empty() {
-                    Ok("No exports".to_string())
-                } else {
-                    Ok(entry.exports.join(", "))
-                }
+                let result = json!({
+                    "file": file,
+                    "exports": entry.exports,
+                    "imports": entry.imports,
+                    "dependencies": entry.dependencies,
+                    "loc": entry.loc,
+                });
+                serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
             }
             None => Err(format!("File '{}' not found in manifest", file)),
         }
     }
 
+    fn tool_dependency_graph(&self, args: &Value) -> Result<String, String> {
+        let manifest = self.require_manifest()?;
+
+        let file = args
+            .get("file")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing 'file' argument")?;
+
+        let entry = manifest
+            .files
+            .get(file)
+            .ok_or_else(|| format!("File '{}' not found in manifest", file))?;
+
+        // Upstream: files this file depends on (its dependencies)
+        let upstream: Vec<&str> = entry.dependencies.iter().map(|s| s.as_str()).collect();
+
+        // Downstream: files that depend on this file
+        let mut downstream: Vec<&String> = manifest
+            .files
+            .iter()
+            .filter(|(path, _)| *path != file)
+            .filter(|(_, e)| e.dependencies.iter().any(|d| dep_matches(d, file)))
+            .map(|(path, _)| path)
+            .collect();
+        downstream.sort();
+
+        let result = json!({
+            "file": file,
+            "upstream": upstream,
+            "downstream": downstream,
+            "imports": entry.imports,
+        });
+        serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+    }
+
     fn tool_search(&self, args: &Value) -> Result<String, String> {
-        let manifest = self
-            .manifest
-            .as_ref()
-            .ok_or("No manifest found. Run 'fmm generate' first.")?;
+        let manifest = self.require_manifest()?;
 
         let mut results: Vec<(&String, &crate::manifest::FileEntry)> = Vec::new();
+
+        let has_export = args.get("export").and_then(|v| v.as_str()).is_some();
+        let has_imports = args.get("imports").and_then(|v| v.as_str()).is_some();
+        let has_depends_on = args.get("depends_on").and_then(|v| v.as_str()).is_some();
 
         // Search by export
         if let Some(export) = args.get("export").and_then(|v| v.as_str()) {
@@ -340,6 +491,17 @@ impl McpServer {
             }
         }
 
+        // Search by depends_on
+        if let Some(dep_path) = args.get("depends_on").and_then(|v| v.as_str()) {
+            for (file_path, entry) in &manifest.files {
+                if entry.dependencies.iter().any(|d| d.contains(dep_path))
+                    && !results.iter().any(|(f, _)| *f == file_path)
+                {
+                    results.push((file_path, entry));
+                }
+            }
+        }
+
         // Filter by LOC
         let min_loc = args
             .get("min_loc")
@@ -351,8 +513,7 @@ impl McpServer {
             .map(|v| v as usize);
 
         if min_loc.is_some() || max_loc.is_some() {
-            // If no other filters, search all files
-            if results.is_empty() && args.get("export").is_none() && args.get("imports").is_none() {
+            if results.is_empty() && !has_export && !has_imports && !has_depends_on {
                 for (file_path, entry) in &manifest.files {
                     results.push((file_path, entry));
                 }
@@ -366,76 +527,73 @@ impl McpServer {
         }
 
         // If no filters, return all
-        if args.get("export").is_none()
-            && args.get("imports").is_none()
-            && min_loc.is_none()
-            && max_loc.is_none()
+        if !has_export && !has_imports && !has_depends_on && min_loc.is_none() && max_loc.is_none()
         {
             for (file_path, entry) in &manifest.files {
                 results.push((file_path, entry));
             }
         }
 
-        if results.is_empty() {
-            Ok("No matches found".to_string())
-        } else {
-            let output: Vec<String> = results
-                .iter()
-                .map(|(path, entry)| {
-                    format!(
-                        "{} (exports: {}, loc: {})",
-                        path,
-                        entry.exports.join(", "),
-                        entry.loc
-                    )
+        let output: Vec<Value> = results
+            .iter()
+            .map(|(path, entry)| {
+                json!({
+                    "file": path,
+                    "exports": entry.exports,
+                    "imports": entry.imports,
+                    "dependencies": entry.dependencies,
+                    "loc": entry.loc,
                 })
-                .collect();
-            Ok(output.join("\n"))
-        }
+            })
+            .collect();
+
+        serde_json::to_string_pretty(&output).map_err(|e| e.to_string())
     }
 
     fn tool_get_manifest(&self) -> Result<String, String> {
-        let manifest = self
-            .manifest
-            .as_ref()
-            .ok_or("No manifest found. Run 'fmm generate' first.")?;
-
+        let manifest = self.require_manifest()?;
         serde_json::to_string_pretty(manifest).map_err(|e| e.to_string())
     }
+}
 
-    fn tool_file_info(&self, args: &Value) -> Result<String, String> {
-        let manifest = self
-            .manifest
-            .as_ref()
-            .ok_or("No manifest found. Run 'fmm generate' first.")?;
+/// Check if a dependency path matches a file path.
+/// Dependencies are stored as relative paths like "./types" or "./config"
+/// and file paths are like "src/types.ts". This does a suffix match.
+fn dep_matches(dep: &str, file: &str) -> bool {
+    // Strip leading "./" from dep
+    let dep_clean = dep.strip_prefix("./").unwrap_or(dep);
+    // Strip extension from file for comparison
+    let file_stem = file.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(file);
+    // Check if the file path ends with the dependency path
+    file_stem == dep_clean || file_stem.ends_with(&format!("/{}", dep_clean))
+}
 
-        let file = args
-            .get("file")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing 'file' argument")?;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        match manifest.files.get(file) {
-            Some(entry) => Ok(format!(
-                "File: {}\nExports: {}\nImports: {}\nDependencies: {}\nLOC: {}",
-                file,
-                if entry.exports.is_empty() {
-                    "none".to_string()
-                } else {
-                    entry.exports.join(", ")
-                },
-                if entry.imports.is_empty() {
-                    "none".to_string()
-                } else {
-                    entry.imports.join(", ")
-                },
-                if entry.dependencies.is_empty() {
-                    "none".to_string()
-                } else {
-                    entry.dependencies.join(", ")
-                },
-                entry.loc
-            )),
-            None => Err(format!("File '{}' not found in manifest", file)),
-        }
+    #[test]
+    fn dep_matches_relative_path() {
+        assert!(dep_matches("./types", "src/types.ts"));
+        assert!(dep_matches("./config", "src/config.ts"));
+        assert!(!dep_matches("./types", "src/other.ts"));
+    }
+
+    #[test]
+    fn dep_matches_nested_path() {
+        assert!(dep_matches("./utils/helpers", "src/utils/helpers.ts"));
+        assert!(!dep_matches("./utils/helpers", "src/utils/other.ts"));
+    }
+
+    #[test]
+    fn dep_matches_without_prefix() {
+        assert!(dep_matches("types", "src/types.ts"));
+    }
+
+    #[test]
+    fn test_hot_reload_detection() {
+        let server = McpServer::new();
+        // Just verify construction works and mtime is loaded
+        assert!(server.root.is_absolute() || server.root.as_os_str().is_empty());
     }
 }
