@@ -2,3 +2,5 @@ results/
 *.jsonl
 *.log
 .env
+fmm-src/target/
+codebase/

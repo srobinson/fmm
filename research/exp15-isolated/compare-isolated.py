@@ -157,7 +157,7 @@ def compute_averages(data: dict) -> dict:
 
 
 def stddev(values: list) -> float:
-    """Population standard deviation."""
+    """Sample standard deviation (Bessel's correction)."""
     if len(values) < 2:
         return 0.0
     mean = sum(values) / len(values)

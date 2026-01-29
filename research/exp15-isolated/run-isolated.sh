@@ -63,7 +63,7 @@ echo "║  A = CLAUDE.md only    B = Skill only                  ║"
 echo "║  C = MCP only          D = Skill + MCP                 ║"
 echo "║                                                         ║"
 echo "║  4 tasks × 4 conditions × 3 runs = 48 total            ║"
-echo "║  Max parallel: $MAX_PARALLEL                                       ║"
+printf "║  Max parallel: %-40s ║\n" "$MAX_PARALLEL"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -177,9 +177,9 @@ done
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║  ALL RUNS COMPLETE                                      ║"
-echo "║  Completed: $COMPLETED / $TOTAL                                      ║"
+printf "║  Completed: %-43s ║\n" "$COMPLETED / $TOTAL"
 if [[ $FAILED -gt 0 ]]; then
-echo "║  Failed: $FAILED (check results/.logs/)                      ║"
+printf "║  Failed: %-46s ║\n" "$FAILED (check results/.logs/)"
 fi
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
