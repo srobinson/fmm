@@ -5,12 +5,14 @@
 Cargo.lock
 **/*.rs.bk
 *.pdb
+__pycache__/
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+__pycache__/
 
 # OS
 .DS_Store

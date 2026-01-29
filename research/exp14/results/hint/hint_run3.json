@@ -1,0 +1,181 @@
+{
+  "variant": "hint",
+  "run_id": "3",
+  "task": "Find all files that export authentication-related functions. List each file path and the specific exports.",
+  "duration_seconds": 43,
+  "tool_calls_count": 21,
+  "tool_calls_summary": {},
+  "tool_calls": [
+    {
+      "tool": "Grep",
+      "input": {
+        "pattern": "export.*auth",
+        "output_mode": "content",
+        "-i": true
+      }
+    },
+    {
+      "tool": "Grep",
+      "input": {
+        "pattern": "export.*login",
+        "output_mode": "content",
+        "-i": true
+      }
+    },
+    {
+      "tool": "Grep",
+      "input": {
+        "pattern": "export.*logout",
+        "output_mode": "content",
+        "-i": true
+      }
+    },
+    {
+      "tool": "Grep",
+      "input": {
+        "pattern": "export.*token",
+        "output_mode": "content",
+        "-i": true
+      }
+    },
+    {
+      "tool": "Grep",
+      "input": {
+        "pattern": "export.*session",
+        "output_mode": "content",
+        "-i": true
+      }
+    },
+    {
+      "tool": "Grep",
+      "input": {
+        "pattern": "export.*credential",
+        "output_mode": "content",
+        "-i": true
+      }
+    },
+    {
+      "tool": "Grep",
+      "input": {
+        "pattern": "export.*password",
+        "output_mode": "content",
+        "-i": true
+      }
+    },
+    {
+      "tool": "Grep",
+      "input": {
+        "pattern": "export.*verify",
+        "output_mode": "content",
+        "-i": true
+      }
+    },
+    {
+      "tool": "Grep",
+      "input": {
+        "pattern": "export.*register",
+        "output_mode": "content",
+        "-i": true
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/login.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/signup.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/password.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/jwt.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/types.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/middleware/auth.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/api/models/session.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/api/controllers/authController.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/api/routes/auth.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/services/audit.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/services/email.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/middleware/rateLimit.ts"
+      }
+    }
+  ],
+  "files_read": [
+    "src/middleware/auth.ts",
+    "src/auth/types.ts",
+    "src/api/controllers/authController.ts",
+    "src/auth/login.ts",
+    "src/api/models/session.ts",
+    "src/services/email.ts",
+    "src/middleware/rateLimit.ts",
+    "src/auth/jwt.ts",
+    "src/auth/signup.ts",
+    "src/services/audit.ts",
+    "src/auth/password.ts",
+    "src/api/routes/auth.ts"
+  ],
+  "files_read_count": 12,
+  "total_tool_calls_by_type": {
+    "Grep": 9,
+    "Read": 12
+  },
+  "tokens_in": 239553,
+  "tokens_out": 2560,
+  "tokens_total": 242113,
+  "cost_usd": 0.09024270000000001,
+  "discovered_fmm": false,
+  "used_manifest": false,
+  "noticed_inline_comments": false,
+  "assistant_response": "I'll help you find all files that export authentication-related functions. Let me search for authentication-related exports in the codebase.\nNow let me search for additional authentication-related patterns like password, verification, and user management:\nPerfect! Now let me read some of these key files to get the complete export details:\nLet me also check the remaining files mentioned in the search:\nPerfect! Now I have a complete overview of all authentication-related exports. Let me compile this information for you:\n\n## Authentication-Related Files and Their Exports\n\n### **1. `src/auth/login.ts`**\n- **`authenticateUser(credentials: LoginCredentials): Promise<AuthResult>`** - Authenticates a user with email/password\n- **`validateSession(token: string): Promise<UserPayload | null>`** - Validates a session token\n\n### **2. `src/auth/signup.ts`**\n- **`registerUser(data: SignupData): Promise<AuthResult>`** - Registers a new user\n- **`validateSignupData(data: Partial<SignupData>): string[]`** - Validates signup data (not exported in search, but present)\n\n### **3. `src/auth/password.ts`**\n- **`hashPassword(password: string): Promise<string>`** - Hashes a password using PBKDF2\n- **`verifyPassword(password: string, stored: string): Promise<boolean>`** - Verifies a password against stored hash\n- **`validatePasswordStrength(password: string): { strong: boolean; issues: string[] }`** - Validates password strength\n\n### **4. `src/auth/jwt.ts`**\n- **`generateToken(payload: UserPayload): string`** - Generates a JWT token\n- **`verifyToken(token: string): UserPayload | null`** - Verifies and decodes a JWT token\n- **`refreshToken(token: string): string | null`** - Refreshes an existing token\n\n### **5. `src/auth/types.ts`**\n- **`UserPayload`** (interface) - User data in JWT token\n- **`UserRole`** (type) - User role type ('admin' | 'user' | 'moderator')\n- **`AuthResult`** (interface) - Result of authentication operations\n- **`LoginCredentials`** (interface) - Login credentials structure\n- **`SignupData`** (interface) - Signup data structure\n- **`PasswordResetRequest`** (interface) - Password reset request structure\n\n### **6. `src/middleware/auth.ts`**\n- **`AuthenticatedRequest`** (interface) - Request interface with user payload\n- **`authMiddleware(req, res, next)`** - Middleware to require authentication\n- **`requireRole(...roles: UserRole[])`** - Middleware to require specific roles\n- **`optionalAuth(req, res, next)`** - Middleware for optional authentication\n\n### **7. `src/api/models/session.ts`**\n- **`Session`** (interface) - Session data structure\n- **`createSession(userId, token, meta): Promise<Session>`** - Creates a new session\n- **`findSessionByToken(token: string): Promise<Session | undefined>`** - Finds session by token\n- **`deleteSessionsByUser(userId: string): Promise<number>`** - Deletes all sessions for a user\n- **`cleanExpiredSessions(): Promise<number>`** - Cleans up expired sessions\n\n### **8. `src/api/controllers/authController.ts`**\n- **`AuthController`** (class) - Controller class with login, signup, and logout methods\n- **`createAuthController(): AuthController`** - Factory function to create controller\n\n### **9. `src/api/routes/auth.ts`**\n- **`getAuthRoutes(): Route[]`** - Returns authentication route definitions\n\n### **10. `src/services/audit.ts`**\n- **`AuditEntry`** (interface) - Audit log entry structure\n- **`logAuthEvent(event: string, data: Record<string, unknown>): Promise<void>`** - Logs authentication events\n- **`getAuditLog(filters?): Promise<AuditEntry[]>`** - Retrieves audit logs\n- **`clearAuditLog(): void`** - Clears audit log\n\n### **11. `src/services/email.ts`**\n- **`EmailMessage`** (interface) - Email message structure\n- **`sendWelcomeEmail(email: string, name: string): Promise<void>`** - Sends welcome email\n- **`sendPasswordResetEmail(email: string, resetCode: string): Promise<void>`** - Sends password reset email\n- **`sendEmail(message: EmailMessage): Promise<void>`** - Generic email sending function\n- **`getSentEmails(): EmailMessage[]`** - Gets sent emails (for testing)\n- **`clearSentEmails(): void`** - Clears sent emails (for testing)\n\n### **12. `src/middleware/rateLimit.ts`**\n- **`rateLimiter(maxRequests: number, windowMs: number)`** - Generic rate limiter\n- **`authRateLimiter()`** - Specific rate limiter for auth routes (5 requests per 15 minutes)\n- **`clearRateLimitStore(): void`** - Clears rate limit store\n\nThis codebase has a comprehensive authentication system with user registration, login, JWT token management, session handling, password hashing, role-based access control, rate limiting, audit logging, and email notifications."
+}
