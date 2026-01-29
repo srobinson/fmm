@@ -2,7 +2,7 @@
 # fmm: v0.2
 # file: examples/sample.py
 # exports: [DataProcessor, MAX_RETRIES, ProcessConfig, fetch_data, transform]
-# imports: [pandas, requests]
+# imports: [pandas, pathlib, requests]
 # dependencies: [.utils, ..models]
 # loc: 48
 # python:

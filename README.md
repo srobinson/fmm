@@ -232,9 +232,9 @@ Create `.fmmrc.json` in your project root:
 
 ## Performance
 
-- **Speed:** ~1000 files/second on Apple Silicon (benchmarked with Criterion)
+- **Speed:** ~1,500 files/second on Apple Silicon (benchmarked with Criterion)
 - **Single file parse:** <1ms per file (TypeScript, Python, Rust)
-- **Batch 1000 files:** <100ms total
+- **Batch 1000 files:** ~670ms total
 - **Parallel:** Processes files in parallel (all CPU cores via rayon)
 - **Incremental:** Only updates files that changed
 - **Memory:** Constant memory usage (streams files)
