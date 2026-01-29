@@ -68,7 +68,7 @@ impl ParserRegistry {
         }
     }
 
-    /// Register all builtin parsers (TypeScript, Python, Rust).
+    /// Register all builtin parsers.
     fn register_builtin(&mut self) {
         // TypeScript / JavaScript
         self.register(&["ts", "tsx", "js", "jsx"], || {
@@ -82,6 +82,27 @@ impl ParserRegistry {
 
         // Rust
         self.register(&["rs"], || Ok(Box::new(builtin::rust::RustParser::new()?)));
+
+        // Go
+        self.register(&["go"], || Ok(Box::new(builtin::go::GoParser::new()?)));
+
+        // Java
+        self.register(&["java"], || {
+            Ok(Box::new(builtin::java::JavaParser::new()?))
+        });
+
+        // C++
+        self.register(&["cpp", "hpp", "cc", "hh", "cxx", "hxx"], || {
+            Ok(Box::new(builtin::cpp::CppParser::new()?))
+        });
+
+        // C#
+        self.register(&["cs"], || {
+            Ok(Box::new(builtin::csharp::CSharpParser::new()?))
+        });
+
+        // Ruby
+        self.register(&["rb"], || Ok(Box::new(builtin::ruby::RubyParser::new()?)));
     }
 
     /// Get a new parser instance for the given file extension.
@@ -127,6 +148,12 @@ mod tests {
         assert!(registry.has_parser("jsx"));
         assert!(registry.has_parser("py"));
         assert!(registry.has_parser("rs"));
+        assert!(registry.has_parser("go"));
+        assert!(registry.has_parser("java"));
+        assert!(registry.has_parser("cpp"));
+        assert!(registry.has_parser("hpp"));
+        assert!(registry.has_parser("cs"));
+        assert!(registry.has_parser("rb"));
     }
 
     #[test]
