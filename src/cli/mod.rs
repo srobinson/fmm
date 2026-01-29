@@ -184,11 +184,17 @@ pub fn generate(path: &str, dry_run: bool, manifest_only: bool) -> Result<()> {
 
             // Extract metadata for manifest
             if let Ok(Some(metadata)) = processor.extract_metadata(file) {
-                let relative_path = file
-                    .strip_prefix(&root)
-                    .unwrap_or(file)
-                    .display()
-                    .to_string();
+                let relative_path = match file.strip_prefix(&root) {
+                    Ok(rel) => rel.display().to_string(),
+                    Err(_) => {
+                        log::warn!(
+                            "Failed to strip prefix {:?} from {:?}, using absolute path",
+                            root,
+                            file
+                        );
+                        file.display().to_string()
+                    }
+                };
 
                 // Add to manifest
                 if let Ok(mut m) = manifest.lock() {
@@ -253,11 +259,17 @@ pub fn update(path: &str, dry_run: bool, manifest_only: bool) -> Result<()> {
 
             // Extract metadata for manifest
             if let Ok(Some(metadata)) = processor.extract_metadata(file) {
-                let relative_path = file
-                    .strip_prefix(&root)
-                    .unwrap_or(file)
-                    .display()
-                    .to_string();
+                let relative_path = match file.strip_prefix(&root) {
+                    Ok(rel) => rel.display().to_string(),
+                    Err(_) => {
+                        log::warn!(
+                            "Failed to strip prefix {:?} from {:?}, using absolute path",
+                            root,
+                            file
+                        );
+                        file.display().to_string()
+                    }
+                };
 
                 // Add to manifest
                 if let Ok(mut m) = manifest.lock() {
@@ -331,11 +343,17 @@ pub fn validate(path: &str) -> Result<()> {
 
             // Validate manifest entry
             let manifest_valid = if let Some(ref m) = manifest {
-                let relative_path = file
-                    .strip_prefix(&root)
-                    .unwrap_or(file)
-                    .display()
-                    .to_string();
+                let relative_path = match file.strip_prefix(&root) {
+                    Ok(rel) => rel.display().to_string(),
+                    Err(_) => {
+                        log::warn!(
+                            "Failed to strip prefix {:?} from {:?}, using absolute path",
+                            root,
+                            file
+                        );
+                        file.display().to_string()
+                    }
+                };
 
                 if let Ok(Some(current_metadata)) = processor.extract_metadata(file) {
                     m.validate_file(&relative_path, &current_metadata)
@@ -704,5 +722,150 @@ fn matches_loc_filter(loc: usize, op: &str, value: usize) -> bool {
         "<=" => loc <= value,
         "=" => loc == value,
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+    use tempfile::TempDir;
+
+    // ── resolve_root tests ──────────────────────────────────────────
+
+    #[test]
+    fn resolve_root_with_absolute_directory() {
+        let tmp = TempDir::new().unwrap();
+        let result = resolve_root(tmp.path().to_str().unwrap()).unwrap();
+        assert_eq!(result, tmp.path().canonicalize().unwrap());
+        assert!(result.is_absolute());
+    }
+
+    #[test]
+    fn resolve_root_with_relative_directory() {
+        // "." is always a valid relative directory
+        let result = resolve_root(".").unwrap();
+        let expected = std::env::current_dir().unwrap().canonicalize().unwrap();
+        assert_eq!(result, expected);
+        assert!(result.is_absolute());
+    }
+
+    #[test]
+    fn resolve_root_with_file_returns_parent() {
+        let tmp = TempDir::new().unwrap();
+        let file_path = tmp.path().join("example.ts");
+        std::fs::write(&file_path, "export const x = 1;").unwrap();
+
+        let result = resolve_root(file_path.to_str().unwrap()).unwrap();
+        assert_eq!(result, tmp.path().canonicalize().unwrap());
+        assert!(result.is_dir());
+    }
+
+    #[test]
+    fn resolve_root_nonexistent_path_falls_back_to_cwd() {
+        let result = resolve_root("/surely/this/does/not/exist/anywhere").unwrap();
+        let cwd = std::env::current_dir().unwrap();
+        assert_eq!(result, cwd);
+    }
+
+    // ── collect_files canonicalization tests ─────────────────────────
+
+    #[test]
+    fn collect_files_returns_canonical_paths() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("app.ts"), "export const a = 1;").unwrap();
+        std::fs::write(src.join("util.ts"), "export const b = 2;").unwrap();
+
+        let config = Config::default();
+        let files = collect_files(tmp.path().to_str().unwrap(), &config).unwrap();
+
+        assert!(!files.is_empty());
+        for file in &files {
+            assert!(file.is_absolute(), "path should be absolute: {:?}", file);
+            let path_str = file.display().to_string();
+            assert!(
+                !path_str.contains("/./"),
+                "path should not contain /./ segment: {}",
+                path_str
+            );
+            assert!(
+                !path_str.contains("/../"),
+                "path should not contain /../ segment: {}",
+                path_str
+            );
+            assert!(
+                !path_str.starts_with("./"),
+                "path should not start with ./: {}",
+                path_str
+            );
+        }
+    }
+
+    #[test]
+    fn collect_files_single_file_is_canonical() {
+        let tmp = TempDir::new().unwrap();
+        let file_path = tmp.path().join("index.ts");
+        std::fs::write(&file_path, "export function main() {}").unwrap();
+
+        let config = Config::default();
+        let files = collect_files(file_path.to_str().unwrap(), &config).unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert!(files[0].is_absolute());
+        assert_eq!(files[0], file_path.canonicalize().unwrap());
+    }
+
+    // ── Regression: manifest entries use relative paths ─────────────
+
+    #[test]
+    fn generate_pipeline_produces_relative_manifest_paths() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(
+            src.join("index.ts"),
+            "export function hello() { return 'hi'; }\n",
+        )
+        .unwrap();
+
+        let config = Config::default();
+        let files = collect_files(tmp.path().to_str().unwrap(), &config).unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+
+        let manifest = Mutex::new(Manifest::new());
+
+        for file in &files {
+            let processor = FileProcessor::new(&config, &root);
+            if let Ok(Some(metadata)) = processor.extract_metadata(file) {
+                let relative_path = file
+                    .strip_prefix(&root)
+                    .unwrap_or(file)
+                    .display()
+                    .to_string();
+
+                manifest.lock().unwrap().add_file(&relative_path, metadata);
+            }
+        }
+
+        let m = manifest.lock().unwrap();
+        for (key, _) in m.files.iter() {
+            assert!(
+                !key.starts_with('/'),
+                "manifest key should be relative, not absolute: {}",
+                key
+            );
+            assert!(
+                !key.starts_with("./"),
+                "manifest key should not start with ./: {}",
+                key
+            );
+            assert!(
+                !key.contains("/../"),
+                "manifest key should not contain /../: {}",
+                key
+            );
+        }
     }
 }
