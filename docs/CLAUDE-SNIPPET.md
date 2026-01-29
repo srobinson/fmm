@@ -24,7 +24,10 @@ fmm search --loc ">500"       # Find large files
 
 ### MCP Integration
 If fmm MCP server is available, use these tools:
-- `fmm_find_export(name)` - Find file by export
-- `fmm_search(query)` - Search manifest
+- `fmm_lookup_export(name)` - Find file by export name, returns path + metadata
+- `fmm_list_exports(pattern?, file?)` - Search exports by pattern, or list a file's exports
+- `fmm_file_info(file)` - Get structured metadata for a specific file
+- `fmm_dependency_graph(file)` - Get upstream/downstream dependencies for a file
+- `fmm_search({export?, imports?, depends_on?, min_loc?, max_loc?})` - Multi-criteria search
 - `fmm_get_manifest()` - Get full project structure
 ```
