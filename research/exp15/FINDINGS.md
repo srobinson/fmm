@@ -207,7 +207,58 @@ The skill provides behavioral guidance ("check the manifest first"), MCP provide
 
 ---
 
+## Isolated Experiment (Docker-based)
+
+**Status:** Tooling complete — awaiting execution
+
+### Motivation
+
+The results above were collected without full isolation:
+- Shared filesystem (host machine)
+- Shared Claude config (~/.claude, global CLAUDE.md)
+- Potential prompt cache bleeding between conditions
+- Ambient MCP servers from user environment
+
+With proper Docker isolation (clean containers per run, no shared state), the true deltas between conditions should be larger because there's no "ambient knowledge" boosting weaker conditions.
+
+### Isolation Guarantees
+
+Each experiment run executes in a fresh Docker container with:
+- **No `~/.claude/` directory** — no cached sessions, no user config
+- **No `~/.config/` directory** — no global settings
+- **No ambient MCP servers** — only what the condition explicitly provides
+- **No prompt cache sharing** — `--setting-sources ""` + `--no-session-persistence`
+- **Network disabled** — `network_mode: none` prevents external API leaks
+- **tmpfs for temp dirs** — `/tmp` and `/root/.claude` are ephemeral
+
+### How to Run
+
+```bash
+cd research/exp15-isolated/
+cp .env.example .env    # Add API key + codebase path
+./setup.sh              # Copy fmm source, create directories
+./run-isolated.sh       # All 48 runs (or filter: ./run-isolated.sh A 1 2)
+python3 compare-isolated.py  # Compare against non-isolated baseline
+```
+
+### Expected Improvements
+
+With true isolation, we expect:
+- **Condition A (CLAUDE.md):** Similar or slightly worse (no ambient help)
+- **Condition C (MCP only):** Significantly worse (no ambient CLAUDE.md to bootstrap)
+- **Condition D (Skill+MCP):** Similar or better (self-contained, no ambient noise)
+- **Overall delta A→D:** Larger than 30% observed in non-isolated runs
+
+The key hypothesis: ambient config in non-isolated runs artificially helps weaker conditions (especially C), compressing the observed delta. True isolation should reveal larger differences.
+
+### Results
+
+*Pending execution. Run `./run-isolated.sh` then `python3 compare-isolated.py` to populate.*
+
+---
+
 *Experiment run: 2026-01-30*
-*48 runs: 4 conditions × 4 tasks × 3 runs per condition*
+*48 runs (non-isolated): 4 conditions × 4 tasks × 3 runs per condition*
+*48 runs (isolated): Pending execution*
 *Test codebase: agentic-flow (1306 files, 3426 exports)*
 *Collaborators: Stuart Robinson, Claude Opus 4.5*
