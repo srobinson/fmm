@@ -1,0 +1,196 @@
+{
+  "condition": "control",
+  "label": "architecture-overview",
+  "query": "Describe the architecture of this project. What are the main modules, their roles, key exports, and how they depend on each other? Be specific about file paths.",
+  "duration_seconds": 93,
+  "tool_calls_count": 25,
+  "tool_calls_by_type": {
+    "Bash": 3,
+    "Glob": 3,
+    "Read": 19
+  },
+  "tool_calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "pwd",
+        "description": "Get current working directory"
+      }
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "ls -la",
+        "description": "List all files in root directory"
+      }
+    },
+    {
+      "tool": "Glob",
+      "input": {
+        "pattern": "**/*.json"
+      }
+    },
+    {
+      "tool": "Glob",
+      "input": {
+        "pattern": "**/*.ts"
+      }
+    },
+    {
+      "tool": "Glob",
+      "input": {
+        "pattern": "**/*.tsx"
+      }
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "tree -d src/",
+        "description": "Show directory structure"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/index.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/tsconfig.json"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/config/app.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/api/routes/auth.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/api/routes/users.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/api/controllers/authController.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/api/models/user.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/api/models/session.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/auth/types.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/auth/login.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/auth/signup.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/auth/jwt.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/auth/password.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/middleware/auth.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/middleware/rateLimit.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/services/audit.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/services/email.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/utils/id.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/utils/validation.ts"
+      }
+    }
+  ],
+  "files_read": [
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/api/controllers/authController.ts",
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/api/models/session.ts",
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/api/models/user.ts",
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/api/routes/auth.ts",
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/api/routes/users.ts",
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/auth/jwt.ts",
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/auth/login.ts",
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/auth/password.ts",
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/auth/signup.ts",
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/auth/types.ts",
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/config/app.ts",
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/index.ts",
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/middleware/auth.ts",
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/middleware/rateLimit.ts",
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/services/audit.ts",
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/services/email.ts",
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/utils/id.ts",
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/src/utils/validation.ts",
+    "/Users/alphab/Dev/LLM/DEV/fmm-worktrees/nancy-ALP-409/research/exp14/repos/clean/tsconfig.json"
+  ],
+  "files_read_count": 19,
+  "tokens_in": 313664,
+  "tokens_out": 4925,
+  "tokens_total": 318589,
+  "cost_usd": 0.0025,
+  "discovered_fmm": false,
+  "used_manifest": false,
+  "response_lines": 346
+}

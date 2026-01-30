@@ -1,0 +1,85 @@
+# CONTROL — auth-exports
+# Query: Find all files that export authentication-related functions. List each file path and the specific auth exports.
+# Duration: 28s
+# Tool calls: 13
+# Files read: 10
+# Tokens: 113008 in / 1633 out
+# Cost: $0.0616
+# FMM discovered: False
+# Manifest used: False
+
+## Tool Call Sequence
+
+  1. Grep(export.*(auth|Auth|login|Login|logout|Logout|signin|Signin|signout|Signout|token|Token|credential|Credential))
+  2. Grep(export\s+(default\s+)?(class|function|const|let|var).*(auth|Auth|login|Login|logout|Logout|signin|Signin|signout|Signout|token|Token|credential|Credential))
+  3. Grep(export\s*\{[^}]*(auth|Auth|login|Login|logout|Logout|signin|Signin|signout|Signout|token|Token|credential|Credential))
+  4. Read(src/auth/login.ts)
+  5. Read(src/auth/signup.ts)
+  6. Read(src/auth/jwt.ts)
+  7. Read(src/auth/types.ts)
+  8. Read(src/middleware/auth.ts)
+  9. Read(src/api/routes/auth.ts)
+  10. Read(src/api/controllers/authController.ts)
+  11. Read(src/api/models/session.ts)
+  12. Read(src/services/audit.ts)
+  13. Read(src/middleware/rateLimit.ts)
+
+## LLM Response
+
+I'll help you find all files that export authentication-related functions. Let me search for authentication-related exports in the codebase.
+Now let me read some of these key files to get the complete picture of what's being exported:
+Perfect! Now I have a complete picture. Let me compile the results for you:
+
+## Files Exporting Authentication-Related Functions
+
+### 1. **src/auth/login.ts**
+   - `authenticateUser(credentials: LoginCredentials): Promise<AuthResult>` - Main user authentication function
+   - `validateSession(token: string): Promise<UserPayload | null>` - Session validation function
+
+### 2. **src/auth/signup.ts**
+   - `registerUser(data: SignupData): Promise<AuthResult>` - User registration function
+   - `validateSignupData(data: Partial<SignupData>): string[]` - Signup data validation function
+
+### 3. **src/auth/jwt.ts**
+   - `generateToken(payload: UserPayload): string` - JWT token generation
+   - `verifyToken(token: string): UserPayload | null` - JWT token verification
+   - `refreshToken(token: string): string | null` - JWT token refresh
+
+### 4. **src/auth/types.ts**
+   - `AuthResult` (interface) - Authentication result type
+   - `LoginCredentials` (interface) - Login credentials type
+   - `SignupData` (interface) - Signup data type
+   - `UserPayload` (interface) - User payload type
+   - `UserRole` (type) - User role type
+   - `PasswordResetRequest` (interface) - Password reset request type
+
+### 5. **src/middleware/auth.ts**
+   - `authMiddleware(req, res, next): void` - Authentication middleware
+   - `requireRole(...roles: UserRole[])` - Role-based authorization middleware factory
+   - `optionalAuth(req, res, next): void` - Optional authentication middleware
+   - `AuthenticatedRequest` (interface) - Authenticated request type
+
+### 6. **src/api/routes/auth.ts**
+   - `getAuthRoutes(): Route[]` - Returns authentication route configurations
+
+### 7. **src/api/controllers/authController.ts**
+   - `AuthController` (class) - Controller with login, signup, and logout methods
+   - `createAuthController(): AuthController` - Factory function for AuthController
+
+### 8. **src/api/models/session.ts**
+   - `createSession(userId, token, meta): Promise<Session>` - Create user session
+   - `findSessionByToken(token: string): Promise<Session | undefined>` - Find session by token
+   - `deleteSessionsByUser(userId: string): Promise<number>` - Delete all sessions for a user
+   - `cleanExpiredSessions(): Promise<number>` - Clean up expired sessions
+
+### 9. **src/services/audit.ts**
+   - `logAuthEvent(event: string, data: Record<string, unknown>): Promise<void>` - Log authentication events
+   - `getAuditLog(filters?): Promise<AuditEntry[]>` - Retrieve audit logs
+   - `clearAuditLog(): void` - Clear audit log
+
+### 10. **src/middleware/rateLimit.ts**
+   - `authRateLimiter()` - Rate limiter specifically configured for auth endpoints (5 requests per 15 minutes)
+   - `rateLimiter(maxRequests, windowMs)` - Generic rate limiter factory
+   - `clearRateLimitStore(): void` - Clear rate limit store
+
+These files form a complete authentication system with JWT tokens, session management, audit logging, rate limiting, and role-based access control.

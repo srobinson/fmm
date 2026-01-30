@@ -1,0 +1,240 @@
+# TREATMENT — architecture-overview
+# Query: Describe the architecture of this project. What are the main modules, their roles, key exports, and how they depend on each other? Be specific about file paths.
+# Duration: 67s
+# Tool calls: 16
+# Files read: 12
+# Tokens: 217601 in / 3294 out
+# Cost: $0.0040
+# FMM discovered: True
+# Manifest used: True
+
+## Tool Call Sequence
+
+  1. Read(.fmm/index.json)
+  2. Read(package.json)
+  3. Bash(pwd)
+  4. Bash(ls -la)
+  5. Bash(find . -name "*.json" -type f | head -20)
+  6. Bash(ls -la src/)
+  7. Read(./src/.fmm/index.json)
+  8. Read(./src/index.ts)
+  9. Read(./tsconfig.json)
+  10. Bash(tree -L 3 src/ -I 'node_modules')
+  11. Read(./src/config/app.ts)
+  12. Read(./src/auth/types.ts)
+  13. Read(./src/api/models/user.ts)
+  14. Read(./src/api/routes/auth.ts)
+  15. Read(./src/auth/login.ts)
+  16. Read(./src/middleware/auth.ts)
+
+## LLM Response
+
+I'll analyze the architecture of this project by first checking the FMM metadata, then exploring the key files.
+Let me check the current directory structure:
+Perfect! Now let me read the FMM metadata:
+Excellent! Now let me explore a few key files to understand the architecture better:
+Perfect! Now let me read a few more key files to understand the complete picture:
+Now let me check the authentication flow and routes:
+Perfect! Now I have a complete picture. Let me provide a comprehensive architectural overview:
+
+## Project Architecture Overview
+
+This is a **TypeScript-based authentication and user management API** with a modular, layered architecture. The project consists of 18 source files totaling approximately 700 lines of code.
+
+---
+
+## **Core Architecture Layers**
+
+### **1. Entry Point**
+- **`src/index.ts`** (30 LOC)
+  - **Exports**: `createApp`
+  - **Dependencies**: `config/app`, `api/routes/auth`, `api/routes/users`, `middleware/rateLimit`
+  - **Role**: Application bootstrap and initialization
+  - Creates the app with routes, middleware, and configuration validation
+  - Registers auth and user routes, applies global rate limiting
+
+---
+
+### **2. Configuration Layer** (`src/config/`)
+- **`config/app.ts`** (33 LOC)
+  - **Exports**: `AppConfig`, `config`, `validateConfig`
+  - **Dependencies**: None
+  - **Role**: Centralized configuration management
+  - Defines app configuration interface (port, JWT settings, bcrypt rounds, rate limits)
+  - Loads config from environment variables with defaults
+  - Provides validation for production readiness
+
+---
+
+### **3. API Layer** (`src/api/`)
+
+#### **Routes** (`src/api/routes/`)
+- **`routes/auth.ts`** (84 LOC)
+  - **Exports**: `getAuthRoutes`
+  - **Dependencies**: `auth/jwt`, `auth/login`, `auth/signup`, `middleware/auth`, `middleware/rateLimit`
+  - **Role**: Authentication endpoint definitions
+  - Routes: `/auth/login`, `/auth/signup`, `/auth/refresh`, `/auth/me`
+  - Applies auth rate limiting and authentication middleware
+
+- **`routes/users.ts`** (74 LOC)
+  - **Exports**: `getUserRoutes`
+  - **Dependencies**: `middleware/auth`, `api/models/user`
+  - **Role**: User management endpoint definitions
+  - Provides CRUD operations for users with authentication
+
+#### **Models** (`src/api/models/`)
+- **`models/user.ts`** (63 LOC)
+  - **Exports**: `User`, `createUser`, `findUserByEmail`, `findUserById`, `listUsers`, `updateUser`, `deleteUser`, `countUsers`
+  - **Dependencies**: `auth/types`, `utils/id`
+  - **Role**: User data model and persistence (in-memory Map storage)
+  - Core user entity with CRUD operations
+
+- **`models/session.ts`** (54 LOC)
+  - **Exports**: `Session`, `createSession`, `findSessionByToken`, `deleteSessionsByUser`, `cleanExpiredSessions`
+  - **Dependencies**: `utils/id`
+  - **Role**: Session management and storage
+  - Handles session lifecycle (in-memory Map storage)
+
+#### **Controllers** (`src/api/controllers/`)
+- **`controllers/authController.ts`** (31 LOC)
+  - **Exports**: `AuthController`, `createAuthController`
+  - **Dependencies**: `auth/login`, `auth/signup`, `auth/types`, `services/audit`
+  - **Role**: Business logic orchestration for authentication
+
+---
+
+### **4. Authentication Layer** (`src/auth/`)
+
+- **`auth/types.ts`** (29 LOC)
+  - **Exports**: `UserPayload`, `AuthResult`, `LoginCredentials`, `SignupData`, `PasswordResetRequest`
+  - **Dependencies**: None
+  - **Role**: Type definitions for authentication domain
+  - Defines `UserRole` type: 'admin' | 'user' | 'moderator'
+
+- **`auth/jwt.ts`** (36 LOC)
+  - **Exports**: `generateToken`, `verifyToken`, `refreshToken`
+  - **Dependencies**: `auth/types`, `config/app`
+  - **Role**: JWT token generation and validation
+  - Core security mechanism for session management
+
+- **`auth/password.ts`** (47 LOC)
+  - **Exports**: `hashPassword`, `verifyPassword`, `validatePasswordStrength`
+  - **Dependencies**: `config/app`
+  - **Role**: Password hashing and validation using bcrypt
+  - Enforces password security policies
+
+- **`auth/login.ts`** (30 LOC)
+  - **Exports**: `authenticateUser`, `validateSession`
+  - **Dependencies**: `api/models/user`, `services/audit`, `auth/jwt`, `auth/password`, `auth/types`
+  - **Role**: User authentication flow
+  - Orchestrates login process: user lookup → password verification → token generation → audit logging
+
+- **`auth/signup.ts`** (37 LOC)
+  - **Exports**: `registerUser`, `validateSignupData`
+  - **Dependencies**: `api/models/user`, `services/audit`, `services/email`, `auth/jwt`, `auth/password`, `auth/types`
+  - **Role**: User registration flow
+  - Handles signup: validation → password hashing → user creation → email notification → token generation
+
+---
+
+### **5. Middleware Layer** (`src/middleware/`)
+
+- **`middleware/auth.ts`** (55 LOC)
+  - **Exports**: `AuthenticatedRequest`, `Response`, `authMiddleware`, `optionalAuth`, `requireRole`
+  - **Dependencies**: `auth/jwt`, `auth/types`
+  - **Role**: Request authentication and authorization
+  - Provides middleware for: required auth, optional auth, role-based access control
+
+- **`middleware/rateLimit.ts`** (47 LOC)
+  - **Exports**: `rateLimiter`, `authRateLimiter`, `clearRateLimitStore`
+  - **Dependencies**: `middleware/auth`
+  - **Role**: Request rate limiting
+  - Protects endpoints from abuse with configurable time windows and request limits
+
+---
+
+### **6. Services Layer** (`src/services/`)
+
+- **`services/audit.ts`** (38 LOC)
+  - **Exports**: `AuditEntry`, `logAuthEvent`, `getAuditLog`, `clearAuditLog`
+  - **Dependencies**: None
+  - **Role**: Security event logging and audit trail
+  - Tracks authentication events (login success/failure, signup, etc.)
+
+- **`services/email.ts`** (35 LOC)
+  - **Exports**: `EmailMessage`, `sendEmail`, `sendWelcomeEmail`, `sendPasswordResetEmail`, `getSentEmails`, `clearSentEmails`
+  - **Dependencies**: None
+  - **Role**: Email notification system (mock implementation)
+  - Sends welcome emails and password reset notifications
+
+---
+
+### **7. Utilities Layer** (`src/utils/`)
+
+- **`utils/id.ts`** (18 LOC)
+  - **Exports**: `generateId`, `isValidId`, `extractTimestamp`
+  - **Dependencies**: None
+  - **Role**: Unique identifier generation
+  - Creates timestamp-based IDs with validation
+
+- **`utils/validation.ts`** (31 LOC)
+  - **Exports**: `isValidEmail`, `sanitizeInput`, `truncate`, `parseQueryParams`
+  - **Dependencies**: None
+  - **Role**: Input validation and sanitization
+  - Email validation, XSS prevention, string utilities
+
+---
+
+## **Key Dependency Flows**
+
+### **Authentication Flow**
+```
+index.ts
+  └─> api/routes/auth.ts
+       ├─> middleware/rateLimit.ts
+       ├─> middleware/auth.ts
+       │    └─> auth/jwt.ts
+       └─> auth/login.ts
+            ├─> api/models/user.ts
+            │    └─> utils/id.ts
+            ├─> auth/password.ts
+            ├─> auth/jwt.ts
+            └─> services/audit.ts
+```
+
+### **User Registration Flow**
+```
+api/routes/auth.ts
+  └─> auth/signup.ts
+       ├─> api/models/user.ts
+       ├─> auth/password.ts
+       ├─> services/email.ts
+       ├─> services/audit.ts
+       └─> auth/jwt.ts
+```
+
+---
+
+## **Architectural Patterns**
+
+1. **Layered Architecture**: Clear separation of concerns (API → Auth → Services → Models → Utils)
+2. **Dependency Injection**: Configuration and services passed through function parameters
+3. **In-Memory Storage**: Uses JavaScript Maps for user and session storage (suitable for development/testing)
+4. **Middleware Pipeline**: Express-style middleware for cross-cutting concerns (auth, rate limiting)
+5. **Type Safety**: Full TypeScript with strict mode enabled
+6. **Functional Core**: Primarily uses functions rather than classes
+7. **Security-First**: Built-in rate limiting, password hashing, JWT tokens, audit logging, and input validation
+
+---
+
+## **Key Design Decisions**
+
+- **No external dependencies** visible (self-contained implementation)
+- **In-memory storage** (no database required - demo/test oriented)
+- **JWT-based authentication** (stateless sessions)
+- **Role-based access control** (admin/user/moderator)
+- **Comprehensive audit logging** for security events
+- **Email notification system** (mock implementation for testing)
+- **Configuration validation** ensures production-readiness
+
+This is a well-structured, security-focused authentication API suitable for learning, testing, or as a foundation for a production service with proper database integration.

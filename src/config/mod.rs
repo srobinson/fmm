@@ -60,7 +60,6 @@ impl Config {
     pub fn is_supported_language(&self, extension: &str) -> bool {
         self.languages.contains(extension)
     }
-
 }
 
 fn default_languages() -> HashSet<String> {
