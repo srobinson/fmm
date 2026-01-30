@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>fmm Token Savings Calculator</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f0f1a;
+    --surface: #1a1a2e;
+    --surface-2: #222240;
+    --border: #2a2a4a;
+    --text: #e0e0f0;
+    --text-muted: #8888aa;
+    --accent: #4ade80;
+    --accent-dim: #22c55e;
+    --accent-glow: rgba(74, 222, 128, 0.15);
+    --brand: #7c3aed;
+    --brand-dim: #6d28d9;
+    --danger: #f87171;
+    --radius: 12px;
+    --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  .container {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+  }
+
+  /* Header */
+  header {
+    text-align: center;
+    margin-bottom: 2.5rem;
+  }
+
+  .logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.75rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    margin-bottom: 0.25rem;
+  }
+
+  .logo .fmm {
+    background: linear-gradient(135deg, var(--brand), #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  header .subtitle {
+    color: var(--text-muted);
+    font-size: 1rem;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+
+  /* Layout */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    align-items: start;
+  }
+
+  @media (max-width: 768px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+  }
+
+  .card h2 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 1.25rem;
+  }
+
+  /* Inputs */
+  .field {
+    margin-bottom: 1.25rem;
+  }
+
+  .field:last-child { margin-bottom: 0; }
+
+  .field label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 0.9rem;
+    margin-bottom: 0.4rem;
+    color: var(--text);
+  }
+
+  .field .value-display {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    min-width: 3.5em;
+    text-align: right;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--surface-2);
+    outline: none;
+    cursor: pointer;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--brand);
+    border: 2px solid var(--text);
+    cursor: pointer;
+    transition: transform var(--transition);
+  }
+
+  input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--brand);
+    border: 2px solid var(--text);
+    cursor: pointer;
+  }
+
+  select, .custom-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color var(--transition);
+  }
+
+  select:focus, .custom-input:focus {
+    border-color: var(--brand);
+  }
+
+  .custom-cost-row {
+    display: none;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+  }
+
+  .custom-cost-row.visible {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .custom-cost-row label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 0.25rem;
+    display: block;
+  }
+
+  .custom-input {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Output card */
+  .output-card {
+    position: sticky;
+    top: 1.5rem;
+  }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+
+  .stat {
+    background: var(--surface-2);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    transition: background var(--transition);
+  }
+
+  .stat .label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: 0.2rem;
+  }
+
+  .stat .number {
+    font-size: 1.15rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    transition: color var(--transition);
+  }
+
+  .stat.highlight {
+    grid-column: 1 / -1;
+    background: var(--accent-glow);
+    border: 1px solid rgba(74, 222, 128, 0.25);
+    text-align: center;
+    padding: 1.25rem;
+  }
+
+  .stat.highlight .number {
+    font-size: 2.5rem;
+    color: var(--accent);
+    letter-spacing: -0.02em;
+  }
+
+  .stat.highlight .label {
+    font-size: 0.85rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .stat .green { color: var(--accent); }
+  .stat .red { color: var(--danger); }
+  .stat .muted { color: var(--text-muted); }
+
+  .reduction-bar {
+    margin-top: 1rem;
+    background: var(--surface-2);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+  }
+
+  .reduction-bar .label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+  }
+
+  .bar-track {
+    height: 10px;
+    background: var(--border);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--brand), var(--accent));
+    border-radius: 5px;
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .bar-value {
+    text-align: right;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--accent);
+    margin-top: 0.3rem;
+  }
+
+  /* Breakeven */
+  .breakeven {
+    margin-top: 1rem;
+    background: var(--surface-2);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    text-align: center;
+  }
+
+  .breakeven .label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+  }
+
+  .breakeven .number {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--brand);
+    margin-top: 0.1rem;
+  }
+
+  /* How section */
+  details {
+    margin-top: 1.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  summary {
+    padding: 1rem 1.5rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    user-select: none;
+    transition: color var(--transition);
+  }
+
+  summary:hover { color: var(--text); }
+
+  summary::marker { color: var(--brand); }
+
+  .details-body {
+    padding: 0 1.5rem 1.25rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.7;
+  }
+
+  .details-body code {
+    background: var(--surface-2);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-size: 0.82rem;
+    color: var(--text);
+  }
+
+  .details-body p { margin-bottom: 0.6rem; }
+  .details-body ul { margin: 0.4rem 0 0.8rem 1.25rem; }
+  .details-body li { margin-bottom: 0.25rem; }
+
+  /* Footer */
+  footer {
+    text-align: center;
+    margin-top: 2.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+  }
+
+  /* Animations */
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="logo"><span class="fmm">fmm</span> Token Savings Calculator</div>
+    <p class="subtitle">See how much your team saves with structured metadata sidecars</p>
+  </header>
+
+  <div class="grid">
+    <!-- Inputs -->
+    <div class="card">
+      <h2>Configuration</h2>
+
+      <div class="field">
+        <label>Codebase size <span class="value-display" id="v-files">500</span> files</label>
+        <input type="range" id="files" min="50" max="5000" step="10" value="500">
+      </div>
+
+      <div class="field">
+        <label>Average file size <span class="value-display" id="v-loc">200</span> LOC</label>
+        <input type="range" id="loc" min="20" max="1000" step="10" value="200">
+      </div>
+
+      <div class="field">
+        <label>Queries per day / dev <span class="value-display" id="v-queries">20</span></label>
+        <input type="range" id="queries" min="1" max="100" step="1" value="20">
+      </div>
+
+      <div class="field">
+        <label>Team size <span class="value-display" id="v-team">5</span> developers</label>
+        <input type="range" id="team" min="1" max="50" step="1" value="5">
+      </div>
+
+      <div class="field">
+        <label>Model</label>
+        <select id="model">
+          <option value="opus" selected>Claude Opus 4.5 &mdash; $5.00 / $15.00 per 1M</option>
+          <option value="sonnet">Claude Sonnet 4.5 &mdash; $3.00 / $15.00 per 1M</option>
+          <option value="gpt4o">GPT-4o &mdash; $2.50 / $10.00 per 1M</option>
+          <option value="custom">Custom</option>
+        </select>
+        <div class="custom-cost-row" id="custom-row">
+          <div>
+            <label for="custom-input-cost">Input $/1M tokens</label>
+            <input type="number" class="custom-input" id="custom-input-cost" value="5.00" min="0" step="0.01">
+          </div>
+          <div>
+            <label for="custom-output-cost">Output $/1M tokens</label>
+            <input type="number" class="custom-input" id="custom-output-cost" value="15.00" min="0" step="0.01">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Outputs -->
+    <div class="card output-card">
+      <h2>Savings</h2>
+
+      <div class="stat highlight">
+        <div class="label">Annual savings (team)</div>
+        <div class="number" id="out-annual">$0</div>
+      </div>
+
+      <div class="stat-grid" style="margin-top: 1rem;">
+        <div class="stat">
+          <div class="label">Tokens / query without</div>
+          <div class="number red" id="out-tok-without">0</div>
+        </div>
+        <div class="stat">
+          <div class="label">Tokens / query with fmm</div>
+          <div class="number green" id="out-tok-with">0</div>
+        </div>
+        <div class="stat">
+          <div class="label">Cost / query without</div>
+          <div class="number red" id="out-cost-without">$0</div>
+        </div>
+        <div class="stat">
+          <div class="label">Cost / query with fmm</div>
+          <div class="number green" id="out-cost-with">$0</div>
+        </div>
+        <div class="stat">
+          <div class="label">Daily savings</div>
+          <div class="number green" id="out-daily">$0</div>
+        </div>
+        <div class="stat">
+          <div class="label">Monthly savings</div>
+          <div class="number green" id="out-monthly">$0</div>
+        </div>
+      </div>
+
+      <div class="reduction-bar">
+        <div class="label">Token reduction</div>
+        <div class="bar-track"><div class="bar-fill" id="bar-fill" style="width: 0%"></div></div>
+        <div class="bar-value" id="out-reduction">0%</div>
+      </div>
+
+      <div class="breakeven">
+        <div class="label">fmm pays for itself after</div>
+        <div class="number" id="out-breakeven">0 queries</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- How we calculate -->
+  <details>
+    <summary>How we calculate this</summary>
+    <div class="details-body">
+      <p><strong>Without fmm</strong> &mdash; an AI agent navigating your codebase reads ~30% of files per query to locate relevant code. Each file is tokenised at roughly 4 tokens per line of code.</p>
+      <p><code>tokens_without = avg_loc &times; 4 &times; (codebase_size &times; 0.3)</code></p>
+
+      <p><strong>With fmm</strong> &mdash; the agent reads a compact manifest (~500 tokens) and only the sidecar files it needs (~40 tokens each, typically 5 per query).</p>
+      <p><code>tokens_with = 500 + (40 &times; 5) = 700 tokens</code></p>
+
+      <p><strong>Cost calculation</strong> uses the selected model's input token price:</p>
+      <ul>
+        <li><code>cost_per_query = tokens / 1,000,000 &times; $/1M input</code></li>
+        <li><code>daily_savings = (cost_without - cost_with) &times; queries_per_day &times; team_size</code></li>
+        <li><code>monthly_savings = daily &times; 22 working days</code></li>
+        <li><code>annual_savings = daily &times; 260 working days</code></li>
+      </ul>
+
+      <p><strong>Breakeven</strong> assumes a one-time fmm setup cost of ~5 minutes per dev (valued at $0 for this calculator, so breakeven is effectively 1 query). The real breakeven reflects the first query where cumulative savings exceed zero.</p>
+    </div>
+  </details>
+
+  <footer>
+    Based on experimental data from 5 experiments, 48+ runs. See research/ for methodology.
+  </footer>
+</div>
+
+<script>
+(function () {
+  const MODELS = {
+    opus:   { input: 5.00,  output: 15.00 },
+    sonnet: { input: 3.00,  output: 15.00 },
+    gpt4o:  { input: 2.50,  output: 10.00 },
+  };
+
+  const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtBig = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const fmtNum = new Intl.NumberFormat('en-US');
+  const fmtPct = new Intl.NumberFormat('en-US', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+  const $ = (id) => document.getElementById(id);
+
+  const sliders = ['files', 'loc', 'queries', 'team'];
+  const modelSelect = $('model');
+  const customRow = $('custom-row');
+  const customInputCost = $('custom-input-cost');
+  const customOutputCost = $('custom-output-cost');
+
+  function getModelCost() {
+    const v = modelSelect.value;
+    if (v === 'custom') {
+      return { input: parseFloat(customInputCost.value) || 0, output: parseFloat(customOutputCost.value) || 0 };
+    }
+    return MODELS[v];
+  }
+
+  function calculate() {
+    const files = parseInt($('files').value);
+    const loc = parseInt($('loc').value);
+    const queries = parseInt($('queries').value);
+    const team = parseInt($('team').value);
+    const cost = getModelCost();
+
+    // Update value displays
+    $('v-files').textContent = fmtNum.format(files);
+    $('v-loc').textContent = fmtNum.format(loc);
+    $('v-queries').textContent = queries;
+    $('v-team').textContent = team;
+
+    // Tokens
+    const filesScanned = Math.floor(files * 0.3);
+    const tokensWithout = loc * 4 * filesScanned;
+    const tokensWith = 500 + (40 * 5);
+
+    const reduction = 1 - (tokensWith / tokensWithout);
+
+    // Costs (using input price for navigation tokens)
+    const costWithout = (tokensWithout / 1_000_000) * cost.input;
+    const costWith = (tokensWith / 1_000_000) * cost.input;
+    const savingsPerQuery = costWithout - costWith;
+
+    const daily = savingsPerQuery * queries * team;
+    const monthly = daily * 22;
+    const annual = daily * 260;
+
+    // Breakeven: queries until savings > 0 (effectively 1)
+    const breakeven = savingsPerQuery > 0 ? 1 : Infinity;
+
+    // Render
+    $('out-tok-without').textContent = fmtNum.format(tokensWithout);
+    $('out-tok-with').textContent = fmtNum.format(tokensWith);
+    $('out-cost-without').textContent = fmt.format(costWithout);
+    $('out-cost-with').textContent = fmt.format(costWith);
+    $('out-daily').textContent = fmt.format(daily);
+    $('out-monthly').textContent = fmt.format(monthly);
+
+    const annualStr = annual >= 1000 ? fmtBig.format(annual) : fmt.format(annual);
+    $('out-annual').textContent = annualStr;
+
+    const pct = Math.max(0, Math.min(1, reduction));
+    $('bar-fill').style.width = (pct * 100).toFixed(1) + '%';
+    $('out-reduction').textContent = fmtPct.format(pct);
+
+    $('out-breakeven').textContent = breakeven === Infinity ? 'N/A' : breakeven + ' query';
+  }
+
+  // Bind events
+  sliders.forEach(function (id) {
+    $(id).addEventListener('input', calculate);
+  });
+
+  modelSelect.addEventListener('change', function () {
+    customRow.classList.toggle('visible', modelSelect.value === 'custom');
+    calculate();
+  });
+
+  customInputCost.addEventListener('input', calculate);
+  customOutputCost.addEventListener('input', calculate);
+
+  // Initial calculation
+  calculate();
+})();
+</script>
+</body>
+</html>
