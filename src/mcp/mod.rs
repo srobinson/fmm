@@ -2,9 +2,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
-use std::path::{Path, PathBuf};
-use std::time::SystemTime;
-
+use std::path::PathBuf;
 use crate::manifest::Manifest;
 
 const PROTOCOL_VERSION: &str = "2024-11-05";
@@ -48,7 +46,6 @@ struct Tool {
 pub struct McpServer {
     manifest: Option<Manifest>,
     root: PathBuf,
-    manifest_mtime: Option<SystemTime>,
 }
 
 impl Default for McpServer {
@@ -60,32 +57,18 @@ impl Default for McpServer {
 impl McpServer {
     pub fn new() -> Self {
         let root = std::env::current_dir().unwrap_or_default();
-        let manifest = Manifest::load(&root).ok().flatten();
-        let manifest_mtime = Self::get_manifest_mtime(&root);
-        Self {
-            manifest,
-            root,
-            manifest_mtime,
-        }
+        let manifest = Manifest::load_from_sidecars(&root).ok();
+        Self { manifest, root }
     }
 
-    fn get_manifest_mtime(root: &Path) -> Option<SystemTime> {
-        let path = root.join(".fmm").join("index.json");
-        std::fs::metadata(path).ok().and_then(|m| m.modified().ok())
-    }
-
-    fn maybe_reload(&mut self) {
-        let current_mtime = Self::get_manifest_mtime(&self.root);
-        if current_mtime != self.manifest_mtime {
-            self.manifest = Manifest::load(&self.root).ok().flatten();
-            self.manifest_mtime = current_mtime;
-        }
+    fn reload(&mut self) {
+        self.manifest = Manifest::load_from_sidecars(&self.root).ok();
     }
 
     fn require_manifest(&self) -> Result<&Manifest, String> {
         self.manifest
             .as_ref()
-            .ok_or_else(|| "No manifest found. Run 'fmm generate' first.".to_string())
+            .ok_or_else(|| "No sidecars found. Run 'fmm generate' first.".to_string())
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -117,9 +100,9 @@ impl McpServer {
                 }
             };
 
-            // Hot-reload manifest before handling tool calls
+            // Rebuild index from sidecars before handling tool calls
             if request.method == "tools/call" {
-                self.maybe_reload();
+                self.reload();
             }
 
             let response = self.handle_request(&request);
@@ -182,13 +165,13 @@ impl McpServer {
         let tools = vec![
             Tool {
                 name: "fmm_lookup_export".to_string(),
-                description: "Find which file exports a given symbol. Returns file path and full metadata (exports, imports, dependencies, loc).".to_string(),
+                description: "Instant O(1) symbol-to-file lookup. Find where a function, class, type, or variable is defined. Returns the file path plus metadata (exports, imports, dependencies, LOC). Use before Grep.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
                         "name": {
                             "type": "string",
-                            "description": "The export name to find"
+                            "description": "Exact export name to find (function, class, type, variable, component)"
                         }
                     },
                     "required": ["name"]
@@ -196,30 +179,30 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_list_exports".to_string(),
-                description: "List exports from the manifest. If 'pattern' is given, returns all exports matching the substring across all files. If 'file' is given, returns exports from that specific file.".to_string(),
+                description: "Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Use 'file' to list a specific file's exports.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
                         "pattern": {
                             "type": "string",
-                            "description": "Substring to match against export names (case-insensitive)"
+                            "description": "Substring to match against export names (case-insensitive). E.g. 'auth' finds all auth-related exports."
                         },
                         "file": {
                             "type": "string",
-                            "description": "File path to list exports from"
+                            "description": "File path — returns all exports from this specific file"
                         }
                     }
                 }),
             },
             Tool {
                 name: "fmm_file_info".to_string(),
-                description: "Get structured metadata for a specific file: exports, imports, dependencies, and lines of code.".to_string(),
+                description: "Get a file's structural profile from the index: exports, imports, dependencies, LOC. Same data as the file's .fmm sidecar, but from the pre-built index.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
                         "file": {
                             "type": "string",
-                            "description": "The file path to get info for"
+                            "description": "File path to inspect — returns exports, imports, dependencies, LOC without reading source"
                         }
                     },
                     "required": ["file"]
@@ -227,13 +210,13 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_dependency_graph".to_string(),
-                description: "Get the dependency graph for a file: what it depends on (upstream) and what depends on it (downstream).".to_string(),
+                description: "Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
                         "file": {
                             "type": "string",
-                            "description": "The file path to get dependency graph for"
+                            "description": "File path to analyze — returns all upstream dependencies and downstream dependents"
                         }
                     },
                     "required": ["file"]
@@ -241,41 +224,36 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_search".to_string(),
-                description: "Search the codebase manifest. Find files by exports, imports, dependencies, or line count.".to_string(),
+                description: "Search files by structural criteria: exported symbol, imported package, local dependency, or LOC range. Filters combine with AND logic. Use for 'which files use crypto?', 'what depends on auth?'.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
                         "export": {
                             "type": "string",
-                            "description": "Find file that exports this symbol"
+                            "description": "Find the file that exports this symbol (exact match)"
                         },
                         "imports": {
                             "type": "string",
-                            "description": "Find files that import this module"
+                            "description": "Find all files that import this package/module (substring match)"
                         },
                         "depends_on": {
                             "type": "string",
-                            "description": "Find files that depend on this path"
+                            "description": "Find all files that depend on this local path — use for impact analysis"
                         },
                         "min_loc": {
                             "type": "integer",
-                            "description": "Minimum lines of code"
+                            "description": "Minimum lines of code — find files larger than this"
                         },
                         "max_loc": {
                             "type": "integer",
-                            "description": "Maximum lines of code"
+                            "description": "Maximum lines of code — find files smaller than this"
                         }
                     }
                 }),
             },
-            Tool {
-                name: "fmm_get_manifest".to_string(),
-                description: "Get the full manifest with all file metadata. Use for understanding overall project structure.".to_string(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {}
-                }),
-            },
+            // fmm_get_manifest and fmm_project_overview REMOVED —
+            // dumping the entire index is an anti-pattern (ALP-396).
+            // Use targeted tools: fmm_lookup_export, fmm_search, fmm_dependency_graph.
         ];
 
         Ok(json!({ "tools": tools }))
@@ -301,14 +279,17 @@ impl McpServer {
         let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
 
         let result = match tool_name {
+            // Original tools
             "fmm_lookup_export" => self.tool_lookup_export(&arguments),
             "fmm_list_exports" => self.tool_list_exports(&arguments),
             "fmm_file_info" => self.tool_file_info(&arguments),
             "fmm_dependency_graph" => self.tool_dependency_graph(&arguments),
             "fmm_search" => self.tool_search(&arguments),
-            "fmm_get_manifest" => self.tool_get_manifest(),
-            // Keep old name as alias for backwards compatibility
+            // Legacy aliases
             "fmm_find_export" => self.tool_lookup_export(&arguments),
+            "fmm_find_symbol" => self.tool_lookup_export(&arguments),
+            "fmm_file_metadata" => self.tool_file_info(&arguments),
+            "fmm_analyze_dependencies" => self.tool_dependency_graph(&arguments),
             _ => Err(format!("Unknown tool: {}", tool_name)),
         };
 
@@ -448,7 +429,11 @@ impl McpServer {
             .files
             .iter()
             .filter(|(path, _)| *path != file)
-            .filter(|(_, e)| e.dependencies.iter().any(|d| dep_matches(d, file)))
+            .filter(|(path, e)| {
+                e.dependencies
+                    .iter()
+                    .any(|d| dep_matches(d, file, path))
+            })
             .map(|(path, _)| path)
             .collect();
         downstream.sort();
@@ -550,22 +535,47 @@ impl McpServer {
         serde_json::to_string_pretty(&output).map_err(|e| e.to_string())
     }
 
-    fn tool_get_manifest(&self) -> Result<String, String> {
-        let manifest = self.require_manifest()?;
-        serde_json::to_string_pretty(manifest).map_err(|e| e.to_string())
-    }
 }
 
-/// Check if a dependency path matches a file path.
-/// Dependencies are stored as relative paths like "./types" or "./config"
-/// and file paths are like "src/types.ts". This does a suffix match.
-fn dep_matches(dep: &str, file: &str) -> bool {
-    // Strip leading "./" from dep
+/// Check if a dependency path from `dependent_file` resolves to `target_file`.
+/// Dependencies are stored as relative paths like "../utils/crypto.utils.js"
+/// and need to be resolved against the dependent file's directory.
+fn dep_matches(dep: &str, target_file: &str, dependent_file: &str) -> bool {
+    // Resolve the dependency path relative to the dependent file's directory
+    let dep_dir = dependent_file
+        .rsplit_once('/')
+        .map(|(dir, _)| dir)
+        .unwrap_or("");
+
+    // Build resolved path by applying relative segments
+    let mut parts: Vec<&str> = if dep_dir.is_empty() {
+        Vec::new()
+    } else {
+        dep_dir.split('/').collect()
+    };
+
     let dep_clean = dep.strip_prefix("./").unwrap_or(dep);
-    // Strip extension from file for comparison
-    let file_stem = file.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(file);
-    // Check if the file path ends with the dependency path
-    file_stem == dep_clean || file_stem.ends_with(&format!("/{}", dep_clean))
+    for segment in dep_clean.split('/') {
+        if segment == ".." {
+            parts.pop();
+        } else if segment != "." {
+            parts.push(segment);
+        }
+    }
+
+    let resolved = parts.join("/");
+
+    // Strip extension from both for comparison (.ts/.js/.tsx/.jsx interchangeable)
+    let resolved_stem = resolved
+        .rsplit_once('.')
+        .map(|(stem, _)| stem)
+        .unwrap_or(&resolved);
+    let target_stem = target_file
+        .rsplit_once('.')
+        .map(|(stem, _)| stem)
+        .unwrap_or(target_file);
+
+    resolved_stem == target_stem
 }
 
 #[cfg(test)]
@@ -574,26 +584,62 @@ mod tests {
 
     #[test]
     fn dep_matches_relative_path() {
-        assert!(dep_matches("./types", "src/types.ts"));
-        assert!(dep_matches("./config", "src/config.ts"));
-        assert!(!dep_matches("./types", "src/other.ts"));
+        // dep "./types" from "src/index.ts" resolves to "src/types"
+        assert!(dep_matches("./types", "src/types.ts", "src/index.ts"));
+        assert!(dep_matches("./config", "src/config.ts", "src/index.ts"));
+        assert!(!dep_matches("./types", "src/other.ts", "src/index.ts"));
     }
 
     #[test]
     fn dep_matches_nested_path() {
-        assert!(dep_matches("./utils/helpers", "src/utils/helpers.ts"));
-        assert!(!dep_matches("./utils/helpers", "src/utils/other.ts"));
+        // dep "./utils/helpers" from "src/index.ts" resolves to "src/utils/helpers"
+        assert!(dep_matches(
+            "./utils/helpers",
+            "src/utils/helpers.ts",
+            "src/index.ts"
+        ));
+        assert!(!dep_matches(
+            "./utils/helpers",
+            "src/utils/other.ts",
+            "src/index.ts"
+        ));
+    }
+
+    #[test]
+    fn dep_matches_parent_relative() {
+        // dep "../utils/crypto.utils.js" from "pkg/src/services/auth.service.ts"
+        // resolves to "pkg/src/utils/crypto.utils"
+        assert!(dep_matches(
+            "../utils/crypto.utils.js",
+            "pkg/src/utils/crypto.utils.ts",
+            "pkg/src/services/auth.service.ts"
+        ));
+        assert!(!dep_matches(
+            "../utils/crypto.utils.js",
+            "pkg/src/services/other.ts",
+            "pkg/src/services/auth.service.ts"
+        ));
+    }
+
+    #[test]
+    fn dep_matches_deep_parent_relative() {
+        // dep "../../../utils/crypto.utils.js" from "pkg/src/tests/unit/auth/test.ts"
+        // resolves to "pkg/src/utils/crypto.utils" (going up 3 dirs from tests/unit/auth)
+        assert!(dep_matches(
+            "../../../utils/crypto.utils.js",
+            "pkg/src/utils/crypto.utils.ts",
+            "pkg/src/tests/unit/auth/test.ts"
+        ));
     }
 
     #[test]
     fn dep_matches_without_prefix() {
-        assert!(dep_matches("types", "src/types.ts"));
+        assert!(dep_matches("types", "src/types.ts", "src/index.ts"));
     }
 
     #[test]
-    fn test_hot_reload_detection() {
+    fn test_server_construction() {
         let server = McpServer::new();
-        // Just verify construction works and mtime is loaded
         assert!(server.root.is_absolute() || server.root.as_os_str().is_empty());
     }
 }

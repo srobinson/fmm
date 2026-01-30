@@ -6,11 +6,11 @@
 
 LLMs are the developers now. Every time an LLM reads your codebase, you pay for it:
 
-| Operation | Without fmm | With fmm manifest | Savings |
-|-----------|-------------|-------------------|---------|
-| Understand 1 file | ~500 tokens | 15-60 tokens | 88-97% |
-| Scan 100 files | ~50,000 tokens | ~1,500 tokens | 97% |
-| Context window | Wasted on parsing | Reserved for reasoning | Compounding |
+| Operation         | Without fmm       | With fmm manifest      | Savings     |
+| ----------------- | ----------------- | ---------------------- | ----------- |
+| Understand 1 file | ~500 tokens       | 15-60 tokens           | 88-97%      |
+| Scan 100 files    | ~50,000 tokens    | ~1,500 tokens          | 97%         |
+| Context window    | Wasted on parsing | Reserved for reasoning | Compounding |
 
 **fmm generates structured metadata that LLMs can query instead of read.**
 
@@ -52,6 +52,7 @@ The real value is the manifest - a single JSON file LLMs can query:
 Optionally embed frontmatter in source files, using each language's native comment syntax:
 
 **TypeScript/JavaScript:**
+
 ```typescript
 // --- FMM ---
 // fmm: v0.2
@@ -65,6 +66,7 @@ Optionally embed frontmatter in source files, using each language's native comme
 ```
 
 **Python:**
+
 ```python
 # --- FMM ---
 # fmm: v0.2
@@ -79,6 +81,7 @@ Optionally embed frontmatter in source files, using each language's native comme
 ```
 
 **Rust:**
+
 ```rust
 // --- FMM ---
 // fmm: v0.2
@@ -181,26 +184,28 @@ Create `.fmmrc.json` in your project root:
 
 ## Supported Languages
 
-| Language | Extensions | Exports | Imports | Dependencies | Custom Fields |
-|----------|-----------|---------|---------|-------------|---------------|
-| TypeScript | `.ts`, `.tsx` | Functions, classes, interfaces, variables | Package imports | Relative imports | - |
-| JavaScript | `.js`, `.jsx` | Functions, classes, variables | Package imports | Relative imports | - |
-| Python | `.py` | Functions, classes, constants, `__all__` | External packages | Relative imports | `decorators` |
-| Rust | `.rs` | `pub` items (excludes `pub(crate)`) | External crates (excludes `std`) | `crate::`, `super::` | `derives`, `unsafe_blocks`, `trait_impls`, `lifetimes`, `async_functions` |
-| Go | `.go` | Capitalized functions, types, consts, vars | Standard library packages | External modules (e.g., `github.com/...`) | - |
-| Java | `.java` | Classes, interfaces, enums, public methods | Root packages | Full import paths | `annotations` |
-| C++ | `.cpp`, `.hpp`, `.cc`, `.hh`, `.cxx`, `.hxx` | Functions, classes, structs, enums, templates | System headers (`<...>`) | Local headers (`"..."`) | `namespaces` |
-| C# | `.cs` | Public classes, interfaces, structs, enums, methods | `using` namespaces | - | `namespaces`, `attributes` |
-| Ruby | `.rb` | Classes, modules, top-level methods | `require` gems | `require_relative` paths | `mixins` |
+| Language   | Extensions                                   | Exports                                             | Imports                          | Dependencies                              | Custom Fields                                                             |
+| ---------- | -------------------------------------------- | --------------------------------------------------- | -------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------- |
+| TypeScript | `.ts`, `.tsx`                                | Functions, classes, interfaces, variables           | Package imports                  | Relative imports                          | -                                                                         |
+| JavaScript | `.js`, `.jsx`                                | Functions, classes, variables                       | Package imports                  | Relative imports                          | -                                                                         |
+| Python     | `.py`                                        | Functions, classes, constants, `__all__`            | External packages                | Relative imports                          | `decorators`                                                              |
+| Rust       | `.rs`                                        | `pub` items (excludes `pub(crate)`)                 | External crates (excludes `std`) | `crate::`, `super::`                      | `derives`, `unsafe_blocks`, `trait_impls`, `lifetimes`, `async_functions` |
+| Go         | `.go`                                        | Capitalized functions, types, consts, vars          | Standard library packages        | External modules (e.g., `github.com/...`) | -                                                                         |
+| Java       | `.java`                                      | Classes, interfaces, enums, public methods          | Root packages                    | Full import paths                         | `annotations`                                                             |
+| C++        | `.cpp`, `.hpp`, `.cc`, `.hh`, `.cxx`, `.hxx` | Functions, classes, structs, enums, templates       | System headers (`<...>`)         | Local headers (`"..."`)                   | `namespaces`                                                              |
+| C#         | `.cs`                                        | Public classes, interfaces, structs, enums, methods | `using` namespaces               | -                                         | `namespaces`, `attributes`                                                |
+| Ruby       | `.rb`                                        | Classes, modules, top-level methods                 | `require` gems                   | `require_relative` paths                  | `mixins`                                                                  |
 
 **10 languages = ~95% GitHub codebase coverage.**
 
 ### Language-Specific Fields
 
 **Python** includes a `python:` section with:
+
 - `decorators` - List of decorators used (e.g., `staticmethod`, `property`, `app.route`)
 
 **Rust** includes a `rust:` section with:
+
 - `derives` - Derive macros used (e.g., `Debug`, `Clone`, `Serialize`)
 - `unsafe_blocks` - Count of `unsafe` blocks
 - `trait_impls` - Trait implementations (e.g., `Display for Error`)
@@ -208,39 +213,43 @@ Create `.fmmrc.json` in your project root:
 - `async_functions` - Count of `async fn` declarations
 
 **Java** includes a `java:` section with:
+
 - `annotations` - Annotations used (e.g., `Service`, `Override`, `Deprecated`)
 
 **C++** includes a `cpp:` section with:
+
 - `namespaces` - Namespace definitions (e.g., `engine`, `utils`)
 
 **C#** includes a `csharp:` section with:
+
 - `namespaces` - Namespace declarations (e.g., `MyApp.Services`)
 - `attributes` - Attributes used (e.g., `Serializable`, `Required`)
 
 **Ruby** includes a `ruby:` section with:
+
 - `mixins` - Included/extended/prepended modules (e.g., `Comparable`, `Enumerable`)
 
 ## The Economics
 
 ### Token Cost Analysis
 
-| Model | Cost per 1M tokens | 100-file scan without fmm | With fmm manifest |
-|-------|-------------------|--------------------------|-------------------|
-| Claude Opus 4.5 | $5.00 input | $0.25 | $0.008 |
-| Claude Sonnet 4.5 | $3.00 input | $0.15 | $0.005 |
-| GPT-4o | $2.50 input | $0.13 | $0.004 |
-| Gemini 3 Pro | $2.00 input | $0.10 | $0.003 |
-| GPT-5 | $1.25 input | $0.06 | $0.002 |
+| Model             | Cost per 1M tokens | 100-file scan without fmm | With fmm manifest |
+| ----------------- | ------------------ | ------------------------- | ----------------- |
+| Claude Opus 4.5   | $5.00 input        | $0.25                     | $0.008            |
+| Claude Sonnet 4.5 | $3.00 input        | $0.15                     | $0.005            |
+| GPT-4o            | $2.50 input        | $0.13                     | $0.004            |
+| Gemini 3 Pro      | $2.00 input        | $0.10                     | $0.003            |
+| GPT-5             | $1.25 input        | $0.06                     | $0.002            |
 
 **At scale:** A coding assistant that scans your codebase 100 times/day saves $6-25/day on a 100-file project.
 
 ### Context Window Economics
 
-| Without fmm | With fmm |
-|-------------|----------|
-| 50K tokens to understand structure | 1.5K tokens |
-| 78K tokens left for reasoning | 126.5K tokens for reasoning |
-| LLM spends capacity parsing | LLM spends capacity solving |
+| Without fmm                        | With fmm                    |
+| ---------------------------------- | --------------------------- |
+| 50K tokens to understand structure | 1.5K tokens                 |
+| 78K tokens left for reasoning      | 126.5K tokens for reasoning |
+| LLM spends capacity parsing        | LLM spends capacity solving |
 
 ## How It Works
 
@@ -290,12 +299,12 @@ repos:
 
 ## Comparison
 
-| Tool | Manifest JSON | Auto-Generated | LLM-Queryable | Token Efficient |
-|------|---------------|----------------|---------------|-----------------|
-| **fmm** | `.fmm/manifest.json` | Fully automatic | Purpose-built | 88-97% reduction |
-| Repomix | `.llm` file | Manual trigger | Generic | Variable |
-| TypeDoc | HTML/JSON | Build step | Not optimized | N/A |
-| JSDoc | Inline only | Manual | Not structured | N/A |
+| Tool    | Manifest JSON        | Auto-Generated  | LLM-Queryable  | Token Efficient  |
+| ------- | -------------------- | --------------- | -------------- | ---------------- |
+| **fmm** | `.fmm/manifest.json` | Fully automatic | Purpose-built  | 88-97% reduction |
+| Repomix | `.llm` file          | Manual trigger  | Generic        | Variable         |
+| TypeDoc | HTML/JSON            | Build step      | Not optimized  | N/A              |
+| JSDoc   | Inline only          | Manual          | Not structured | N/A              |
 
 ## How It Works Internally
 
@@ -322,6 +331,7 @@ Add to your Claude Code MCP configuration:
 ```
 
 Available MCP tools:
+
 - `fmm_find_export(name)` - Find file by export name
 - `fmm_list_exports(file)` - List exports from a file
 - `fmm_search(query)` - Search manifest with filters
@@ -361,6 +371,7 @@ fmm search --json                   # Output as JSON
 ## Contributing
 
 PRs welcome! Especially for:
+
 - New language support
 - Manifest format improvements
 - LLM integration examples

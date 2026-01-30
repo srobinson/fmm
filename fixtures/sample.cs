@@ -1,10 +1,3 @@
-// --- FMM ---
-// exports: [DataService, IRepository, ProcessConfig, Status, Transform]
-// imports: [System]
-// namespaces: [MyApp.Models, MyApp.Services]
-// attributes: [Obsolete, Required, Serializable]
-// ---
-
 using System;
 using System.Collections.Generic;
 using System.Linq;

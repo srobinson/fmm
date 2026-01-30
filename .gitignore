@@ -5,6 +5,7 @@
 Cargo.lock
 **/*.rs.bk
 *.pdb
+__pycache__/
 
 # IDE
 .idea/

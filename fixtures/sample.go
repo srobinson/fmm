@@ -1,9 +1,3 @@
-// --- FMM ---
-// exports: [Config, Handler, MaxRetries, NewHandler, Process, Status, StatusActive, StatusInactive]
-// imports: [encoding/json, fmt, net/http]
-// dependencies: [github.com/gin-gonic/gin, github.com/redis/go-redis/v9]
-// ---
-
 package server
 
 import (

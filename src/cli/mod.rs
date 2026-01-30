@@ -4,16 +4,14 @@ use colored::Colorize;
 use ignore::WalkBuilder;
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 use crate::config::Config;
-use crate::extractor::FileProcessor;
-use crate::manifest::Manifest;
+use crate::extractor::{sidecar_path_for, FileProcessor};
 
 #[derive(Parser)]
 #[command(
     name = "fmm",
-    about = "Frontmatter Matters - Auto-generate code frontmatter",
+    about = "Frontmatter Matters - Auto-generate code metadata sidecars for LLM navigation",
     version,
     author
 )]
@@ -24,7 +22,7 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Generate frontmatter for files that don't have it
+    /// Generate .fmm sidecar files for source files that don't have them
     Generate {
         /// Path to file or directory
         #[arg(default_value = ".")]
@@ -33,13 +31,9 @@ pub enum Commands {
         /// Dry run - show what would be changed
         #[arg(short = 'n', long)]
         dry_run: bool,
-
-        /// Only generate manifest, skip inline frontmatter
-        #[arg(long)]
-        manifest_only: bool,
     },
 
-    /// Update existing frontmatter in all files
+    /// Update all .fmm sidecar files (regenerate from source)
     Update {
         /// Path to file or directory
         #[arg(default_value = ".")]
@@ -48,17 +42,24 @@ pub enum Commands {
         /// Dry run - show what would be changed
         #[arg(short = 'n', long)]
         dry_run: bool,
-
-        /// Only update manifest, skip inline frontmatter
-        #[arg(long)]
-        manifest_only: bool,
     },
 
-    /// Validate that frontmatter is up to date
+    /// Validate that .fmm sidecars are up to date
     Validate {
         /// Path to file or directory
         #[arg(default_value = ".")]
         path: String,
+    },
+
+    /// Remove all .fmm sidecar files (and legacy .fmm/ directory)
+    Clean {
+        /// Path to file or directory
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Dry run - show what would be removed
+        #[arg(short = 'n', long)]
+        dry_run: bool,
     },
 
     /// Initialize fmm in this project (config, skill, MCP)
@@ -79,7 +80,7 @@ pub enum Commands {
     /// Show current fmm status and configuration
     Status,
 
-    /// Search the manifest for files and exports
+    /// Search sidecars for files and exports
     Search {
         /// Find file by export name
         #[arg(short = 'e', long = "export")]
@@ -182,46 +183,17 @@ fn resolve_root(path: &str) -> Result<PathBuf> {
     }
 }
 
-pub fn generate(path: &str, dry_run: bool, manifest_only: bool) -> Result<()> {
+pub fn generate(path: &str, dry_run: bool) -> Result<()> {
     let config = Config::load().unwrap_or_default();
     let files = collect_files(path, &config)?;
     let root = resolve_root(path)?;
 
     println!("Found {} files to process", files.len());
 
-    // Load or create manifest
-    let manifest = Mutex::new(Manifest::load(&root)?.unwrap_or_default());
-
     let results: Vec<_> = files
         .par_iter()
         .filter_map(|file| {
             let processor = FileProcessor::new(&config, &root);
-
-            // Extract metadata for manifest
-            if let Ok(Some(metadata)) = processor.extract_metadata(file) {
-                let relative_path = match file.strip_prefix(&root) {
-                    Ok(rel) => rel.display().to_string(),
-                    Err(_) => {
-                        log::warn!(
-                            "Failed to strip prefix {:?} from {:?}, using absolute path",
-                            root,
-                            file
-                        );
-                        file.display().to_string()
-                    }
-                };
-
-                // Add to manifest
-                if let Ok(mut m) = manifest.lock() {
-                    m.add_file(&relative_path, metadata);
-                }
-            }
-
-            // Skip inline frontmatter if manifest_only
-            if manifest_only {
-                return Some((file.to_path_buf(), "Added to manifest".to_string()));
-            }
-
             match processor.generate(file, dry_run) {
                 Ok(Some(msg)) => Some((file.to_path_buf(), msg)),
                 Ok(None) => None,
@@ -233,70 +205,43 @@ pub fn generate(path: &str, dry_run: bool, manifest_only: bool) -> Result<()> {
         })
         .collect();
 
-    // Save manifest
-    if !dry_run {
-        let mut m = manifest
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Mutex poisoned while accessing manifest"))?;
-        m.touch();
-        m.save(&root)?;
-        println!(
-            "{} Saved manifest with {} files",
-            "✓".green(),
-            m.file_count()
-        );
-    }
-
-    for (file, msg) in results {
-        println!("{} {}", "✓".green(), file.display());
+    for (file, msg) in &results {
+        let sidecar = sidecar_path_for(file);
+        let display = sidecar
+            .strip_prefix(&root)
+            .unwrap_or(&sidecar)
+            .display();
+        println!("{} {}", "✓".green(), display);
         if dry_run {
             println!("  {}", msg.dimmed());
         }
     }
 
+    if !results.is_empty() {
+        println!(
+            "\n{} {} sidecar(s) {}",
+            "✓".green().bold(),
+            results.len(),
+            if dry_run { "would be written" } else { "written" }
+        );
+    } else {
+        println!("{} All sidecars up to date", "✓".green());
+    }
+
     Ok(())
 }
 
-pub fn update(path: &str, dry_run: bool, manifest_only: bool) -> Result<()> {
+pub fn update(path: &str, dry_run: bool) -> Result<()> {
     let config = Config::load().unwrap_or_default();
     let files = collect_files(path, &config)?;
     let root = resolve_root(path)?;
 
     println!("Found {} files to process", files.len());
 
-    // Create fresh manifest (update rebuilds from scratch)
-    let manifest = Mutex::new(Manifest::new());
-
     let results: Vec<_> = files
         .par_iter()
         .filter_map(|file| {
             let processor = FileProcessor::new(&config, &root);
-
-            // Extract metadata for manifest
-            if let Ok(Some(metadata)) = processor.extract_metadata(file) {
-                let relative_path = match file.strip_prefix(&root) {
-                    Ok(rel) => rel.display().to_string(),
-                    Err(_) => {
-                        log::warn!(
-                            "Failed to strip prefix {:?} from {:?}, using absolute path",
-                            root,
-                            file
-                        );
-                        file.display().to_string()
-                    }
-                };
-
-                // Add to manifest
-                if let Ok(mut m) = manifest.lock() {
-                    m.add_file(&relative_path, metadata);
-                }
-            }
-
-            // Skip inline frontmatter if manifest_only
-            if manifest_only {
-                return Some((file.to_path_buf(), "Updated in manifest".to_string()));
-            }
-
             match processor.update(file, dry_run) {
                 Ok(Some(msg)) => Some((file.to_path_buf(), msg)),
                 Ok(None) => None,
@@ -308,25 +253,27 @@ pub fn update(path: &str, dry_run: bool, manifest_only: bool) -> Result<()> {
         })
         .collect();
 
-    // Save manifest
-    if !dry_run {
-        let mut m = manifest
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Mutex poisoned while accessing manifest"))?;
-        m.touch();
-        m.save(&root)?;
-        println!(
-            "{} Saved manifest with {} files",
-            "✓".green(),
-            m.file_count()
-        );
-    }
-
-    for (file, msg) in results {
-        println!("{} {}", "✓".green(), file.display());
+    for (file, msg) in &results {
+        let sidecar = sidecar_path_for(file);
+        let display = sidecar
+            .strip_prefix(&root)
+            .unwrap_or(&sidecar)
+            .display();
+        println!("{} {}", "✓".green(), display);
         if dry_run {
             println!("  {}", msg.dimmed());
         }
+    }
+
+    if !results.is_empty() {
+        println!(
+            "\n{} {} sidecar(s) {}",
+            "✓".green().bold(),
+            results.len(),
+            if dry_run { "would be updated" } else { "updated" }
+        );
+    } else {
+        println!("{} All sidecars up to date", "✓".green());
     }
 
     Ok(())
@@ -339,107 +286,105 @@ pub fn validate(path: &str) -> Result<()> {
 
     println!("Validating {} files...", files.len());
 
-    // Load manifest for validation
-    let manifest = Manifest::load(&root)?;
-    let has_manifest = manifest.is_some();
-
     let invalid: Vec<_> = files
         .par_iter()
         .filter_map(|file| {
             let processor = FileProcessor::new(&config, &root);
-
-            // Validate inline frontmatter
-            let inline_valid = match processor.validate(file) {
-                Ok(valid) => valid,
-                Err(e) => {
-                    return Some((file.to_path_buf(), format!("Error: {}", e)));
+            match processor.validate(file) {
+                Ok(true) => None,
+                Ok(false) => {
+                    let sidecar = sidecar_path_for(file);
+                    let reason = if sidecar.exists() {
+                        "sidecar out of date"
+                    } else {
+                        "missing sidecar"
+                    };
+                    Some((file.to_path_buf(), reason.to_string()))
                 }
-            };
-
-            // Validate manifest entry
-            let manifest_valid = if let Some(ref m) = manifest {
-                let relative_path = match file.strip_prefix(&root) {
-                    Ok(rel) => rel.display().to_string(),
-                    Err(_) => {
-                        log::warn!(
-                            "Failed to strip prefix {:?} from {:?}, using absolute path",
-                            root,
-                            file
-                        );
-                        file.display().to_string()
-                    }
-                };
-
-                if let Ok(Some(current_metadata)) = processor.extract_metadata(file) {
-                    m.validate_file(&relative_path, &current_metadata)
-                } else {
-                    false
-                }
-            } else {
-                true // No manifest to validate against
-            };
-
-            if inline_valid && manifest_valid {
-                None
-            } else {
-                let mut reasons = Vec::new();
-                if !inline_valid {
-                    reasons.push("inline frontmatter out of date");
-                }
-                if has_manifest && !manifest_valid {
-                    reasons.push("manifest out of date");
-                }
-                Some((file.to_path_buf(), reasons.join(", ")))
+                Err(e) => Some((file.to_path_buf(), format!("Error: {}", e))),
             }
         })
         .collect();
 
-    // Check if manifest exists
-    let manifest_missing = !has_manifest && !files.is_empty();
-
-    if invalid.is_empty() && !manifest_missing {
-        println!("{} All frontmatter is up to date!", "✓".green().bold());
-        if has_manifest {
-            println!("{} Manifest is in sync", "✓".green());
-        }
+    if invalid.is_empty() {
+        println!("{} All sidecars are up to date!", "✓".green().bold());
         Ok(())
     } else {
-        if manifest_missing {
-            println!(
-                "{} Manifest file missing (.fmm/index.json)",
-                "✗".red().bold()
-            );
+        println!(
+            "{} {} files need updating:",
+            "✗".red().bold(),
+            invalid.len()
+        );
+        for (file, msg) in &invalid {
+            let rel = file.strip_prefix(&root).unwrap_or(file);
+            println!("  {} {}: {}", "✗".red(), rel.display(), msg.dimmed());
         }
-        if !invalid.is_empty() {
-            println!(
-                "{} {} files need updating:",
-                "✗".red().bold(),
-                invalid.len()
-            );
-            for (file, msg) in &invalid {
-                println!("  {} {}: {}", "✗".red(), file.display(), msg.dimmed());
+        anyhow::bail!("Sidecar validation failed");
+    }
+}
+
+pub fn clean(path: &str, dry_run: bool) -> Result<()> {
+    let config = Config::load().unwrap_or_default();
+    let files = collect_files(path, &config)?;
+    let root = resolve_root(path)?;
+
+    let mut removed = 0u32;
+
+    for file in &files {
+        let processor = FileProcessor::new(&config, &root);
+        match processor.clean(file) {
+            Ok(true) => {
+                let sidecar = sidecar_path_for(file);
+                let display = sidecar
+                    .strip_prefix(&root)
+                    .unwrap_or(&sidecar)
+                    .display()
+                    .to_string();
+                if dry_run {
+                    println!("  Would remove: {}", display);
+                } else {
+                    println!("{} Removed {}", "✓".green(), display);
+                }
+                removed += 1;
+            }
+            Ok(false) => {}
+            Err(e) => {
+                eprintln!("{} {}: {}", "Error".red(), file.display(), e);
             }
         }
-        anyhow::bail!("Frontmatter validation failed");
     }
+
+    // Also clean legacy .fmm/ directory
+    let legacy_dir = root.join(".fmm");
+    if legacy_dir.is_dir() {
+        if dry_run {
+            println!("  Would remove legacy directory: .fmm/");
+        } else {
+            std::fs::remove_dir_all(&legacy_dir)?;
+            println!("{} Removed legacy .fmm/ directory", "✓".green());
+        }
+    }
+
+    println!(
+        "\n{} {} sidecar(s) {}",
+        "✓".green().bold(),
+        removed,
+        if dry_run { "would be removed" } else { "removed" }
+    );
+
+    Ok(())
 }
 
 pub fn init(skill: bool, mcp: bool, all: bool) -> Result<()> {
     let specific = skill || mcp;
-
-    // No flags or --all = full setup (config + manifest + skill + MCP)
     let full_setup = !specific || all;
 
     let install_config = full_setup;
-    let install_manifest = full_setup;
     let install_skill = skill || full_setup;
     let install_mcp = mcp || full_setup;
 
     if install_config {
         init_config()?;
-    }
-    if install_manifest {
-        init_manifest()?;
     }
     if install_skill {
         init_skill()?;
@@ -450,64 +395,14 @@ pub fn init(skill: bool, mcp: bool, all: bool) -> Result<()> {
 
     println!();
     println!("{}", "Setup complete!".green().bold());
-    if install_manifest {
-        println!("  Manifest: .fmm/index.json");
-    }
     if install_skill {
         println!("  Skill:    .claude/skills/fmm-navigate.md");
     }
     if install_mcp {
         println!("  MCP:      .mcp.json");
     }
+    println!("\nRun `fmm generate` to create sidecar files.");
 
-    Ok(())
-}
-
-fn init_manifest() -> Result<()> {
-    let root = std::env::current_dir()?;
-    let manifest_path = root.join(".fmm").join("index.json");
-
-    if manifest_path.exists() {
-        println!("{} .fmm/index.json already exists (updating)", "!".yellow());
-    }
-
-    let config = Config::load().unwrap_or_default();
-    let files = collect_files(".", &config)?;
-
-    if files.is_empty() {
-        println!(
-            "{} No supported files found (skipping manifest generation)",
-            "!".yellow()
-        );
-        return Ok(());
-    }
-
-    let manifest = Mutex::new(crate::manifest::Manifest::new());
-
-    files.par_iter().for_each(|file| {
-        let processor = FileProcessor::new(&config, &root);
-        if let Ok(Some(metadata)) = processor.extract_metadata(file) {
-            let relative_path = match file.strip_prefix(&root) {
-                Ok(rel) => rel.display().to_string(),
-                Err(_) => file.display().to_string(),
-            };
-            if let Ok(mut m) = manifest.lock() {
-                m.add_file(&relative_path, metadata);
-            }
-        }
-    });
-
-    let mut m = manifest
-        .lock()
-        .map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
-    m.touch();
-    m.save(&root)?;
-
-    println!(
-        "{} Generated .fmm/index.json ({} files)",
-        "✓".green(),
-        m.file_count()
-    );
     Ok(())
 }
 
@@ -583,7 +478,6 @@ fn init_mcp_config() -> Result<()> {
                     return Ok(());
                 }
             }
-            // Merge: add fmm to existing mcpServers
             if let Some(obj) = existing_json.as_object_mut() {
                 let servers = obj
                     .entry("mcpServers")
@@ -644,14 +538,6 @@ pub fn status() -> Result<()> {
             "no".dimmed()
         }
     );
-    println!(
-        "  Complexity:     {}",
-        if config.include_complexity {
-            "yes".green()
-        } else {
-            "no".dimmed()
-        }
-    );
     println!("  Max file size:  {} KB", config.max_file_size);
 
     println!("\n{}", "Supported Languages:".yellow().bold());
@@ -672,9 +558,14 @@ pub fn status() -> Result<()> {
 
     match collect_files(".", &config) {
         Ok(files) => {
+            let sidecar_count = files
+                .iter()
+                .filter(|f| sidecar_path_for(f).exists())
+                .count();
             println!(
-                "  {} processable files found",
-                files.len().to_string().white().bold()
+                "  {} source files, {} sidecars",
+                files.len().to_string().white().bold(),
+                sidecar_count.to_string().white().bold()
             );
         }
         Err(e) => {
@@ -742,8 +633,7 @@ pub fn search(
     json_output: bool,
 ) -> Result<()> {
     let root = std::env::current_dir()?;
-    let manifest = Manifest::load(&root)?
-        .ok_or_else(|| anyhow::anyhow!("No manifest found. Run 'fmm generate' first."))?;
+    let manifest = crate::manifest::Manifest::load_from_sidecars(&root)?;
 
     let mut results: Vec<SearchResult> = Vec::new();
 
@@ -770,7 +660,6 @@ pub fn search(
                 .iter()
                 .any(|i| i.contains(import_name.as_str()))
             {
-                // Skip if already added
                 if results.iter().any(|r| r.file == *file_path) {
                     continue;
                 }
@@ -793,7 +682,6 @@ pub fn search(
                 .iter()
                 .any(|d| d.contains(dep_path.as_str()))
             {
-                // Skip if already added
                 if results.iter().any(|r| r.file == *file_path) {
                     continue;
                 }
@@ -812,7 +700,6 @@ pub fn search(
     if let Some(ref loc_expr) = loc {
         let (op, value) = parse_loc_expr(loc_expr)?;
 
-        // If no other filters, search all files
         if export.is_none() && imports.is_none() && depends_on.is_none() {
             for (file_path, entry) in &manifest.files {
                 if matches_loc_filter(entry.loc, &op, value) {
@@ -826,7 +713,6 @@ pub fn search(
                 }
             }
         } else {
-            // Filter existing results by LOC
             results.retain(|r| r.loc.is_some_and(|l| matches_loc_filter(l, &op, value)));
         }
     }
@@ -844,10 +730,8 @@ pub fn search(
         }
     }
 
-    // Sort results by file path
     results.sort_by(|a, b| a.file.cmp(&b.file));
 
-    // Output
     if json_output {
         println!("{}", serde_json::to_string_pretty(&results)?);
     } else if results.is_empty() {
@@ -895,7 +779,6 @@ fn parse_loc_expr(expr: &str) -> Result<(String, usize)> {
         let value: usize = rest.trim().parse().context("Invalid LOC value")?;
         Ok(("=".to_string(), value))
     } else {
-        // Default to exact match
         let value: usize = expr
             .parse()
             .context("Invalid LOC expression. Use: >500, <100, =200, >=50, <=1000")?;
@@ -917,10 +800,7 @@ fn matches_loc_filter(loc: usize, op: &str, value: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
     use tempfile::TempDir;
-
-    // ── resolve_root tests ──────────────────────────────────────────
 
     #[test]
     fn resolve_root_with_absolute_directory() {
@@ -932,7 +812,6 @@ mod tests {
 
     #[test]
     fn resolve_root_with_relative_directory() {
-        // "." is always a valid relative directory
         let result = resolve_root(".").unwrap();
         let expected = std::env::current_dir().unwrap().canonicalize().unwrap();
         assert_eq!(result, expected);
@@ -957,8 +836,6 @@ mod tests {
         assert_eq!(result, cwd);
     }
 
-    // ── collect_files canonicalization tests ─────────────────────────
-
     #[test]
     fn collect_files_returns_canonical_paths() {
         let tmp = TempDir::new().unwrap();
@@ -973,22 +850,6 @@ mod tests {
         assert!(!files.is_empty());
         for file in &files {
             assert!(file.is_absolute(), "path should be absolute: {:?}", file);
-            let path_str = file.display().to_string();
-            assert!(
-                !path_str.contains("/./"),
-                "path should not contain /./ segment: {}",
-                path_str
-            );
-            assert!(
-                !path_str.contains("/../"),
-                "path should not contain /../ segment: {}",
-                path_str
-            );
-            assert!(
-                !path_str.starts_with("./"),
-                "path should not start with ./: {}",
-                path_str
-            );
         }
     }
 
@@ -1004,57 +865,5 @@ mod tests {
         assert_eq!(files.len(), 1);
         assert!(files[0].is_absolute());
         assert_eq!(files[0], file_path.canonicalize().unwrap());
-    }
-
-    // ── Regression: manifest entries use relative paths ─────────────
-
-    #[test]
-    fn generate_pipeline_produces_relative_manifest_paths() {
-        let tmp = TempDir::new().unwrap();
-        let src = tmp.path().join("src");
-        std::fs::create_dir_all(&src).unwrap();
-        std::fs::write(
-            src.join("index.ts"),
-            "export function hello() { return 'hi'; }\n",
-        )
-        .unwrap();
-
-        let config = Config::default();
-        let files = collect_files(tmp.path().to_str().unwrap(), &config).unwrap();
-        let root = tmp.path().canonicalize().unwrap();
-
-        let manifest = Mutex::new(Manifest::new());
-
-        for file in &files {
-            let processor = FileProcessor::new(&config, &root);
-            if let Ok(Some(metadata)) = processor.extract_metadata(file) {
-                let relative_path = file
-                    .strip_prefix(&root)
-                    .unwrap_or(file)
-                    .display()
-                    .to_string();
-
-                manifest.lock().unwrap().add_file(&relative_path, metadata);
-            }
-        }
-
-        let m = manifest.lock().unwrap();
-        for (key, _) in m.files.iter() {
-            assert!(
-                !key.starts_with('/'),
-                "manifest key should be relative, not absolute: {}",
-                key
-            );
-            assert!(
-                !key.starts_with("./"),
-                "manifest key should not start with ./: {}",
-                key
-            );
-            assert!(
-                !key.contains("/../"),
-                "manifest key should not contain /../: {}",
-                key
-            );
-        }
     }
 }

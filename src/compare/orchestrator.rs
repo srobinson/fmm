@@ -105,18 +105,21 @@ impl Orchestrator {
         println!("{} Generating FMM manifest...", "🔧".yellow());
         sandbox.generate_fmm_manifest()?;
 
-        // Check if manifest was generated
-        let manifest_path = sandbox.fmm_dir.join(".fmm").join("index.json");
-        if manifest_path.exists() {
-            let metadata = fs::metadata(&manifest_path)?;
+        // Check if sidecars were generated
+        let sidecar_count = walkdir::WalkDir::new(&sandbox.fmm_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().and_then(|ext| ext.to_str()) == Some("fmm"))
+            .count();
+        if sidecar_count > 0 {
             println!(
-                "  {} Manifest generated ({} bytes)",
+                "  {} {} sidecar files generated",
                 "✓".green(),
-                metadata.len()
+                sidecar_count
             );
         } else {
             println!(
-                "  {} No manifest generated (unsupported language?)",
+                "  {} No sidecars generated (unsupported language?)",
                 "!".yellow()
             );
         }
@@ -315,42 +318,28 @@ impl Orchestrator {
     }
 
     fn build_fmm_context(&self, fmm_dir: &std::path::Path) -> Result<String> {
-        let manifest_path = fmm_dir.join(".fmm").join("index.json");
+        // Check if sidecars exist
+        let has_sidecars = walkdir::WalkDir::new(fmm_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .any(|e| e.path().extension().and_then(|ext| ext.to_str()) == Some("fmm"));
 
-        if !manifest_path.exists() {
+        if !has_sidecars {
             return Ok(String::new());
         }
 
-        let manifest_content =
-            fs::read_to_string(&manifest_path).context("Failed to read FMM manifest")?;
+        let context = r#"This repository has .fmm sidecar files — structured metadata companions for source files.
 
-        // Build context prompt
-        let context = format!(
-            r#"IMPORTANT: This repository has an FMM (Frontmatter Matters) manifest available.
+For every source file (e.g. foo.ts), there may be a foo.ts.fmm containing:
+- exports: what the file defines
+- imports: external packages used
+- dependencies: local files it imports
+- loc: file size
 
-Before exploring the codebase with file reads, FIRST consult this manifest to understand the codebase structure.
-The manifest contains:
-- File paths and their exports
-- Import relationships
-- Line counts
-- An export index for quick lookups
+Use sidecars to navigate: Grep "exports:.*SymbolName" **/*.fmm to find files.
+Only open source files you need to edit."#;
 
-FMM MANIFEST:
-```json
-{}
-```
-
-Use this manifest to:
-1. Find files by export name without reading them
-2. Understand file relationships before diving into code
-3. Identify entry points and main modules
-4. Reduce unnecessary file reads
-
-Only read files when you need the actual implementation details."#,
-            manifest_content
-        );
-
-        Ok(context)
+        Ok(context.to_string())
     }
 
     fn load_custom_tasks(&self, path: &str) -> Result<TaskSet> {

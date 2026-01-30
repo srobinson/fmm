@@ -1,10 +1,3 @@
-// --- FMM ---
-// exports: [Config, Engine, Pipeline, Point, Status, process]
-// imports: [algorithm, memory, string, vector]
-// dependencies: [config.h, utils/helpers.h]
-// namespaces: [engine, utils]
-// ---
-
 #include <vector>
 #include <string>
 #include <memory>

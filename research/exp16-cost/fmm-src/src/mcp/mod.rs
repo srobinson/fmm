@@ -1,0 +1,849 @@
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::io::{self, BufRead, Write};
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
+
+use crate::manifest::Manifest;
+
+const PROTOCOL_VERSION: &str = "2024-11-05";
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct JsonRpcRequest {
+    jsonrpc: String,
+    id: Option<Value>,
+    method: String,
+    #[serde(default)]
+    params: Option<Value>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonRpcResponse {
+    jsonrpc: String,
+    id: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    result: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<JsonRpcError>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonRpcError {
+    code: i32,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<Value>,
+}
+
+#[derive(Debug, Serialize)]
+struct Tool {
+    name: String,
+    description: String,
+    #[serde(rename = "inputSchema")]
+    input_schema: Value,
+}
+
+pub struct McpServer {
+    manifest: Option<Manifest>,
+    root: PathBuf,
+    manifest_mtime: Option<SystemTime>,
+}
+
+impl Default for McpServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl McpServer {
+    pub fn new() -> Self {
+        let root = std::env::current_dir().unwrap_or_default();
+        let manifest = Manifest::load(&root).ok().flatten();
+        let manifest_mtime = Self::get_manifest_mtime(&root);
+        Self {
+            manifest,
+            root,
+            manifest_mtime,
+        }
+    }
+
+    fn get_manifest_mtime(root: &Path) -> Option<SystemTime> {
+        let path = root.join(".fmm").join("index.json");
+        std::fs::metadata(path).ok().and_then(|m| m.modified().ok())
+    }
+
+    fn maybe_reload(&mut self) {
+        let current_mtime = Self::get_manifest_mtime(&self.root);
+        if current_mtime != self.manifest_mtime {
+            self.manifest = Manifest::load(&self.root).ok().flatten();
+            self.manifest_mtime = current_mtime;
+        }
+    }
+
+    fn require_manifest(&self) -> Result<&Manifest, String> {
+        self.manifest
+            .as_ref()
+            .ok_or_else(|| "No manifest found. Run 'fmm generate' first.".to_string())
+    }
+
+    pub fn run(&mut self) -> Result<()> {
+        let stdin = io::stdin();
+        let mut stdout = io::stdout();
+
+        for line in stdin.lock().lines() {
+            let line = line?;
+            if line.is_empty() {
+                continue;
+            }
+
+            let request: JsonRpcRequest = match serde_json::from_str(&line) {
+                Ok(req) => req,
+                Err(e) => {
+                    let error_response = JsonRpcResponse {
+                        jsonrpc: "2.0".to_string(),
+                        id: Value::Null,
+                        result: None,
+                        error: Some(JsonRpcError {
+                            code: -32700,
+                            message: format!("Parse error: {}", e),
+                            data: None,
+                        }),
+                    };
+                    writeln!(stdout, "{}", serde_json::to_string(&error_response)?)?;
+                    stdout.flush()?;
+                    continue;
+                }
+            };
+
+            // Hot-reload manifest before handling tool calls
+            if request.method == "tools/call" {
+                self.maybe_reload();
+            }
+
+            let response = self.handle_request(&request);
+
+            if let Some(resp) = response {
+                writeln!(stdout, "{}", serde_json::to_string(&resp)?)?;
+                stdout.flush()?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn handle_request(&mut self, request: &JsonRpcRequest) -> Option<JsonRpcResponse> {
+        let id = request.id.clone().unwrap_or(Value::Null);
+
+        let result = match request.method.as_str() {
+            "initialize" => self.handle_initialize(&request.params),
+            "notifications/initialized" => return None,
+            "tools/list" => self.handle_tools_list(),
+            "tools/call" => self.handle_tool_call(&request.params),
+            "ping" => Ok(json!({})),
+            _ => Err(JsonRpcError {
+                code: -32601,
+                message: format!("Method not found: {}", request.method),
+                data: None,
+            }),
+        };
+
+        Some(match result {
+            Ok(value) => JsonRpcResponse {
+                jsonrpc: "2.0".to_string(),
+                id,
+                result: Some(value),
+                error: None,
+            },
+            Err(error) => JsonRpcResponse {
+                jsonrpc: "2.0".to_string(),
+                id,
+                result: None,
+                error: Some(error),
+            },
+        })
+    }
+
+    fn handle_initialize(&self, _params: &Option<Value>) -> Result<Value, JsonRpcError> {
+        Ok(json!({
+            "protocolVersion": PROTOCOL_VERSION,
+            "capabilities": {
+                "tools": {}
+            },
+            "serverInfo": {
+                "name": "fmm",
+                "version": env!("CARGO_PKG_VERSION")
+            }
+        }))
+    }
+
+    fn handle_tools_list(&self) -> Result<Value, JsonRpcError> {
+        let tools = vec![
+            Tool {
+                name: "fmm_lookup_export".to_string(),
+                description: "Instant O(1) symbol-to-file lookup. Find where a function, class, type, or variable is defined. Returns the file path plus metadata (exports, imports, dependencies, LOC). Use before Grep.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Exact export name to find (function, class, type, variable, component)"
+                        }
+                    },
+                    "required": ["name"]
+                }),
+            },
+            Tool {
+                name: "fmm_list_exports".to_string(),
+                description: "Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Use 'file' to list a specific file's exports.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "pattern": {
+                            "type": "string",
+                            "description": "Substring to match against export names (case-insensitive). E.g. 'auth' finds all auth-related exports."
+                        },
+                        "file": {
+                            "type": "string",
+                            "description": "File path — returns all exports from this specific file"
+                        }
+                    }
+                }),
+            },
+            Tool {
+                name: "fmm_file_info".to_string(),
+                description: "Get a file's structural profile from the index: exports, imports, dependencies, LOC. Same data as the file's // --- FMM --- header block, but from the pre-built index.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "file": {
+                            "type": "string",
+                            "description": "File path to inspect — returns exports, imports, dependencies, LOC without reading source"
+                        }
+                    },
+                    "required": ["file"]
+                }),
+            },
+            Tool {
+                name: "fmm_dependency_graph".to_string(),
+                description: "Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "file": {
+                            "type": "string",
+                            "description": "File path to analyze — returns all upstream dependencies and downstream dependents"
+                        }
+                    },
+                    "required": ["file"]
+                }),
+            },
+            Tool {
+                name: "fmm_search".to_string(),
+                description: "Search files by structural criteria: exported symbol, imported package, local dependency, or LOC range. Filters combine with AND logic. Use for 'which files use crypto?', 'what depends on auth?'.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "export": {
+                            "type": "string",
+                            "description": "Find the file that exports this symbol (exact match)"
+                        },
+                        "imports": {
+                            "type": "string",
+                            "description": "Find all files that import this package/module (substring match)"
+                        },
+                        "depends_on": {
+                            "type": "string",
+                            "description": "Find all files that depend on this local path — use for impact analysis"
+                        },
+                        "min_loc": {
+                            "type": "integer",
+                            "description": "Minimum lines of code — find files larger than this"
+                        },
+                        "max_loc": {
+                            "type": "integer",
+                            "description": "Maximum lines of code — find files smaller than this"
+                        }
+                    }
+                }),
+            },
+            Tool {
+                name: "fmm_get_manifest".to_string(),
+                description: "Project file map: every file with its exports and LOC, grouped by directory. Use to discover what exists and where. Returns a compact text map by default. Pass format='json' for the full index (warning: can be very large).".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "format": {
+                            "type": "string",
+                            "description": "Output format: 'compact' (default, text map) or 'json' (full index with imports/dependencies — can be very large)",
+                            "enum": ["compact", "json"]
+                        }
+                    }
+                }),
+            },
+            // Consolidated tools with intent-matching names
+            Tool {
+                name: "fmm_find_symbol".to_string(),
+                description: "Find exported symbols. Use 'name' for exact O(1) lookup, 'pattern' for fuzzy search, or 'file' to list a file's exports.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Exact export name for O(1) lookup — use when you know the symbol name"
+                        },
+                        "pattern": {
+                            "type": "string",
+                            "description": "Substring to match against all export names (case-insensitive fuzzy search)"
+                        },
+                        "file": {
+                            "type": "string",
+                            "description": "File path — list all exports from this specific file"
+                        }
+                    }
+                }),
+            },
+            Tool {
+                name: "fmm_file_metadata".to_string(),
+                description: "Get a file's structural profile from the index: exports, imports, dependencies, LOC. Same data as the file's // --- FMM --- header block.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "file": {
+                            "type": "string",
+                            "description": "File path to inspect — returns exports, imports, dependencies, LOC without reading source"
+                        }
+                    },
+                    "required": ["file"]
+                }),
+            },
+            Tool {
+                name: "fmm_analyze_dependencies".to_string(),
+                description: "Dependency and impact analysis. Use 'file' for its dependency graph (upstream + downstream). Use 'imports' to find files importing a package. Use 'depends_on' to find files depending on a local module.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "file": {
+                            "type": "string",
+                            "description": "File path — returns upstream dependencies and downstream dependents (blast radius)"
+                        },
+                        "imports": {
+                            "type": "string",
+                            "description": "Package name — find all files that import this module"
+                        },
+                        "depends_on": {
+                            "type": "string",
+                            "description": "Local file path — find all files that depend on it"
+                        },
+                        "min_loc": {
+                            "type": "integer",
+                            "description": "Minimum lines of code filter"
+                        },
+                        "max_loc": {
+                            "type": "integer",
+                            "description": "Maximum lines of code filter"
+                        }
+                    }
+                }),
+            },
+            Tool {
+                name: "fmm_project_overview".to_string(),
+                description: "Project file map: every file with its exports and LOC, grouped by directory. Use to discover what exists and where. Same as fmm_get_manifest.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "format": {
+                            "type": "string",
+                            "description": "Output format: 'compact' (default, text map) or 'json' (full index — can be very large)",
+                            "enum": ["compact", "json"]
+                        }
+                    }
+                }),
+            },
+        ];
+
+        Ok(json!({ "tools": tools }))
+    }
+
+    fn handle_tool_call(&self, params: &Option<Value>) -> Result<Value, JsonRpcError> {
+        let params = params.as_ref().ok_or_else(|| JsonRpcError {
+            code: -32602,
+            message: "Missing params".to_string(),
+            data: None,
+        })?;
+
+        let tool_name =
+            params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| JsonRpcError {
+                    code: -32602,
+                    message: "Missing tool name".to_string(),
+                    data: None,
+                })?;
+
+        let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
+
+        let result = match tool_name {
+            // Original tools
+            "fmm_lookup_export" => self.tool_lookup_export(&arguments),
+            "fmm_list_exports" => self.tool_list_exports(&arguments),
+            "fmm_file_info" => self.tool_file_info(&arguments),
+            "fmm_dependency_graph" => self.tool_dependency_graph(&arguments),
+            "fmm_search" => self.tool_search(&arguments),
+            "fmm_get_manifest" => self.tool_get_manifest(&arguments),
+            // Consolidated tools (intent-matching names)
+            "fmm_find_symbol" => self.tool_find_symbol(&arguments),
+            "fmm_file_metadata" => self.tool_file_info(&arguments),
+            "fmm_analyze_dependencies" => self.tool_analyze_dependencies(&arguments),
+            "fmm_project_overview" => self.tool_get_manifest(&arguments),
+            // Legacy alias
+            "fmm_find_export" => self.tool_lookup_export(&arguments),
+            _ => Err(format!("Unknown tool: {}", tool_name)),
+        };
+
+        match result {
+            Ok(text) => Ok(json!({
+                "content": [{
+                    "type": "text",
+                    "text": text
+                }]
+            })),
+            Err(e) => Ok(json!({
+                "content": [{
+                    "type": "text",
+                    "text": e
+                }],
+                "isError": true
+            })),
+        }
+    }
+
+    fn tool_lookup_export(&self, args: &Value) -> Result<String, String> {
+        let manifest = self.require_manifest()?;
+
+        let name = args
+            .get("name")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing 'name' argument")?;
+
+        match manifest.export_index.get(name) {
+            Some(file_path) => {
+                let entry = manifest.files.get(file_path);
+                let result = json!({
+                    "file": file_path,
+                    "exports": entry.map(|e| &e.exports),
+                    "imports": entry.map(|e| &e.imports),
+                    "dependencies": entry.map(|e| &e.dependencies),
+                    "loc": entry.map(|e| e.loc),
+                });
+                serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+            }
+            None => Err(format!("Export '{}' not found", name)),
+        }
+    }
+
+    fn tool_list_exports(&self, args: &Value) -> Result<String, String> {
+        let manifest = self.require_manifest()?;
+
+        let pattern = args.get("pattern").and_then(|v| v.as_str());
+        let file = args.get("file").and_then(|v| v.as_str());
+
+        if let Some(file_path) = file {
+            // List exports from a specific file
+            match manifest.files.get(file_path) {
+                Some(entry) => {
+                    let result = json!({
+                        "file": file_path,
+                        "exports": entry.exports,
+                    });
+                    serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+                }
+                None => Err(format!("File '{}' not found in manifest", file_path)),
+            }
+        } else if let Some(pat) = pattern {
+            // Search export index by pattern
+            let pat_lower = pat.to_lowercase();
+            let mut matches: Vec<(&String, &String)> = manifest
+                .export_index
+                .iter()
+                .filter(|(name, _)| name.to_lowercase().contains(&pat_lower))
+                .collect();
+            matches.sort_by_key(|(name, _)| name.to_lowercase());
+
+            let result: Vec<Value> = matches
+                .iter()
+                .map(|(name, path)| json!({"export": name, "file": path}))
+                .collect();
+            serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+        } else {
+            // List all exports (grouped by file)
+            let mut by_file: Vec<(&String, Vec<&String>)> = Vec::new();
+            for (file_path, entry) in &manifest.files {
+                if !entry.exports.is_empty() {
+                    by_file.push((file_path, entry.exports.iter().collect()));
+                }
+            }
+            by_file.sort_by_key(|(path, _)| path.to_lowercase());
+
+            let result: Vec<Value> = by_file
+                .iter()
+                .map(|(path, exports)| json!({"file": path, "exports": exports}))
+                .collect();
+            serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+        }
+    }
+
+    fn tool_file_info(&self, args: &Value) -> Result<String, String> {
+        let manifest = self.require_manifest()?;
+
+        let file = args
+            .get("file")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing 'file' argument")?;
+
+        match manifest.files.get(file) {
+            Some(entry) => {
+                let result = json!({
+                    "file": file,
+                    "exports": entry.exports,
+                    "imports": entry.imports,
+                    "dependencies": entry.dependencies,
+                    "loc": entry.loc,
+                });
+                serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+            }
+            None => Err(format!("File '{}' not found in manifest", file)),
+        }
+    }
+
+    fn tool_dependency_graph(&self, args: &Value) -> Result<String, String> {
+        let manifest = self.require_manifest()?;
+
+        let file = args
+            .get("file")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing 'file' argument")?;
+
+        let entry = manifest
+            .files
+            .get(file)
+            .ok_or_else(|| format!("File '{}' not found in manifest", file))?;
+
+        // Upstream: files this file depends on (its dependencies)
+        let upstream: Vec<&str> = entry.dependencies.iter().map(|s| s.as_str()).collect();
+
+        // Downstream: files that depend on this file
+        let mut downstream: Vec<&String> = manifest
+            .files
+            .iter()
+            .filter(|(path, _)| *path != file)
+            .filter(|(path, e)| {
+                e.dependencies
+                    .iter()
+                    .any(|d| dep_matches(d, file, path))
+            })
+            .map(|(path, _)| path)
+            .collect();
+        downstream.sort();
+
+        let result = json!({
+            "file": file,
+            "upstream": upstream,
+            "downstream": downstream,
+            "imports": entry.imports,
+        });
+        serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+    }
+
+    fn tool_search(&self, args: &Value) -> Result<String, String> {
+        let manifest = self.require_manifest()?;
+
+        let mut results: Vec<(&String, &crate::manifest::FileEntry)> = Vec::new();
+
+        let has_export = args.get("export").and_then(|v| v.as_str()).is_some();
+        let has_imports = args.get("imports").and_then(|v| v.as_str()).is_some();
+        let has_depends_on = args.get("depends_on").and_then(|v| v.as_str()).is_some();
+
+        // Search by export
+        if let Some(export) = args.get("export").and_then(|v| v.as_str()) {
+            if let Some(file_path) = manifest.export_index.get(export) {
+                if let Some(entry) = manifest.files.get(file_path) {
+                    results.push((file_path, entry));
+                }
+            }
+        }
+
+        // Search by imports
+        if let Some(import_name) = args.get("imports").and_then(|v| v.as_str()) {
+            for (file_path, entry) in &manifest.files {
+                if entry.imports.iter().any(|i| i.contains(import_name))
+                    && !results.iter().any(|(f, _)| *f == file_path)
+                {
+                    results.push((file_path, entry));
+                }
+            }
+        }
+
+        // Search by depends_on
+        if let Some(dep_path) = args.get("depends_on").and_then(|v| v.as_str()) {
+            for (file_path, entry) in &manifest.files {
+                if entry.dependencies.iter().any(|d| d.contains(dep_path))
+                    && !results.iter().any(|(f, _)| *f == file_path)
+                {
+                    results.push((file_path, entry));
+                }
+            }
+        }
+
+        // Filter by LOC
+        let min_loc = args
+            .get("min_loc")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
+        let max_loc = args
+            .get("max_loc")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
+
+        if min_loc.is_some() || max_loc.is_some() {
+            if results.is_empty() && !has_export && !has_imports && !has_depends_on {
+                for (file_path, entry) in &manifest.files {
+                    results.push((file_path, entry));
+                }
+            }
+
+            results.retain(|(_, entry)| {
+                let passes_min = min_loc.is_none_or(|min| entry.loc >= min);
+                let passes_max = max_loc.is_none_or(|max| entry.loc <= max);
+                passes_min && passes_max
+            });
+        }
+
+        // If no filters, return all
+        if !has_export && !has_imports && !has_depends_on && min_loc.is_none() && max_loc.is_none()
+        {
+            for (file_path, entry) in &manifest.files {
+                results.push((file_path, entry));
+            }
+        }
+
+        let output: Vec<Value> = results
+            .iter()
+            .map(|(path, entry)| {
+                json!({
+                    "file": path,
+                    "exports": entry.exports,
+                    "imports": entry.imports,
+                    "dependencies": entry.dependencies,
+                    "loc": entry.loc,
+                })
+            })
+            .collect();
+
+        serde_json::to_string_pretty(&output).map_err(|e| e.to_string())
+    }
+
+    fn tool_get_manifest(&self, args: &Value) -> Result<String, String> {
+        let manifest = self.require_manifest()?;
+        let format = args
+            .get("format")
+            .and_then(|v| v.as_str())
+            .unwrap_or("compact");
+
+        if format == "json" {
+            return serde_json::to_string_pretty(manifest).map_err(|e| e.to_string());
+        }
+
+        // Compact: sorted file tree with exports and LOC
+        let mut entries: Vec<(&String, &crate::manifest::FileEntry)> =
+            manifest.files.iter().collect();
+        entries.sort_by_key(|(path, _)| path.as_str());
+
+        let mut output = String::new();
+        output.push_str(&format!(
+            "# Project Map — {} files\n\n",
+            entries.len()
+        ));
+
+        let mut current_dir = String::new();
+        for (path, entry) in &entries {
+            // Group by directory
+            let dir = path.rfind('/').map(|i| &path[..i]).unwrap_or("");
+            if dir != current_dir {
+                if !current_dir.is_empty() {
+                    output.push('\n');
+                }
+                output.push_str(&format!("## {}/\n", dir));
+                current_dir = dir.to_string();
+            }
+
+            let filename = path.rfind('/').map(|i| &path[i + 1..]).unwrap_or(path);
+            let exports = if entry.exports.is_empty() {
+                String::new()
+            } else if entry.exports.len() <= 5 {
+                format!("  [{}]", entry.exports.join(", "))
+            } else {
+                let shown: Vec<&str> = entry.exports.iter().take(5).map(|s| s.as_str()).collect();
+                format!("  [{}, +{}]", shown.join(", "), entry.exports.len() - 5)
+            };
+            output.push_str(&format!(
+                "  {} ({}L){}\n",
+                filename, entry.loc, exports
+            ));
+        }
+
+        Ok(output)
+    }
+
+    /// Consolidated symbol finder: exact lookup (name), fuzzy search (pattern), or file listing (file).
+    fn tool_find_symbol(&self, args: &Value) -> Result<String, String> {
+        let name = args.get("name").and_then(|v| v.as_str());
+        let pattern = args.get("pattern").and_then(|v| v.as_str());
+        let file = args.get("file").and_then(|v| v.as_str());
+
+        // Priority: exact name > file > pattern
+        if name.is_some() {
+            self.tool_lookup_export(args)
+        } else if file.is_some() || pattern.is_some() {
+            self.tool_list_exports(args)
+        } else {
+            Err("Provide 'name' (exact lookup), 'pattern' (fuzzy search), or 'file' (list exports)".to_string())
+        }
+    }
+
+    /// Consolidated dependency analysis: graph for a file, or search by imports/depends_on.
+    fn tool_analyze_dependencies(&self, args: &Value) -> Result<String, String> {
+        let file = args.get("file").and_then(|v| v.as_str());
+        let imports = args.get("imports").and_then(|v| v.as_str());
+        let depends_on = args.get("depends_on").and_then(|v| v.as_str());
+
+        if file.is_some() {
+            if imports.is_some() || depends_on.is_some() {
+                // Both graph and search requested — return graph (primary) with search context
+                let graph_result = self.tool_dependency_graph(args)?;
+                let search_result = self.tool_search(args)?;
+                let combined = format!(
+                    "{{\"dependency_graph\": {},\"related_files\": {}}}",
+                    graph_result, search_result
+                );
+                Ok(combined)
+            } else {
+                self.tool_dependency_graph(args)
+            }
+        } else if imports.is_some() || depends_on.is_some() {
+            self.tool_search(args)
+        } else {
+            Err("Provide 'file' (dependency graph), 'imports' (find by package), or 'depends_on' (find by local dep)".to_string())
+        }
+    }
+}
+
+/// Check if a dependency path from `dependent_file` resolves to `target_file`.
+/// Dependencies are stored as relative paths like "../utils/crypto.utils.js"
+/// and need to be resolved against the dependent file's directory.
+fn dep_matches(dep: &str, target_file: &str, dependent_file: &str) -> bool {
+    // Resolve the dependency path relative to the dependent file's directory
+    let dep_dir = dependent_file
+        .rsplit_once('/')
+        .map(|(dir, _)| dir)
+        .unwrap_or("");
+
+    // Build resolved path by applying relative segments
+    let mut parts: Vec<&str> = if dep_dir.is_empty() {
+        Vec::new()
+    } else {
+        dep_dir.split('/').collect()
+    };
+
+    let dep_clean = dep.strip_prefix("./").unwrap_or(dep);
+    for segment in dep_clean.split('/') {
+        if segment == ".." {
+            parts.pop();
+        } else if segment != "." {
+            parts.push(segment);
+        }
+    }
+
+    let resolved = parts.join("/");
+
+    // Strip extension from both for comparison (.ts/.js/.tsx/.jsx interchangeable)
+    let resolved_stem = resolved
+        .rsplit_once('.')
+        .map(|(stem, _)| stem)
+        .unwrap_or(&resolved);
+    let target_stem = target_file
+        .rsplit_once('.')
+        .map(|(stem, _)| stem)
+        .unwrap_or(target_file);
+
+    resolved_stem == target_stem
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dep_matches_relative_path() {
+        // dep "./types" from "src/index.ts" resolves to "src/types"
+        assert!(dep_matches("./types", "src/types.ts", "src/index.ts"));
+        assert!(dep_matches("./config", "src/config.ts", "src/index.ts"));
+        assert!(!dep_matches("./types", "src/other.ts", "src/index.ts"));
+    }
+
+    #[test]
+    fn dep_matches_nested_path() {
+        // dep "./utils/helpers" from "src/index.ts" resolves to "src/utils/helpers"
+        assert!(dep_matches(
+            "./utils/helpers",
+            "src/utils/helpers.ts",
+            "src/index.ts"
+        ));
+        assert!(!dep_matches(
+            "./utils/helpers",
+            "src/utils/other.ts",
+            "src/index.ts"
+        ));
+    }
+
+    #[test]
+    fn dep_matches_parent_relative() {
+        // dep "../utils/crypto.utils.js" from "pkg/src/services/auth.service.ts"
+        // resolves to "pkg/src/utils/crypto.utils"
+        assert!(dep_matches(
+            "../utils/crypto.utils.js",
+            "pkg/src/utils/crypto.utils.ts",
+            "pkg/src/services/auth.service.ts"
+        ));
+        assert!(!dep_matches(
+            "../utils/crypto.utils.js",
+            "pkg/src/services/other.ts",
+            "pkg/src/services/auth.service.ts"
+        ));
+    }
+
+    #[test]
+    fn dep_matches_deep_parent_relative() {
+        // dep "../../../utils/crypto.utils.js" from "pkg/src/tests/unit/auth/test.ts"
+        // resolves to "pkg/src/utils/crypto.utils" (going up 3 dirs from tests/unit/auth)
+        assert!(dep_matches(
+            "../../../utils/crypto.utils.js",
+            "pkg/src/utils/crypto.utils.ts",
+            "pkg/src/tests/unit/auth/test.ts"
+        ));
+    }
+
+    #[test]
+    fn dep_matches_without_prefix() {
+        assert!(dep_matches("types", "src/types.ts", "src/index.ts"));
+    }
+
+    #[test]
+    fn test_hot_reload_detection() {
+        let server = McpServer::new();
+        // Just verify construction works and mtime is loaded
+        assert!(server.root.is_absolute() || server.root.as_os_str().is_empty());
+    }
+}

@@ -1,0 +1,162 @@
+╔══════════════════════════════════════════════════════════╗
+║     exp15-isolated: Docker-based Experiment Runner      ║
+║                                                         ║
+║  A = CLAUDE.md only    B = Skill only                  ║
+║  C = MCP only          D = Skill + MCP                 ║
+║                                                         ║
+║  4 tasks × 3 conditions × 3 runs = 36 total            ║
+║  Max parallel: 3                                        ║
+╚══════════════════════════════════════════════════════════╝
+
+Building Docker image...
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [condition-b internal] load build definition from Dockerfile
+#1 transferring dockerfile: 1.91kB done
+#1 DONE 0.0s
+
+#2 [condition-b internal] load metadata for docker.io/library/rust:1.93-bookworm
+#2 DONE 0.0s
+
+#3 [condition-b internal] load metadata for docker.io/library/node:22-bookworm-slim
+#3 DONE 0.4s
+
+#4 [condition-b internal] load .dockerignore
+#4 transferring context: 230B done
+#4 DONE 0.0s
+
+#5 [condition-b builder 1/4] FROM docker.io/library/rust:1.93-bookworm
+#5 DONE 0.0s
+
+#6 [condition-b stage-1 1/8] FROM docker.io/library/node:22-bookworm-slim@sha256:f86be15afa9a8277608e141ce2a8aa55d3d9c40845921b8511f4fb7897be2554
+#6 DONE 0.0s
+
+#7 [condition-b internal] load build context
+#7 transferring context: 36.45kB 0.0s done
+#7 DONE 0.0s
+
+#8 [condition-b stage-1 7/8] COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+#8 CACHED
+
+#9 [condition-b builder 3/4] COPY fmm-src/ .
+#9 CACHED
+
+#10 [condition-b stage-1 5/8] RUN rm -rf /root/.claude /root/.config /root/.local &&     mkdir -p /root &&     echo '{}' > /root/.claude.json 2>/dev/null || true
+#10 CACHED
+
+#11 [condition-b stage-1 6/8] WORKDIR /experiment
+#11 CACHED
+
+#12 [condition-b stage-1 3/8] RUN npm install -g @anthropic-ai/claude-code &&     npm cache clean --force
+#12 CACHED
+
+#13 [condition-b builder 4/4] RUN cargo build --release &&     strip target/release/fmm
+#13 CACHED
+
+#14 [condition-b stage-1 4/8] COPY --from=builder /build/target/release/fmm /usr/local/bin/fmm
+#14 CACHED
+
+#15 [condition-b stage-1 2/8] RUN apt-get update &&     apt-get install -y --no-install-recommends         ca-certificates         curl         git         rsync         python3     && rm -rf /var/lib/apt/lists/*
+#15 CACHED
+
+#16 [condition-b builder 2/4] WORKDIR /build
+#16 CACHED
+
+#17 [condition-b stage-1 8/8] RUN chmod +x /usr/local/bin/entrypoint.sh
+#17 CACHED
+
+#18 [condition-b] exporting to image
+#18 exporting layers done
+#18 writing image sha256:0cd7ba351a2e923d109b2d11c7025b760fe69d86ae9ab9ec8b1b7f4166fede0d done
+#18 naming to docker.io/library/exp15-isolated-condition-b done
+#18 DONE 0.0s
+
+#19 [condition-b] resolving provenance for metadata file
+#19 DONE 0.0s
+ condition-b  Built
+  Image built successfully.
+
+Runs planned: 36
+
+  [3/36] Starting: B / architecture / run 3
+  [1/36] Starting: B / architecture / run 1
+  [2/36] Starting: B / architecture / run 2
+  [2/36] Done: B / architecture / run 2
+  [4/36] Starting: B / export-lookup / run 1
+  [3/36] Done: B / architecture / run 3
+  [5/36] Starting: B / export-lookup / run 2
+  [4/36] Done: B / export-lookup / run 1
+  [6/36] Starting: B / export-lookup / run 3
+  [1/36] Done: B / architecture / run 1
+  [7/36] Starting: B / impact-analysis / run 1
+  [5/36] Done: B / export-lookup / run 2
+  [8/36] Starting: B / impact-analysis / run 2
+  [6/36] Done: B / export-lookup / run 3
+  [9/36] Starting: B / impact-analysis / run 3
+  [7/36] Done: B / impact-analysis / run 1
+  [10/36] Starting: B / dependency-map / run 1
+  [8/36] Done: B / impact-analysis / run 2
+  [11/36] Starting: B / dependency-map / run 2
+  [9/36] Done: B / impact-analysis / run 3
+  [12/36] Starting: B / dependency-map / run 3
+  [10/36] Done: B / dependency-map / run 1
+  [13/36] Starting: C / architecture / run 1
+  [11/36] Done: B / dependency-map / run 2
+  [14/36] Starting: C / architecture / run 2
+  [12/36] Done: B / dependency-map / run 3
+  [15/36] Starting: C / architecture / run 3
+  [14/36] Done: C / architecture / run 2
+  [16/36] Starting: C / export-lookup / run 1
+  [13/36] Done: C / architecture / run 1
+  [17/36] Starting: C / export-lookup / run 2
+  [15/36] Done: C / architecture / run 3
+  [18/36] Starting: C / export-lookup / run 3
+  [16/36] Done: C / export-lookup / run 1
+  [19/36] Starting: C / impact-analysis / run 1
+  [17/36] Done: C / export-lookup / run 2
+  [20/36] Starting: C / impact-analysis / run 2
+  [18/36] Done: C / export-lookup / run 3
+  [21/36] Starting: C / impact-analysis / run 3
+  [19/36] Done: C / impact-analysis / run 1
+  [22/36] Starting: C / dependency-map / run 1
+  [20/36] Done: C / impact-analysis / run 2
+  [23/36] Starting: C / dependency-map / run 2
+  [21/36] Done: C / impact-analysis / run 3
+  [24/36] Starting: C / dependency-map / run 3
+  [22/36] Done: C / dependency-map / run 1
+  [25/36] Starting: D / architecture / run 1
+  [23/36] Done: C / dependency-map / run 2
+  [26/36] Starting: D / architecture / run 2
+  [24/36] Done: C / dependency-map / run 3
+  [27/36] Starting: D / architecture / run 3
+  [25/36] Done: D / architecture / run 1
+  [28/36] Starting: D / export-lookup / run 1
+  [26/36] Done: D / architecture / run 2
+  [29/36] Starting: D / export-lookup / run 2
+  [28/36] Done: D / export-lookup / run 1
+  [30/36] Starting: D / export-lookup / run 3
+  [27/36] Done: D / architecture / run 3
+  [31/36] Starting: D / impact-analysis / run 1
+  [29/36] Done: D / export-lookup / run 2
+  [32/36] Starting: D / impact-analysis / run 2
+  [30/36] Done: D / export-lookup / run 3
+  [33/36] Starting: D / impact-analysis / run 3
+  [31/36] Done: D / impact-analysis / run 1
+  [34/36] Starting: D / dependency-map / run 1
+  [32/36] Done: D / impact-analysis / run 2
+  [35/36] Starting: D / dependency-map / run 2
+  [33/36] Done: D / impact-analysis / run 3
+  [36/36] Starting: D / dependency-map / run 3
+  [35/36] Done: D / dependency-map / run 2
+  [36/36] Done: D / dependency-map / run 3
+  [34/36] Done: D / dependency-map / run 1
+
+╔══════════════════════════════════════════════════════════╗
+║  ALL RUNS COMPLETE                                      ║
+║  Completed: 36 / 36                                     ║
+╚══════════════════════════════════════════════════════════╝
+
+Results in: /Users/alphab/Dev/LLM/DEV/fmm/research/exp15-isolated/results/
+Logs in:    /Users/alphab/Dev/LLM/DEV/fmm/research/exp15-isolated/results/.logs/
+
+Next: python3 compare-isolated.py

@@ -1,6 +1,10 @@
+# Only Dockerfile, entrypoint.sh, and fmm-src/ are needed in the build context
 results/
 *.jsonl
 *.log
+*.md
 .env
-fmm-src/target/
+.env.*
+.git/
 codebase/
+fmm-src/target/
