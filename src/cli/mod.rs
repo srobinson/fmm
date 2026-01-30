@@ -337,25 +337,29 @@ pub fn clean(path: &str, dry_run: bool) -> Result<()> {
     let mut removed = 0u32;
 
     for file in &files {
-        let processor = FileProcessor::new(&config, &root);
-        match processor.clean(file) {
-            Ok(true) => {
-                let sidecar = sidecar_path_for(file);
-                let display = sidecar
-                    .strip_prefix(&root)
-                    .unwrap_or(&sidecar)
-                    .display()
-                    .to_string();
-                if dry_run {
-                    println!("  Would remove: {}", display);
-                } else {
+        let sidecar = sidecar_path_for(file);
+        if !sidecar.exists() {
+            continue;
+        }
+        let display = sidecar
+            .strip_prefix(&root)
+            .unwrap_or(&sidecar)
+            .display()
+            .to_string();
+        if dry_run {
+            println!("  Would remove: {}", display);
+            removed += 1;
+        } else {
+            let processor = FileProcessor::new(&config, &root);
+            match processor.clean(file) {
+                Ok(true) => {
                     println!("{} Removed {}", "✓".green(), display);
+                    removed += 1;
                 }
-                removed += 1;
-            }
-            Ok(false) => {}
-            Err(e) => {
-                eprintln!("{} {}: {}", "Error".red(), file.display(), e);
+                Ok(false) => {}
+                Err(e) => {
+                    eprintln!("{} {}: {}", "Error".red(), file.display(), e);
+                }
             }
         }
     }
