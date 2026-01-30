@@ -479,8 +479,8 @@
       <p><strong>Without fmm</strong> &mdash; an AI agent navigating your codebase reads ~30% of files per query to locate relevant code. Each file is tokenised at roughly 4 tokens per line of code.</p>
       <p><code>tokens_without = avg_loc &times; 4 &times; (codebase_size &times; 0.3)</code></p>
 
-      <p><strong>With fmm</strong> &mdash; the agent reads a compact manifest (~500 tokens) and only the sidecar files it needs (~40 tokens each, typically 5 per query).</p>
-      <p><code>tokens_with = 500 + (40 &times; 5) = 700 tokens</code></p>
+      <p><strong>With fmm</strong> &mdash; the agent reads sidecar files (~25 tokens each) for ~10% of files to triage, then reads only ~5 full source files.</p>
+      <p><code>tokens_with = (codebase_size &times; 0.1 &times; 25) + (5 &times; avg_loc &times; 4)</code></p>
 
       <p><strong>Cost calculation</strong> uses the selected model's input token price:</p>
       <ul>
@@ -544,7 +544,9 @@
     // Tokens
     const filesScanned = Math.floor(files * 0.3);
     const tokensWithout = loc * 4 * filesScanned;
-    const tokensWith = 500 + (40 * 5);
+    // With fmm: read sidecars (~25 tokens each) for ~10% of files to triage, then 5 full source reads
+    const sidecarReads = Math.max(5, Math.ceil(files * 0.1));
+    const tokensWith = (sidecarReads * 25) + (5 * loc * 4);
 
     const reduction = 1 - (tokensWith / tokensWithout);
 

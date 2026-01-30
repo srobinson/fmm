@@ -35,7 +35,7 @@ Multiply that by hundreds of queries per day across a team. The waste compounds 
 fmm init
 ```
 
-Creates your `.fmm.yaml` config and sets up LLM integration (CLAUDE.md rules, MCP server, or both).
+Creates your `.fmmrc.json` config and sets up LLM integration (CLAUDE.md rules, MCP server, or both).
 
 ### 2. Generate sidecars
 
@@ -50,24 +50,15 @@ Every source file gets a `.fmm` companion with structured metadata. Regenerate a
 Instead of opening `src/store/index.ts` (487 lines, 2,100 tokens), your AI reads `src/store/index.ts.fmm`:
 
 ```yaml
----
 file: src/store/index.ts
+fmm: v0.2
+exports: [createStore, Store, StoreOptions]
+imports: [events, types]
+dependencies: [./types, ../events/emitter, ./middleware]
 loc: 487
-imports:
-  - { from: "./types", symbols: [StoreConfig, State] }
-  - { from: "../events/emitter", symbols: [EventEmitter] }
-exports:
-  - { name: createStore, type: function, line: 45 }
-  - { name: Store, type: class, line: 89 }
-  - { name: StoreOptions, type: interface, line: 12 }
-dependencies:
-  - ../events/emitter
-  - ./types
-  - ./middleware
----
 ```
 
-**32 tokens instead of 2,100.** Your AI knows what the file exports, what it imports, and where to look next -- without reading a single line of source code.
+**~25 tokens instead of 2,100.** Your AI knows what the file exports, what it imports, and where to look next -- without reading a single line of source code.
 
 ---
 
@@ -83,17 +74,17 @@ A 244-file TypeScript codebase. Navigation queries that consumed ~50K tokens dro
 
 Systematic A/B testing across multiple AI configurations (Skill-only, MCP-only, Skill+MCP). Consistent reductions in tool calls and source file reads across all configurations.
 
-### Case study: claude-flow (Exp14)
+### Case study: claude-flow
 
 9,008 files. Full sidecar index generated in 3 seconds. AI located a cross-module bug in 2 file reads that previously required scanning dozens of files.
 
-### Proof harness: live A/B comparison (Exp15)
+### Proof harness: live A/B comparison
 
 Head-to-head on architecture navigation queries:
 
 - **36% fewer tool calls** (fmm vs. baseline)
 - **53% fewer source file reads** (fmm vs. baseline)
-- **30% fewer tool calls** with Skill+MCP configuration
+- **30% fewer tool calls** with Skill+MCP configuration (Exp15)
 
 ---
 
@@ -144,6 +135,6 @@ That's it. Three commands. Your AI starts navigating smarter immediately.
 **GitHub:** [github.com/srobinson/fmm](https://github.com/srobinson/fmm)
 
 **Deep dives:**
-- [Experiment 13: Token reduction measurements](https://github.com/srobinson/fmm/blob/main/docs/experiments/exp13.md)
-- [Experiment 14: claude-flow case study (9,008 files)](https://github.com/srobinson/fmm/blob/main/docs/experiments/exp14.md)
-- [Experiment 15: A/B proof harness results](https://github.com/srobinson/fmm/blob/main/docs/experiments/exp15.md)
+- [Experiment 13: Token reduction measurements](https://github.com/srobinson/fmm/blob/main/research/exp13/FINDINGS.md)
+- [Experiment 14: LLM discovery behavior](https://github.com/srobinson/fmm/blob/main/research/exp14/FINDINGS.md)
+- [Experiment 15: Delivery mechanism comparison](https://github.com/srobinson/fmm/blob/main/research/exp15/FINDINGS.md)

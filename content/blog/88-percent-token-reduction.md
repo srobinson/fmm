@@ -1,6 +1,6 @@
 # We Measured 88-97% Token Reduction for LLM Code Navigation. Here's the Data.
 
-**tl;dr** -- fmm generates a structural manifest of your codebase (exports, imports, dependencies, LOC per file). LLMs read the manifest instead of source files. On a 244-file TypeScript codebase, this reduced lines read by 88-97% for navigation tasks. On a tiny 4-file codebase, it reduced nothing. Both results matter. This post shows the methodology, raw numbers, limitations, and how to reproduce everything.
+**tl;dr** -- fmm generates structured metadata sidecars for your codebase (exports, imports, dependencies, LOC per file). LLMs read sidecars instead of source files. On a 244-file TypeScript codebase, this reduced lines read by 88-97% for navigation tasks. On a tiny 4-file codebase, it reduced nothing. Both results matter. This post shows the methodology, raw numbers, limitations, and how to reproduce everything.
 
 ---
 
@@ -16,26 +16,24 @@ We also ran a test where fmm provided approximately 0% improvement. We're report
 
 ## What fmm Produces
 
-fmm is a Rust CLI that uses tree-sitter to parse source files and generate structured metadata. For each file in your codebase, it produces a sidecar entry containing:
+fmm is a Rust CLI that uses tree-sitter to parse source files and generate structured metadata. For each source file, it produces a `.fmm` sidecar file containing:
 
 ```yaml
-# .fmm/index.json (excerpt for one file)
-{
-  "file": "src/proxy/adaptive-proxy.ts",
-  "exports": ["AdaptiveProxy", "createProxy", "ProxyConfig"],
-  "imports": ["crypto", "fs", "http2"],
-  "dependencies": [
-    "../utils/logger.js",
-    "./anthropic-to-gemini.js",
-    "./http2-proxy.js",
-    "./http3-proxy.js",
-    "./websocket-proxy.js"
-  ],
-  "loc": 487
-}
+# src/proxy/adaptive-proxy.ts.fmm
+file: src/proxy/adaptive-proxy.ts
+fmm: v0.2
+exports: [AdaptiveProxy, createProxy, ProxyConfig]
+imports: [crypto, fs, http2]
+dependencies:
+  - ../utils/logger.js
+  - ./anthropic-to-gemini.js
+  - ./http2-proxy.js
+  - ./http3-proxy.js
+  - ./websocket-proxy.js
+loc: 487
 ```
 
-One manifest file. Every file's public API, dependency graph, and size. An LLM reads this once and knows where everything lives without opening a single source file.
+Every source file gets a `.fmm` sidecar with its public API, dependency graph, and size. An LLM reads these compact sidecars and knows where everything lives without opening source files.
 
 ---
 
@@ -199,11 +197,11 @@ Using actual API pricing (as of January 2026):
 
 | Model | Price (input) | 100-file scan without fmm | 100-file scan with fmm | Savings |
 |---|---:|---:|---:|---:|
-| Claude Opus 4.5 | $15.00/1M tokens | ~$0.75 | ~$0.024 | 97% |
+| Claude Opus 4.5 | $5.00/1M tokens | ~$0.25 | ~$0.008 | 97% |
 | Claude Sonnet 4.5 | $3.00/1M tokens | ~$0.15 | ~$0.005 | 97% |
 | GPT-4o | $2.50/1M tokens | ~$0.13 | ~$0.004 | 97% |
 
-Assumptions: average file is 200 lines (~500 tokens), manifest entry is ~10 lines (~25 tokens). A "100-file scan" means the LLM reads all 100 files (control) vs reads the manifest + 5 targeted files (treatment).
+Assumptions: average file is 200 lines (~500 tokens), sidecar entry is ~10 lines (~25 tokens). A "100-file scan" means the LLM reads all 100 files (control) vs reads sidecars + 5 targeted source files (treatment).
 
 ### Annual Projections
 
@@ -363,11 +361,11 @@ We want to be explicit about what this research does and does not show.
 
 ## Conclusion
 
-LLMs navigate codebases by reading files. On real codebases, they read far more than they need to. A structural manifest -- exports, imports, dependencies, LOC per file -- gives the LLM a map. With that map, it reads 88-97% fewer lines for navigation tasks while producing equivalent output.
+LLMs navigate codebases by reading files. On real codebases, they read far more than they need to. Structured metadata -- exports, imports, dependencies, LOC per file -- gives the LLM a map. With that map, it reads 88-97% fewer lines for navigation tasks while producing equivalent output.
 
-The mechanism is simple: instead of grepping and reading every matching file, the LLM reads one manifest and makes targeted reads. The economics compound with codebase size and query frequency.
+The mechanism is simple: instead of grepping and reading every matching file, the LLM reads compact sidecars and makes targeted source reads. The economics compound with codebase size and query frequency.
 
-fmm generates that manifest. One command, sub-second on codebases with thousands of files, zero infrastructure, deterministic output.
+fmm generates those sidecars. One command, sub-second on codebases with thousands of files, zero infrastructure, deterministic output.
 
 The data is in the repo. Run the experiments yourself.
 
