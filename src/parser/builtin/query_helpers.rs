@@ -49,3 +49,123 @@ pub fn collect_named_matches(
     results.sort();
     results
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tree_sitter::{Language, Parser};
+
+    fn setup_ts() -> (Language, Parser) {
+        let language: Language = tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into();
+        let mut parser = Parser::new();
+        parser.set_language(&language).unwrap();
+        (language, parser)
+    }
+
+    #[test]
+    fn collect_matches_finds_all_captures() {
+        let (lang, mut parser) = setup_ts();
+        let source = "export function foo() {}\nexport function bar() {}";
+        let tree = parser.parse(source, None).unwrap();
+        let query = Query::new(
+            &lang,
+            "(export_statement (function_declaration name: (identifier) @name))",
+        )
+        .unwrap();
+
+        let results = collect_matches(&query, tree.root_node(), source.as_bytes());
+        assert_eq!(results, vec!["bar", "foo"]);
+    }
+
+    #[test]
+    fn collect_matches_deduplicates() {
+        let (lang, mut parser) = setup_ts();
+        let source = "export { x } from './a';\nexport { x } from './b';";
+        let tree = parser.parse(source, None).unwrap();
+        let query = Query::new(
+            &lang,
+            "(export_statement (export_clause (export_specifier name: (identifier) @name)))",
+        )
+        .unwrap();
+
+        let results = collect_matches(&query, tree.root_node(), source.as_bytes());
+        assert_eq!(results, vec!["x"]);
+    }
+
+    #[test]
+    fn collect_matches_empty_on_no_match() {
+        let (lang, mut parser) = setup_ts();
+        let source = "const x = 1;";
+        let tree = parser.parse(source, None).unwrap();
+        let query = Query::new(
+            &lang,
+            "(export_statement (function_declaration name: (identifier) @name))",
+        )
+        .unwrap();
+
+        let results = collect_matches(&query, tree.root_node(), source.as_bytes());
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn collect_matches_returns_sorted() {
+        let (lang, mut parser) = setup_ts();
+        let source =
+            "export function zebra() {}\nexport function alpha() {}\nexport function middle() {}";
+        let tree = parser.parse(source, None).unwrap();
+        let query = Query::new(
+            &lang,
+            "(export_statement (function_declaration name: (identifier) @name))",
+        )
+        .unwrap();
+
+        let results = collect_matches(&query, tree.root_node(), source.as_bytes());
+        assert_eq!(results, vec!["alpha", "middle", "zebra"]);
+    }
+
+    #[test]
+    fn collect_named_matches_filters_by_capture_name() {
+        let (lang, mut parser) = setup_ts();
+        let source = "export function foo() {}";
+        let tree = parser.parse(source, None).unwrap();
+        let query = Query::new(
+            &lang,
+            "(export_statement (function_declaration name: (identifier) @name))",
+        )
+        .unwrap();
+
+        let results = collect_named_matches(&query, "name", tree.root_node(), source.as_bytes());
+        assert_eq!(results, vec!["foo"]);
+    }
+
+    #[test]
+    fn collect_named_matches_wrong_name_returns_empty() {
+        let (lang, mut parser) = setup_ts();
+        let source = "export function foo() {}";
+        let tree = parser.parse(source, None).unwrap();
+        let query = Query::new(
+            &lang,
+            "(export_statement (function_declaration name: (identifier) @name))",
+        )
+        .unwrap();
+
+        let results =
+            collect_named_matches(&query, "nonexistent", tree.root_node(), source.as_bytes());
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn collect_named_matches_deduplicates_and_sorts() {
+        let (lang, mut parser) = setup_ts();
+        let source = "export { z } from './a';\nexport { a } from './b';\nexport { z } from './c';";
+        let tree = parser.parse(source, None).unwrap();
+        let query = Query::new(
+            &lang,
+            "(export_statement (export_clause (export_specifier name: (identifier) @name)))",
+        )
+        .unwrap();
+
+        let results = collect_named_matches(&query, "name", tree.root_node(), source.as_bytes());
+        assert_eq!(results, vec!["a", "z"]);
+    }
+}
