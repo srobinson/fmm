@@ -174,16 +174,17 @@ fn resolve_root(path: &str) -> Result<PathBuf> {
     if target.is_dir() {
         Ok(target)
     } else if target.is_file() {
-        Ok(target
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default()))
+        match target.parent() {
+            Some(p) => Ok(p.to_path_buf()),
+            None => std::env::current_dir().context("Failed to get current directory"),
+        }
     } else {
         std::env::current_dir().context("Failed to get current directory")
     }
 }
 
 pub fn generate(path: &str, dry_run: bool) -> Result<()> {
+    // Safe default: missing/invalid config falls back to sensible defaults (no ignores, standard settings)
     let config = Config::load().unwrap_or_default();
     let files = collect_files(path, &config)?;
     let root = resolve_root(path)?;
@@ -233,6 +234,7 @@ pub fn generate(path: &str, dry_run: bool) -> Result<()> {
 }
 
 pub fn update(path: &str, dry_run: bool) -> Result<()> {
+    // Safe default: missing/invalid config falls back to sensible defaults (no ignores, standard settings)
     let config = Config::load().unwrap_or_default();
     let files = collect_files(path, &config)?;
     let root = resolve_root(path)?;
@@ -282,6 +284,7 @@ pub fn update(path: &str, dry_run: bool) -> Result<()> {
 }
 
 pub fn validate(path: &str) -> Result<()> {
+    // Safe default: missing/invalid config falls back to sensible defaults (no ignores, standard settings)
     let config = Config::load().unwrap_or_default();
     let files = collect_files(path, &config)?;
     let root = resolve_root(path)?;
@@ -326,6 +329,7 @@ pub fn validate(path: &str) -> Result<()> {
 }
 
 pub fn clean(path: &str, dry_run: bool) -> Result<()> {
+    // Safe default: missing/invalid config falls back to sensible defaults (no ignores, standard settings)
     let config = Config::load().unwrap_or_default();
     let files = collect_files(path, &config)?;
     let root = resolve_root(path)?;
@@ -518,6 +522,7 @@ fn init_mcp_config() -> Result<()> {
 pub fn status() -> Result<()> {
     let config_path = Path::new(".fmmrc.json");
     let config_exists = config_path.exists();
+    // Safe default: missing/invalid config falls back to sensible defaults (no ignores, standard settings)
     let config = Config::load().unwrap_or_default();
 
     println!("{}", "fmm Status".cyan().bold());
@@ -559,6 +564,7 @@ pub fn status() -> Result<()> {
     );
 
     println!("\n{}", "Workspace:".yellow().bold());
+    // Safe default: empty path is harmless for display-only usage
     let cwd = std::env::current_dir().unwrap_or_default();
     println!("  Path: {}", cwd.display());
 

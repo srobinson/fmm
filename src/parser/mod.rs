@@ -28,7 +28,6 @@ pub trait Parser: Send + Sync {
     fn language_id(&self) -> &'static str;
 
     /// File extensions this parser handles.
-    #[allow(dead_code)]
     fn extensions(&self) -> &'static [&'static str];
 }
 
@@ -115,13 +114,13 @@ impl ParserRegistry {
     }
 
     /// Check if a parser exists for the given extension.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn has_parser(&self, extension: &str) -> bool {
         self.factories.contains_key(extension)
     }
 
     /// List all registered extensions.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn extensions(&self) -> Vec<&str> {
         let mut exts: Vec<&str> = self.factories.keys().map(|s| s.as_str()).collect();
         exts.sort();

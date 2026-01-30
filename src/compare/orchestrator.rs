@@ -17,12 +17,10 @@ pub struct CompareOptions {
     /// Branch to compare (default: main)
     pub branch: Option<String>,
     /// Path within repo to analyze (default: src/)
-    #[allow(dead_code)]
     pub src_path: Option<String>,
     /// Task set to use (standard, quick, or custom path)
     pub task_set: String,
     /// Number of runs per task (for averaging)
-    #[allow(dead_code)]
     pub runs: u32,
     /// Output directory for results
     pub output: Option<PathBuf>,
@@ -35,7 +33,6 @@ pub struct CompareOptions {
     /// Quick mode (fewer tasks)
     pub quick: bool,
     /// Model to use
-    #[allow(dead_code)]
     pub model: String,
 }
 
@@ -354,7 +351,10 @@ Only open source files you need to edit."#;
 fn generate_job_id() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    // Safe default: UNIX_EPOCH is always in the past; zero duration produces a valid job ID
+    let duration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
 
     let timestamp = duration.as_secs();
     let nanos = duration.subsec_nanos();

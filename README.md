@@ -1,5 +1,7 @@
 # fmm - Frontmatter Matters
 
+![CI](https://github.com/srobinson/fmm/actions/workflows/ci.yml/badge.svg)
+
 **Infrastructure for LLM cost reduction. 88-97% fewer tokens for code understanding.**
 
 ## The Problem

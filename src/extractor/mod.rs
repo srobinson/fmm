@@ -100,14 +100,6 @@ impl FileProcessor {
         Ok(Some(result.metadata))
     }
 
-    /// Get the language ID for a file extension
-    #[allow(dead_code)]
-    pub fn language_id_for(&self, path: &Path) -> Option<String> {
-        let extension = path.extension().and_then(|ext| ext.to_str())?;
-        let parser = self.registry.get_parser(extension).ok()?;
-        Some(parser.language_id().to_string())
-    }
-
     /// Single-pass parse: metadata + custom fields from one tree-sitter invocation.
     fn parse_content(&self, path: &Path, content: &str) -> Result<ParseResult> {
         let extension = path

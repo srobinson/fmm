@@ -189,12 +189,6 @@ impl TaskSet {
             ],
         }
     }
-
-    /// Get task by ID
-    #[allow(dead_code)]
-    pub fn get_task(&self, id: &str) -> Option<&Task> {
-        self.tasks.iter().find(|t| t.id == id)
-    }
 }
 
 #[cfg(test)]

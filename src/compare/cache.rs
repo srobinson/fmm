@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use super::report::ComparisonReport;
@@ -78,14 +78,14 @@ impl CacheManager {
     }
 
     /// Set cache TTL
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn with_ttl(mut self, ttl: Duration) -> Self {
         self.ttl = ttl;
         self
     }
 
     /// Set max cache size
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn with_max_size(mut self, max_size_mb: u64) -> Self {
         self.max_size_mb = max_size_mb;
         self
@@ -151,14 +151,8 @@ impl CacheManager {
         Ok(())
     }
 
-    /// Check if a cache key exists and is valid
-    #[allow(dead_code)]
-    pub fn has(&mut self, key: &CacheKey) -> bool {
-        self.get(key).is_some()
-    }
-
     /// Clear all cached results for a repository
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn clear_repo(&mut self, repo_url: &str) -> Result<u32> {
         let url_hash = simple_hash(repo_url);
         let mut cleared = 0u32;
@@ -180,7 +174,7 @@ impl CacheManager {
     }
 
     /// Clear all cache
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn clear_all(&mut self) -> Result<u32> {
         self.memory_cache.clear();
 
@@ -212,7 +206,7 @@ impl CacheManager {
     }
 
     /// Load a comparison report by job ID
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn load_report(&self, job_id: &str) -> Result<Option<ComparisonReport>> {
         validate_path_component(job_id)?;
         let report_path = self
@@ -231,7 +225,7 @@ impl CacheManager {
     }
 
     /// List all cached reports
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn list_reports(&self) -> Result<Vec<String>> {
         let reports_dir = self.cache_dir.join("reports");
         if !reports_dir.exists() {
@@ -310,12 +304,6 @@ impl CacheManager {
         }
 
         Ok(total)
-    }
-
-    /// Get cache directory path
-    #[allow(dead_code)]
-    pub fn cache_dir(&self) -> &Path {
-        &self.cache_dir
     }
 }
 

@@ -89,27 +89,6 @@ impl ClaudeRunner {
         }
     }
 
-    /// Set allowed tools
-    #[allow(dead_code)]
-    pub fn with_tools(mut self, tools: Vec<String>) -> Self {
-        self.allowed_tools = tools;
-        self
-    }
-
-    /// Set model
-    #[allow(dead_code)]
-    pub fn with_model(mut self, model: &str) -> Self {
-        self.model = model.to_string();
-        self
-    }
-
-    /// Enable skipping permissions (for sandboxed environments)
-    #[allow(dead_code)]
-    pub fn skip_permissions(mut self, skip: bool) -> Self {
-        self.skip_permissions = skip;
-        self
-    }
-
     /// Maximum prompt size in bytes (100KB)
     const MAX_PROMPT_SIZE: usize = 100 * 1024;
     /// Maximum FMM context size in bytes (500KB — manifests can be large)
