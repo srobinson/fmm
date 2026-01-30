@@ -33,7 +33,9 @@ This `proofs/` directory distills those findings into a **single reproducible de
 proofs/
 ├── README.md              # This file
 ├── harness/               # Test harness scripts
-│   └── run-navigation.sh  # Runs control vs treatment navigation query
+│   ├── run-navigation.sh  # Runs control vs treatment navigation queries
+│   ├── parse-results.py   # Extracts metrics from stream-json output
+│   └── compare-results.py # Generates comparison summary from parsed results
 ├── content/               # Raw transcripts from proof runs
 │   ├── control/           # LLM output without fmm
 │   └── treatment/         # LLM output with fmm
@@ -46,20 +48,20 @@ proofs/
 ## Running the Proof
 
 ```bash
-# Prerequisites: Claude CLI (`claude`), jq
+# Prerequisites: Claude CLI (`claude`), python3
 cd proofs/
 ./harness/run-navigation.sh
 ```
 
 The harness runs a defined navigation query against:
-- **Control:** bare zustand repo (no fmm metadata)
-- **Treatment:** same repo with `.fmm` sidecars generated
+- **Control:** TypeScript auth app with no fmm metadata (`research/exp14/repos/clean/`)
+- **Treatment:** same app with `.fmm` manifest + system prompt hint (`research/exp14/repos/hint/`)
 
 It captures tool calls, file reads, token counts, and elapsed time for both conditions, then outputs a comparison table.
 
 ## Target Codebase
 
-[zustand](https://github.com/pmndrs/zustand) — a small, well-known state management library. Pre-configured repos live in `experiments/fmm-benchmarking/`.
+An 18-file TypeScript auth app (`research/exp14/repos/`) with routes, controllers, middleware, and auth modules — small enough to verify results by hand, large enough to demonstrate navigation patterns.
 
 ## Related
 

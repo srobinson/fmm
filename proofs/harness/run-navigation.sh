@@ -9,7 +9,7 @@
 #   ./harness/run-navigation.sh --query 1    # Run specific query
 #   ./harness/run-navigation.sh --dry-run    # Show what would run
 #
-# Prerequisites: claude CLI, python3, jq
+# Prerequisites: claude CLI, python3
 # Run from: proofs/ directory (or it auto-detects)
 set -euo pipefail
 
