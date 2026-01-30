@@ -1,10 +1,3 @@
-# --- FMM ---
-# exports: [Cacheable, DataProcessor, ProcessConfig, transform]
-# imports: [json, net/http]
-# dependencies: [config, lib/helpers]
-# mixins: [Comparable, Enumerable]
-# ---
-
 require 'json'
 require 'net/http'
 require_relative 'config'

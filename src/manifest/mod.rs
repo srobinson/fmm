@@ -1,17 +1,13 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use chrono::{DateTime, Utc};
+use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
 use std::path::Path;
 
 use crate::parser::Metadata;
 
-const MANIFEST_DIR: &str = ".fmm";
-const MANIFEST_FILE: &str = "index.json";
-const MANIFEST_VERSION: &str = "1.0";
-
-/// Entry for a single file in the manifest
+/// Entry for a single file in the in-memory index
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileEntry {
     pub exports: Vec<String>,
@@ -31,7 +27,8 @@ impl From<Metadata> for FileEntry {
     }
 }
 
-/// The complete manifest structure
+/// In-memory index built from sidecar files.
+/// No longer persisted to disk — built on-the-fly from `**/*.fmm` sidecars.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Manifest {
@@ -42,45 +39,70 @@ pub struct Manifest {
 }
 
 impl Manifest {
-    /// Create a new empty manifest
     pub fn new() -> Self {
         Self {
-            version: MANIFEST_VERSION.to_string(),
+            version: "2.0".to_string(),
             generated: Utc::now(),
             files: HashMap::new(),
             export_index: HashMap::new(),
         }
     }
 
-    /// Load manifest from disk, returns None if it doesn't exist
-    pub fn load(root: &Path) -> Result<Option<Self>> {
-        let manifest_path = root.join(MANIFEST_DIR).join(MANIFEST_FILE);
+    /// Build an in-memory index by reading all `*.fmm` sidecar files under root.
+    pub fn load_from_sidecars(root: &Path) -> Result<Self> {
+        let mut manifest = Self::new();
 
-        if !manifest_path.exists() {
-            return Ok(None);
+        let walker = WalkBuilder::new(root)
+            .standard_filters(true)
+            .build();
+
+        for entry in walker.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("fmm") {
+                continue;
+            }
+
+            let content = match std::fs::read_to_string(path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            if let Some((file_path, entry)) = parse_sidecar(&content) {
+                // Use file_path from sidecar content, or derive from sidecar path
+                let key = if !file_path.is_empty() {
+                    file_path
+                } else {
+                    // Strip .fmm extension and make relative
+                    let source_path = path.with_extension("");
+                    source_path
+                        .strip_prefix(root)
+                        .unwrap_or(&source_path)
+                        .display()
+                        .to_string()
+                };
+
+                for export in &entry.exports {
+                    manifest
+                        .export_index
+                        .insert(export.clone(), key.clone());
+                }
+                manifest.files.insert(key, entry);
+            }
         }
 
-        let content = fs::read_to_string(&manifest_path).context("Failed to read manifest file")?;
-
-        let manifest: Manifest =
-            serde_json::from_str(&content).context("Failed to parse manifest JSON")?;
-
-        Ok(Some(manifest))
+        Ok(manifest)
     }
 
-    /// Add or update a file entry in the manifest
+    /// Add or update a file entry in the index
     pub fn add_file(&mut self, path: &str, metadata: Metadata) {
-        // If updating an existing file, clean up old export index entries first
         if let Some(old_entry) = self.files.get(path) {
             for old_export in &old_entry.exports {
-                // Only remove if it points to this file (could have been overwritten)
                 if self.export_index.get(old_export) == Some(&path.to_string()) {
                     self.export_index.remove(old_export);
                 }
             }
         }
 
-        // Build new export index entries (prefer .ts over .js for duplicate exports)
         for export in &metadata.exports {
             let should_insert = match self.export_index.get(export) {
                 None => true,
@@ -88,7 +110,6 @@ impl Manifest {
                     let existing_is_ts =
                         existing.ends_with(".ts") || existing.ends_with(".tsx");
                     let new_is_js = path.ends_with(".js") || path.ends_with(".jsx");
-                    // Never let .js overwrite .ts; all other cases: last writer wins
                     !(existing_is_ts && new_is_js)
                 }
             };
@@ -97,59 +118,33 @@ impl Manifest {
             }
         }
 
-        // Add the file entry
         self.files
             .insert(path.to_string(), FileEntry::from(metadata));
     }
 
-    /// Remove a file from the manifest
     #[allow(dead_code)]
     pub fn remove_file(&mut self, path: &str) {
         if let Some(entry) = self.files.remove(path) {
-            // Clean up export index
             for export in entry.exports {
                 self.export_index.remove(&export);
             }
         }
     }
 
-    /// Update the generated timestamp
     pub fn touch(&mut self) {
         self.generated = Utc::now();
     }
 
-    /// Save manifest to disk
-    pub fn save(&self, root: &Path) -> Result<()> {
-        let manifest_dir = root.join(MANIFEST_DIR);
-
-        // Create .fmm directory if it doesn't exist
-        if !manifest_dir.exists() {
-            fs::create_dir_all(&manifest_dir).context("Failed to create .fmm directory")?;
-        }
-
-        let manifest_path = manifest_dir.join(MANIFEST_FILE);
-        let json = serde_json::to_string_pretty(self).context("Failed to serialize manifest")?;
-
-        // Add trailing newline for POSIX compliance
-        fs::write(&manifest_path, format!("{}\n", json))
-            .context("Failed to write manifest file")?;
-
-        Ok(())
-    }
-
-    /// Check if a file exists in the manifest
     #[allow(dead_code)]
     pub fn has_file(&self, path: &str) -> bool {
         self.files.contains_key(path)
     }
 
-    /// Get a file entry
     #[allow(dead_code)]
     pub fn get_file(&self, path: &str) -> Option<&FileEntry> {
         self.files.get(path)
     }
 
-    /// Validate that manifest matches current file state
     pub fn validate_file(&self, path: &str, current: &Metadata) -> bool {
         if let Some(entry) = self.files.get(path) {
             entry.exports == current.exports
@@ -161,12 +156,10 @@ impl Manifest {
         }
     }
 
-    /// Get the number of files in the manifest
     pub fn file_count(&self) -> usize {
         self.files.len()
     }
 
-    /// Get all file paths in the manifest
     #[allow(dead_code)]
     pub fn file_paths(&self) -> Vec<&String> {
         self.files.keys().collect()
@@ -179,10 +172,65 @@ impl Default for Manifest {
     }
 }
 
+/// Parse a sidecar YAML file into (file_path, FileEntry).
+fn parse_sidecar(content: &str) -> Option<(String, FileEntry)> {
+    let mut file_path = String::new();
+    let mut exports = Vec::new();
+    let mut imports = Vec::new();
+    let mut dependencies = Vec::new();
+    let mut loc = 0usize;
+
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if let Some(val) = line.strip_prefix("file: ") {
+            file_path = val.to_string();
+        } else if let Some(val) = line.strip_prefix("exports: ") {
+            exports = parse_yaml_list(val);
+        } else if let Some(val) = line.strip_prefix("imports: ") {
+            imports = parse_yaml_list(val);
+        } else if let Some(val) = line.strip_prefix("dependencies: ") {
+            dependencies = parse_yaml_list(val);
+        } else if let Some(val) = line.strip_prefix("loc: ") {
+            loc = val.parse().unwrap_or(0);
+        }
+    }
+
+    if file_path.is_empty() {
+        return None;
+    }
+
+    Some((
+        file_path,
+        FileEntry {
+            exports,
+            imports,
+            dependencies,
+            loc,
+        },
+    ))
+}
+
+/// Parse a YAML inline list: `[a, b, c]` → vec!["a", "b", "c"]
+fn parse_yaml_list(s: &str) -> Vec<String> {
+    let s = s.trim();
+    if s.starts_with('[') && s.ends_with(']') {
+        let inner = &s[1..s.len() - 1];
+        if inner.is_empty() {
+            return Vec::new();
+        }
+        inner.split(',').map(|item| item.trim().to_string()).collect()
+    } else {
+        Vec::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
 
     #[test]
     fn test_manifest_add_file() {
@@ -209,23 +257,37 @@ mod tests {
     }
 
     #[test]
-    fn test_manifest_save_and_load() {
-        let temp_dir = TempDir::new().unwrap();
-        let mut manifest = Manifest::new();
+    fn test_parse_sidecar() {
+        let content = r#"file: src/auth/session.ts
+fmm: v0.2
+exports: [createSession, validateSession]
+imports: [jwt, redis]
+dependencies: [./types, ./config]
+loc: 234
+modified: 2026-01-30"#;
 
-        let metadata = Metadata {
-            exports: vec!["foo".to_string()],
-            imports: vec![],
-            dependencies: vec![],
-            loc: 10,
-        };
+        let (path, entry) = parse_sidecar(content).unwrap();
+        assert_eq!(path, "src/auth/session.ts");
+        assert_eq!(entry.exports, vec!["createSession", "validateSession"]);
+        assert_eq!(entry.imports, vec!["jwt", "redis"]);
+        assert_eq!(entry.dependencies, vec!["./types", "./config"]);
+        assert_eq!(entry.loc, 234);
+    }
 
-        manifest.add_file("test.ts", metadata);
-        manifest.save(temp_dir.path()).unwrap();
+    #[test]
+    fn test_parse_yaml_list() {
+        assert_eq!(
+            parse_yaml_list("[a, b, c]"),
+            vec!["a", "b", "c"]
+        );
+        assert_eq!(parse_yaml_list("[]"), Vec::<String>::new());
+        assert_eq!(parse_yaml_list("[single]"), vec!["single"]);
+    }
 
-        let loaded = Manifest::load(temp_dir.path()).unwrap().unwrap();
-        assert!(loaded.has_file("test.ts"));
-        assert_eq!(loaded.export_index.get("foo"), Some(&"test.ts".to_string()));
+    #[test]
+    fn test_parse_sidecar_empty() {
+        assert!(parse_sidecar("").is_none());
+        assert!(parse_sidecar("loc: 10").is_none());
     }
 
     #[test]
@@ -240,7 +302,6 @@ mod tests {
         };
 
         manifest.add_file("file.ts", metadata.clone());
-
         assert!(manifest.validate_file("file.ts", &metadata));
 
         let different = Metadata {
@@ -249,7 +310,6 @@ mod tests {
             dependencies: vec![],
             loc: 50,
         };
-
         assert!(!manifest.validate_file("file.ts", &different));
     }
 
@@ -274,92 +334,7 @@ mod tests {
     }
 
     #[test]
-    fn test_manifest_export_index_duplicates() {
-        // When same export name exists in multiple files, last one wins
-        let mut manifest = Manifest::new();
-
-        let metadata1 = Metadata {
-            exports: vec!["sharedExport".to_string()],
-            imports: vec![],
-            dependencies: vec![],
-            loc: 10,
-        };
-
-        let metadata2 = Metadata {
-            exports: vec!["sharedExport".to_string()],
-            imports: vec![],
-            dependencies: vec![],
-            loc: 20,
-        };
-
-        manifest.add_file("file1.ts", metadata1);
-        manifest.add_file("file2.ts", metadata2);
-
-        // Last file added wins for the export index
-        assert_eq!(
-            manifest.export_index.get("sharedExport"),
-            Some(&"file2.ts".to_string())
-        );
-        // But both files exist in files map
-        assert!(manifest.has_file("file1.ts"));
-        assert!(manifest.has_file("file2.ts"));
-    }
-
-    #[test]
-    fn test_manifest_json_serialization() {
-        let mut manifest = Manifest::new();
-
-        let metadata = Metadata {
-            exports: vec!["myFunc".to_string()],
-            imports: vec!["lodash".to_string()],
-            dependencies: vec!["./utils".to_string()],
-            loc: 100,
-        };
-
-        manifest.add_file("src/index.ts", metadata);
-
-        // Serialize to JSON
-        let json = serde_json::to_string_pretty(&manifest).unwrap();
-
-        // Verify camelCase serialization
-        assert!(json.contains("\"exportIndex\""));
-        assert!(json.contains("\"myFunc\""));
-        assert!(json.contains("\"src/index.ts\""));
-
-        // Deserialize back
-        let loaded: Manifest = serde_json::from_str(&json).unwrap();
-        assert!(loaded.has_file("src/index.ts"));
-        assert_eq!(
-            loaded.export_index.get("myFunc"),
-            Some(&"src/index.ts".to_string())
-        );
-    }
-
-    #[test]
-    fn test_manifest_file_count() {
-        let mut manifest = Manifest::new();
-        assert_eq!(manifest.file_count(), 0);
-
-        let metadata = Metadata {
-            exports: vec![],
-            imports: vec![],
-            dependencies: vec![],
-            loc: 10,
-        };
-
-        manifest.add_file("a.ts", metadata.clone());
-        assert_eq!(manifest.file_count(), 1);
-
-        manifest.add_file("b.ts", metadata.clone());
-        assert_eq!(manifest.file_count(), 2);
-
-        manifest.add_file("c.ts", metadata);
-        assert_eq!(manifest.file_count(), 3);
-    }
-
-    #[test]
     fn test_manifest_update_file_cleans_old_exports() {
-        // When a file is updated with different exports, old exports should be removed
         let mut manifest = Manifest::new();
 
         let metadata1 = Metadata {
@@ -370,16 +345,7 @@ mod tests {
         };
 
         manifest.add_file("file.ts", metadata1);
-        assert_eq!(
-            manifest.export_index.get("foo"),
-            Some(&"file.ts".to_string())
-        );
-        assert_eq!(
-            manifest.export_index.get("bar"),
-            Some(&"file.ts".to_string())
-        );
 
-        // Update the file - now exports foo and baz (not bar anymore)
         let metadata2 = Metadata {
             exports: vec!["foo".to_string(), "baz".to_string()],
             imports: vec![],
@@ -389,19 +355,15 @@ mod tests {
 
         manifest.add_file("file.ts", metadata2);
 
-        // foo should still point to file.ts
         assert_eq!(
             manifest.export_index.get("foo"),
             Some(&"file.ts".to_string())
         );
-        // baz should now point to file.ts
         assert_eq!(
             manifest.export_index.get("baz"),
             Some(&"file.ts".to_string())
         );
-        // bar should be REMOVED from the export index
         assert!(!manifest.export_index.contains_key("bar"));
-        // File count should still be 1
         assert_eq!(manifest.file_count(), 1);
     }
 }

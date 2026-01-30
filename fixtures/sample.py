@@ -1,14 +1,3 @@
-# --- FMM ---
-# fmm: v0.2
-# file: examples/sample.py
-# exports: [DataProcessor, MAX_RETRIES, ProcessConfig, fetch_data, transform]
-# imports: [pandas, pathlib, requests]
-# dependencies: [.utils, ..models]
-# loc: 48
-# python:
-#   decorators: [property, staticmethod]
-# ---
-
 """Sample Python module demonstrating various patterns for fmm parsing."""
 
 import requests

@@ -61,34 +61,6 @@ impl Config {
         self.languages.contains(extension)
     }
 
-    pub fn language_from_extension(&self, extension: &str) -> Option<Language> {
-        match extension {
-            "ts" | "tsx" => Some(Language::TypeScript),
-            "js" | "jsx" => Some(Language::JavaScript),
-            "py" => Some(Language::Python),
-            "rs" => Some(Language::Rust),
-            "go" => Some(Language::Go),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Language {
-    TypeScript,
-    JavaScript,
-    Python,
-    Rust,
-    Go,
-}
-
-impl Language {
-    pub fn comment_prefix(&self) -> &'static str {
-        match self {
-            Language::TypeScript | Language::JavaScript | Language::Rust | Language::Go => "//",
-            Language::Python => "#",
-        }
-    }
 }
 
 fn default_languages() -> HashSet<String> {

@@ -9,25 +9,21 @@ fn main() -> Result<()> {
     let cli_args = Cli::parse();
 
     match cli_args.command {
-        Commands::Generate {
-            path,
-            dry_run,
-            manifest_only,
-        } => {
-            println!("{}", "Generating frontmatter...".green().bold());
-            cli::generate(&path, dry_run, manifest_only)?;
+        Commands::Generate { path, dry_run } => {
+            println!("{}", "Generating sidecars...".green().bold());
+            cli::generate(&path, dry_run)?;
         }
-        Commands::Update {
-            path,
-            dry_run,
-            manifest_only,
-        } => {
-            println!("{}", "Updating frontmatter...".green().bold());
-            cli::update(&path, dry_run, manifest_only)?;
+        Commands::Update { path, dry_run } => {
+            println!("{}", "Updating sidecars...".green().bold());
+            cli::update(&path, dry_run)?;
         }
         Commands::Validate { path } => {
-            println!("{}", "Validating frontmatter...".green().bold());
+            println!("{}", "Validating sidecars...".green().bold());
             cli::validate(&path)?;
+        }
+        Commands::Clean { path, dry_run } => {
+            println!("{}", "Cleaning sidecars...".green().bold());
+            cli::clean(&path, dry_run)?;
         }
         Commands::Init { skill, mcp, all } => {
             println!("{}", "Initializing fmm...".green().bold());

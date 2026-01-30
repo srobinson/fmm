@@ -1,18 +1,3 @@
-// --- FMM ---
-// fmm: v0.2
-// file: examples/sample.rs
-// exports: [Config, Error, Pipeline, Status, process]
-// imports: [anyhow, serde, tokio]
-// dependencies: [crate, super]
-// loc: 57
-// rust:
-//   async_functions: 1
-//   derives: [Clone, Debug, Deserialize, Serialize]
-//   lifetimes: ['a, 'static]
-//   trait_impls: [Display for Error]
-//   unsafe_blocks: 1
-// ---
-
 //! Sample Rust module demonstrating various patterns for fmm parsing.
 
 use anyhow::Result;

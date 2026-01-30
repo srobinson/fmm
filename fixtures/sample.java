@@ -1,10 +1,3 @@
-// --- FMM ---
-// exports: [DataProcessor, ProcessConfig, Repository, Status, process, transform]
-// imports: [java.util, org.springframework]
-// dependencies: [java.util.List, java.util.Map, java.util.Optional, org.springframework.stereotype.Service]
-// annotations: [Deprecated, FunctionalInterface, Override, Service]
-// ---
-
 package com.example.service;
 
 import java.util.List;

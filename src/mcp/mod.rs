@@ -2,9 +2,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
-use std::path::{Path, PathBuf};
-use std::time::SystemTime;
-
+use std::path::PathBuf;
 use crate::manifest::Manifest;
 
 const PROTOCOL_VERSION: &str = "2024-11-05";
@@ -48,7 +46,6 @@ struct Tool {
 pub struct McpServer {
     manifest: Option<Manifest>,
     root: PathBuf,
-    manifest_mtime: Option<SystemTime>,
 }
 
 impl Default for McpServer {
@@ -60,32 +57,18 @@ impl Default for McpServer {
 impl McpServer {
     pub fn new() -> Self {
         let root = std::env::current_dir().unwrap_or_default();
-        let manifest = Manifest::load(&root).ok().flatten();
-        let manifest_mtime = Self::get_manifest_mtime(&root);
-        Self {
-            manifest,
-            root,
-            manifest_mtime,
-        }
+        let manifest = Manifest::load_from_sidecars(&root).ok();
+        Self { manifest, root }
     }
 
-    fn get_manifest_mtime(root: &Path) -> Option<SystemTime> {
-        let path = root.join(".fmm").join("index.json");
-        std::fs::metadata(path).ok().and_then(|m| m.modified().ok())
-    }
-
-    fn maybe_reload(&mut self) {
-        let current_mtime = Self::get_manifest_mtime(&self.root);
-        if current_mtime != self.manifest_mtime {
-            self.manifest = Manifest::load(&self.root).ok().flatten();
-            self.manifest_mtime = current_mtime;
-        }
+    fn reload(&mut self) {
+        self.manifest = Manifest::load_from_sidecars(&self.root).ok();
     }
 
     fn require_manifest(&self) -> Result<&Manifest, String> {
         self.manifest
             .as_ref()
-            .ok_or_else(|| "No manifest found. Run 'fmm generate' first.".to_string())
+            .ok_or_else(|| "No sidecars found. Run 'fmm generate' first.".to_string())
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -117,9 +100,9 @@ impl McpServer {
                 }
             };
 
-            // Hot-reload manifest before handling tool calls
+            // Rebuild index from sidecars before handling tool calls
             if request.method == "tools/call" {
-                self.maybe_reload();
+                self.reload();
             }
 
             let response = self.handle_request(&request);
@@ -213,7 +196,7 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_file_info".to_string(),
-                description: "Get a file's structural profile from the index: exports, imports, dependencies, LOC. Same data as the file's // --- FMM --- header block, but from the pre-built index.".to_string(),
+                description: "Get a file's structural profile from the index: exports, imports, dependencies, LOC. Same data as the file's .fmm sidecar, but from the pre-built index.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -268,99 +251,9 @@ impl McpServer {
                     }
                 }),
             },
-            Tool {
-                name: "fmm_get_manifest".to_string(),
-                description: "Project file map: every file with its exports and LOC, grouped by directory. Use to discover what exists and where. Returns a compact text map by default. Pass format='json' for the full index (warning: can be very large).".to_string(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "format": {
-                            "type": "string",
-                            "description": "Output format: 'compact' (default, text map) or 'json' (full index with imports/dependencies — can be very large)",
-                            "enum": ["compact", "json"]
-                        }
-                    }
-                }),
-            },
-            // Consolidated tools with intent-matching names
-            Tool {
-                name: "fmm_find_symbol".to_string(),
-                description: "Find exported symbols. Use 'name' for exact O(1) lookup, 'pattern' for fuzzy search, or 'file' to list a file's exports.".to_string(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": "Exact export name for O(1) lookup — use when you know the symbol name"
-                        },
-                        "pattern": {
-                            "type": "string",
-                            "description": "Substring to match against all export names (case-insensitive fuzzy search)"
-                        },
-                        "file": {
-                            "type": "string",
-                            "description": "File path — list all exports from this specific file"
-                        }
-                    }
-                }),
-            },
-            Tool {
-                name: "fmm_file_metadata".to_string(),
-                description: "Get a file's structural profile from the index: exports, imports, dependencies, LOC. Same data as the file's // --- FMM --- header block.".to_string(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "file": {
-                            "type": "string",
-                            "description": "File path to inspect — returns exports, imports, dependencies, LOC without reading source"
-                        }
-                    },
-                    "required": ["file"]
-                }),
-            },
-            Tool {
-                name: "fmm_analyze_dependencies".to_string(),
-                description: "Dependency and impact analysis. Use 'file' for its dependency graph (upstream + downstream). Use 'imports' to find files importing a package. Use 'depends_on' to find files depending on a local module.".to_string(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "file": {
-                            "type": "string",
-                            "description": "File path — returns upstream dependencies and downstream dependents (blast radius)"
-                        },
-                        "imports": {
-                            "type": "string",
-                            "description": "Package name — find all files that import this module"
-                        },
-                        "depends_on": {
-                            "type": "string",
-                            "description": "Local file path — find all files that depend on it"
-                        },
-                        "min_loc": {
-                            "type": "integer",
-                            "description": "Minimum lines of code filter"
-                        },
-                        "max_loc": {
-                            "type": "integer",
-                            "description": "Maximum lines of code filter"
-                        }
-                    }
-                }),
-            },
-            Tool {
-                name: "fmm_project_overview".to_string(),
-                description: "Project file map: every file with its exports and LOC, grouped by directory. Use to discover what exists and where. Same as fmm_get_manifest.".to_string(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "format": {
-                            "type": "string",
-                            "description": "Output format: 'compact' (default, text map) or 'json' (full index — can be very large)",
-                            "enum": ["compact", "json"]
-                        }
-                    }
-                }),
-            },
+            // fmm_get_manifest and fmm_project_overview REMOVED —
+            // dumping the entire index is an anti-pattern (ALP-396).
+            // Use targeted tools: fmm_lookup_export, fmm_search, fmm_dependency_graph.
         ];
 
         Ok(json!({ "tools": tools }))
@@ -392,14 +285,11 @@ impl McpServer {
             "fmm_file_info" => self.tool_file_info(&arguments),
             "fmm_dependency_graph" => self.tool_dependency_graph(&arguments),
             "fmm_search" => self.tool_search(&arguments),
-            "fmm_get_manifest" => self.tool_get_manifest(&arguments),
-            // Consolidated tools (intent-matching names)
-            "fmm_find_symbol" => self.tool_find_symbol(&arguments),
-            "fmm_file_metadata" => self.tool_file_info(&arguments),
-            "fmm_analyze_dependencies" => self.tool_analyze_dependencies(&arguments),
-            "fmm_project_overview" => self.tool_get_manifest(&arguments),
-            // Legacy alias
+            // Legacy aliases
             "fmm_find_export" => self.tool_lookup_export(&arguments),
+            "fmm_find_symbol" => self.tool_lookup_export(&arguments),
+            "fmm_file_metadata" => self.tool_file_info(&arguments),
+            "fmm_analyze_dependencies" => self.tool_dependency_graph(&arguments),
             _ => Err(format!("Unknown tool: {}", tool_name)),
         };
 
@@ -645,99 +535,6 @@ impl McpServer {
         serde_json::to_string_pretty(&output).map_err(|e| e.to_string())
     }
 
-    fn tool_get_manifest(&self, args: &Value) -> Result<String, String> {
-        let manifest = self.require_manifest()?;
-        let format = args
-            .get("format")
-            .and_then(|v| v.as_str())
-            .unwrap_or("compact");
-
-        if format == "json" {
-            return serde_json::to_string_pretty(manifest).map_err(|e| e.to_string());
-        }
-
-        // Compact: sorted file tree with exports and LOC
-        let mut entries: Vec<(&String, &crate::manifest::FileEntry)> =
-            manifest.files.iter().collect();
-        entries.sort_by_key(|(path, _)| path.as_str());
-
-        let mut output = String::new();
-        output.push_str(&format!(
-            "# Project Map — {} files\n\n",
-            entries.len()
-        ));
-
-        let mut current_dir = String::new();
-        for (path, entry) in &entries {
-            // Group by directory
-            let dir = path.rfind('/').map(|i| &path[..i]).unwrap_or("");
-            if dir != current_dir {
-                if !current_dir.is_empty() {
-                    output.push('\n');
-                }
-                output.push_str(&format!("## {}/\n", dir));
-                current_dir = dir.to_string();
-            }
-
-            let filename = path.rfind('/').map(|i| &path[i + 1..]).unwrap_or(path);
-            let exports = if entry.exports.is_empty() {
-                String::new()
-            } else if entry.exports.len() <= 5 {
-                format!("  [{}]", entry.exports.join(", "))
-            } else {
-                let shown: Vec<&str> = entry.exports.iter().take(5).map(|s| s.as_str()).collect();
-                format!("  [{}, +{}]", shown.join(", "), entry.exports.len() - 5)
-            };
-            output.push_str(&format!(
-                "  {} ({}L){}\n",
-                filename, entry.loc, exports
-            ));
-        }
-
-        Ok(output)
-    }
-
-    /// Consolidated symbol finder: exact lookup (name), fuzzy search (pattern), or file listing (file).
-    fn tool_find_symbol(&self, args: &Value) -> Result<String, String> {
-        let name = args.get("name").and_then(|v| v.as_str());
-        let pattern = args.get("pattern").and_then(|v| v.as_str());
-        let file = args.get("file").and_then(|v| v.as_str());
-
-        // Priority: exact name > file > pattern
-        if name.is_some() {
-            self.tool_lookup_export(args)
-        } else if file.is_some() || pattern.is_some() {
-            self.tool_list_exports(args)
-        } else {
-            Err("Provide 'name' (exact lookup), 'pattern' (fuzzy search), or 'file' (list exports)".to_string())
-        }
-    }
-
-    /// Consolidated dependency analysis: graph for a file, or search by imports/depends_on.
-    fn tool_analyze_dependencies(&self, args: &Value) -> Result<String, String> {
-        let file = args.get("file").and_then(|v| v.as_str());
-        let imports = args.get("imports").and_then(|v| v.as_str());
-        let depends_on = args.get("depends_on").and_then(|v| v.as_str());
-
-        if file.is_some() {
-            if imports.is_some() || depends_on.is_some() {
-                // Both graph and search requested — return graph (primary) with search context
-                let graph_result = self.tool_dependency_graph(args)?;
-                let search_result = self.tool_search(args)?;
-                let combined = format!(
-                    "{{\"dependency_graph\": {},\"related_files\": {}}}",
-                    graph_result, search_result
-                );
-                Ok(combined)
-            } else {
-                self.tool_dependency_graph(args)
-            }
-        } else if imports.is_some() || depends_on.is_some() {
-            self.tool_search(args)
-        } else {
-            Err("Provide 'file' (dependency graph), 'imports' (find by package), or 'depends_on' (find by local dep)".to_string())
-        }
-    }
 }
 
 /// Check if a dependency path from `dependent_file` resolves to `target_file`.
@@ -841,9 +638,8 @@ mod tests {
     }
 
     #[test]
-    fn test_hot_reload_detection() {
+    fn test_server_construction() {
         let server = McpServer::new();
-        // Just verify construction works and mtime is loaded
         assert!(server.root.is_absolute() || server.root.as_os_str().is_empty());
     }
 }

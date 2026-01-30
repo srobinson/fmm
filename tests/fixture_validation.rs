@@ -10,11 +10,9 @@ use fmm::parser::Parser;
 #[test]
 fn validate_python_fixture() {
     let source = include_str!("../fixtures/sample.py");
-    // Strip FMM header before parsing (parser sees raw source)
-    let source_without_header = strip_fmm_header(source, "#");
 
     let mut parser = PythonParser::new().unwrap();
-    let result = parser.parse(&source_without_header).unwrap();
+    let result = parser.parse(source).unwrap();
 
     // Expected exports from __all__: fetch_data, transform, DataProcessor, ProcessConfig, MAX_RETRIES
     let expected_exports = vec![
@@ -63,10 +61,9 @@ fn validate_python_fixture() {
 #[test]
 fn validate_rust_fixture() {
     let source = include_str!("../fixtures/sample.rs");
-    let source_without_header = strip_fmm_header(source, "//");
 
     let mut parser = RustParser::new().unwrap();
-    let result = parser.parse(&source_without_header).unwrap();
+    let result = parser.parse(source).unwrap();
 
     // Expected exports: pub items only (not pub(crate), pub(super), or private)
     let expected_exports = vec!["Config", "Error", "Pipeline", "Status", "process"];
@@ -136,10 +133,9 @@ fn validate_rust_fixture() {
 #[test]
 fn validate_go_fixture() {
     let source = include_str!("../fixtures/sample.go");
-    let source_without_header = strip_fmm_header(source, "//");
 
     let mut parser = GoParser::new().unwrap();
-    let result = parser.parse(&source_without_header).unwrap();
+    let result = parser.parse(source).unwrap();
 
     // Exported: capitalized names only (StatusActive, StatusInactive are iota consts)
     let expected_exports = vec![
@@ -189,10 +185,9 @@ fn validate_go_fixture() {
 #[test]
 fn validate_java_fixture() {
     let source = include_str!("../fixtures/sample.java");
-    let source_without_header = strip_fmm_header(source, "//");
 
     let mut parser = JavaParser::new().unwrap();
-    let result = parser.parse(&source_without_header).unwrap();
+    let result = parser.parse(source).unwrap();
 
     // Top-level classes, interfaces, enums
     assert!(result
@@ -239,10 +234,9 @@ fn validate_java_fixture() {
 #[test]
 fn validate_cpp_fixture() {
     let source = include_str!("../fixtures/sample.cpp");
-    let source_without_header = strip_fmm_header(source, "//");
 
     let mut parser = CppParser::new().unwrap();
-    let result = parser.parse(&source_without_header).unwrap();
+    let result = parser.parse(source).unwrap();
 
     // Classes, structs, enums, functions, templates
     assert!(result.metadata.exports.contains(&"Engine".to_string()));
@@ -285,10 +279,9 @@ fn validate_cpp_fixture() {
 #[test]
 fn validate_csharp_fixture() {
     let source = include_str!("../fixtures/sample.cs");
-    let source_without_header = strip_fmm_header(source, "//");
 
     let mut parser = CSharpParser::new().unwrap();
-    let result = parser.parse(&source_without_header).unwrap();
+    let result = parser.parse(source).unwrap();
 
     // Public types only
     assert!(result.metadata.exports.contains(&"DataService".to_string()));
@@ -327,10 +320,9 @@ fn validate_csharp_fixture() {
 #[test]
 fn validate_ruby_fixture() {
     let source = include_str!("../fixtures/sample.rb");
-    let source_without_header = strip_fmm_header(source, "#");
 
     let mut parser = RubyParser::new().unwrap();
-    let result = parser.parse(&source_without_header).unwrap();
+    let result = parser.parse(source).unwrap();
 
     // Classes, modules, top-level methods
     assert!(result
@@ -373,30 +365,4 @@ fn validate_ruby_fixture() {
     assert!(mixin_names.contains(&"Enumerable"));
 
     assert!(result.metadata.loc > 50);
-}
-
-/// Strip FMM header from fixture file content
-fn strip_fmm_header(source: &str, comment_prefix: &str) -> String {
-    let start_marker = format!("{} --- FMM ---", comment_prefix);
-    let end_marker = format!("{} ---", comment_prefix);
-
-    let mut in_header = false;
-    let mut lines: Vec<&str> = Vec::new();
-
-    for line in source.lines() {
-        if !in_header && line.trim() == start_marker {
-            in_header = true;
-            continue;
-        }
-        if in_header {
-            if line.trim() == end_marker {
-                in_header = false;
-                continue;
-            }
-            continue;
-        }
-        lines.push(line);
-    }
-
-    lines.join("\n")
 }
