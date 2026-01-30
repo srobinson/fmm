@@ -5,7 +5,6 @@ import json
 import os
 import glob
 import re
-import sys
 
 
 def parse_jsonl(filepath):
@@ -20,7 +19,9 @@ def parse_jsonl(filepath):
     mcp_servers = []
     skills = []
 
-    for line in open(filepath, encoding="utf-8", errors="replace"):
+    with open(filepath, encoding="utf-8", errors="replace") as f:
+        lines = f.readlines()
+    for line in lines:
         try:
             msg = json.loads(line)
         except json.JSONDecodeError:
@@ -121,7 +122,8 @@ def score_result(answer, task):
 
 
 def main():
-    tasks = json.load(open("tasks.json"))["tasks"]
+    with open("tasks.json") as f:
+        tasks = json.load(f)["tasks"]
     task_map = {t["id"]: t for t in tasks}
 
     conditions = ["A", "B"]
@@ -246,7 +248,8 @@ def main():
         print(f"{'Est. cost (all tasks)':<25} ${a_cost:<19.4f} ${b_cost:<19.4f} {((b_cost-a_cost)/a_cost)*100:+.0f}%")
 
     # Dump raw data
-    json.dump(results, open("results/scored.json", "w"), indent=2, default=str)
+    with open("results/scored.json", "w") as f:
+        json.dump(results, f, indent=2, default=str)
     print()
     print("Raw data: results/scored.json")
 
