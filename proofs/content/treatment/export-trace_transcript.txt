@@ -1,0 +1,137 @@
+# TREATMENT — export-trace
+# Query: Which file defines the createApp function? What does it depend on? Trace the full dependency chain.
+# Duration: 48s
+# Tool calls: 18
+# Files read: 16
+# Tokens: 239012 in / 2421 out
+# Cost: $0.0957
+# FMM discovered: True
+# Manifest used: True
+
+## Tool Call Sequence
+
+  1. Read(.fmm/index.json)
+  2. Grep(^(export\s+)?(const|function|let|var)\s+createApp)
+  3. Grep(createApp\s*=)
+  4. Read(src/index.ts)
+  5. Read(src/config/app.ts)
+  6. Read(src/api/routes/auth.ts)
+  7. Read(src/api/routes/users.ts)
+  8. Read(src/middleware/rateLimit.ts)
+  9. Read(src/auth/login.ts)
+  10. Read(src/auth/signup.ts)
+  11. Read(src/auth/jwt.ts)
+  12. Read(src/middleware/auth.ts)
+  13. Read(src/api/models/user.ts)
+  14. Read(src/auth/types.ts)
+  15. Read(src/auth/password.ts)
+  16. Read(src/services/audit.ts)
+  17. Read(src/services/email.ts)
+  18. Read(src/utils/id.ts)
+
+## LLM Response
+
+I'll help you find the `createApp` function and trace its dependency chain. Let me start by checking the FMM metadata.
+The FMM metadata doesn't exist, so I'll search for the `createApp` function directly in the codebase.
+Great! Now let me read the file that defines `createApp`:
+Perfect! Now I can see the `createApp` function and its direct dependencies. Let me trace the full dependency chain by reading all the imported files:
+Now let me continue tracing the dependencies by reading the next level of imports:
+Let me continue reading the remaining dependencies:
+Perfect! Now I have traced the complete dependency chain. Let me provide you with a comprehensive summary:
+
+## `createApp` Function - Complete Dependency Chain
+
+**Defined in:** `src/index.ts` (lines 6-25)
+
+### Direct Dependencies (Level 1):
+
+1. **`config`** and **`validateConfig`** from `src/config/app.ts`
+2. **`getAuthRoutes`** from `src/api/routes/auth.ts`
+3. **`getUserRoutes`** from `src/api/routes/users.ts`
+4. **`rateLimiter`** from `src/middleware/rateLimit.ts`
+
+---
+
+### Full Dependency Tree:
+
+```
+createApp (src/index.ts)
+├── config (src/config/app.ts)
+│   └── [No dependencies - uses process.env]
+│
+├── validateConfig (src/config/app.ts)
+│   └── [No dependencies - pure validation function]
+│
+├── getAuthRoutes (src/api/routes/auth.ts)
+│   ├── authenticateUser (src/auth/login.ts)
+│   │   ├── LoginCredentials, AuthResult, UserPayload (src/auth/types.ts)
+│   │   ├── generateToken (src/auth/jwt.ts)
+│   │   │   ├── config (src/config/app.ts)
+│   │   │   └── UserPayload (src/auth/types.ts)
+│   │   ├── findUserByEmail (src/api/models/user.ts)
+│   │   │   ├── UserRole (src/auth/types.ts)
+│   │   │   └── generateId (src/utils/id.ts)
+│   │   ├── verifyPassword (src/auth/password.ts)
+│   │   │   └── config (src/config/app.ts)
+│   │   └── logAuthEvent (src/services/audit.ts)
+│   │
+│   ├── validateSession (src/auth/login.ts)
+│   │   └── verifyToken (src/auth/jwt.ts)
+│   │       ├── config (src/config/app.ts)
+│   │       └── UserPayload (src/auth/types.ts)
+│   │
+│   ├── registerUser (src/auth/signup.ts)
+│   │   ├── SignupData, AuthResult, UserPayload (src/auth/types.ts)
+│   │   ├── generateToken (src/auth/jwt.ts)
+│   │   ├── createUser, findUserByEmail (src/api/models/user.ts)
+│   │   ├── hashPassword (src/auth/password.ts)
+│   │   │   └── config (src/config/app.ts)
+│   │   ├── logAuthEvent (src/services/audit.ts)
+│   │   └── sendWelcomeEmail (src/services/email.ts)
+│   │
+│   ├── validateSignupData (src/auth/signup.ts)
+│   │   └── SignupData (src/auth/types.ts)
+│   │
+│   ├── refreshToken (src/auth/jwt.ts)
+│   │
+│   ├── authMiddleware, requireRole (src/middleware/auth.ts)
+│   │   ├── verifyToken (src/auth/jwt.ts)
+│   │   └── UserPayload, UserRole (src/auth/types.ts)
+│   │
+│   └── authRateLimiter (src/middleware/rateLimit.ts)
+│       └── AuthenticatedRequest, Response (src/middleware/auth.ts)
+│
+├── getUserRoutes (src/api/routes/users.ts)
+│   ├── findUserById, listUsers, updateUser, deleteUser (src/api/models/user.ts)
+│   │   ├── UserRole (src/auth/types.ts)
+│   │   └── generateId (src/utils/id.ts)
+│   │
+│   └── authMiddleware, requireRole (src/middleware/auth.ts)
+│
+└── rateLimiter (src/middleware/rateLimit.ts)
+    └── AuthenticatedRequest, Response (src/middleware/auth.ts)
+```
+
+---
+
+### Summary of All Files in the Dependency Chain:
+
+**17 unique files** are part of the complete dependency chain:
+
+1. `src/index.ts` - Entry point with createApp
+2. `src/config/app.ts` - Configuration and validation
+3. `src/api/routes/auth.ts` - Authentication routes
+4. `src/api/routes/users.ts` - User management routes
+5. `src/middleware/rateLimit.ts` - Rate limiting middleware
+6. `src/middleware/auth.ts` - Authentication middleware
+7. `src/auth/login.ts` - Login authentication logic
+8. `src/auth/signup.ts` - Signup/registration logic
+9. `src/auth/jwt.ts` - JWT token generation and verification
+10. `src/auth/password.ts` - Password hashing and verification
+11. `src/auth/types.ts` - Type definitions for auth
+12. `src/api/models/user.ts` - User model and database operations
+13. `src/services/audit.ts` - Audit logging service
+14. `src/services/email.ts` - Email sending service
+15. `src/utils/id.ts` - ID generation utility
+
+The `createApp` function orchestrates the entire application by combining configuration, route definitions, and middleware to create a complete application object.

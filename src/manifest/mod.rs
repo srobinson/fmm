@@ -52,9 +52,7 @@ impl Manifest {
     pub fn load_from_sidecars(root: &Path) -> Result<Self> {
         let mut manifest = Self::new();
 
-        let walker = WalkBuilder::new(root)
-            .standard_filters(true)
-            .build();
+        let walker = WalkBuilder::new(root).standard_filters(true).build();
 
         for entry in walker.filter_map(|e| e.ok()) {
             let path = entry.path();
@@ -82,9 +80,7 @@ impl Manifest {
                 };
 
                 for export in &entry.exports {
-                    manifest
-                        .export_index
-                        .insert(export.clone(), key.clone());
+                    manifest.export_index.insert(export.clone(), key.clone());
                 }
                 manifest.files.insert(key, entry);
             }
@@ -107,8 +103,7 @@ impl Manifest {
             let should_insert = match self.export_index.get(export) {
                 None => true,
                 Some(existing) => {
-                    let existing_is_ts =
-                        existing.ends_with(".ts") || existing.ends_with(".tsx");
+                    let existing_is_ts = existing.ends_with(".ts") || existing.ends_with(".tsx");
                     let new_is_js = path.ends_with(".js") || path.ends_with(".jsx");
                     !(existing_is_ts && new_is_js)
                 }
@@ -222,7 +217,10 @@ fn parse_yaml_list(s: &str) -> Vec<String> {
         if inner.is_empty() {
             return Vec::new();
         }
-        inner.split(',').map(|item| item.trim().to_string()).collect()
+        inner
+            .split(',')
+            .map(|item| item.trim().to_string())
+            .collect()
     } else {
         Vec::new()
     }
@@ -276,10 +274,7 @@ modified: 2026-01-30"#;
 
     #[test]
     fn test_parse_yaml_list() {
-        assert_eq!(
-            parse_yaml_list("[a, b, c]"),
-            vec!["a", "b", "c"]
-        );
+        assert_eq!(parse_yaml_list("[a, b, c]"), vec!["a", "b", "c"]);
         assert_eq!(parse_yaml_list("[]"), Vec::<String>::new());
         assert_eq!(parse_yaml_list("[single]"), vec!["single"]);
     }

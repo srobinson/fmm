@@ -248,8 +248,7 @@ mod tests {
             loc: 10,
         };
 
-        let fm = Frontmatter::new("test.ts".to_string(), metadata)
-            .with_custom_fields(None, None);
+        let fm = Frontmatter::new("test.ts".to_string(), metadata).with_custom_fields(None, None);
 
         let rendered = fm.render();
         assert!(!rendered.contains("typescript:"));

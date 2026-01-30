@@ -1,0 +1,106 @@
+# TREATMENT — auth-exports
+# Query: Find all files that export authentication-related functions. List each file path and the specific auth exports.
+# Duration: 70s
+# Tool calls: 16
+# Files read: 13
+# Tokens: 186494 in / 2162 out
+# Cost: $0.0896
+# FMM discovered: True
+# Manifest used: True
+
+## Tool Call Sequence
+
+  1. Read(.fmm/index.json)
+  2. Grep((export.*auth|export.*Auth|export.*login|export.*Login|export.*authenticate|export.*Authenticate|export.*token|export.*Token|export.*session|export.*Session))
+  3. Grep(export\s+(const|function|class|type|interface).*\b(auth|Auth|login|Login|authenticate|Authenticate|credentials|Credentials|jwt|JWT|oauth|OAuth))
+  4. Grep(export\s+(const|function|class|type|interface).*\b(password|Password|hash|Hash|verify|Verify|user|User))
+  5. Read(src/auth/login.ts)
+  6. Read(src/auth/signup.ts)
+  7. Read(src/auth/jwt.ts)
+  8. Read(src/auth/password.ts)
+  9. Read(src/auth/types.ts)
+  10. Read(src/middleware/auth.ts)
+  11. Read(src/api/controllers/authController.ts)
+  12. Read(src/api/routes/auth.ts)
+  13. Read(src/api/models/session.ts)
+  14. Read(src/services/audit.ts)
+  15. Read(src/middleware/rateLimit.ts)
+  16. Read(src/api/models/user.ts)
+
+## LLM Response
+
+I'll help you find all files that export authentication-related functions. Let me start by checking the FMM metadata index.
+The FMM index doesn't exist, so I'll search for authentication-related exports directly. Let me search for common authentication patterns in the codebase.
+Perfect! Now let me also search for password-related exports and any other security-related functions:
+Let me get a complete list by also checking the actual files to see all their exports:
+Perfect! Now I have a complete picture of all authentication-related exports. Let me compile this information for you:
+
+## Files Exporting Authentication-Related Functions
+
+### **1. `src/auth/login.ts`**
+- `authenticateUser(credentials: LoginCredentials): Promise<AuthResult>` - Authenticates user with email/password
+- `validateSession(token: string): Promise<UserPayload | null>` - Validates a JWT session token
+
+### **2. `src/auth/signup.ts`**
+- `registerUser(data: SignupData): Promise<AuthResult>` - Registers new user account
+- `validateSignupData(data: Partial<SignupData>): string[]` - Validates signup form data
+
+### **3. `src/auth/jwt.ts`**
+- `generateToken(payload: UserPayload): string` - Creates JWT token
+- `verifyToken(token: string): UserPayload | null` - Verifies and decodes JWT token
+- `refreshToken(token: string): string | null` - Refreshes an existing JWT token
+
+### **4. `src/auth/password.ts`**
+- `hashPassword(password: string): Promise<string>` - Hashes password with salt
+- `verifyPassword(password: string, stored: string): Promise<boolean>` - Verifies password against hash
+- `validatePasswordStrength(password: string): { strong: boolean; issues: string[] }` - Checks password strength
+
+### **5. `src/auth/types.ts`**
+Type definitions (interfaces and types):
+- `UserPayload` - JWT payload interface
+- `UserRole` - Role type definition ('admin' | 'user' | 'moderator')
+- `AuthResult` - Authentication result interface
+- `LoginCredentials` - Login credentials interface
+- `SignupData` - Signup data interface
+- `PasswordResetRequest` - Password reset request interface
+
+### **6. `src/middleware/auth.ts`**
+- `authMiddleware(req, res, next): void` - Middleware to verify JWT tokens
+- `requireRole(...roles: UserRole[])` - Middleware factory for role-based access control
+- `optionalAuth(req, res, next): void` - Middleware for optional authentication
+- `AuthenticatedRequest` - Request interface with user data
+
+### **7. `src/middleware/rateLimit.ts`**
+- `authRateLimiter()` - Pre-configured rate limiter for auth endpoints (5 requests per 15 minutes)
+- `rateLimiter(maxRequests: number, windowMs: number)` - Generic rate limiter factory
+- `clearRateLimitStore(): void` - Clears rate limit data
+
+### **8. `src/api/controllers/authController.ts`**
+- `AuthController` - Class with login, signup, and logout methods
+- `createAuthController(): AuthController` - Factory function for controller
+
+### **9. `src/api/routes/auth.ts`**
+- `getAuthRoutes(): Route[]` - Returns auth route configuration (login, signup, refresh, me endpoints)
+
+### **10. `src/api/models/session.ts`**
+- `Session` - Session interface
+- `createSession(userId, token, meta): Promise<Session>` - Creates new session
+- `findSessionByToken(token: string): Promise<Session | undefined>` - Finds session by token
+- `deleteSessionsByUser(userId: string): Promise<number>` - Deletes all sessions for a user
+- `cleanExpiredSessions(): Promise<number>` - Removes expired sessions
+
+### **11. `src/api/models/user.ts`**
+- `User` - User interface (includes auth-related fields like passwordHash)
+- `createUser(input): Promise<User>` - Creates new user
+- `findUserByEmail(email: string): Promise<User | undefined>` - Finds user by email (used in login)
+- `findUserById(id: string): Promise<User | undefined>` - Finds user by ID
+- `updateUser(id, updates): Promise<User>` - Updates user data
+- `deleteUser(id: string): Promise<void>` - Deletes user
+- `listUsers(): Promise<User[]>` - Lists all users
+- `countUsers(): Promise<number>` - Counts users
+
+### **12. `src/services/audit.ts`**
+- `logAuthEvent(event: string, data: Record<string, unknown>): Promise<void>` - Logs authentication events
+- `getAuditLog(filters?): Promise<AuditEntry[]>` - Retrieves audit log entries
+- `clearAuditLog(): void` - Clears audit log
+- `AuditEntry` - Audit entry interface

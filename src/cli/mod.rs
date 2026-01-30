@@ -207,10 +207,7 @@ pub fn generate(path: &str, dry_run: bool) -> Result<()> {
 
     for (file, msg) in &results {
         let sidecar = sidecar_path_for(file);
-        let display = sidecar
-            .strip_prefix(&root)
-            .unwrap_or(&sidecar)
-            .display();
+        let display = sidecar.strip_prefix(&root).unwrap_or(&sidecar).display();
         println!("{} {}", "✓".green(), display);
         if dry_run {
             println!("  {}", msg.dimmed());
@@ -222,7 +219,11 @@ pub fn generate(path: &str, dry_run: bool) -> Result<()> {
             "\n{} {} sidecar(s) {}",
             "✓".green().bold(),
             results.len(),
-            if dry_run { "would be written" } else { "written" }
+            if dry_run {
+                "would be written"
+            } else {
+                "written"
+            }
         );
     } else {
         println!("{} All sidecars up to date", "✓".green());
@@ -255,10 +256,7 @@ pub fn update(path: &str, dry_run: bool) -> Result<()> {
 
     for (file, msg) in &results {
         let sidecar = sidecar_path_for(file);
-        let display = sidecar
-            .strip_prefix(&root)
-            .unwrap_or(&sidecar)
-            .display();
+        let display = sidecar.strip_prefix(&root).unwrap_or(&sidecar).display();
         println!("{} {}", "✓".green(), display);
         if dry_run {
             println!("  {}", msg.dimmed());
@@ -270,7 +268,11 @@ pub fn update(path: &str, dry_run: bool) -> Result<()> {
             "\n{} {} sidecar(s) {}",
             "✓".green().bold(),
             results.len(),
-            if dry_run { "would be updated" } else { "updated" }
+            if dry_run {
+                "would be updated"
+            } else {
+                "updated"
+            }
         );
     } else {
         println!("{} All sidecars up to date", "✓".green());
@@ -369,7 +371,11 @@ pub fn clean(path: &str, dry_run: bool) -> Result<()> {
         "\n{} {} sidecar(s) {}",
         "✓".green().bold(),
         removed,
-        if dry_run { "would be removed" } else { "removed" }
+        if dry_run {
+            "would be removed"
+        } else {
+            "removed"
+        }
     );
 
     Ok(())

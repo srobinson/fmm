@@ -1,0 +1,135 @@
+{
+  "condition": "treatment",
+  "label": "auth-exports",
+  "query": "Find all files that export authentication-related functions. List each file path and the specific auth exports.",
+  "duration_seconds": 70,
+  "tool_calls_count": 16,
+  "tool_calls_by_type": {
+    "Read": 13,
+    "Grep": 3
+  },
+  "tool_calls": [
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": ".fmm/index.json"
+      }
+    },
+    {
+      "tool": "Grep",
+      "input": {
+        "pattern": "(export.*auth|export.*Auth|export.*login|export.*Login|export.*authenticate|export.*Authenticate|export.*token|export.*Token|export.*session|export.*Session)",
+        "output_mode": "content"
+      }
+    },
+    {
+      "tool": "Grep",
+      "input": {
+        "pattern": "export\\s+(const|function|class|type|interface).*\\b(auth|Auth|login|Login|authenticate|Authenticate|credentials|Credentials|jwt|JWT|oauth|OAuth)",
+        "output_mode": "content"
+      }
+    },
+    {
+      "tool": "Grep",
+      "input": {
+        "pattern": "export\\s+(const|function|class|type|interface).*\\b(password|Password|hash|Hash|verify|Verify|user|User)",
+        "output_mode": "content"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/login.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/signup.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/jwt.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/password.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/auth/types.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/middleware/auth.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/api/controllers/authController.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/api/routes/auth.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/api/models/session.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/services/audit.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/middleware/rateLimit.ts"
+      }
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "src/api/models/user.ts"
+      }
+    }
+  ],
+  "files_read": [
+    ".fmm/index.json",
+    "src/api/controllers/authController.ts",
+    "src/api/models/session.ts",
+    "src/api/models/user.ts",
+    "src/api/routes/auth.ts",
+    "src/auth/jwt.ts",
+    "src/auth/login.ts",
+    "src/auth/password.ts",
+    "src/auth/signup.ts",
+    "src/auth/types.ts",
+    "src/middleware/auth.ts",
+    "src/middleware/rateLimit.ts",
+    "src/services/audit.ts"
+  ],
+  "files_read_count": 13,
+  "tokens_in": 186494,
+  "tokens_out": 2162,
+  "tokens_total": 188656,
+  "cost_usd": 0.0896,
+  "discovered_fmm": true,
+  "used_manifest": true,
+  "response_lines": 75
+}

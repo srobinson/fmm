@@ -1,9 +1,9 @@
+use crate::manifest::Manifest;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
-use crate::manifest::Manifest;
 
 const PROTOCOL_VERSION: &str = "2024-11-05";
 
@@ -429,11 +429,7 @@ impl McpServer {
             .files
             .iter()
             .filter(|(path, _)| *path != file)
-            .filter(|(path, e)| {
-                e.dependencies
-                    .iter()
-                    .any(|d| dep_matches(d, file, path))
-            })
+            .filter(|(path, e)| e.dependencies.iter().any(|d| dep_matches(d, file, path)))
             .map(|(path, _)| path)
             .collect();
         downstream.sort();
@@ -534,7 +530,6 @@ impl McpServer {
 
         serde_json::to_string_pretty(&output).map_err(|e| e.to_string())
     }
-
 }
 
 /// Check if a dependency path from `dependent_file` resolves to `target_file`.
