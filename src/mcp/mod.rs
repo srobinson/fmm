@@ -8,13 +8,45 @@ use std::path::PathBuf;
 const PROTOCOL_VERSION: &str = "2024-11-05";
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct JsonRpcRequest {
-    jsonrpc: String,
+    #[serde(rename = "jsonrpc")]
+    _jsonrpc: String,
     id: Option<Value>,
     method: String,
     #[serde(default)]
     params: Option<Value>,
+}
+
+// Typed argument structs for MCP tool handlers
+
+#[derive(Debug, Deserialize)]
+struct LookupExportArgs {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ListExportsArgs {
+    pattern: Option<String>,
+    file: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FileInfoArgs {
+    file: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DependencyGraphArgs {
+    file: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SearchArgs {
+    export: Option<String>,
+    imports: Option<String>,
+    depends_on: Option<String>,
+    min_loc: Option<usize>,
+    max_loc: Option<usize>,
 }
 
 #[derive(Debug, Serialize)]
@@ -56,6 +88,7 @@ impl Default for McpServer {
 
 impl McpServer {
     pub fn new() -> Self {
+        // Safe default: empty path is harmless; MCP server will report "no sidecars" if cwd fails
         let root = std::env::current_dir().unwrap_or_default();
         let manifest = Manifest::load_from_sidecars(&root).ok();
         Self { manifest, root }
@@ -313,12 +346,10 @@ impl McpServer {
     fn tool_lookup_export(&self, args: &Value) -> Result<String, String> {
         let manifest = self.require_manifest()?;
 
-        let name = args
-            .get("name")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing 'name' argument")?;
+        let args: LookupExportArgs =
+            serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
-        match manifest.export_index.get(name) {
+        match manifest.export_index.get(&args.name) {
             Some(file_path) => {
                 let entry = manifest.files.get(file_path);
                 let result = json!({
@@ -330,17 +361,17 @@ impl McpServer {
                 });
                 serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
             }
-            None => Err(format!("Export '{}' not found", name)),
+            None => Err(format!("Export '{}' not found", args.name)),
         }
     }
 
     fn tool_list_exports(&self, args: &Value) -> Result<String, String> {
         let manifest = self.require_manifest()?;
 
-        let pattern = args.get("pattern").and_then(|v| v.as_str());
-        let file = args.get("file").and_then(|v| v.as_str());
+        let args: ListExportsArgs =
+            serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
-        if let Some(file_path) = file {
+        if let Some(ref file_path) = args.file {
             // List exports from a specific file
             match manifest.files.get(file_path) {
                 Some(entry) => {
@@ -352,7 +383,7 @@ impl McpServer {
                 }
                 None => Err(format!("File '{}' not found in manifest", file_path)),
             }
-        } else if let Some(pat) = pattern {
+        } else if let Some(ref pat) = args.pattern {
             // Search export index by pattern
             let pat_lower = pat.to_lowercase();
             let mut matches: Vec<(&String, &String)> = manifest
@@ -388,15 +419,13 @@ impl McpServer {
     fn tool_file_info(&self, args: &Value) -> Result<String, String> {
         let manifest = self.require_manifest()?;
 
-        let file = args
-            .get("file")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing 'file' argument")?;
+        let args: FileInfoArgs =
+            serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
-        match manifest.files.get(file) {
+        match manifest.files.get(&args.file) {
             Some(entry) => {
                 let result = json!({
-                    "file": file,
+                    "file": args.file,
                     "exports": entry.exports,
                     "imports": entry.imports,
                     "dependencies": entry.dependencies,
@@ -404,22 +433,20 @@ impl McpServer {
                 });
                 serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
             }
-            None => Err(format!("File '{}' not found in manifest", file)),
+            None => Err(format!("File '{}' not found in manifest", args.file)),
         }
     }
 
     fn tool_dependency_graph(&self, args: &Value) -> Result<String, String> {
         let manifest = self.require_manifest()?;
 
-        let file = args
-            .get("file")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing 'file' argument")?;
+        let args: DependencyGraphArgs =
+            serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
         let entry = manifest
             .files
-            .get(file)
-            .ok_or_else(|| format!("File '{}' not found in manifest", file))?;
+            .get(&args.file)
+            .ok_or_else(|| format!("File '{}' not found in manifest", args.file))?;
 
         // Upstream: files this file depends on (its dependencies)
         let upstream: Vec<&str> = entry.dependencies.iter().map(|s| s.as_str()).collect();
@@ -428,14 +455,18 @@ impl McpServer {
         let mut downstream: Vec<&String> = manifest
             .files
             .iter()
-            .filter(|(path, _)| *path != file)
-            .filter(|(path, e)| e.dependencies.iter().any(|d| dep_matches(d, file, path)))
+            .filter(|(path, _)| path.as_str() != args.file)
+            .filter(|(path, e)| {
+                e.dependencies
+                    .iter()
+                    .any(|d| dep_matches(d, &args.file, path))
+            })
             .map(|(path, _)| path)
             .collect();
         downstream.sort();
 
         let result = json!({
-            "file": file,
+            "file": args.file,
             "upstream": upstream,
             "downstream": downstream,
             "imports": entry.imports,
@@ -446,15 +477,18 @@ impl McpServer {
     fn tool_search(&self, args: &Value) -> Result<String, String> {
         let manifest = self.require_manifest()?;
 
+        let args: SearchArgs =
+            serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
+
         let mut results: Vec<(&String, &crate::manifest::FileEntry)> = Vec::new();
 
-        let has_export = args.get("export").and_then(|v| v.as_str()).is_some();
-        let has_imports = args.get("imports").and_then(|v| v.as_str()).is_some();
-        let has_depends_on = args.get("depends_on").and_then(|v| v.as_str()).is_some();
+        let has_export = args.export.is_some();
+        let has_imports = args.imports.is_some();
+        let has_depends_on = args.depends_on.is_some();
 
         // Search by export
-        if let Some(export) = args.get("export").and_then(|v| v.as_str()) {
-            if let Some(file_path) = manifest.export_index.get(export) {
+        if let Some(ref export) = args.export {
+            if let Some(file_path) = manifest.export_index.get(export.as_str()) {
                 if let Some(entry) = manifest.files.get(file_path) {
                     results.push((file_path, entry));
                 }
@@ -462,9 +496,12 @@ impl McpServer {
         }
 
         // Search by imports
-        if let Some(import_name) = args.get("imports").and_then(|v| v.as_str()) {
+        if let Some(ref import_name) = args.imports {
             for (file_path, entry) in &manifest.files {
-                if entry.imports.iter().any(|i| i.contains(import_name))
+                if entry
+                    .imports
+                    .iter()
+                    .any(|i| i.contains(import_name.as_str()))
                     && !results.iter().any(|(f, _)| *f == file_path)
                 {
                     results.push((file_path, entry));
@@ -473,9 +510,12 @@ impl McpServer {
         }
 
         // Search by depends_on
-        if let Some(dep_path) = args.get("depends_on").and_then(|v| v.as_str()) {
+        if let Some(ref dep_path) = args.depends_on {
             for (file_path, entry) in &manifest.files {
-                if entry.dependencies.iter().any(|d| d.contains(dep_path))
+                if entry
+                    .dependencies
+                    .iter()
+                    .any(|d| d.contains(dep_path.as_str()))
                     && !results.iter().any(|(f, _)| *f == file_path)
                 {
                     results.push((file_path, entry));
@@ -483,17 +523,7 @@ impl McpServer {
             }
         }
 
-        // Filter by LOC
-        let min_loc = args
-            .get("min_loc")
-            .and_then(|v| v.as_u64())
-            .map(|v| v as usize);
-        let max_loc = args
-            .get("max_loc")
-            .and_then(|v| v.as_u64())
-            .map(|v| v as usize);
-
-        if min_loc.is_some() || max_loc.is_some() {
+        if args.min_loc.is_some() || args.max_loc.is_some() {
             if results.is_empty() && !has_export && !has_imports && !has_depends_on {
                 for (file_path, entry) in &manifest.files {
                     results.push((file_path, entry));
@@ -501,14 +531,18 @@ impl McpServer {
             }
 
             results.retain(|(_, entry)| {
-                let passes_min = min_loc.is_none_or(|min| entry.loc >= min);
-                let passes_max = max_loc.is_none_or(|max| entry.loc <= max);
+                let passes_min = args.min_loc.is_none_or(|min| entry.loc >= min);
+                let passes_max = args.max_loc.is_none_or(|max| entry.loc <= max);
                 passes_min && passes_max
             });
         }
 
         // If no filters, return all
-        if !has_export && !has_imports && !has_depends_on && min_loc.is_none() && max_loc.is_none()
+        if !has_export
+            && !has_imports
+            && !has_depends_on
+            && args.min_loc.is_none()
+            && args.max_loc.is_none()
         {
             for (file_path, entry) in &manifest.files {
                 results.push((file_path, entry));

@@ -7,6 +7,23 @@ use std::path::Path;
 
 use crate::parser::Metadata;
 
+/// Typed representation of a `.fmm` sidecar file for serde_yaml deserialization.
+#[derive(Debug, Deserialize)]
+struct SidecarData {
+    file: String,
+    #[serde(default)]
+    exports: Option<Vec<String>>,
+    #[serde(default)]
+    imports: Option<Vec<String>>,
+    #[serde(default)]
+    dependencies: Option<Vec<String>>,
+    #[serde(default)]
+    loc: Option<usize>,
+    /// Captures all other fields (fmm version, modified, language-specific sections)
+    #[serde(flatten)]
+    _extra: HashMap<String, serde_yaml::Value>,
+}
+
 /// Entry for a single file in the in-memory index
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileEntry {
@@ -117,7 +134,6 @@ impl Manifest {
             .insert(path.to_string(), FileEntry::from(metadata));
     }
 
-    #[allow(dead_code)]
     pub fn remove_file(&mut self, path: &str) {
         if let Some(entry) = self.files.remove(path) {
             for export in entry.exports {
@@ -130,12 +146,10 @@ impl Manifest {
         self.generated = Utc::now();
     }
 
-    #[allow(dead_code)]
     pub fn has_file(&self, path: &str) -> bool {
         self.files.contains_key(path)
     }
 
-    #[allow(dead_code)]
     pub fn get_file(&self, path: &str) -> Option<&FileEntry> {
         self.files.get(path)
     }
@@ -155,7 +169,6 @@ impl Manifest {
         self.files.len()
     }
 
-    #[allow(dead_code)]
     pub fn file_paths(&self) -> Vec<&String> {
         self.files.keys().collect()
     }
@@ -167,63 +180,23 @@ impl Default for Manifest {
     }
 }
 
-/// Parse a sidecar YAML file into (file_path, FileEntry).
+/// Parse a sidecar YAML file into (file_path, FileEntry) using serde_yaml.
 fn parse_sidecar(content: &str) -> Option<(String, FileEntry)> {
-    let mut file_path = String::new();
-    let mut exports = Vec::new();
-    let mut imports = Vec::new();
-    let mut dependencies = Vec::new();
-    let mut loc = 0usize;
+    let data: SidecarData = serde_yaml::from_str(content).ok()?;
 
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-
-        if let Some(val) = line.strip_prefix("file: ") {
-            file_path = val.to_string();
-        } else if let Some(val) = line.strip_prefix("exports: ") {
-            exports = parse_yaml_list(val);
-        } else if let Some(val) = line.strip_prefix("imports: ") {
-            imports = parse_yaml_list(val);
-        } else if let Some(val) = line.strip_prefix("dependencies: ") {
-            dependencies = parse_yaml_list(val);
-        } else if let Some(val) = line.strip_prefix("loc: ") {
-            loc = val.parse().unwrap_or(0);
-        }
-    }
-
-    if file_path.is_empty() {
+    if data.file.is_empty() {
         return None;
     }
 
     Some((
-        file_path,
+        data.file,
         FileEntry {
-            exports,
-            imports,
-            dependencies,
-            loc,
+            exports: data.exports.unwrap_or_default(),
+            imports: data.imports.unwrap_or_default(),
+            dependencies: data.dependencies.unwrap_or_default(),
+            loc: data.loc.unwrap_or(0),
         },
     ))
-}
-
-/// Parse a YAML inline list: `[a, b, c]` → vec!["a", "b", "c"]
-fn parse_yaml_list(s: &str) -> Vec<String> {
-    let s = s.trim();
-    if s.starts_with('[') && s.ends_with(']') {
-        let inner = &s[1..s.len() - 1];
-        if inner.is_empty() {
-            return Vec::new();
-        }
-        inner
-            .split(',')
-            .map(|item| item.trim().to_string())
-            .collect()
-    } else {
-        Vec::new()
-    }
 }
 
 #[cfg(test)]
@@ -273,16 +246,39 @@ modified: 2026-01-30"#;
     }
 
     #[test]
-    fn test_parse_yaml_list() {
-        assert_eq!(parse_yaml_list("[a, b, c]"), vec!["a", "b", "c"]);
-        assert_eq!(parse_yaml_list("[]"), Vec::<String>::new());
-        assert_eq!(parse_yaml_list("[single]"), vec!["single"]);
+    fn test_parse_sidecar_empty() {
+        assert!(parse_sidecar("").is_none());
+        // Missing required `file` field
+        assert!(parse_sidecar("loc: 10").is_none());
     }
 
     #[test]
-    fn test_parse_sidecar_empty() {
-        assert!(parse_sidecar("").is_none());
-        assert!(parse_sidecar("loc: 10").is_none());
+    fn test_parse_sidecar_empty_exports() {
+        let content = "file: src/empty.ts\nexports: []\nloc: 5\n";
+        let (path, entry) = parse_sidecar(content).unwrap();
+        assert_eq!(path, "src/empty.ts");
+        assert!(entry.exports.is_empty());
+        assert_eq!(entry.loc, 5);
+    }
+
+    #[test]
+    fn test_parse_sidecar_missing_optional_fields() {
+        let content = "file: src/minimal.ts\n";
+        let (path, entry) = parse_sidecar(content).unwrap();
+        assert_eq!(path, "src/minimal.ts");
+        assert!(entry.exports.is_empty());
+        assert!(entry.imports.is_empty());
+        assert!(entry.dependencies.is_empty());
+        assert_eq!(entry.loc, 0);
+    }
+
+    #[test]
+    fn test_parse_sidecar_extra_fields() {
+        let content = "file: src/lib.rs\nfmm: v0.2\nexports: [MyStruct]\nloc: 50\nrust:\n  derives: [Clone, Debug]\n";
+        let (path, entry) = parse_sidecar(content).unwrap();
+        assert_eq!(path, "src/lib.rs");
+        assert_eq!(entry.exports, vec!["MyStruct"]);
+        assert_eq!(entry.loc, 50);
     }
 
     #[test]
