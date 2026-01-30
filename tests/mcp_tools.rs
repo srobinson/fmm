@@ -193,7 +193,7 @@ fn list_exports_for_file() {
 #[test]
 fn list_exports_file_not_found() {
     let manifest = test_manifest();
-    assert!(manifest.files.get("src/nonexistent.ts").is_none());
+    assert!(!manifest.files.contains_key("src/nonexistent.ts"));
 }
 
 #[test]
