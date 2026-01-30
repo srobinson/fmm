@@ -108,6 +108,8 @@ def parse_run(filepath: Path) -> dict:
                                 metrics["fmm_cli_calls"] += 1
                         elif tool_name.startswith("mcp__fmm__") or tool_name.startswith("fmm_"):
                             metrics["mcp_calls"] += 1
+                            if "manifest" in tool_name or "index" in tool_name:
+                                metrics["manifest_accessed"] = True
 
             if etype == "user":
                 msg = event.get("message", {})

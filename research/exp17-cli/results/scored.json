@@ -1,0 +1,681 @@
+{
+  "A": {
+    "deps-list-1_run1": {
+      "tool_calls": [
+        "Grep",
+        "Glob",
+        "Grep"
+      ],
+      "tool_call_count": 3,
+      "fmm_calls": [],
+      "grep_calls": 2,
+      "glob_calls": 1,
+      "read_calls": 0,
+      "bash_calls": 0,
+      "input_tokens": 6,
+      "output_tokens": 371,
+      "cache_read_tokens": 113837,
+      "cache_create_tokens": 38326,
+      "total_tokens": 152540,
+      "cost_usd": 0.30576099999999995,
+      "num_turns": 4,
+      "duration_ms": 11798,
+      "files_read": 2,
+      "final_text": "```\n./http2-proxy.js\n./http3-proxy.js\n./websocket-proxy.js\n./anthropic-to-gemini.js\n../utils/logger.js\n```",
+      "mcp_servers": [
+        "mcp-files",
+        "context7",
+        "linear-server",
+        "exa"
+      ],
+      "permission_denials": 0,
+      "task_id": "deps-list-1",
+      "run": "1",
+      "correctness": 1.0
+    },
+    "deps-list-2_run1": {
+      "tool_calls": [
+        "Read"
+      ],
+      "tool_call_count": 1,
+      "fmm_calls": [],
+      "grep_calls": 0,
+      "glob_calls": 0,
+      "read_calls": 1,
+      "bash_calls": 0,
+      "input_tokens": 4,
+      "output_tokens": 116,
+      "cache_read_tokens": 37780,
+      "cache_create_tokens": 44590,
+      "total_tokens": 82490,
+      "cost_usd": 0.3004975,
+      "num_turns": 2,
+      "duration_ms": 6582,
+      "files_read": 1,
+      "final_text": "../utils/crypto.utils.js\n./token.service.js\n../security/input-validation.js",
+      "mcp_servers": [
+        "mcp-files",
+        "context7",
+        "linear-server",
+        "exa"
+      ],
+      "permission_denials": 0,
+      "task_id": "deps-list-2",
+      "run": "1",
+      "correctness": 1.0
+    },
+    "export-count-1_run1": {
+      "tool_calls": [
+        "mcp__mcp-files__read_symbol",
+        "Grep"
+      ],
+      "tool_call_count": 2,
+      "fmm_calls": [],
+      "grep_calls": 1,
+      "glob_calls": 0,
+      "read_calls": 0,
+      "bash_calls": 0,
+      "input_tokens": 5,
+      "output_tokens": 242,
+      "cache_read_tokens": 78681,
+      "cache_create_tokens": 41294,
+      "total_tokens": 120222,
+      "cost_usd": 0.303503,
+      "num_turns": 3,
+      "duration_ms": 10110,
+      "files_read": 1,
+      "final_text": "21",
+      "mcp_servers": [
+        "mcp-files",
+        "context7",
+        "linear-server",
+        "exa"
+      ],
+      "permission_denials": 0,
+      "task_id": "export-count-1",
+      "run": "1",
+      "correctness": 0.0
+    },
+    "imports-list-1_run1": {
+      "tool_calls": [
+        "Grep",
+        "Read"
+      ],
+      "tool_call_count": 2,
+      "fmm_calls": [],
+      "grep_calls": 1,
+      "glob_calls": 0,
+      "read_calls": 1,
+      "bash_calls": 0,
+      "input_tokens": 5,
+      "output_tokens": 247,
+      "cache_read_tokens": 75685,
+      "cache_create_tokens": 38516,
+      "total_tokens": 114453,
+      "cost_usd": 0.2847675,
+      "num_turns": 3,
+      "duration_ms": 9098,
+      "files_read": 1,
+      "final_text": "perf_hooks\nfs\npath",
+      "mcp_servers": [
+        "mcp-files",
+        "context7",
+        "linear-server",
+        "exa"
+      ],
+      "permission_denials": 0,
+      "task_id": "imports-list-1",
+      "run": "1",
+      "correctness": 1.0
+    },
+    "imports-list-2_run1": {
+      "tool_calls": [
+        "Grep",
+        "Glob",
+        "Grep",
+        "Grep"
+      ],
+      "tool_call_count": 4,
+      "fmm_calls": [],
+      "grep_calls": 3,
+      "glob_calls": 1,
+      "read_calls": 0,
+      "bash_calls": 0,
+      "input_tokens": 7,
+      "output_tokens": 461,
+      "cache_read_tokens": 152056,
+      "cache_create_tokens": 38460,
+      "total_tokens": 190984,
+      "cost_usd": 0.32796299999999995,
+      "num_turns": 5,
+      "duration_ms": 14934,
+      "files_read": 2,
+      "final_text": "http2\nfs\ncrypto",
+      "mcp_servers": [
+        "mcp-files",
+        "context7",
+        "linear-server",
+        "exa"
+      ],
+      "permission_denials": 0,
+      "task_id": "imports-list-2",
+      "run": "1",
+      "correctness": 1.0
+    },
+    "reverse-deps-1_run1": {
+      "tool_calls": [
+        "Grep",
+        "Grep",
+        "Grep",
+        "Grep"
+      ],
+      "tool_call_count": 4,
+      "fmm_calls": [],
+      "grep_calls": 4,
+      "glob_calls": 0,
+      "read_calls": 0,
+      "bash_calls": 0,
+      "input_tokens": 5,
+      "output_tokens": 406,
+      "cache_read_tokens": 95547,
+      "cache_create_tokens": 18999,
+      "total_tokens": 114957,
+      "cost_usd": 0.17669225,
+      "num_turns": 5,
+      "duration_ms": 10772,
+      "files_read": 1,
+      "final_text": "Let me filter to only actual source files that import from it.\n\n```\nsrc/api/index.ts\npackages/agentdb/src/middleware/rate-limit.middleware.ts\n```",
+      "mcp_servers": [
+        "mcp-files",
+        "context7",
+        "linear-server",
+        "exa"
+      ],
+      "permission_denials": 0,
+      "task_id": "reverse-deps-1",
+      "run": "1",
+      "correctness": 0.6666666666666666
+    },
+    "reverse-deps-2_run1": {
+      "tool_calls": [
+        "Grep",
+        "Grep",
+        "Grep"
+      ],
+      "tool_call_count": 3,
+      "fmm_calls": [],
+      "grep_calls": 3,
+      "glob_calls": 0,
+      "read_calls": 0,
+      "bash_calls": 0,
+      "input_tokens": 138,
+      "output_tokens": 393,
+      "cache_read_tokens": 75862,
+      "cache_create_tokens": 38535,
+      "total_tokens": 114928,
+      "cost_usd": 0.28928975,
+      "num_turns": 4,
+      "duration_ms": 11335,
+      "files_read": 1,
+      "final_text": "packages/agentdb/src/services/auth.service.ts\npackages/agentdb/src/services/token.service.ts\npackages/agentdb/src/tests/unit/auth/crypto.utils.test.ts",
+      "mcp_servers": [
+        "mcp-files",
+        "context7",
+        "linear-server",
+        "exa"
+      ],
+      "permission_denials": 0,
+      "task_id": "reverse-deps-2",
+      "run": "1",
+      "correctness": 1.0
+    },
+    "symbol-lookup-1_run1": {
+      "tool_calls": [
+        "Grep"
+      ],
+      "tool_call_count": 1,
+      "fmm_calls": [],
+      "grep_calls": 1,
+      "glob_calls": 0,
+      "read_calls": 0,
+      "bash_calls": 0,
+      "input_tokens": 4,
+      "output_tokens": 71,
+      "cache_read_tokens": 37756,
+      "cache_create_tokens": 37848,
+      "total_tokens": 75679,
+      "cost_usd": 0.257223,
+      "num_turns": 2,
+      "duration_ms": 5509,
+      "files_read": 0,
+      "final_text": "`bench/benchmark.ts`",
+      "mcp_servers": [
+        "mcp-files",
+        "context7",
+        "linear-server",
+        "exa"
+      ],
+      "permission_denials": 0,
+      "task_id": "symbol-lookup-1",
+      "run": "1",
+      "correctness": 1.0
+    },
+    "symbol-lookup-2_run1": {
+      "tool_calls": [
+        "Grep"
+      ],
+      "tool_call_count": 1,
+      "fmm_calls": [],
+      "grep_calls": 1,
+      "glob_calls": 0,
+      "read_calls": 0,
+      "bash_calls": 0,
+      "input_tokens": 4,
+      "output_tokens": 107,
+      "cache_read_tokens": 37758,
+      "cache_create_tokens": 37915,
+      "total_tokens": 75784,
+      "cost_usd": 0.25854275,
+      "num_turns": 2,
+      "duration_ms": 4460,
+      "files_read": 0,
+      "final_text": "`agentic-flow/src/proxy/adaptive-proxy.ts`",
+      "mcp_servers": [
+        "context7",
+        "mcp-files",
+        "linear-server",
+        "exa"
+      ],
+      "permission_denials": 0,
+      "task_id": "symbol-lookup-2",
+      "run": "1",
+      "correctness": 1.0
+    },
+    "symbol-lookup-3_run1": {
+      "tool_calls": [
+        "Grep"
+      ],
+      "tool_call_count": 1,
+      "fmm_calls": [],
+      "grep_calls": 1,
+      "glob_calls": 0,
+      "read_calls": 0,
+      "bash_calls": 0,
+      "input_tokens": 4,
+      "output_tokens": 99,
+      "cache_read_tokens": 37750,
+      "cache_create_tokens": 37893,
+      "total_tokens": 75746,
+      "cost_usd": 0.25820125,
+      "num_turns": 2,
+      "duration_ms": 5807,
+      "files_read": 0,
+      "final_text": "`agentic-flow/src/billing/index.ts`",
+      "mcp_servers": [
+        "mcp-files",
+        "context7",
+        "exa",
+        "linear-server"
+      ],
+      "permission_denials": 0,
+      "task_id": "symbol-lookup-3",
+      "run": "1",
+      "correctness": 1.0
+    }
+  },
+  "B": {
+    "deps-list-1_run1": {
+      "tool_calls": [
+        "mcp__fmm__fmm_dependency_graph",
+        "mcp__fmm__fmm_dependency_graph"
+      ],
+      "tool_call_count": 2,
+      "fmm_calls": [
+        "mcp__fmm__fmm_dependency_graph",
+        "mcp__fmm__fmm_dependency_graph"
+      ],
+      "grep_calls": 0,
+      "glob_calls": 0,
+      "read_calls": 0,
+      "bash_calls": 0,
+      "input_tokens": 5,
+      "output_tokens": 211,
+      "cache_read_tokens": 77625,
+      "cache_create_tokens": 39061,
+      "total_tokens": 116902,
+      "cost_usd": 0.28824375,
+      "num_turns": 3,
+      "duration_ms": 8436,
+      "files_read": 0,
+      "final_text": "```\n../utils/logger.js\n./anthropic-to-gemini.js\n./http2-proxy.js\n./http3-proxy.js\n./websocket-proxy.js\n```",
+      "mcp_servers": [
+        "fmm",
+        "mcp-files",
+        "context7",
+        "linear-server",
+        "exa"
+      ],
+      "permission_denials": 0,
+      "task_id": "deps-list-1",
+      "run": "1",
+      "correctness": 1.0
+    },
+    "deps-list-2_run1": {
+      "tool_calls": [
+        "mcp__fmm__fmm_dependency_graph"
+      ],
+      "tool_call_count": 1,
+      "fmm_calls": [
+        "mcp__fmm__fmm_dependency_graph"
+      ],
+      "grep_calls": 0,
+      "glob_calls": 0,
+      "read_calls": 0,
+      "bash_calls": 0,
+      "input_tokens": 4,
+      "output_tokens": 118,
+      "cache_read_tokens": 38747,
+      "cache_create_tokens": 38928,
+      "total_tokens": 77797,
+      "cost_usd": 0.2656435,
+      "num_turns": 2,
+      "duration_ms": 6054,
+      "files_read": 0,
+      "final_text": "../security/input-validation.js\n../utils/crypto.utils.js\n./token.service.js",
+      "mcp_servers": [
+        "fmm",
+        "mcp-files",
+        "context7",
+        "linear-server",
+        "exa"
+      ],
+      "permission_denials": 0,
+      "task_id": "deps-list-2",
+      "run": "1",
+      "correctness": 1.0
+    },
+    "export-count-1_run1": {
+      "tool_calls": [
+        "mcp__fmm__fmm_file_info"
+      ],
+      "tool_call_count": 1,
+      "fmm_calls": [
+        "mcp__fmm__fmm_file_info"
+      ],
+      "grep_calls": 0,
+      "glob_calls": 0,
+      "read_calls": 0,
+      "bash_calls": 0,
+      "input_tokens": 4,
+      "output_tokens": 92,
+      "cache_read_tokens": 38731,
+      "cache_create_tokens": 39058,
+      "total_tokens": 77885,
+      "cost_usd": 0.265798,
+      "num_turns": 2,
+      "duration_ms": 5655,
+      "files_read": 0,
+      "final_text": "20",
+      "mcp_servers": [
+        "fmm",
+        "context7",
+        "mcp-files",
+        "linear-server",
+        "exa"
+      ],
+      "permission_denials": 0,
+      "task_id": "export-count-1",
+      "run": "1",
+      "correctness": 1.0
+    },
+    "imports-list-1_run1": {
+      "tool_calls": [
+        "mcp__fmm__fmm_file_info"
+      ],
+      "tool_call_count": 1,
+      "fmm_calls": [
+        "mcp__fmm__fmm_file_info"
+      ],
+      "grep_calls": 0,
+      "glob_calls": 0,
+      "read_calls": 0,
+      "bash_calls": 0,
+      "input_tokens": 4,
+      "output_tokens": 89,
+      "cache_read_tokens": 38739,
+      "cache_create_tokens": 39009,
+      "total_tokens": 77841,
+      "cost_usd": 0.26542075000000004,
+      "num_turns": 2,
+      "duration_ms": 5478,
+      "files_read": 0,
+      "final_text": "fs\npath\nperf_hooks",
+      "mcp_servers": [
+        "fmm",
+        "mcp-files",
+        "context7",
+        "linear-server",
+        "exa"
+      ],
+      "permission_denials": 0,
+      "task_id": "imports-list-1",
+      "run": "1",
+      "correctness": 1.0
+    },
+    "imports-list-2_run1": {
+      "tool_calls": [
+        "mcp__fmm__fmm_file_info",
+        "Read",
+        "Glob",
+        "Grep",
+        "Grep"
+      ],
+      "tool_call_count": 5,
+      "fmm_calls": [
+        "mcp__fmm__fmm_file_info"
+      ],
+      "grep_calls": 2,
+      "glob_calls": 1,
+      "read_calls": 1,
+      "bash_calls": 0,
+      "input_tokens": 7,
+      "output_tokens": 492,
+      "cache_read_tokens": 155685,
+      "cache_create_tokens": 39247,
+      "total_tokens": 195431,
+      "cost_usd": 0.33547125,
+      "num_turns": 6,
+      "duration_ms": 14987,
+      "files_read": 2,
+      "final_text": "",
+      "mcp_servers": [
+        "fmm",
+        "mcp-files",
+        "context7",
+        "linear-server",
+        "exa"
+      ],
+      "permission_denials": 0,
+      "task_id": "imports-list-2",
+      "run": "1",
+      "correctness": 0.0
+    },
+    "reverse-deps-1_run1": {
+      "tool_calls": [
+        "mcp__fmm__fmm_dependency_graph",
+        "mcp__fmm__fmm_search",
+        "Grep",
+        "Grep"
+      ],
+      "tool_call_count": 4,
+      "fmm_calls": [
+        "mcp__fmm__fmm_dependency_graph",
+        "mcp__fmm__fmm_search"
+      ],
+      "grep_calls": 2,
+      "glob_calls": 0,
+      "read_calls": 0,
+      "bash_calls": 0,
+      "input_tokens": 6,
+      "output_tokens": 396,
+      "cache_read_tokens": 116719,
+      "cache_create_tokens": 39295,
+      "total_tokens": 156416,
+      "cost_usd": 0.31388325,
+      "num_turns": 5,
+      "duration_ms": 13190,
+      "files_read": 2,
+      "final_text": "`packages/agentdb/src/middleware/rate-limit.middleware.ts`",
+      "mcp_servers": [
+        "fmm",
+        "mcp-files",
+        "context7",
+        "exa",
+        "linear-server"
+      ],
+      "permission_denials": 0,
+      "task_id": "reverse-deps-1",
+      "run": "1",
+      "correctness": 0.3333333333333333
+    },
+    "reverse-deps-2_run1": {
+      "tool_calls": [
+        "mcp__fmm__fmm_dependency_graph",
+        "mcp__fmm__fmm_search",
+        "Grep"
+      ],
+      "tool_call_count": 3,
+      "fmm_calls": [
+        "mcp__fmm__fmm_dependency_graph",
+        "mcp__fmm__fmm_search"
+      ],
+      "grep_calls": 1,
+      "glob_calls": 0,
+      "read_calls": 0,
+      "bash_calls": 0,
+      "input_tokens": 5,
+      "output_tokens": 288,
+      "cache_read_tokens": 77778,
+      "cache_create_tokens": 39248,
+      "total_tokens": 117319,
+      "cost_usd": 0.29141399999999995,
+      "num_turns": 4,
+      "duration_ms": 10318,
+      "files_read": 0,
+      "final_text": "packages/agentdb/src/tests/unit/auth/crypto.utils.test.ts\npackages/agentdb/src/services/token.service.ts\npackages/agentdb/src/services/auth.service.ts",
+      "mcp_servers": [
+        "fmm",
+        "mcp-files",
+        "context7",
+        "exa",
+        "linear-server"
+      ],
+      "permission_denials": 0,
+      "task_id": "reverse-deps-2",
+      "run": "1",
+      "correctness": 1.0
+    },
+    "symbol-lookup-1_run1": {
+      "tool_calls": [
+        "mcp__fmm__fmm_lookup_export"
+      ],
+      "tool_call_count": 1,
+      "fmm_calls": [
+        "mcp__fmm__fmm_lookup_export"
+      ],
+      "grep_calls": 0,
+      "glob_calls": 0,
+      "read_calls": 0,
+      "bash_calls": 0,
+      "input_tokens": 4,
+      "output_tokens": 81,
+      "cache_read_tokens": 38726,
+      "cache_create_tokens": 38986,
+      "total_tokens": 77797,
+      "cost_usd": 0.2650705,
+      "num_turns": 2,
+      "duration_ms": 5102,
+      "files_read": 0,
+      "final_text": "`bench/benchmark.ts`",
+      "mcp_servers": [
+        "fmm",
+        "mcp-files",
+        "context7",
+        "exa",
+        "linear-server"
+      ],
+      "permission_denials": 0,
+      "task_id": "symbol-lookup-1",
+      "run": "1",
+      "correctness": 1.0
+    },
+    "symbol-lookup-2_run1": {
+      "tool_calls": [
+        "mcp__fmm__fmm_lookup_export"
+      ],
+      "tool_call_count": 1,
+      "fmm_calls": [
+        "mcp__fmm__fmm_lookup_export"
+      ],
+      "grep_calls": 0,
+      "glob_calls": 0,
+      "read_calls": 0,
+      "bash_calls": 0,
+      "input_tokens": 4,
+      "output_tokens": 80,
+      "cache_read_tokens": 69208,
+      "cache_create_tokens": 8446,
+      "total_tokens": 77738,
+      "cost_usd": 0.0894115,
+      "num_turns": 2,
+      "duration_ms": 5636,
+      "files_read": 0,
+      "final_text": "src/proxy/adaptive-proxy.ts",
+      "mcp_servers": [
+        "fmm",
+        "mcp-files",
+        "context7",
+        "linear-server",
+        "exa"
+      ],
+      "permission_denials": 0,
+      "task_id": "symbol-lookup-2",
+      "run": "1",
+      "correctness": 0.0
+    },
+    "symbol-lookup-3_run1": {
+      "tool_calls": [
+        "mcp__fmm__fmm_lookup_export"
+      ],
+      "tool_call_count": 1,
+      "fmm_calls": [
+        "mcp__fmm__fmm_lookup_export"
+      ],
+      "grep_calls": 0,
+      "glob_calls": 0,
+      "read_calls": 0,
+      "bash_calls": 0,
+      "input_tokens": 4,
+      "output_tokens": 86,
+      "cache_read_tokens": 38723,
+      "cache_create_tokens": 39015,
+      "total_tokens": 77828,
+      "cost_usd": 0.26537525,
+      "num_turns": 2,
+      "duration_ms": 6064,
+      "files_read": 0,
+      "final_text": "`agentic-flow/src/billing/index.ts`",
+      "mcp_servers": [
+        "fmm",
+        "mcp-files",
+        "context7",
+        "linear-server",
+        "exa"
+      ],
+      "permission_denials": 0,
+      "task_id": "symbol-lookup-3",
+      "run": "1",
+      "correctness": 1.0
+    }
+  }
+}

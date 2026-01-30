@@ -38,8 +38,8 @@ echo "   Copied $(find fmm-src/src -name '*.rs' | wc -l | tr -d ' ') Rust source
 # ─── Validate .env ───────────────────────────────────────────────────────────
 echo ""
 echo "2. Checking .env..."
-if [[ -f .env ]]; then
-    source .env
+if [[ -f "$SCRIPT_DIR/.env" ]]; then
+    source "$SCRIPT_DIR/.env"
     if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
         echo "   ANTHROPIC_API_KEY: set (${#ANTHROPIC_API_KEY} chars)"
     else

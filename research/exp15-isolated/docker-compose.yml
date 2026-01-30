@@ -21,12 +21,12 @@ x-base: &base
     dockerfile: Dockerfile
   env_file: .env
   volumes:
-    - ${CODEBASE_PATH:-.}/codebase:/codebase:ro
+    - ${CODEBASE_PATH:-.}:/codebase:ro
     - ./results:/results
   tmpfs:
     - /tmp:size=512M
     - /root/.claude:size=64M
-  network_mode: "none"
+  network_mode: "bridge"
 
 services:
   condition-a:

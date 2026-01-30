@@ -1,0 +1,29 @@
+## Code Navigation
+
+This project uses fmm (Frontmatter Matters) for structured code navigation.
+
+### FMM Headers — Read These First
+
+Source files have `// --- FMM ---` comment blocks at the top. These are **machine-generated structural metadata** — not comments to skip. They describe a file's exports, imports, dependencies, and LOC.
+
+**ALWAYS read the first 15 lines of a file before reading the full source.** The FMM header tells you what the file does without reading the implementation.
+
+### MCP Tools
+
+When the fmm MCP server is available:
+- `fmm_lookup_export(name)` — O(1) symbol → file lookup. Use before Grep.
+- `fmm_dependency_graph(file)` — upstream deps + downstream dependents (blast radius)
+- `fmm_search({export?, imports?, depends_on?, min_loc?, max_loc?})` — find files by structural criteria
+- `fmm_list_exports(pattern?, file?)` — search exports by substring
+- `fmm_file_info(file)` — file metadata from the index
+
+### Manifest
+- `.fmm/index.json` contains the pre-indexed metadata for all source files
+- `exportIndex` maps every export name → file path
+
+### CLI Fallback
+```bash
+fmm search --export <name>    # Find file by export
+fmm search --imports <module> # Find files importing module
+fmm search --depends-on ./auth # Impact analysis
+```

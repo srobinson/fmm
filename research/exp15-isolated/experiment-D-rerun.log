@@ -1,0 +1,158 @@
+╔══════════════════════════════════════════════════════════╗
+║     exp15-isolated: Docker-based Experiment Runner      ║
+║                                                         ║
+║  A = CLAUDE.md only    B = Skill only                  ║
+║  C = MCP only          D = Skill + MCP                 ║
+║                                                         ║
+║  4 tasks × 3 conditions × 3 runs = 36 total            ║
+║  Max parallel: 3                                        ║
+╚══════════════════════════════════════════════════════════╝
+
+Building Docker images for all conditions...
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [condition-b internal] load build definition from Dockerfile
+#1 transferring dockerfile: 1.91kB done
+#1 DONE 0.0s
+
+#2 [condition-d internal] load build definition from Dockerfile
+#2 transferring dockerfile: 1.91kB done
+#2 DONE 0.0s
+
+#3 [condition-c internal] load build definition from Dockerfile
+#3 transferring dockerfile: 1.91kB done
+#3 DONE 0.0s
+
+#4 [condition-c internal] load metadata for docker.io/library/rust:1.93-bookworm
+#4 DONE 0.0s
+
+#5 [condition-c internal] load metadata for docker.io/library/node:22-bookworm-slim
+#5 DONE 0.4s
+
+#6 [condition-b internal] load .dockerignore
+#6 transferring context: 230B done
+#6 DONE 0.0s
+
+#7 [condition-d internal] load .dockerignore
+#7 transferring context: 230B done
+#7 DONE 0.0s
+
+#8 [condition-c internal] load .dockerignore
+#8 transferring context: 230B done
+#8 DONE 0.0s
+
+#9 [condition-c builder 1/4] FROM docker.io/library/rust:1.93-bookworm
+#9 DONE 0.0s
+
+#10 [condition-c stage-1 1/8] FROM docker.io/library/node:22-bookworm-slim@sha256:f86be15afa9a8277608e141ce2a8aa55d3d9c40845921b8511f4fb7897be2554
+#10 DONE 0.0s
+
+#11 [condition-b internal] load build context
+#11 transferring context: 36.45kB 0.0s done
+#11 DONE 0.0s
+
+#12 [condition-c internal] load build context
+#12 transferring context: 46.37kB 0.0s done
+#12 DONE 0.0s
+
+#13 [condition-d internal] load build context
+#13 transferring context: 46.37kB 0.0s done
+#13 DONE 0.0s
+
+#14 [condition-b stage-1 6/8] WORKDIR /experiment
+#14 CACHED
+
+#15 [condition-b builder 4/4] RUN cargo build --release &&     strip target/release/fmm
+#15 CACHED
+
+#16 [condition-b builder 2/4] WORKDIR /build
+#16 CACHED
+
+#17 [condition-b stage-1 5/8] RUN rm -rf /root/.claude /root/.config /root/.local &&     mkdir -p /root &&     echo '{}' > /root/.claude.json 2>/dev/null || true
+#17 CACHED
+
+#18 [condition-b stage-1 4/8] COPY --from=builder /build/target/release/fmm /usr/local/bin/fmm
+#18 CACHED
+
+#19 [condition-b stage-1 3/8] RUN npm install -g @anthropic-ai/claude-code &&     npm cache clean --force
+#19 CACHED
+
+#20 [condition-b builder 3/4] COPY fmm-src/ .
+#20 CACHED
+
+#21 [condition-b stage-1 7/8] COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+#21 CACHED
+
+#22 [condition-b stage-1 2/8] RUN apt-get update &&     apt-get install -y --no-install-recommends         ca-certificates         curl         git         rsync         python3     && rm -rf /var/lib/apt/lists/*
+#22 CACHED
+
+#23 [condition-c stage-1 8/8] RUN chmod +x /usr/local/bin/entrypoint.sh
+#23 CACHED
+
+#24 [condition-d] exporting to image
+#24 exporting layers done
+#24 writing image sha256:278b298a311a0e651383b9eb407afa65a8741abdf8ae839350b5643ee66c2e89 done
+#24 naming to docker.io/library/exp15-isolated-condition-d done
+#24 DONE 0.0s
+
+#25 [condition-b] exporting to image
+#25 exporting layers done
+#25 writing image sha256:0cd7ba351a2e923d109b2d11c7025b760fe69d86ae9ab9ec8b1b7f4166fede0d done
+#25 naming to docker.io/library/exp15-isolated-condition-b done
+#25 DONE 0.0s
+
+#26 [condition-c] exporting to image
+#26 exporting layers done
+#26 writing image sha256:7841c7abc0b14ce68b072131acafb24ff291614b10d9f8bdbfdeb1a91ddf18d8 done
+#26 naming to docker.io/library/exp15-isolated-condition-c done
+#26 DONE 0.0s
+
+#27 [condition-d] resolving provenance for metadata file
+#27 DONE 0.0s
+
+#28 [condition-b] resolving provenance for metadata file
+#28 DONE 0.0s
+
+#29 [condition-c] resolving provenance for metadata file
+#29 DONE 0.0s
+ condition-b  Built
+ condition-c  Built
+ condition-d  Built
+  All images built successfully.
+
+Runs planned: 12
+
+  [3/12] Starting: D / architecture / run 3
+  [2/12] Starting: D / architecture / run 2
+  [1/12] Starting: D / architecture / run 1
+  [3/12] Done: D / architecture / run 3
+  [4/12] Starting: D / export-lookup / run 1
+  [4/12] Done: D / export-lookup / run 1
+  [5/12] Starting: D / export-lookup / run 2
+  [5/12] Done: D / export-lookup / run 2
+  [6/12] Starting: D / export-lookup / run 3
+  [2/12] Done: D / architecture / run 2
+  [7/12] Starting: D / impact-analysis / run 1
+  [6/12] Done: D / export-lookup / run 3
+  [8/12] Starting: D / impact-analysis / run 2
+  [7/12] Done: D / impact-analysis / run 1
+  [9/12] Starting: D / impact-analysis / run 3
+  [8/12] Done: D / impact-analysis / run 2
+  [10/12] Starting: D / dependency-map / run 1
+  [9/12] Done: D / impact-analysis / run 3
+  [11/12] Starting: D / dependency-map / run 2
+  [1/12] Done: D / architecture / run 1
+  [12/12] Starting: D / dependency-map / run 3
+  [11/12] Done: D / dependency-map / run 2
+  [10/12] Done: D / dependency-map / run 1
+  [12/12] Done: D / dependency-map / run 3
+
+╔══════════════════════════════════════════════════════════╗
+║  ALL RUNS COMPLETE                                      ║
+║  Completed: 12 / 12                                     ║
+╚══════════════════════════════════════════════════════════╝
+
+Results in: /Users/alphab/Dev/LLM/DEV/fmm/research/exp15-isolated/results/
+Logs in:    /Users/alphab/Dev/LLM/DEV/fmm/research/exp15-isolated/results/.logs/
+
+Next: python3 compare-isolated.py

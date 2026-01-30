@@ -9,7 +9,7 @@
 #   docker run -e ANTHROPIC_API_KEY=sk-... fmm-exp <condition> <task_idx> <run_num>
 
 # ─── Stage 1: Build fmm from Rust source ─────────────────────────────────────
-FROM rust:1.83-bookworm AS builder
+FROM rust:1.93-bookworm AS builder
 
 WORKDIR /build
 COPY fmm-src/ .

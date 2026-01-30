@@ -29,7 +29,7 @@ COND_FILTER="${1:-}"
 TASK_FILTER="${2:-}"
 RUN_FILTER="${3:-}"
 
-CONDITIONS=(A B C D)
+CONDITIONS=(B C D)
 TASK_NAMES=("architecture" "export-lookup" "impact-analysis" "dependency-map")
 
 # ─── Preflight checks ───────────────────────────────────────────────────────
@@ -38,7 +38,7 @@ if [[ ! -f .env ]]; then
     exit 1
 fi
 
-source .env
+source "$SCRIPT_DIR/.env"
 
 if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
     echo "ERROR: ANTHROPIC_API_KEY not set in .env"
@@ -62,7 +62,7 @@ echo "║                                                         ║"
 echo "║  A = CLAUDE.md only    B = Skill only                  ║"
 echo "║  C = MCP only          D = Skill + MCP                 ║"
 echo "║                                                         ║"
-echo "║  4 tasks × 4 conditions × 3 runs = 48 total            ║"
+echo "║  4 tasks × 3 conditions × 3 runs = 36 total            ║"
 printf "║  Max parallel: %-40s ║\n" "$MAX_PARALLEL"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
@@ -73,9 +73,12 @@ if [[ ! -d fmm-src/src ]]; then
     ./setup.sh
 fi
 
-echo "Building Docker image..."
-docker compose build --quiet condition-a
-echo "  Image built successfully."
+echo "Building Docker images for all conditions..."
+if ! docker compose build condition-b condition-c condition-d; then
+    echo "ERROR: Docker image build failed."
+    exit 1
+fi
+echo "  All images built successfully."
 echo ""
 
 # ─── Enumerate runs ──────────────────────────────────────────────────────────
@@ -186,5 +189,6 @@ echo ""
 echo "Results in: $SCRIPT_DIR/results/"
 echo "Logs in:    $SCRIPT_DIR/results/.logs/"
 echo ""
-echo "Next: python3 ../exp15/parse-results.py  (point at results/)"
-echo "  or: python3 compare-isolated.py"
+echo "Next: python3 compare-isolated.py"
+
+[[ $FAILED -eq 0 ]] || exit 1

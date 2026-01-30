@@ -1,0 +1,8 @@
+[05:16:41] === exp16: condition=A task=symbol-lookup-2 ===
+[05:16:41] Copying codebase...
+[05:16:44] Condition A: vanilla Claude
+[05:16:44] Running Claude...
+[05:16:44]   Prompt: Which file exports the symbol `AdaptiveProxy`? Reply with ONLY the file path, nothing else.
+[05:16:44]   Args: --output-format stream-json --verbose --no-session-persistence --max-turns 30 --model claude-sonnet-4-5-20250929 --allowedTools Bash,Glob,Grep,Read,Write,Edit
+[05:16:52] Claude finished successfully
+[05:16:52] === Done ===
