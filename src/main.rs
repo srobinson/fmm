@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::Parser as ClapParser;
+use clap::{CommandFactory, Parser as ClapParser};
 use colored::Colorize;
 use fmm::cli::{self, Cli, Commands, GhSubcommand, OutputFormat};
 use fmm::compare;
@@ -9,7 +9,37 @@ use fmm::mcp;
 fn main() -> Result<()> {
     let cli_args = Cli::parse();
 
-    match cli_args.command {
+    if cli_args.markdown_help {
+        let markdown = clap_markdown::help_markdown::<Cli>();
+        print!("{}", markdown);
+        return Ok(());
+    }
+
+    if let Some(out_dir) = cli_args.generate_man_pages {
+        std::fs::create_dir_all(&out_dir)?;
+        let cmd = Cli::command();
+        clap_mangen::generate_to(cmd, &out_dir)?;
+        let count = std::fs::read_dir(&out_dir)?
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .is_some_and(|ext| ext.to_str() == Some("1"))
+            })
+            .count();
+        eprintln!("Generated {} man page(s) in {}", count, out_dir.display());
+        return Ok(());
+    }
+
+    let command = match cli_args.command {
+        Some(cmd) => cmd,
+        None => {
+            Cli::command().print_long_help()?;
+            return Ok(());
+        }
+    };
+
+    match command {
         Commands::Generate { path, dry_run } => {
             println!("{}", "Generating sidecars...".green().bold());
             cli::generate(&path, dry_run)?;
@@ -26,9 +56,13 @@ fn main() -> Result<()> {
             println!("{}", "Cleaning sidecars...".green().bold());
             cli::clean(&path, dry_run)?;
         }
-        Commands::Init { skill, mcp, all } => {
-            println!("{}", "Initializing fmm...".green().bold());
-            cli::init(skill, mcp, all)?;
+        Commands::Init {
+            skill,
+            mcp,
+            all,
+            no_generate,
+        } => {
+            cli::init(skill, mcp, all, no_generate)?;
         }
         Commands::Status => {
             cli::status()?;
@@ -68,6 +102,9 @@ fn main() -> Result<()> {
         Commands::Mcp | Commands::Serve => {
             let mut server = mcp::McpServer::new();
             server.run()?;
+        }
+        Commands::Completions { shell } => {
+            clap_complete::generate(shell, &mut Cli::command(), "fmm", &mut std::io::stdout());
         }
         Commands::Compare {
             url,

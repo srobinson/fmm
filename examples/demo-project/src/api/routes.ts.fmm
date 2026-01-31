@@ -1,0 +1,7 @@
+---
+file: src/api/routes.ts
+exports: [createRouter]
+imports: [express, bcrypt]
+dependencies: [../auth/middleware, ../auth/session, ../db/users, ../db/client, ../config]
+loc: 36
+---

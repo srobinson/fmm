@@ -1,0 +1,7 @@
+---
+file: src/db/client.ts
+exports: [DatabaseClient, createClient]
+imports: [pg]
+dependencies: [../config]
+loc: 22
+---

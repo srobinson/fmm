@@ -1,0 +1,23 @@
+[book]
+title = "fmm — Frontmatter Matters"
+authors = ["Stuart Robinson"]
+description = "Auto-generate code metadata sidecars for LLM navigation"
+src = "src"
+language = "en"
+
+[build]
+build-dir = "book"
+
+[output.html]
+default-theme = "coal"
+preferred-dark-theme = "coal"
+git-repository-url = "https://github.com/mdcontext/fmm"
+edit-url-template = "https://github.com/mdcontext/fmm/edit/main/docs/{path}"
+
+[output.html.search]
+enable = true
+limit-results = 20
+use-hierarchical-headings = true
+
+[output.html.playground]
+editable = false

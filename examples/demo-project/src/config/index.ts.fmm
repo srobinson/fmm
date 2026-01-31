@@ -1,0 +1,7 @@
+---
+file: src/config/index.ts
+exports: [AppConfig, loadConfig, DEFAULT_CONFIG]
+imports: [dotenv]
+dependencies: []
+loc: 20
+---

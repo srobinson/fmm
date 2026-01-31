@@ -1,0 +1,19 @@
+# fmm — Frontmatter Matters
+
+> Auto-generate code metadata sidecars for LLM navigation
+
+fmm generates .fmm sidecar files alongside your source code. Each sidecar is a small YAML file listing the exports, imports, dependencies, and line count of its companion source file. LLM agents use these sidecars to navigate codebases without reading every source file — reducing token usage by 80-90%.
+
+## Docs
+
+- [Introduction](https://mdcontext.github.io/fmm/introduction.html): What fmm is, why sidecars, how it works
+- [Installation](https://mdcontext.github.io/fmm/getting-started/installation.html): Install from crates.io or source, shell completions
+- [Quickstart](https://mdcontext.github.io/fmm/getting-started/quickstart.html): First sidecar in 60 seconds — init, search, validate
+- [CLI Reference](https://mdcontext.github.io/fmm/reference/cli.html): All commands, options, and examples
+- [Sidecar Format](https://mdcontext.github.io/fmm/reference/sidecar-format.html): .fmm YAML schema, fields, language-specific extensions
+- [Configuration](https://mdcontext.github.io/fmm/reference/configuration.html): .fmmrc.json options, .fmmignore, MCP server config
+- [MCP Tools](https://mdcontext.github.io/fmm/reference/mcp-tools.html): MCP server tool schemas for LLM agent integration
+
+## Optional
+
+- [Full documentation](https://mdcontext.github.io/fmm/llms-full.txt): Complete documentation in a single file
