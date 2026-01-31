@@ -110,7 +110,12 @@ fn main() -> Result<()> {
                 max_budget,
                 dry_run,
                 resume,
+                validate,
             } => {
+                if validate {
+                    let exit_code = gh::batch::run_validate(&corpus)?;
+                    std::process::exit(exit_code);
+                }
                 let options = gh::batch::BatchOptions {
                     corpus_path: corpus,
                     output_dir: output,

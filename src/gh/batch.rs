@@ -323,6 +323,191 @@ fn count_unique_languages(corpus: &Corpus) -> usize {
     langs.len()
 }
 
+// ── Tag categories for health report ──
+
+const LANGUAGES: &[&str] = &[
+    "typescript",
+    "python",
+    "rust",
+    "go",
+    "java",
+    "cpp",
+    "csharp",
+    "ruby",
+];
+const SIZES: &[&str] = &["small", "medium", "large", "massive"];
+const TASK_TYPES: &[&str] = &["bugfix", "feature", "refactor", "perf"];
+
+const MIN_ISSUES_PER_CATEGORY: usize = 4;
+
+/// Result of validating a single corpus URL via `gh`.
+#[derive(Debug)]
+pub struct ValidationResult {
+    pub url: String,
+    pub short_ref: String,
+    pub valid: bool,
+    pub title: Option<String>,
+    pub state: Option<String>,
+    pub error: Option<String>,
+}
+
+/// Validate a single issue URL via the `gh` CLI.
+fn validate_url(url: &str) -> ValidationResult {
+    let short_ref = url
+        .strip_prefix("https://github.com/")
+        .unwrap_or(url)
+        .replacen("/issues/", "#", 1);
+
+    let output = std::process::Command::new("gh")
+        .args(["issue", "view", url, "--json", "state,title"])
+        .output();
+
+    match output {
+        Ok(out) if out.status.success() => {
+            let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
+            let title = json["title"].as_str().map(String::from);
+            let state = json["state"].as_str().map(|s| s.to_lowercase());
+            ValidationResult {
+                url: url.to_string(),
+                short_ref,
+                valid: true,
+                title,
+                state,
+                error: None,
+            }
+        }
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let msg = stderr.trim().lines().next().unwrap_or("not found");
+            ValidationResult {
+                url: url.to_string(),
+                short_ref,
+                valid: false,
+                title: None,
+                state: None,
+                error: Some(msg.to_string()),
+            }
+        }
+        Err(e) => ValidationResult {
+            url: url.to_string(),
+            short_ref,
+            valid: false,
+            title: None,
+            state: None,
+            error: Some(format!("failed to run gh: {}", e)),
+        },
+    }
+}
+
+/// Build a tag distribution report grouped by category.
+/// Returns (category_label, Vec<(tag, count)>) tuples.
+pub fn tag_distribution(corpus: &Corpus) -> Vec<(&'static str, Vec<(&'static str, usize)>)> {
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for issue in &corpus.issues {
+        for tag in &issue.tags {
+            *counts.entry(tag.as_str()).or_insert(0) += 1;
+        }
+    }
+
+    let build = |label: &'static str,
+                 tags: &[&'static str]|
+     -> (&'static str, Vec<(&'static str, usize)>) {
+        let items: Vec<(&'static str, usize)> = tags
+            .iter()
+            .map(|&t| (t, *counts.get(t).unwrap_or(&0)))
+            .collect();
+        (label, items)
+    };
+
+    vec![
+        build("Languages", LANGUAGES),
+        build("Sizes", SIZES),
+        build("Task types", TASK_TYPES),
+    ]
+}
+
+/// Detect categories with fewer than MIN_ISSUES_PER_CATEGORY issues.
+/// Returns list of (tag, count) pairs that are below threshold.
+pub fn detect_gaps(distribution: &[(&str, Vec<(&str, usize)>)]) -> Vec<(String, usize)> {
+    let mut gaps = Vec::new();
+    for (_category, tags) in distribution {
+        for &(tag, count) in tags {
+            if count > 0 && count < MIN_ISSUES_PER_CATEGORY {
+                gaps.push((tag.to_string(), count));
+            }
+        }
+    }
+    gaps
+}
+
+/// Format a distribution row like: `typescript(5) python(5) rust(5) ...`
+fn format_distribution_row(tags: &[(&str, usize)]) -> String {
+    tags.iter()
+        .filter(|(_, count)| *count > 0)
+        .map(|(tag, count)| format!("{}({})", tag, count))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Run corpus validation: check all URLs, print health report.
+/// Returns 0 on success, 1 if any URL is invalid.
+pub fn run_validate(corpus_path: &Path) -> Result<i32> {
+    let corpus = Corpus::load(corpus_path)?;
+    let total = corpus.issues.len();
+
+    println!("Validating {} issues...", total);
+
+    let mut invalid_count = 0usize;
+    for (i, issue) in corpus.issues.iter().enumerate() {
+        let result = validate_url(&issue.url);
+        let label = format!("  [{}/{}]", i + 1, total);
+        if result.valid {
+            let state = result.state.as_deref().unwrap_or("unknown");
+            println!("{} {} {} ({})", label, "✓".green(), result.short_ref, state,);
+        } else {
+            invalid_count += 1;
+            let err = result.error.as_deref().unwrap_or("not found");
+            println!("{} {} {} — {}", label, "✗".red(), result.short_ref, err,);
+        }
+    }
+
+    // Health report
+    println!("\n{}", "Corpus Health:".bold());
+    let distribution = tag_distribution(&corpus);
+    for (category, tags) in &distribution {
+        let row = format_distribution_row(tags);
+        println!("  {:14}{}", format!("{}:", category), row);
+    }
+
+    // Gap detection
+    let gaps = detect_gaps(&distribution);
+    if !gaps.is_empty() {
+        println!();
+        for (tag, count) in &gaps {
+            println!(
+                "  {} {} has only {} issue(s) (minimum: {})",
+                "⚠".yellow(),
+                tag,
+                count,
+                MIN_ISSUES_PER_CATEGORY,
+            );
+        }
+    }
+
+    // Summary
+    if invalid_count > 0 {
+        println!(
+            "\n{} {} invalid URL(s) found — fix before running batch",
+            "⚠".yellow().bold(),
+            invalid_count,
+        );
+        Ok(1)
+    } else {
+        println!("\n{} All {} URLs valid", "✓".green().bold(), total,);
+        Ok(0)
+    }
+}
+
 // ── Main batch orchestrator ──
 
 pub fn run_batch(options: BatchOptions) -> Result<()> {
@@ -832,5 +1017,156 @@ mod tests {
         assert!(md.contains("languages"));
         assert!(md.contains("Per-Issue Results"));
         assert!(md.contains("test/repo"));
+    }
+
+    // ── Validation / health report tests ──
+
+    fn make_corpus(tags_list: Vec<Vec<&str>>) -> Corpus {
+        Corpus {
+            issues: tags_list
+                .into_iter()
+                .enumerate()
+                .map(|(i, tags)| CorpusIssue {
+                    url: format!("https://github.com/o/r/issues/{}", i + 1),
+                    tags: tags.into_iter().map(String::from).collect(),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn tag_distribution_counts_correctly() {
+        let corpus = make_corpus(vec![
+            vec!["typescript", "small", "bugfix"],
+            vec!["typescript", "medium", "bugfix"],
+            vec!["python", "large", "feature"],
+            vec!["rust", "small", "refactor"],
+        ]);
+
+        let dist = tag_distribution(&corpus);
+        assert_eq!(dist.len(), 3);
+
+        // Languages
+        let (label, langs) = &dist[0];
+        assert_eq!(*label, "Languages");
+        let ts_count = langs.iter().find(|(t, _)| *t == "typescript").unwrap().1;
+        assert_eq!(ts_count, 2);
+        let py_count = langs.iter().find(|(t, _)| *t == "python").unwrap().1;
+        assert_eq!(py_count, 1);
+        let rust_count = langs.iter().find(|(t, _)| *t == "rust").unwrap().1;
+        assert_eq!(rust_count, 1);
+        let go_count = langs.iter().find(|(t, _)| *t == "go").unwrap().1;
+        assert_eq!(go_count, 0);
+
+        // Sizes
+        let (label, sizes) = &dist[1];
+        assert_eq!(*label, "Sizes");
+        let small = sizes.iter().find(|(t, _)| *t == "small").unwrap().1;
+        assert_eq!(small, 2);
+        let medium = sizes.iter().find(|(t, _)| *t == "medium").unwrap().1;
+        assert_eq!(medium, 1);
+        let large = sizes.iter().find(|(t, _)| *t == "large").unwrap().1;
+        assert_eq!(large, 1);
+
+        // Task types
+        let (label, tasks) = &dist[2];
+        assert_eq!(*label, "Task types");
+        let bugfix = tasks.iter().find(|(t, _)| *t == "bugfix").unwrap().1;
+        assert_eq!(bugfix, 2);
+        let feature = tasks.iter().find(|(t, _)| *t == "feature").unwrap().1;
+        assert_eq!(feature, 1);
+        let refactor = tasks.iter().find(|(t, _)| *t == "refactor").unwrap().1;
+        assert_eq!(refactor, 1);
+        let perf = tasks.iter().find(|(t, _)| *t == "perf").unwrap().1;
+        assert_eq!(perf, 0);
+    }
+
+    #[test]
+    fn tag_distribution_empty_corpus() {
+        let corpus = Corpus {
+            issues: vec![CorpusIssue {
+                url: "https://github.com/o/r/issues/1".to_string(),
+                tags: vec![],
+            }],
+        };
+        let dist = tag_distribution(&corpus);
+        for (_label, tags) in &dist {
+            for (_, count) in tags {
+                assert_eq!(*count, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn detect_gaps_finds_low_count_tags() {
+        let corpus = make_corpus(vec![
+            vec!["typescript", "small", "bugfix"],
+            vec!["typescript", "small", "bugfix"],
+            vec!["typescript", "small", "bugfix"],
+            vec!["typescript", "small", "bugfix"],
+            vec!["python", "medium", "feature"],
+            vec!["python", "medium", "feature"],
+            vec!["python", "medium", "feature"],
+        ]);
+        let dist = tag_distribution(&corpus);
+        let gaps = detect_gaps(&dist);
+
+        // python has 3 (<4), small has 4 (ok), medium has 3 (<4), bugfix has 4 (ok), feature has 3 (<4)
+        let gap_tags: Vec<&str> = gaps.iter().map(|(t, _)| t.as_str()).collect();
+        assert!(gap_tags.contains(&"python"));
+        assert!(gap_tags.contains(&"medium"));
+        assert!(gap_tags.contains(&"feature"));
+        assert!(!gap_tags.contains(&"typescript"));
+        assert!(!gap_tags.contains(&"small"));
+        assert!(!gap_tags.contains(&"bugfix"));
+    }
+
+    #[test]
+    fn detect_gaps_ignores_zero_count_tags() {
+        let corpus = make_corpus(vec![vec!["typescript", "small", "bugfix"]]);
+        let dist = tag_distribution(&corpus);
+        let gaps = detect_gaps(&dist);
+
+        // Tags with 0 count should NOT appear as gaps (they're absent, not low)
+        // Tags with count 1 should appear
+        let gap_tags: Vec<&str> = gaps.iter().map(|(t, _)| t.as_str()).collect();
+        assert!(gap_tags.contains(&"typescript")); // count=1, < 4
+        assert!(!gap_tags.contains(&"go")); // count=0, not a gap
+        assert!(!gap_tags.contains(&"perf")); // count=0, not a gap
+    }
+
+    #[test]
+    fn detect_gaps_none_when_all_sufficient() {
+        // 4 issues per language — no gaps expected for languages present
+        let mut tags_list = Vec::new();
+        for lang in LANGUAGES {
+            for _ in 0..4 {
+                tags_list.push(vec![*lang, "small", "bugfix"]);
+            }
+        }
+        let corpus = make_corpus(tags_list);
+        let dist = tag_distribution(&corpus);
+        let gaps = detect_gaps(&dist);
+
+        // Languages all have 4+ — no language gaps
+        let gap_tags: Vec<&str> = gaps.iter().map(|(t, _)| t.as_str()).collect();
+        for lang in LANGUAGES {
+            assert!(!gap_tags.contains(lang));
+        }
+    }
+
+    #[test]
+    fn format_distribution_row_skips_zeros() {
+        let tags = vec![("typescript", 5), ("python", 0), ("rust", 3)];
+        let row = format_distribution_row(&tags);
+        assert_eq!(row, "typescript(5) rust(3)");
+        assert!(!row.contains("python"));
+    }
+
+    #[test]
+    fn format_distribution_row_empty() {
+        let tags: Vec<(&str, usize)> = vec![("a", 0), ("b", 0)];
+        let row = format_distribution_row(&tags);
+        assert_eq!(row, "");
     }
 }

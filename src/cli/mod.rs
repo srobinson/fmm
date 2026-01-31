@@ -478,7 +478,10 @@ pub enum GhSubcommand {
     Run full corpus with $100 total budget
 
   <dim>$</dim> <bold>fmm gh batch proofs/issues.json --output proofs/dataset/ --resume</bold>
-    Resume a previous run, skipping completed issues"#),
+    Resume a previous run, skipping completed issues
+
+  <dim>$</dim> <bold>fmm gh batch proofs/issues.json --validate</bold>
+    Check all URLs exist and print corpus health report"#),
     )]
     Batch {
         /// Path to corpus file (issues.json)
@@ -507,6 +510,10 @@ pub enum GhSubcommand {
         /// Resume from checkpoint, skipping completed issues
         #[arg(long)]
         resume: bool,
+
+        /// Validate corpus: check all URLs exist via GitHub API, print health report
+        #[arg(long)]
+        validate: bool,
     },
 }
 
