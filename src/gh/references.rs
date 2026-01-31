@@ -1,7 +1,8 @@
 use regex::Regex;
 use std::collections::HashSet;
+use std::path::Path;
 
-use crate::manifest::Manifest;
+use crate::manifest::{FileEntry, Manifest};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CodeReference {
@@ -263,6 +264,7 @@ fn parse_line_number(path: &str) -> (String, Option<u64>) {
 }
 
 const MAX_RESOLVED_FILES: usize = 20;
+const MAX_FALLBACK_FILES: usize = 5;
 
 pub fn resolve_references(
     refs: &[CodeReference],
@@ -404,7 +406,7 @@ pub fn resolve_references(
                 });
             }
 
-            if resolved.len() >= MAX_RESOLVED_FILES {
+            if resolved.len() >= MAX_FALLBACK_FILES {
                 break;
             }
         }
@@ -442,6 +444,40 @@ fn resolve_file_path(path: &str, manifest: &Manifest) -> Option<ResolvedReferenc
                 dependencies: entry.dependencies.clone(),
                 loc: entry.loc,
                 match_reason: format!("suffix match for {}", path),
+            });
+        }
+    }
+
+    // Stage 3: Filename stem match (e.g., "hooks.js" matches "v2/bin/hooks.js",
+    // "statusline-generator.js" matches ".../statusline-generator.ts")
+    let query_stem = Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+
+    if !query_stem.is_empty() && query_stem.len() >= 3 {
+        let mut candidates: Vec<(&String, &FileEntry)> = manifest
+            .files
+            .iter()
+            .filter(|(manifest_path, _)| {
+                Path::new(manifest_path.as_str())
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s == query_stem)
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        candidates.sort_by_key(|(p, _)| p.len());
+
+        if let Some((manifest_path, entry)) = candidates.first() {
+            return Some(ResolvedReference {
+                file_path: manifest_path.to_string(),
+                exports: entry.exports.clone(),
+                imports: entry.imports.clone(),
+                dependencies: entry.dependencies.clone(),
+                loc: entry.loc,
+                match_reason: format!("filename stem match for {}", path),
             });
         }
     }
@@ -693,5 +729,75 @@ mod tests {
 
         let (resolved, _) = resolve_references(&refs, &manifest);
         assert!(resolved.len() <= 20);
+    }
+
+    #[test]
+    fn resolve_file_path_stem_match() {
+        let mut manifest = Manifest::new();
+        manifest.files.insert(
+            "v2/bin/hooks.js".to_string(),
+            FileEntry {
+                exports: vec!["hooksAction".to_string()],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 1200,
+            },
+        );
+
+        let refs = vec![CodeReference::FilePath {
+            path: "dist/src/commands/hooks.js".to_string(),
+            line: None,
+        }];
+        let (resolved, unresolved) = resolve_references(&refs, &manifest);
+        assert_eq!(resolved.len(), 1);
+        assert!(resolved[0].match_reason.contains("stem match"));
+        assert_eq!(resolved[0].file_path, "v2/bin/hooks.js");
+        assert!(unresolved.is_empty());
+    }
+
+    #[test]
+    fn resolve_file_path_stem_match_cross_extension() {
+        let mut manifest = Manifest::new();
+        manifest.files.insert(
+            "src/init/statusline-generator.ts".to_string(),
+            FileEntry {
+                exports: vec!["generateStatuslineHook".to_string()],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 1246,
+            },
+        );
+
+        let refs = vec![CodeReference::FilePath {
+            path: "statusline-generator.js".to_string(),
+            line: None,
+        }];
+        let (resolved, unresolved) = resolve_references(&refs, &manifest);
+        assert_eq!(resolved.len(), 1);
+        assert!(resolved[0].match_reason.contains("stem match"));
+        assert!(unresolved.is_empty());
+    }
+
+    #[test]
+    fn fallback_capped_at_five() {
+        let mut manifest = Manifest::new();
+        for i in 0..10 {
+            manifest.files.insert(
+                format!("pkg{}/index.ts", i),
+                FileEntry {
+                    exports: vec![],
+                    imports: vec![],
+                    dependencies: vec![],
+                    loc: 10,
+                },
+            );
+        }
+
+        let refs = vec![CodeReference::FilePath {
+            path: "nonexistent-file-xyz.rs".to_string(),
+            line: None,
+        }];
+        let (resolved, _) = resolve_references(&refs, &manifest);
+        assert!(resolved.len() <= 5, "Fallback should cap at 5, got {}", resolved.len());
     }
 }
