@@ -58,7 +58,7 @@ const BEFORE_LONG_HELP: &str = cstr!(
 <bold><underline>Setup</underline></bold>
   <bold>init</bold>          Initialize fmm in this project (config, skill, MCP)
   <bold>status</bold>        Show current fmm status and configuration
-  <bold>completions</bold>   Generate shell completions (bash, zsh, fish, powershell)
+  <bold>completions</bold>   Generate shell completions (bash, zsh, fish, powershell, elvish)
 
 <bold><underline>Integration</underline></bold>
   <bold>mcp</bold>           Start MCP server for LLM tool integration
@@ -914,7 +914,7 @@ fn init_mcp_config() -> Result<()> {
         "mcpServers": {
             "fmm": {
                 "command": "fmm",
-                "args": ["serve"]
+                "args": ["mcp"]
             }
         }
     });
@@ -941,7 +941,7 @@ fn init_mcp_config() -> Result<()> {
                         "fmm".to_string(),
                         serde_json::json!({
                             "command": "fmm",
-                            "args": ["serve"]
+                            "args": ["mcp"]
                         }),
                     );
                 }

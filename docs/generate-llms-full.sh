@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Generate llms-full.txt from all documentation source files.
-# Reads SUMMARY.md to determine page order, then concatenates all pages.
+# Generate llms-full.txt by parsing SUMMARY.md for page order, then concatenating all pages.
 set -euo pipefail
 
 DOCS_SRC="$(cd "$(dirname "$0")/src" && pwd)"
@@ -15,15 +14,10 @@ OUTPUT="$DOCS_SRC/llms-full.txt"
     echo "---"
     echo ""
 
-    # Concatenate pages in SUMMARY.md order
-    for page in \
-        introduction.md \
-        getting-started/installation.md \
-        getting-started/quickstart.md \
-        reference/cli.md \
-        reference/sidecar-format.md \
-        reference/configuration.md \
-        reference/mcp-tools.md; do
+    # Extract page paths from SUMMARY.md links: - [Title](path.md)
+    mapfile -t pages < <(sed -n 's/.*](\([^)]*\)).*/\1/p' "$DOCS_SRC/SUMMARY.md")
+
+    for page in "${pages[@]}"; do
         filepath="$DOCS_SRC/$page"
         if [ -f "$filepath" ]; then
             cat "$filepath"
