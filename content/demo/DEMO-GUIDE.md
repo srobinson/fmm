@@ -7,7 +7,7 @@ A reproducible walkthrough showing how fmm reduces LLM token consumption during 
 The demo runs the **same navigation query** against the same codebase twice:
 
 1. **Control** -- no fmm artifacts, no hints. The LLM brute-forces with grep and file reads.
-2. **Treatment** -- fmm sidecars generated, `.claude/CLAUDE.md` hint present. The LLM reads the manifest first, then makes targeted reads.
+2. **Treatment** -- fmm sidecars generated, `.claude/CLAUDE.md` hint present. The LLM reads sidecars first, then makes targeted reads.
 
 Both runs use full isolation (`--setting-sources`, `--strict-mcp-config`) to prevent external config leakage. The treatment run loads only the project-level CLAUDE.md that fmm generates.
 
@@ -106,8 +106,7 @@ The script copies the 18-file test app into two isolated directories:
 
 Runs `fmm init && fmm generate` in the treatment directory. This creates:
 
-- `.fmm/index.json` -- a manifest mapping every file to its exports, imports, and dependencies
-- `*.fmm` sidecar files -- per-file YAML metadata
+- `*.fmm` sidecar files -- per-file YAML metadata (exports, imports, dependencies, LOC)
 
 ```
 [ok]    Generated N fmm artifacts in treatment codebase
@@ -120,8 +119,8 @@ The CLAUDE.md hint is minimal:
 # FMM Navigation
 
 This codebase has fmm (Frontmatter Matters) sidecars. Before reading source files:
-1. Check .fmm/index.json for a full codebase map
-2. Read .fmm sidecar files (*.fmm) for file metadata (exports, imports, deps)
+1. Check for .fmm sidecar files (*.fmm) next to source files
+2. Read sidecars for file metadata (exports, imports, deps, LOC)
 3. Only open source files you actually need to read or edit
 ```
 
@@ -151,9 +150,9 @@ Without any hints, it follows its default strategy:
 ```
 
 Same query, but the LLM now has the CLAUDE.md hint. Expected behavior:
-1. `Read(.fmm/index.json)` -- reads the manifest first
-2. Identifies relevant files from the manifest metadata
-3. `Read` only the files that matter (targeted reads)
+1. `Glob("**/*.fmm")` or `Read` sidecar files -- reads metadata first
+2. Identifies relevant files from sidecar metadata
+3. `Read` only the source files that matter (targeted reads)
 
 ### Step 6: Results Comparison
 
@@ -174,7 +173,7 @@ The script parses both stream-json traces and prints a side-by-side table:
 | Total tokens           |              123,138 |               46,200 |
 | Cost (USD)             |              $0.0620 |              $0.0230 |
 | Duration               |                  31s |                  25s |
-| Read .fmm/index?       |                   No |                  Yes |
+| Read .fmm sidecars?    |                   No |                  Yes |
 +------------------------+----------------------+----------------------+
 
   Token delta: 76,938 tokens saved (62.5%)
@@ -182,10 +181,10 @@ The script parses both stream-json traces and prints a side-by-side table:
 
   First tool action:
     Control:   Grep({"pattern":"auth","path":"src"})
-    Treatment: Read({"file_path":".fmm/index.json"})
+    Treatment: Read({"file_path":"src/auth/login.ts.fmm"})
 
-  KEY BEHAVIOR: With fmm, the LLM's first action was to read the
-  .fmm/index.json manifest, then make targeted file reads.
+  KEY BEHAVIOR: With fmm, the LLM read .fmm sidecar files
+  to understand the codebase, then made targeted source reads.
   Without fmm, it brute-forced with grep across all files.
 ```
 
@@ -195,24 +194,24 @@ The script parses both stream-json traces and prints a side-by-side table:
 
 ### Tool Calls
 
-More tool calls does not mean worse. The treatment may issue more calls (reading the manifest is an extra call), but the total data transferred is lower because it avoids reading irrelevant files.
+More tool calls does not mean worse. The treatment may issue more calls (reading sidecars adds calls), but the total data transferred is lower because it avoids reading irrelevant source files.
 
 ### Files Read
 
-This is the key metric. Without fmm, the LLM reads 10-12 of 18 files (56-67%) just to answer a navigation question. With fmm, it reads the manifest plus only the relevant files.
+This is the key metric. Without fmm, the LLM reads 10-12 of 18 files (56-67%) just to answer a navigation question. With fmm, it reads compact sidecars plus only the relevant source files.
 
 ### Input Tokens
 
-Input tokens are dominated by file contents sent back to the LLM. Fewer files read = fewer input tokens. On an 18-file codebase the savings are moderate. On a 500-file codebase, the savings are dramatic because the manifest scales sublinearly while brute-force grep+read scales linearly.
+Input tokens are dominated by file contents sent back to the LLM. Fewer files read = fewer input tokens. On an 18-file codebase the savings are moderate. On a 500-file codebase, the savings are dramatic because sidecars are ~10 lines each vs hundreds of lines per source file.
 
 ### The "First Tool Action"
 
 This is the behavioral fingerprint. Look for:
 
 - **Control**: First action is `Grep` or `Glob` -- scanning for files
-- **Treatment**: First action is `Read(.fmm/index.json)` -- consulting the map
+- **Treatment**: First action is `Read` or `Glob` on `.fmm` sidecar files -- consulting the map
 
-When the treatment's first action is reading the fmm manifest, the LLM has adopted the navigation-first strategy. This is the core behavior change fmm enables.
+When the treatment's first action targets `.fmm` files, the LLM has adopted the navigation-first strategy. This is the core behavior change fmm enables.
 
 ### Cost
 
@@ -222,7 +221,7 @@ At Sonnet pricing, each run costs ~$0.03-0.08. The savings per query are small i
 
 LLM behavior is non-deterministic. You may see:
 
-- **Treatment does not read index.json**: Happens occasionally. The CLAUDE.md hint triggers manifest-first behavior in the majority of runs, not 100%. Run the demo again for more samples.
+- **Treatment does not read .fmm files**: Happens occasionally. The CLAUDE.md hint triggers sidecar-first behavior in the majority of runs, not 100%. Run the demo again for more samples.
 - **Control uses fewer tokens than treatment**: Possible on a small 18-file codebase where grep is already efficient. The savings become clear at scale (50+ files).
 - **Similar tool call counts**: Expected. The difference is in *which* files are read and *how much data* is transferred, not the number of tool invocations.
 
@@ -244,7 +243,7 @@ Key findings from Exp14:
 1. **LLMs never discover `.fmm/` on their own** (0/12 runs). They default to grep+read and never explore hidden directories.
 2. **Inline FMM comments are invisible** -- LLMs skip them, extracting info from code, not metadata comments.
 3. **A system prompt hint alone is insufficient** -- `--append-system-prompt` did not change behavior.
-4. **CLAUDE.md instruction works immediately** -- when loaded via the standard project config mechanism, the LLM's very first action is `Read(".fmm/index.json")`.
+4. **CLAUDE.md instruction works immediately** -- when loaded via the standard project config mechanism, the LLM's very first action targets `.fmm` sidecar files.
 
 For the complete write-up: `research/exp14/FINDINGS.md`
 
@@ -260,7 +259,7 @@ The 18-file test app is intentionally small. Real-world savings scale with codeb
 | 100 files     | ~500K+               | ~60-100K           | 80-88%  |
 | 500 files     | ~2M+                 | ~80-150K           | 92-96%  |
 
-The manifest (`index.json`) grows linearly with file count but remains a single read. Without fmm, the LLM reads a proportional fraction of all files, and token cost grows linearly with codebase size.
+Each sidecar is ~10 lines regardless of source file size. Without fmm, the LLM reads a proportional fraction of all source files, and token cost grows linearly with codebase size.
 
 ## Troubleshooting
 
