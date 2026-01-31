@@ -98,6 +98,30 @@ impl McpServer {
         self.manifest = Manifest::load_from_sidecars(&self.root).ok();
     }
 
+    /// Cap MCP tool responses to prevent context bombs.
+    /// Large responses get truncated to disk by Claude, defeating the purpose.
+    const MAX_RESPONSE_BYTES: usize = 10_240;
+
+    fn cap_response(text: String) -> String {
+        if text.len() <= Self::MAX_RESPONSE_BYTES {
+            return text;
+        }
+        // Find a valid UTF-8 boundary at or before MAX_RESPONSE_BYTES
+        let byte_limit = Self::MAX_RESPONSE_BYTES;
+        let safe_limit = text.floor_char_boundary(byte_limit);
+        let truncated = &text[..safe_limit];
+        // Find last newline to avoid cutting mid-line
+        let cut_point = truncated.rfind('\n').unwrap_or(safe_limit);
+        let mut result = text[..cut_point].to_string();
+        let total_lines = text.lines().count();
+        let shown_lines = result.lines().count();
+        result.push_str(&format!(
+            "\n\n[Truncated — showing {}/{} lines. Use more specific filters.]",
+            shown_lines, total_lines
+        ));
+        result
+    }
+
     fn require_manifest(&self) -> Result<&Manifest, String> {
         self.manifest
             .as_ref()
@@ -284,9 +308,6 @@ impl McpServer {
                     }
                 }),
             },
-            // fmm_get_manifest and fmm_project_overview REMOVED —
-            // dumping the entire index is an anti-pattern (ALP-396).
-            // Use targeted tools: fmm_lookup_export, fmm_search, fmm_dependency_graph.
         ];
 
         Ok(json!({ "tools": tools }))
@@ -327,12 +348,15 @@ impl McpServer {
         };
 
         match result {
-            Ok(text) => Ok(json!({
-                "content": [{
-                    "type": "text",
-                    "text": text
-                }]
-            })),
+            Ok(text) => {
+                let text = Self::cap_response(text);
+                Ok(json!({
+                    "content": [{
+                        "type": "text",
+                        "text": text
+                    }]
+                }))
+            }
             Err(e) => Ok(json!({
                 "content": [{
                     "type": "text",
@@ -670,5 +694,22 @@ mod tests {
     fn test_server_construction() {
         let server = McpServer::new();
         assert!(server.root.is_absolute() || server.root.as_os_str().is_empty());
+    }
+
+    #[test]
+    fn cap_response_handles_multibyte_utf8() {
+        // Build a string that would split a multi-byte char at MAX_RESPONSE_BYTES
+        let prefix = "x".repeat(McpServer::MAX_RESPONSE_BYTES - 1);
+        // 4-byte emoji straddles the boundary
+        let text = format!("{}🦀 and more text after", prefix);
+        let result = McpServer::cap_response(text);
+        assert!(result.is_char_boundary(result.len()));
+        assert!(result.contains("[Truncated"));
+    }
+
+    #[test]
+    fn cap_response_passes_through_short_text() {
+        let short = "hello world".to_string();
+        assert_eq!(McpServer::cap_response(short.clone()), short);
     }
 }

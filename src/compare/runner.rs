@@ -67,6 +67,8 @@ pub struct ClaudeRunner {
     model: String,
     /// Whether to skip permissions (for sandboxed environments)
     skip_permissions: bool,
+    /// Whether to enable local settings (skill + MCP from workspace)
+    enable_local_settings: bool,
 }
 
 impl Default for ClaudeRunner {
@@ -86,6 +88,16 @@ impl ClaudeRunner {
             ],
             model: "sonnet".to_string(),
             skip_permissions: false,
+            enable_local_settings: false,
+        }
+    }
+
+    /// Create a runner with local settings enabled (skill + MCP from workspace).
+    /// Use this for the FMM variant so it picks up .claude/skills/ and .mcp.json.
+    pub fn with_local_settings() -> Self {
+        Self {
+            enable_local_settings: true,
+            ..Self::new()
         }
     }
 
@@ -143,7 +155,16 @@ impl ClaudeRunner {
             cmd.arg("--allowedTools").arg(self.allowed_tools.join(","));
         }
 
-        // FMM context injection via append-system-prompt
+        // Settings isolation:
+        // - Control variant: fully isolated (no user/project/local settings)
+        // - FMM variant: local settings only (picks up .claude/skills/ and .mcp.json)
+        if self.enable_local_settings {
+            cmd.arg("--setting-sources").arg("local");
+        } else {
+            cmd.arg("--setting-sources").arg("");
+        }
+
+        // FMM context injection via append-system-prompt (supplementary to skill)
         if let Some(context) = fmm_context {
             cmd.arg("--append-system-prompt").arg(context);
         }

@@ -57,7 +57,10 @@ impl Default for CompareOptions {
 pub struct Orchestrator {
     options: CompareOptions,
     cache: CacheManager,
-    runner: ClaudeRunner,
+    /// Runner for control variant (fully isolated — no skills, no MCP)
+    control_runner: ClaudeRunner,
+    /// Runner for FMM variant (local settings — picks up skill + MCP from workspace)
+    fmm_runner: ClaudeRunner,
     total_cost: f64,
 }
 
@@ -65,12 +68,14 @@ impl Orchestrator {
     /// Create a new orchestrator
     pub fn new(options: CompareOptions) -> Result<Self> {
         let cache = CacheManager::new(None)?;
-        let runner = ClaudeRunner::new();
+        let control_runner = ClaudeRunner::new();
+        let fmm_runner = ClaudeRunner::with_local_settings();
 
         Ok(Self {
             options,
             cache,
-            runner,
+            control_runner,
+            fmm_runner,
             total_cost: 0.0,
         })
     }
@@ -98,11 +103,10 @@ impl Orchestrator {
             sha_display.dimmed()
         );
 
-        // Step 2: Generate FMM manifest for FMM variant
-        println!("{} Generating FMM manifest...", "🔧".yellow());
+        // Step 2: Generate FMM sidecars + install skill + MCP for FMM variant
+        println!("{} Setting up FMM variant...", "🔧".yellow());
         sandbox.generate_fmm_manifest()?;
 
-        // Check if sidecars were generated
         let sidecar_count = walkdir::WalkDir::new(&sandbox.fmm_dir)
             .into_iter()
             .filter_map(|e| e.ok())
@@ -120,6 +124,13 @@ impl Orchestrator {
                 "!".yellow()
             );
         }
+
+        // Install skill file + .mcp.json so Claude picks them up via --setting-sources local
+        sandbox.setup_fmm_integration()?;
+        println!(
+            "  {} Installed skill + MCP config (Exp15-proven delivery)",
+            "✓".green()
+        );
 
         // Step 3: Load tasks
         let task_set = if self.options.quick {
@@ -243,9 +254,11 @@ impl Orchestrator {
             }
         }
 
-        // Run task
+        // Run task (control runner: fully isolated, no skill/MCP)
         print!("  {} {}...", "●".cyan(), variant);
-        let result = self.runner.run_task(task, working_dir, variant, None)?;
+        let result = self
+            .control_runner
+            .run_task(task, working_dir, variant, None)?;
 
         // Cache result
         if self.options.use_cache && result.success {
@@ -285,14 +298,16 @@ impl Orchestrator {
             }
         }
 
-        // Run task with FMM context
+        // Run task (FMM runner: local settings enabled — picks up skill + MCP)
         print!("  {} {}...", "●".cyan(), variant);
         let context = if fmm_context.is_empty() {
             None
         } else {
             Some(fmm_context)
         };
-        let result = self.runner.run_task(task, working_dir, variant, context)?;
+        let result = self
+            .fmm_runner
+            .run_task(task, working_dir, variant, context)?;
 
         // Cache result
         if self.options.use_cache && result.success {

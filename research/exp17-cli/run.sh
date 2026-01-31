@@ -62,13 +62,25 @@ sys.exit(1)
 
     echo "  [$cond] Starting: $task_id"
 
+    local -a claude_args=(
+        -p "$prompt"
+        --output-format stream-json
+        --verbose
+        --max-turns "$MAX_TURNS"
+        --dangerously-skip-permissions
+        --no-session-persistence
+    )
+
+    # Condition A (control): fully isolated — no skills, no MCP, no user settings
+    # Condition B (fmm): local settings only — picks up .claude/skills/ and .mcp.json
+    if [ "$cond" = "A" ]; then
+        claude_args+=(--setting-sources "")
+    else
+        claude_args+=(--setting-sources "local")
+    fi
+
     cd "$CODEBASE"
-    claude -p "$prompt" \
-        --output-format stream-json \
-        --verbose \
-        --max-turns "$MAX_TURNS" \
-        --dangerously-skip-permissions \
-        > "$outfile" 2>&1
+    claude "${claude_args[@]}" > "$outfile" 2>&1
 
     local exit_code=$?
     cd "$SCRIPT_DIR"
