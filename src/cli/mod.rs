@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use clap_complete::Shell;
 use color_print::cstr;
 use colored::Colorize;
 use ignore::WalkBuilder;
@@ -49,22 +50,23 @@ const AFTER_LONG_HELP: &str = cstr!(
 
 const BEFORE_LONG_HELP: &str = cstr!(
     r#"<bold><underline>Core Commands</underline></bold>
-  <bold>generate</bold>   Create .fmm sidecar files for source files
-  <bold>update</bold>     Regenerate all .fmm sidecars from source
-  <bold>validate</bold>   Check sidecars are up to date (CI-friendly)
-  <bold>clean</bold>      Remove all .fmm sidecar files
+  <bold>generate</bold>      Create .fmm sidecar files for source files
+  <bold>update</bold>        Regenerate all .fmm sidecars from source
+  <bold>validate</bold>      Check sidecars are up to date (CI-friendly)
+  <bold>clean</bold>         Remove all .fmm sidecar files
 
 <bold><underline>Setup</underline></bold>
-  <bold>init</bold>       Initialize fmm in this project (config, skill, MCP)
-  <bold>status</bold>     Show current fmm status and configuration
+  <bold>init</bold>          Initialize fmm in this project (config, skill, MCP)
+  <bold>status</bold>        Show current fmm status and configuration
+  <bold>completions</bold>   Generate shell completions (bash, zsh, fish, powershell)
 
 <bold><underline>Integration</underline></bold>
-  <bold>mcp</bold>        Start MCP server for LLM tool integration
-  <bold>gh</bold>         GitHub integrations (issue fixing, PR creation)
+  <bold>mcp</bold>           Start MCP server for LLM tool integration
+  <bold>gh</bold>            GitHub integrations (issue fixing, PR creation)
 
 <bold><underline>Analysis</underline></bold>
-  <bold>search</bold>     Query sidecars by export, import, dependency, or LOC
-  <bold>compare</bold>    Benchmark FMM vs control on a GitHub repository
+  <bold>search</bold>        Query sidecars by export, import, dependency, or LOC
+  <bold>compare</bold>       Benchmark FMM vs control on a GitHub repository
 "#
 );
 
@@ -75,12 +77,19 @@ const BEFORE_LONG_HELP: &str = cstr!(
     long_about = LONG_ABOUT,
     before_long_help = BEFORE_LONG_HELP,
     after_long_help = AFTER_LONG_HELP,
-    arg_required_else_help = true,
     version,
 )]
 pub struct Cli {
+    /// Print CLI reference as Markdown and exit
+    #[arg(long, hide = true)]
+    pub markdown_help: bool,
+
+    /// Generate man pages to the specified directory and exit
+    #[arg(long, hide = true)]
+    pub generate_man_pages: Option<PathBuf>,
+
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -284,6 +293,24 @@ pub enum Commands {
     /// Alias for 'mcp'
     #[command(hide = true)]
     Serve,
+
+    /// Generate shell completions for bash, zsh, fish, or powershell
+    #[command(
+        long_about = "Generate shell completion scripts for fmm.\n\n\
+            Outputs a completion script for the specified shell to stdout. \
+            Redirect to the appropriate file for your shell to enable tab completion.",
+        after_long_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+
+  <dim>$</dim> <bold>fmm completions bash</bold> > ~/.local/share/bash-completion/completions/fmm
+  <dim>$</dim> <bold>fmm completions zsh</bold> > ~/.zfunc/_fmm
+  <dim>$</dim> <bold>fmm completions fish</bold> > ~/.config/fish/completions/fmm.fish
+  <dim>$</dim> <bold>fmm completions powershell</bold> > _fmm.ps1"#),
+    )]
+    Completions {
+        /// Target shell
+        shell: Shell,
+    },
 
     /// GitHub integrations (issue fixing, PR creation)
     #[command(

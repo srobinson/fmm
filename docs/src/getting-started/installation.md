@@ -22,7 +22,7 @@ fmm --version
 
 ## Shell completions
 
-Generate completions for your shell:
+Generate tab-completion scripts for your shell:
 
 ```bash
 # Bash
@@ -33,4 +33,7 @@ fmm completions zsh > ~/.zfunc/_fmm
 
 # Fish
 fmm completions fish > ~/.config/fish/completions/fmm.fish
+
+# PowerShell
+fmm completions powershell > _fmm.ps1
 ```
