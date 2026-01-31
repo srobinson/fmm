@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use color_print::cstr;
 use colored::Colorize;
 use ignore::WalkBuilder;
 use rayon::prelude::*;
@@ -8,12 +9,74 @@ use std::path::{Path, PathBuf};
 use crate::config::Config;
 use crate::extractor::{sidecar_path_for, FileProcessor};
 
+// -- Help text constants (keeps the derive attrs readable) --
+
+const LONG_ABOUT: &str = "\
+Frontmatter Matters (fmm) generates .fmm sidecar files alongside your source code. \
+Each sidecar is a small YAML file listing the exports, imports, dependencies, and \
+line count of its companion source file.
+
+LLM agents use these sidecars to navigate codebases without reading every source \
+file — reducing token usage by 80-90% while maintaining full structural awareness.
+
+Supports: TypeScript, JavaScript, Python, Rust, Go, Java, C++, C#, Ruby";
+
+const AFTER_LONG_HELP: &str = cstr!(
+    r#"<bold><underline>Examples</underline></bold>
+
+  <dim>$</dim> <bold>fmm init</bold>
+    Set up config, Claude skill, and MCP server in one step
+
+  <dim>$</dim> <bold>fmm generate</bold>
+    Create .fmm sidecars for all source files in the current directory
+
+  <dim>$</dim> <bold>fmm generate src/</bold>
+    Generate sidecars for a specific directory only
+
+  <dim>$</dim> <bold>fmm search --export createStore</bold>
+    Find which file defines a symbol (O(1) lookup via reverse index)
+
+  <dim>$</dim> <bold>fmm search --loc ">500"</bold>
+    Find large files (over 500 lines)
+
+  <dim>$</dim> <bold>fmm validate</bold>
+    Check all sidecars are current — great for CI pipelines
+
+<bold><underline>Learn more</underline></bold>
+
+  https://github.com/mdcontext/fmm"#
+);
+
+const BEFORE_LONG_HELP: &str = cstr!(
+    r#"<bold><underline>Core Commands</underline></bold>
+  <bold>generate</bold>   Create .fmm sidecar files for source files
+  <bold>update</bold>     Regenerate all .fmm sidecars from source
+  <bold>validate</bold>   Check sidecars are up to date (CI-friendly)
+  <bold>clean</bold>      Remove all .fmm sidecar files
+
+<bold><underline>Setup</underline></bold>
+  <bold>init</bold>       Initialize fmm in this project (config, skill, MCP)
+  <bold>status</bold>     Show current fmm status and configuration
+
+<bold><underline>Integration</underline></bold>
+  <bold>mcp</bold>        Start MCP server for LLM tool integration
+  <bold>gh</bold>         GitHub integrations (issue fixing, PR creation)
+
+<bold><underline>Analysis</underline></bold>
+  <bold>search</bold>     Query sidecars by export, import, dependency, or LOC
+  <bold>compare</bold>    Benchmark FMM vs control on a GitHub repository
+"#
+);
+
 #[derive(Parser)]
 #[command(
     name = "fmm",
-    about = "Frontmatter Matters - Auto-generate code metadata sidecars for LLM navigation",
+    about = "Auto-generate code metadata sidecars for LLM navigation",
+    long_about = LONG_ABOUT,
+    before_long_help = BEFORE_LONG_HELP,
+    after_long_help = AFTER_LONG_HELP,
+    arg_required_else_help = true,
     version,
-    author
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -22,53 +85,125 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Generate .fmm sidecar files for source files that don't have them
+    /// Create .fmm sidecar files for source files
+    #[command(
+        long_about = "Create .fmm sidecar files for source files that don't already have them.\n\n\
+            Each sidecar captures the file's exports, imports, dependencies, and line count \
+            in a compact YAML format. Existing sidecars are left untouched — use 'update' to \
+            refresh them.",
+        after_long_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+
+  <dim>$</dim> <bold>fmm generate</bold>
+    Generate sidecars for all supported files in the current directory
+
+  <dim>$</dim> <bold>fmm generate src/</bold>
+    Generate sidecars for a specific directory
+
+  <dim>$</dim> <bold>fmm generate -n</bold>
+    Dry run — show what would be created without writing files"#),
+    )]
     Generate {
         /// Path to file or directory
         #[arg(default_value = ".")]
         path: String,
 
-        /// Dry run - show what would be changed
+        /// Show what would be created without writing files
         #[arg(short = 'n', long)]
         dry_run: bool,
     },
 
-    /// Update all .fmm sidecar files (regenerate from source)
+    /// Regenerate all .fmm sidecars from source
+    #[command(
+        long_about = "Regenerate all .fmm sidecar files from their source files.\n\n\
+            Unlike 'generate' which skips existing sidecars, 'update' overwrites every \
+            sidecar with fresh metadata. Use after refactoring or when sidecars may be stale.",
+        after_long_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+
+  <dim>$</dim> <bold>fmm update</bold>
+    Refresh all sidecars in the current directory
+
+  <dim>$</dim> <bold>fmm update src/ -n</bold>
+    Preview which sidecars would change"#),
+    )]
     Update {
         /// Path to file or directory
         #[arg(default_value = ".")]
         path: String,
 
-        /// Dry run - show what would be changed
+        /// Show what would be changed without writing files
         #[arg(short = 'n', long)]
         dry_run: bool,
     },
 
-    /// Validate that .fmm sidecars are up to date
+    /// Check sidecars are up to date (CI-friendly)
+    #[command(
+        long_about = "Validate that all .fmm sidecars match their source files.\n\n\
+            Returns exit code 0 if all sidecars are current, or 1 if any are stale or \
+            missing. Designed for CI pipelines — add to your pre-commit hooks or GitHub Actions.",
+        after_long_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+
+  <dim>$</dim> <bold>fmm validate</bold>
+    Check all sidecars in the current directory
+
+  <dim>$</dim> <bold>fmm validate src/</bold>
+    Check a specific directory"#),
+    )]
     Validate {
         /// Path to file or directory
         #[arg(default_value = ".")]
         path: String,
     },
 
-    /// Remove all .fmm sidecar files (and legacy .fmm/ directory)
+    /// Remove all .fmm sidecar files
+    #[command(
+        long_about = "Remove all .fmm sidecar files and the legacy .fmm/ directory.\n\n\
+            Use this to cleanly uninstall fmm from a project or to start fresh.",
+        after_long_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+
+  <dim>$</dim> <bold>fmm clean</bold>
+    Remove all sidecars in the current directory
+
+  <dim>$</dim> <bold>fmm clean -n</bold>
+    Preview what would be removed"#),
+    )]
     Clean {
         /// Path to file or directory
         #[arg(default_value = ".")]
         path: String,
 
-        /// Dry run - show what would be removed
+        /// Show what would be removed without deleting files
         #[arg(short = 'n', long)]
         dry_run: bool,
     },
 
     /// Initialize fmm in this project (config, skill, MCP)
+    #[command(
+        long_about = "Set up fmm in the current project.\n\n\
+            Creates .fmmrc.json config, installs the Claude Code skill for sidecar-aware \
+            navigation, and configures the MCP server in .mcp.json. Run with no flags for \
+            the full setup, or use --skill/--mcp to install individual components.",
+        after_long_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+
+  <dim>$</dim> <bold>fmm init</bold>
+    Full setup — config, skill, and MCP server
+
+  <dim>$</dim> <bold>fmm init --skill</bold>
+    Install only the Claude Code navigation skill
+
+  <dim>$</dim> <bold>fmm init --mcp</bold>
+    Install only the MCP server configuration"#),
+    )]
     Init {
         /// Install Claude Code skill only (.claude/skills/fmm-navigate.md)
         #[arg(long)]
         skill: bool,
 
-        /// Install MCP server config only
+        /// Install MCP server config only (.mcp.json)
         #[arg(long)]
         mcp: bool,
 
@@ -78,11 +213,35 @@ pub enum Commands {
     },
 
     /// Show current fmm status and configuration
+    #[command(
+        long_about = "Display the current fmm configuration, supported languages, and \
+            workspace statistics including source file and sidecar counts."
+    )]
     Status,
 
-    /// Search sidecars for files and exports
+    /// Query sidecars by export, import, dependency, or LOC
+    #[command(
+        long_about = "Search sidecar metadata to find files by export name, import path, \
+            dependency, or line count.\n\n\
+            Export lookups use a reverse index for O(1) performance. Filters can be combined. \
+            With no filters, lists all indexed files.",
+        after_long_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+
+  <dim>$</dim> <bold>fmm search --export createStore</bold>
+    Find which file defines 'createStore'
+
+  <dim>$</dim> <bold>fmm search --imports react</bold>
+    Find all files that import from 'react'
+
+  <dim>$</dim> <bold>fmm search --loc ">500"</bold>
+    Find files over 500 lines
+
+  <dim>$</dim> <bold>fmm search --depends-on src/utils.ts --json</bold>
+    Find dependents of a file, output as JSON"#),
+    )]
     Search {
-        /// Find file by export name
+        /// Find file by export name (O(1) reverse-index lookup)
         #[arg(short = 'e', long = "export")]
         export: Option<String>,
 
@@ -91,7 +250,13 @@ pub enum Commands {
         imports: Option<String>,
 
         /// Filter by line count (e.g., ">500", "<100", "=200")
-        #[arg(short = 'l', long = "loc")]
+        #[arg(
+            short = 'l',
+            long = "loc",
+            long_help = "Filter files by line count.\n\n\
+                Supports comparison operators: >500, <100, >=50, <=1000, =200.\n\
+                A bare number is treated as exact match (=)."
+        )]
         loc: Option<String>,
 
         /// Find files that depend on a path
@@ -103,19 +268,49 @@ pub enum Commands {
         json: bool,
     },
 
-    /// Start MCP (Model Context Protocol) server for LLM integration
+    /// Start MCP server for LLM tool integration
+    #[command(
+        long_about = "Start the Model Context Protocol (MCP) server over stdio.\n\n\
+            The MCP server exposes fmm's search and metadata capabilities as tools that \
+            LLM agents (Claude, GPT, etc.) can call directly. Add to .mcp.json with \
+            'fmm init --mcp'."
+    )]
     Mcp,
 
-    /// Start MCP server for LLM integration (alias for 'mcp')
+    /// Alias for 'mcp'
+    #[command(hide = true)]
     Serve,
 
     /// GitHub integrations (issue fixing, PR creation)
+    #[command(
+        long_about = "GitHub workflow integrations powered by fmm sidecar metadata.\n\n\
+            Currently supports automated issue fixing: clone a repo, generate sidecars, \
+            extract code references from the issue, and invoke Claude with focused context \
+            to create a PR."
+    )]
     Gh {
         #[command(subcommand)]
         subcommand: GhSubcommand,
     },
 
-    /// Compare FMM vs control performance on a GitHub repository
+    /// Benchmark FMM vs control on a GitHub repository
+    #[command(
+        long_about = "Run controlled comparisons of FMM-assisted vs unassisted Claude \
+            performance on a GitHub repository.\n\n\
+            Clones the repo, generates sidecars, runs a set of coding tasks with and \
+            without FMM, and produces a report comparing token usage, cost, and quality.",
+        after_long_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+
+  <dim>$</dim> <bold>fmm compare https://github.com/owner/repo</bold>
+    Run standard benchmark suite
+
+  <dim>$</dim> <bold>fmm compare https://github.com/owner/repo --quick</bold>
+    Quick mode with fewer tasks
+
+  <dim>$</dim> <bold>fmm compare https://github.com/owner/repo --format json -o results/</bold>
+    JSON output to a specific directory"#),
+    )]
     Compare {
         /// GitHub repository URL (e.g., https://github.com/owner/repo)
         url: String,
@@ -173,7 +368,24 @@ pub enum OutputFormat {
 /// GitHub subcommands
 #[derive(Subcommand)]
 pub enum GhSubcommand {
-    /// Fix a GitHub issue: clone repo, generate sidecars, invoke Claude, create PR
+    /// Fix a GitHub issue: clone, generate sidecars, invoke Claude, create PR
+    #[command(
+        long_about = "Automated GitHub issue fixing powered by fmm.\n\n\
+            Pipeline: parse issue URL → fetch issue details → clone repo → generate \
+            sidecars → extract code references → resolve against sidecar index → build \
+            focused prompt → create branch → invoke Claude → commit → push → create PR.",
+        after_long_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+
+  <dim>$</dim> <bold>fmm gh issue https://github.com/owner/repo/issues/42</bold>
+    Fix an issue and create a PR
+
+  <dim>$</dim> <bold>fmm gh issue https://github.com/owner/repo/issues/42 -n</bold>
+    Dry run — show extracted refs and assembled prompt
+
+  <dim>$</dim> <bold>fmm gh issue https://github.com/owner/repo/issues/42 --no-pr</bold>
+    Fix and commit but skip PR creation"#),
+    )]
     Issue {
         /// GitHub issue URL (e.g., https://github.com/owner/repo/issues/123)
         url: String,
