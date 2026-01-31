@@ -7,7 +7,7 @@ mod workspace;
 pub use github::{create_pr, fetch_issue, preflight_check, Issue, IssueRef};
 pub use prompt::{build_prompt, format_dry_run};
 pub use references::{extract_references, resolve_references, CodeReference, ResolvedReference};
-pub use runner::{invoke_claude, RunResult};
+pub use runner::{invoke_claude, invoke_claude_with_options, InvokeOptions, RunResult};
 pub use workspace::{clone_or_update, create_branch, generate_sidecars, resolve_workspace};
 
 use anyhow::{Context, Result};
@@ -120,8 +120,8 @@ pub fn gh_issue(url: &str, options: GhIssueOptions) -> Result<()> {
         } else {
             "failed".red()
         },
-        result.turns,
-        result.cost_usd,
+        result.metrics.turns,
+        result.metrics.cost_usd,
     );
 
     if !result.success {
@@ -156,7 +156,7 @@ pub fn gh_issue(url: &str, options: GhIssueOptions) -> Result<()> {
         println!("  Branch pushed (--no-pr, skipping PR creation)");
     }
 
-    println!("  {} ${:.4}", "Cost:".bold(), result.cost_usd);
+    println!("  {} ${:.4}", "Cost:".bold(), result.metrics.cost_usd);
 
     Ok(())
 }
