@@ -59,6 +59,13 @@ generate-man-pages: build
     ./target/debug/fmm --generate-man-pages docs/man/
     @echo "✓ Man pages written to docs/man/"
 
+# Generate llms-full.txt from doc sources
+generate-llms-full:
+    ./docs/generate-llms-full.sh
+
+# Generate all docs (CLI reference + llms-full.txt)
+generate-docs: generate-cli-docs generate-llms-full
+
 # Check that generated CLI docs are up to date
 check-cli-docs: build
     #!/usr/bin/env bash

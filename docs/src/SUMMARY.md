@@ -12,3 +12,4 @@
 - [CLI Reference](./reference/cli.md)
 - [Sidecar Format](./reference/sidecar-format.md)
 - [Configuration](./reference/configuration.md)
+- [MCP Tools](./reference/mcp-tools.md)
