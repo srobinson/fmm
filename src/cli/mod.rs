@@ -440,10 +440,28 @@ fn resolve_root(path: &str) -> Result<PathBuf> {
 }
 
 pub fn generate(path: &str, dry_run: bool) -> Result<()> {
-    // Safe default: missing/invalid config falls back to sensible defaults (no ignores, standard settings)
     let config = Config::load().unwrap_or_default();
     let files = collect_files(path, &config)?;
     let root = resolve_root(path)?;
+
+    if files.is_empty() {
+        println!("{} No supported source files found", "!".yellow());
+        println!(
+            "\n  {} Supported languages: {}",
+            "hint:".cyan(),
+            config
+                .languages
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        println!(
+            "  {} Did you mean to run from your project root?",
+            "hint:".cyan()
+        );
+        return Ok(());
+    }
 
     println!("Found {} files to process", files.len());
 
@@ -455,7 +473,13 @@ pub fn generate(path: &str, dry_run: bool) -> Result<()> {
                 Ok(Some(msg)) => Some((file.to_path_buf(), msg)),
                 Ok(None) => None,
                 Err(e) => {
-                    eprintln!("{} {}: {}", "Error".red(), file.display(), e);
+                    eprintln!(
+                        "{} {}: {}\n  {} Check file permissions and encoding",
+                        "error:".red().bold(),
+                        file.display(),
+                        e,
+                        "hint:".cyan()
+                    );
                     None
                 }
             }
@@ -482,6 +506,12 @@ pub fn generate(path: &str, dry_run: bool) -> Result<()> {
                 "written"
             }
         );
+        if !dry_run {
+            println!(
+                "\n  {} Run 'fmm validate' to verify, or 'fmm search --export <name>' to find symbols",
+                "next:".cyan()
+            );
+        }
     } else {
         println!("{} All sidecars up to date", "✓".green());
     }
@@ -490,10 +520,18 @@ pub fn generate(path: &str, dry_run: bool) -> Result<()> {
 }
 
 pub fn update(path: &str, dry_run: bool) -> Result<()> {
-    // Safe default: missing/invalid config falls back to sensible defaults (no ignores, standard settings)
     let config = Config::load().unwrap_or_default();
     let files = collect_files(path, &config)?;
     let root = resolve_root(path)?;
+
+    if files.is_empty() {
+        println!("{} No supported source files found", "!".yellow());
+        println!(
+            "\n  {} Did you mean to run from your project root?",
+            "hint:".cyan()
+        );
+        return Ok(());
+    }
 
     println!("Found {} files to process", files.len());
 
@@ -505,7 +543,13 @@ pub fn update(path: &str, dry_run: bool) -> Result<()> {
                 Ok(Some(msg)) => Some((file.to_path_buf(), msg)),
                 Ok(None) => None,
                 Err(e) => {
-                    eprintln!("{} {}: {}", "Error".red(), file.display(), e);
+                    eprintln!(
+                        "{} {}: {}\n  {} Check file permissions and encoding",
+                        "error:".red().bold(),
+                        file.display(),
+                        e,
+                        "hint:".cyan()
+                    );
                     None
                 }
             }
@@ -532,6 +576,12 @@ pub fn update(path: &str, dry_run: bool) -> Result<()> {
                 "updated"
             }
         );
+        if !dry_run {
+            println!(
+                "\n  {} Run 'fmm validate' to verify sidecars are consistent",
+                "next:".cyan()
+            );
+        }
     } else {
         println!("{} All sidecars up to date", "✓".green());
     }
@@ -540,10 +590,18 @@ pub fn update(path: &str, dry_run: bool) -> Result<()> {
 }
 
 pub fn validate(path: &str) -> Result<()> {
-    // Safe default: missing/invalid config falls back to sensible defaults (no ignores, standard settings)
     let config = Config::load().unwrap_or_default();
     let files = collect_files(path, &config)?;
     let root = resolve_root(path)?;
+
+    if files.is_empty() {
+        println!("{} No supported source files found", "!".yellow());
+        println!(
+            "\n  {} Did you mean to run from your project root?",
+            "hint:".cyan()
+        );
+        return Ok(());
+    }
 
     println!("Validating {} files...", files.len());
 
@@ -572,7 +630,7 @@ pub fn validate(path: &str) -> Result<()> {
         Ok(())
     } else {
         println!(
-            "{} {} files need updating:",
+            "{} {} file(s) need updating:",
             "✗".red().bold(),
             invalid.len()
         );
@@ -580,12 +638,15 @@ pub fn validate(path: &str) -> Result<()> {
             let rel = file.strip_prefix(&root).unwrap_or(file);
             println!("  {} {}: {}", "✗".red(), rel.display(), msg.dimmed());
         }
+        println!(
+            "\n  {} Run 'fmm update' to regenerate stale sidecars, or 'fmm generate' for missing ones",
+            "fix:".cyan()
+        );
         anyhow::bail!("Sidecar validation failed");
     }
 }
 
 pub fn clean(path: &str, dry_run: bool) -> Result<()> {
-    // Safe default: missing/invalid config falls back to sensible defaults (no ignores, standard settings)
     let config = Config::load().unwrap_or_default();
     let files = collect_files(path, &config)?;
     let root = resolve_root(path)?;
@@ -614,7 +675,13 @@ pub fn clean(path: &str, dry_run: bool) -> Result<()> {
                 }
                 Ok(false) => {}
                 Err(e) => {
-                    eprintln!("{} {}: {}", "Error".red(), file.display(), e);
+                    eprintln!(
+                        "{} {}: {}\n  {} Check file permissions",
+                        "error:".red().bold(),
+                        file.display(),
+                        e,
+                        "hint:".cyan()
+                    );
                 }
             }
         }
@@ -665,13 +732,19 @@ pub fn init(skill: bool, mcp: bool, all: bool) -> Result<()> {
 
     println!();
     println!("{}", "Setup complete!".green().bold());
+    if install_config {
+        println!("  Config:   .fmmrc.json");
+    }
     if install_skill {
         println!("  Skill:    .claude/skills/fmm-navigate.md");
     }
     if install_mcp {
         println!("  MCP:      .mcp.json");
     }
-    println!("\nRun `fmm generate` to create sidecar files.");
+    println!(
+        "\n  {} Run 'fmm generate' to create sidecars — your AI assistant will navigate via metadata",
+        "next:".cyan()
+    );
 
     Ok(())
 }
@@ -907,6 +980,18 @@ pub fn search(
     let root = std::env::current_dir()?;
     let manifest = crate::manifest::Manifest::load_from_sidecars(&root)?;
 
+    if manifest.files.is_empty() {
+        println!(
+            "{} No .fmm sidecars found in the current directory",
+            "!".yellow()
+        );
+        println!(
+            "\n  {} fmm search queries sidecar metadata. Run 'fmm generate' first to create them",
+            "hint:".cyan()
+        );
+        return Ok(());
+    }
+
     let mut results: Vec<SearchResult> = Vec::new();
 
     // Search by export name (uses reverse index)
@@ -1008,6 +1093,12 @@ pub fn search(
         println!("{}", serde_json::to_string_pretty(&results)?);
     } else if results.is_empty() {
         println!("{} No matches found", "!".yellow());
+        if export.is_some() {
+            println!(
+                "\n  {} Export names are case-sensitive. Try 'fmm search' with no filters to list all indexed files",
+                "hint:".cyan()
+            );
+        }
     } else {
         println!("{} {} file(s) found:\n", "✓".green(), results.len());
         for result in &results {
