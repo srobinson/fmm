@@ -38,14 +38,14 @@ We built an 18-file TypeScript authentication app — realistic enough to requir
 |---|---|
 | **Control** | Clean codebase, no metadata |
 | **Inline** | FMM comments at the top of every file |
-| **Manifest** | `.fmm/index.json` containing full project metadata |
-| **Hint** | Manifest + system prompt mentioning its existence |
+| **Hidden metadata** | Structured metadata in a `.fmm/` directory |
+| **Hint** | Hidden metadata + system prompt mentioning its existence |
 
 Three runs per condition. Same task each time. We watched every session.
 
 Discovery rate across all conditions: **0 out of 12**.
 
-Not one session — across any condition — organically discovered or used the metadata. Not inline comments. Not the manifest file. Not even with a system prompt hint.
+Not one session — across any condition — organically discovered or used the metadata. Not inline comments. Not the hidden metadata directory. Not even with a system prompt hint.
 
 Here is what the numbers looked like:
 
@@ -76,7 +76,7 @@ No LLM session ever paused to think "maybe there's a project index I should chec
 
 This is the core insight: **LLMs treat code comments as noise.** They are trained on millions of codebases where comments are unreliable, outdated, or irrelevant. The model has learned, correctly, that the actual code is the source of truth. So it reads the actual code. Every time. All of it.
 
-Hidden directories fare even worse. The `.fmm/` directory with a complete project manifest was invisible. LLMs do not speculatively list hidden directories. They do not check for metadata indexes. They have no reason to — nothing in their training suggests that `.fmm/index.json` contains anything useful.
+Hidden directories fare even worse. A `.fmm/` directory containing structured metadata was invisible. LLMs do not speculatively list hidden directories. They do not check for metadata indexes. They have no reason to — nothing in their training suggests a hidden directory contains anything useful.
 
 ## The pivot: sidecar files and explicit instructions
 
@@ -145,7 +145,7 @@ The Skill+MCP approach — where fmm registers as a tool the LLM can call direct
 
 The difference makes sense. CLAUDE.md tells the LLM *what to do* but leaves execution to its default tool-calling patterns. An MCP server gives the LLM a dedicated `fmm_query` tool that returns structured results. Instead of "Grep for .fmm files, read them, parse the YAML, figure out what to do," the LLM calls one tool and gets back exactly the metadata it needs.
 
-But here is the thing — CLAUDE.md alone still works. A single instruction in CLAUDE.md transforms the LLM's very first action from "let me Grep for the symbol" to "let me check if there's an FMM index." The behavior change is immediate and consistent. MCP makes it more efficient, but CLAUDE.md makes it possible.
+But here is the thing — CLAUDE.md alone still works. A single instruction in CLAUDE.md transforms the LLM's very first action from "let me Grep for the symbol" to "let me check the sidecar files." The behavior change is immediate and consistent. MCP makes it more efficient, but CLAUDE.md makes it possible.
 
 ## What this means if you are building for LLMs
 
@@ -155,7 +155,7 @@ Three takeaways from 60+ experimental runs:
 LLMs will not use it. Inline metadata increases token consumption without improving outcomes. This is not a theoretical concern — we measured it (Exp14). Comments are invisible to LLM reasoning.
 
 **2. Structured data in queryable locations beats everything.**
-Sidecar files, manifest indexes, dedicated API endpoints. Anything the LLM can find through its normal tool-calling patterns (file listing, Grep, dedicated tools) will get used. Anything that requires the LLM to "notice" something will not.
+Sidecar files, dedicated API endpoints, queryable indexes. Anything the LLM can find through its normal tool-calling patterns (file listing, Grep, dedicated tools) will get used. Anything that requires the LLM to "notice" something will not.
 
 **3. Explicit instruction is non-negotiable.**
 No amount of clever file placement triggers organic discovery. You must tell the LLM — through CLAUDE.md, system prompts, MCP tool registration, or equivalent — that the metadata exists and how to use it. Two sentences is enough. Zero sentences means zero adoption.
