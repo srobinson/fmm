@@ -367,12 +367,21 @@ pub fn run_batch(options: BatchOptions) -> Result<()> {
         }
     }
 
+    // Per-issue budget: divide total evenly across remaining issues, capped at $5
+    let remaining = total - checkpoint.len();
+    let per_issue_budget = if remaining > 0 {
+        (options.max_budget / remaining as f64).min(5.0)
+    } else {
+        5.0
+    };
+
     println!(
-        "\n{} Running batch: {} issues, model={}, max_budget=${:.2}/issue\n",
+        "\n{} Running batch: {} issues, model={}, total_budget=${:.2}, per_issue=${:.2}\n",
         "BATCH".cyan().bold(),
         total,
         options.model,
         options.max_budget,
+        per_issue_budget,
     );
 
     for (i, issue_entry) in corpus.issues.iter().enumerate() {
@@ -411,7 +420,7 @@ pub fn run_batch(options: BatchOptions) -> Result<()> {
             &issue_entry.url,
             &options.model,
             options.max_turns,
-            options.max_budget,
+            per_issue_budget,
         ) {
             Ok(report) => {
                 let cost = report.control.cost_usd + report.fmm.cost_usd;
@@ -467,7 +476,7 @@ pub fn run_batch(options: BatchOptions) -> Result<()> {
 
     // Build by-tag breakdown
     let mut by_tag: HashMap<String, Vec<&IssueComparisonReport>> = HashMap::new();
-    for (issue_entry, _) in corpus.issues.iter().zip(0..) {
+    for issue_entry in &corpus.issues {
         if let Some(report) = reports.iter().find(|r| r.issue_url == issue_entry.url) {
             for tag in &issue_entry.tags {
                 by_tag.entry(tag.clone()).or_default().push(report);
@@ -565,15 +574,16 @@ fn print_dry_run(corpus: &Corpus, options: &BatchOptions) -> Result<()> {
         }
     }
 
-    // Cost estimate: each issue runs 2 Claude invocations (control + fmm)
-    let per_issue_est = options.max_budget * 2.0;
-    let total_est = per_issue_est * corpus.issues.len() as f64;
+    // Cost estimate: capped by total budget, but each issue runs 2 Claude invocations
+    let per_issue_est = 5.0_f64.min(options.max_budget / corpus.issues.len().max(1) as f64);
+    let total_est = (per_issue_est * 2.0 * corpus.issues.len() as f64).min(options.max_budget);
     println!(
-        "\n  {} ${:.2} (worst case: {} issues x ${:.2}/issue x 2 variants)",
+        "\n  {} ${:.2} (budget cap: ${:.2}, est ${:.2}/issue x 2 variants x {} issues)",
         "Est. max cost:".bold(),
         total_est,
-        corpus.issues.len(),
         options.max_budget,
+        per_issue_est,
+        corpus.issues.len(),
     );
 
     println!("\n  {}", "Issues:".bold());
