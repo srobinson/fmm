@@ -102,6 +102,26 @@ fn main() -> Result<()> {
                 };
                 gh::gh_issue(&url, options)?;
             }
+            GhSubcommand::Batch {
+                corpus,
+                output,
+                model,
+                max_turns,
+                max_budget,
+                dry_run,
+                resume,
+            } => {
+                let options = gh::batch::BatchOptions {
+                    corpus_path: corpus,
+                    output_dir: output,
+                    model,
+                    max_turns,
+                    max_budget,
+                    dry_run,
+                    resume,
+                };
+                gh::batch::run_batch(options)?;
+            }
         },
         Commands::Mcp | Commands::Serve => {
             let mut server = mcp::McpServer::new();

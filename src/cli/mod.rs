@@ -461,6 +461,53 @@ pub enum GhSubcommand {
         #[arg(long)]
         output: Option<String>,
     },
+
+    /// Run batch A/B comparisons across a corpus of GitHub issues
+    #[command(
+        long_about = "Run A/B comparisons (control vs fmm) across a corpus of GitHub issues.\n\n\
+            Reads an issues.json corpus file, runs each issue through the compare pipeline, \
+            checkpoints progress for resume, and aggregates results into proof-dataset.json \
+            and proof-dataset.md.",
+        after_long_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+
+  <dim>$</dim> <bold>fmm gh batch proofs/issues.json --dry-run</bold>
+    Show plan + cost estimate without running
+
+  <dim>$</dim> <bold>fmm gh batch proofs/issues.json --output proofs/dataset/ --max-budget 100</bold>
+    Run full corpus with $100 total budget
+
+  <dim>$</dim> <bold>fmm gh batch proofs/issues.json --output proofs/dataset/ --resume</bold>
+    Resume a previous run, skipping completed issues"#),
+    )]
+    Batch {
+        /// Path to corpus file (issues.json)
+        corpus: PathBuf,
+
+        /// Output directory for results and checkpoint
+        #[arg(short, long, default_value = "proofs/dataset")]
+        output: PathBuf,
+
+        /// Claude model to use
+        #[arg(long, default_value = "sonnet")]
+        model: String,
+
+        /// Maximum turns per issue
+        #[arg(long, default_value = "30")]
+        max_turns: u32,
+
+        /// Maximum budget in USD (total across all issues)
+        #[arg(long, default_value = "100.0")]
+        max_budget: f64,
+
+        /// Show plan + cost estimate without executing
+        #[arg(short = 'n', long)]
+        dry_run: bool,
+
+        /// Resume from checkpoint, skipping completed issues
+        #[arg(long)]
+        resume: bool,
+    },
 }
 
 /// Resolve the root directory from the target path.

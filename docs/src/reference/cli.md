@@ -16,6 +16,7 @@ This document contains the help content for the `fmm` command-line program.
 * [`fmm completions`↴](#fmm-completions)
 * [`fmm gh`↴](#fmm-gh)
 * [`fmm gh issue`↴](#fmm-gh-issue)
+* [`fmm gh batch`↴](#fmm-gh-batch)
 * [`fmm compare`↴](#fmm-compare)
 
 ## `fmm`
@@ -35,7 +36,7 @@ Core Commands
 Setup
   init          Initialize fmm in this project (config, skill, MCP)
   status        Show current fmm status and configuration
-  completions   Generate shell completions (bash, zsh, fish, powershell)
+  completions   Generate shell completions (bash, zsh, fish, powershell, elvish)
 
 Integration
   mcp           Start MCP server for LLM tool integration
@@ -315,6 +316,7 @@ Currently supports automated issue fixing: clone a repo, generate sidecars, extr
 ###### **Subcommands:**
 
 * `issue` — Fix a GitHub issue: clone, generate sidecars, invoke Claude, create PR
+* `batch` — Run batch A/B comparisons across a corpus of GitHub issues
 
 
 
@@ -337,6 +339,9 @@ Examples
   $ fmm gh issue https://github.com/owner/repo/issues/42 --no-pr
     Fix and commit but skip PR creation
 
+  $ fmm gh issue https://github.com/owner/repo/issues/42 --compare
+    A/B comparison — run control vs fmm, output token savings report
+
 ###### **Arguments:**
 
 * `<URL>` — GitHub issue URL (e.g., https://github.com/owner/repo/issues/123)
@@ -358,6 +363,50 @@ Examples
   Default value: `fmm`
 * `--no-pr` — Commit and push only, skip PR creation
 * `--workspace <WORKSPACE>` — Override workspace directory
+* `--compare` — Run A/B comparison: control (no sidecars) vs fmm (with sidecars). Outputs a comparison report instead of creating a PR
+* `--output <OUTPUT>` — Output directory for comparison report (only used with --compare)
+
+
+
+## `fmm gh batch`
+
+Run A/B comparisons (control vs fmm) across a corpus of GitHub issues.
+
+Reads an issues.json corpus file, runs each issue through the compare pipeline, checkpoints progress for resume, and aggregates results into proof-dataset.json and proof-dataset.md.
+
+**Usage:** `fmm gh batch [OPTIONS] <CORPUS>`
+
+Examples
+
+  $ fmm gh batch proofs/issues.json --dry-run
+    Show plan + cost estimate without running
+
+  $ fmm gh batch proofs/issues.json --output proofs/dataset/ --max-budget 100
+    Run full corpus with $100 total budget
+
+  $ fmm gh batch proofs/issues.json --output proofs/dataset/ --resume
+    Resume a previous run, skipping completed issues
+
+###### **Arguments:**
+
+* `<CORPUS>` — Path to corpus file (issues.json)
+
+###### **Options:**
+
+* `-o`, `--output <OUTPUT>` — Output directory for results and checkpoint
+
+  Default value: `proofs/dataset`
+* `--model <MODEL>` — Claude model to use
+
+  Default value: `sonnet`
+* `--max-turns <MAX_TURNS>` — Maximum turns per issue
+
+  Default value: `30`
+* `--max-budget <MAX_BUDGET>` — Maximum budget in USD (total across all issues)
+
+  Default value: `100.0`
+* `-n`, `--dry-run` — Show plan + cost estimate without executing
+* `--resume` — Resume from checkpoint, skipping completed issues
 
 
 
