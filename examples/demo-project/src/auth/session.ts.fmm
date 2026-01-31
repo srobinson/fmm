@@ -1,0 +1,7 @@
+---
+file: src/auth/session.ts
+exports: [SessionPayload, createSession, validateSession, destroySession]
+imports: [jsonwebtoken]
+dependencies: [../config, ../db/users]
+loc: 32
+---

@@ -1,0 +1,7 @@
+---
+file: src/index.ts
+exports: []
+imports: [express]
+dependencies: [./config, ./db/client, ./api/routes, ./api/errors]
+loc: 21
+---

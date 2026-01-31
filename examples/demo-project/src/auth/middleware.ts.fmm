@@ -1,0 +1,7 @@
+---
+file: src/auth/middleware.ts
+exports: [AuthenticatedRequest, requireAuth]
+imports: [express]
+dependencies: [./session, ../config]
+loc: 27
+---

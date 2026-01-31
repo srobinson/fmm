@@ -1,0 +1,7 @@
+---
+file: src/api/errors.ts
+exports: [AppError, notFound, unauthorized, errorHandler]
+imports: [express]
+dependencies: []
+loc: 29
+---

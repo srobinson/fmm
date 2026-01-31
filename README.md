@@ -1,64 +1,69 @@
 # fmm — Frontmatter Matters
 
-> **88-97% token reduction for LLM code navigation.**
-> Proven across 5 experiments, 48+ runs, real codebases up to 9,008 files.
+**Metadata sidecars that give LLMs a map of your codebase.**
 
-[![CI](https://github.com/srobinson/fmm/actions/workflows/ci.yml/badge.svg)](https://github.com/srobinson/fmm/actions/workflows/ci.yml)
+[![CI](https://github.com/mdcontext/fmm/actions/workflows/ci.yml/badge.svg)](https://github.com/mdcontext/fmm/actions/workflows/ci.yml)
+[![Docs](https://github.com/mdcontext/fmm/actions/workflows/docs.yml/badge.svg)](https://mdcontext.github.io/fmm/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Languages](https://img.shields.io/badge/languages-9-informational.svg)](#supported-languages)
 
-## The Problem
+<!-- TODO: Replace with animated SVG from asciinema recording
+     Record: asciinema rec --command "./demos/01-getting-started.sh"
+     Convert: svg-term --in demos/01-getting-started.cast --out docs/src/hero.svg -->
 
-LLMs waste most of their context window just *finding* code. A simple "where is X defined?" triggers dozens of grep/glob/read cycles — burning tokens on file contents the model never reasons about.
+```bash
+cargo install fmm && cd your-project && fmm init
+```
 
-**Measured on a 244-file TypeScript codebase (Exp13):**
+|  | Without fmm | With fmm |
+|--|------------|----------|
+| **How LLM navigates** | grep → read entire file → summarize, repeat | Read sidecar metadata → open only needed files |
+| **Tokens for 500 files** | ~50,000 | ~2,000 |
+| **Reduction** | — | **96%** |
 
-| Task | Without fmm | With fmm | Token Reduction |
-|------|-------------|----------|-----------------|
-| Code review | 1,824 lines read | 65 lines read | **96.4%** |
-| Refactor analysis | 2,800 lines read | 345 lines read | **87.7%** |
-| Architecture exploration | 7,135 lines read | 180 lines read | **97.5%** |
+## What it does
 
-Without fmm, the LLM's strategy is always: `Grep → Read entire file → Summarize`. It never checks metadata directories or sidecar files organically — **0 out of 12 sessions** discovered `.fmm/` without explicit instruction ([Exp14](research/exp14/FINDINGS.md)).
-
-## The Solution
-
-fmm generates a `.fmm` **sidecar file** alongside each source file. The sidecar contains structured metadata — exports, imports, dependencies, LOC — so LLMs navigate your codebase without reading source.
+fmm generates a `.fmm` sidecar file alongside each source file. The sidecar is a tiny YAML file listing exports, imports, dependencies, and line count:
 
 ```
-src/
-  auth/
-    session.ts          ← 234 lines of source
-    session.ts.fmm      ← 7 lines of metadata
-    middleware.ts
-    middleware.ts.fmm
-  api/
-    routes.ts
-    routes.ts.fmm
+src/auth/session.ts      ← 234 lines of source
+src/auth/session.ts.fmm  ← 7 lines of metadata
 ```
 
 ```yaml
-# session.ts.fmm
+---
 file: src/auth/session.ts
-fmm: v0.2
 exports: [createSession, validateSession, destroySession]
-imports: [jwt, redis-client]
-dependencies: [./types, ./config]
+imports: [jsonwebtoken]
+dependencies: [../config, ../db/users]
 loc: 234
-modified: 2026-01-30
+---
 ```
 
 LLMs read sidecars first, then open source files only when they need to edit.
 
-## Quick Start
+## Quick start
 
 ```bash
-cargo install --path .
-fmm init        # creates .fmmrc.json, skill, MCP config
-fmm generate    # creates .fmm sidecars for all source files
+cargo install fmm
+cd your-project
+fmm init        # creates config, skill, MCP server + generates sidecars
 ```
 
 That's it. Your AI coding assistant now navigates via metadata instead of brute-force file reads.
 
-## How It Works
+Try a search:
+
+```bash
+fmm search --export createStore     # O(1) symbol lookup
+fmm search --imports react          # find all React consumers
+fmm search --loc ">500"             # find large files
+fmm search --depends-on src/db.ts   # impact analysis
+```
+
+See the [demo project](examples/demo-project/) for a hands-on walkthrough.
+
+## How it works
 
 ```
                         ┌─────────────────────────────────────────────────────┐
@@ -86,6 +91,33 @@ That's it. Your AI coding assistant now navigates via metadata instead of brute-
 3. **Generate** — writes `.fmm` sidecar alongside each source file
 4. **Query** — MCP server or CLI reads sidecars on demand, builds in-memory index
 
+## LLM Integration
+
+### MCP Server (Recommended)
+
+fmm includes a built-in MCP server. Configure via `fmm init --mcp` or manually:
+
+```json
+{
+  "mcpServers": {
+    "fmm": {
+      "command": "fmm",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+| Tool | Purpose |
+|------|---------|
+| `fmm_lookup_export` | Find which file exports a symbol (O(1) lookup) |
+| `fmm_list_exports` | List exports matching a pattern or from a file |
+| `fmm_file_info` | Get a file's structural profile |
+| `fmm_dependency_graph` | Get upstream dependencies and downstream dependents |
+| `fmm_search` | Search by export, imports, dependencies, LOC range |
+
+See the full [MCP Tools reference](https://mdcontext.github.io/fmm/reference/mcp-tools.html) for schemas and examples.
+
 ## Evidence
 
 Five experiments validate fmm's impact. All data is reproducible — see the [research/](research/) directory.
@@ -110,53 +142,6 @@ $ # 5-line fix, clean PR pushed
 
 Without fmm: ~30-50 file reads to find the bug. With fmm: 2.
 
-## Navigation Pattern
-
-```
-LLM task: "Fix the session validation bug"
-
-1. fmm_lookup_export("validateSession")  →  src/auth/session.ts
-2. fmm_dependency_graph("src/auth/session.ts")  →  depends on ./types, ./config
-3. LLM reads only session.ts, types.ts, config.ts
-
-Result: ~700 tokens instead of ~50,000 (scanning everything)
-```
-
-## LLM Integration
-
-### MCP Server (Recommended)
-
-fmm includes a built-in MCP server. Add to your Claude Code configuration:
-
-```json
-{
-  "mcpServers": {
-    "fmm": {
-      "command": "fmm",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-| Tool | Purpose |
-|------|---------|
-| `fmm_lookup_export` | Find which file exports a symbol (O(1) lookup) |
-| `fmm_list_exports` | List exports matching a pattern or from a file |
-| `fmm_file_info` | Get a file's structural profile |
-| `fmm_dependency_graph` | Get upstream dependencies and downstream dependents |
-| `fmm_search` | Search by export, imports, dependencies, LOC range |
-
-### Search CLI
-
-```bash
-fmm search --export validateUser      # Find file by export
-fmm search --imports crypto           # Files importing crypto
-fmm search --loc ">500"               # Large files
-fmm search --depends-on ./types       # Files depending on module
-fmm search --json                     # Output as JSON
-```
-
 ## The Economics
 
 | Model | Cost/1M tokens | 100-file scan without fmm | With fmm sidecars | Savings |
@@ -169,20 +154,6 @@ fmm search --json                     # Output as JSON
 - Solo developer (50 queries/day): **$6K-10K/year saved**
 - Small team (500 queries/day): **$10K-25K/year saved**
 - Enterprise (10K queries/day): **$50K+/year saved**
-
-## Configuration
-
-```json
-{
-  "languages": ["ts", "tsx", "js", "jsx", "py", "rs", "go"],
-  "format": "yaml",
-  "include_loc": true,
-  "include_complexity": false,
-  "max_file_size": 1024
-}
-```
-
-Create with `fmm init` or manually as `.fmmrc.json`.
 
 ## Supported Languages
 
@@ -200,8 +171,6 @@ Create with `fmm init` or manually as `.fmmrc.json`.
 
 All languages extract: **exports**, **imports**, **dependencies**, **LOC**.
 
-Extensible via [C FFI plugin system](docs/plugin-architecture.md).
-
 ## Performance
 
 - **~1,500 files/second** on Apple Silicon
@@ -209,28 +178,6 @@ Extensible via [C FFI plugin system](docs/plugin-architecture.md).
 - **Parallel** across all CPU cores (rayon)
 - **Incremental** — only updates changed files
 - **Constant memory** — streams files
-
-## CI/CD Integration
-
-```yaml
-# GitHub Actions
-- name: Validate fmm sidecars
-  run: |
-    cargo install --path .
-    fmm validate src/
-```
-
-```yaml
-# Pre-commit hook
-repos:
-  - repo: local
-    hooks:
-      - id: fmm-update
-        name: Update fmm sidecars
-        entry: fmm update
-        language: system
-        pass_filenames: true
-```
 
 ## CLI Reference
 
@@ -244,18 +191,28 @@ repos:
 | `fmm status` | Show project status and configuration |
 | `fmm search` | Query sidecars by export, import, LOC, dependency |
 | `fmm mcp` | Start MCP server |
+| `fmm completions <shell>` | Generate shell completions (bash, zsh, fish, powershell) |
 
-## Roadmap
+Full reference: [CLI docs](https://mdcontext.github.io/fmm/reference/cli.html)
 
-- [x] 9 language parsers (TS/JS, Python, Rust, Go, Java, C++, C#, Ruby)
-- [x] CLI: generate, update, validate, clean, search, status
-- [x] MCP server with 5 query tools
-- [x] Parallel processing (rayon)
-- [x] Incremental updates
-- [x] Plugin architecture (C FFI)
-- [ ] Watch mode (auto-update on save)
-- [ ] Complexity metrics
-- [ ] VS Code extension
+## CI/CD Integration
+
+```yaml
+# GitHub Actions
+- name: Validate fmm sidecars
+  run: |
+    cargo install fmm
+    fmm validate src/
+```
+
+## Documentation
+
+- [Getting Started](https://mdcontext.github.io/fmm/getting-started/quickstart.html) — first sidecar in 60 seconds
+- [CLI Reference](https://mdcontext.github.io/fmm/reference/cli.html) — all commands and options
+- [Sidecar Format](https://mdcontext.github.io/fmm/reference/sidecar-format.html) — YAML specification
+- [MCP Tools](https://mdcontext.github.io/fmm/reference/mcp-tools.html) — tool schemas for LLM agents
+- [Configuration](https://mdcontext.github.io/fmm/reference/configuration.html) — .fmmrc.json options
+- [llms.txt](https://mdcontext.github.io/fmm/llms.txt) — AI-readable documentation index
 
 ## Contributing
 
