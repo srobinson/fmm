@@ -415,7 +415,10 @@ pub enum GhSubcommand {
     Dry run — show extracted refs and assembled prompt
 
   <dim>$</dim> <bold>fmm gh issue https://github.com/owner/repo/issues/42 --no-pr</bold>
-    Fix and commit but skip PR creation"#),
+    Fix and commit but skip PR creation
+
+  <dim>$</dim> <bold>fmm gh issue https://github.com/owner/repo/issues/42 --compare</bold>
+    A/B comparison — run control vs fmm, output token savings report"#),
     )]
     Issue {
         /// GitHub issue URL (e.g., https://github.com/owner/repo/issues/123)
@@ -448,6 +451,15 @@ pub enum GhSubcommand {
         /// Override workspace directory
         #[arg(long)]
         workspace: Option<String>,
+
+        /// Run A/B comparison: control (no sidecars) vs fmm (with sidecars).
+        /// Outputs a comparison report instead of creating a PR.
+        #[arg(long)]
+        compare: bool,
+
+        /// Output directory for comparison report (only used with --compare)
+        #[arg(long)]
+        output: Option<String>,
     },
 }
 

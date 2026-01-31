@@ -1,6 +1,7 @@
 mod github;
 mod prompt;
 mod references;
+pub mod report;
 mod runner;
 mod workspace;
 
@@ -13,6 +14,7 @@ pub use workspace::{clone_or_update, create_branch, generate_sidecars, resolve_w
 use anyhow::{Context, Result};
 use colored::Colorize;
 
+use crate::compare::sandbox::Sandbox;
 use crate::config::GlobalConfig;
 use crate::manifest::Manifest;
 
@@ -24,6 +26,8 @@ pub struct GhIssueOptions {
     pub branch_prefix: String,
     pub no_pr: bool,
     pub workspace: Option<String>,
+    pub compare: bool,
+    pub output: Option<String>,
 }
 
 pub fn gh_issue(url: &str, options: GhIssueOptions) -> Result<()> {
@@ -46,6 +50,15 @@ pub fn gh_issue(url: &str, options: GhIssueOptions) -> Result<()> {
     let issue = fetch_issue(url)?;
     println!("  {} {}", "Title:".bold(), issue.title);
 
+    if options.compare {
+        return gh_issue_compare(url, &issue, &issue_ref, &options);
+    }
+
+    gh_issue_fix(&issue, &issue_ref, &options)
+}
+
+/// Standard flow: fix the issue and create a PR.
+fn gh_issue_fix(issue: &Issue, issue_ref: &IssueRef, options: &GhIssueOptions) -> Result<()> {
     // 4. Resolve workspace
     let global_config = GlobalConfig::load();
     let workspace_root = resolve_workspace(&global_config, options.workspace.as_deref())?;
@@ -85,13 +98,13 @@ pub fn gh_issue(url: &str, options: GhIssueOptions) -> Result<()> {
     );
 
     // 10. Build prompt
-    let prompt = build_prompt(&issue, &issue_ref, &resolved, &unresolved);
+    let prompt = build_prompt(issue, issue_ref, &resolved, &unresolved);
 
     // 11. Dry run?
     if options.dry_run {
         println!(
             "\n{}",
-            format_dry_run(&issue, &resolved, &unresolved, &prompt)
+            format_dry_run(issue, &resolved, &unresolved, &prompt)
         );
         return Ok(());
     }
@@ -100,7 +113,6 @@ pub fn gh_issue(url: &str, options: GhIssueOptions) -> Result<()> {
     let branch = create_branch(&repo_dir, &options.branch_prefix, issue_ref.number)?;
     println!("  {} {}", "Branch:".bold(), branch);
 
-    // Record HEAD before Claude runs so we can detect if it made commits
     let pre_claude_head = get_head_sha(&repo_dir)?;
 
     // 13. Invoke Claude
@@ -128,7 +140,7 @@ pub fn gh_issue(url: &str, options: GhIssueOptions) -> Result<()> {
         anyhow::bail!("Claude failed to fix the issue: {}", result.response_text);
     }
 
-    // 14. Verify changes (working tree or new commits)
+    // 14. Verify changes
     let has_changes = verify_changes(&repo_dir, &pre_claude_head)?;
     if !has_changes {
         println!(
@@ -138,8 +150,8 @@ pub fn gh_issue(url: &str, options: GhIssueOptions) -> Result<()> {
         return Ok(());
     }
 
-    // 15. Commit (skip if Claude already committed and working tree is clean)
-    commit_changes(&repo_dir, &issue)?;
+    // 15. Commit
+    commit_changes(&repo_dir, issue)?;
 
     // 16. Push
     println!("{}", "Pushing branch...".green().bold());
@@ -148,7 +160,7 @@ pub fn gh_issue(url: &str, options: GhIssueOptions) -> Result<()> {
     // 17. Create PR (unless --no-pr)
     if !options.no_pr {
         println!("{}", "Creating PR...".green().bold());
-        let pr_url = create_pr(&repo_dir, &issue, &branch)?;
+        let pr_url = create_pr(&repo_dir, issue, &branch)?;
         println!("\n{}", "Done!".green().bold());
         println!("  {} {}", "PR:".bold(), pr_url);
     } else {
@@ -159,6 +171,231 @@ pub fn gh_issue(url: &str, options: GhIssueOptions) -> Result<()> {
     println!("  {} ${:.4}", "Cost:".bold(), result.metrics.cost_usd);
 
     Ok(())
+}
+
+/// Compare flow: run control (no sidecars) vs fmm (with sidecars) in isolated sandboxes.
+fn gh_issue_compare(
+    url: &str,
+    issue: &Issue,
+    issue_ref: &IssueRef,
+    options: &GhIssueOptions,
+) -> Result<()> {
+    let repo_slug = format!("{}/{}", issue_ref.owner, issue_ref.repo);
+
+    println!(
+        "\n{} A/B comparison for {}#{}",
+        "COMPARE MODE".cyan().bold(),
+        repo_slug,
+        issue_ref.number
+    );
+
+    // --- Sandbox setup ---
+    println!("{}", "Setting up sandboxes...".green().bold());
+    let job_id = generate_compare_job_id(issue_ref);
+    let sandbox = Sandbox::new(&job_id)?;
+    sandbox.clone_repo(&issue_ref.clone_url, None)?;
+    println!("  {} Cloned into dual sandboxes", "OK".green());
+
+    // --- Build prompts ---
+    // Control prompt: raw issue only (no sidecar references)
+    let control_prompt = build_raw_issue_prompt(issue, issue_ref);
+
+    // FMM prompt: generate sidecars, extract + resolve references, build enriched prompt
+    println!("{}", "Generating FMM sidecars...".green().bold());
+    sandbox.generate_fmm_manifest()?;
+    sandbox.setup_fmm_integration()?;
+
+    let manifest = Manifest::load_from_sidecars(&sandbox.fmm_dir)?;
+    println!("  {} {} files indexed", "OK".green(), manifest.files.len());
+
+    let refs = extract_references(&issue.body);
+    let (resolved, unresolved) = resolve_references(&refs, &manifest);
+    let fmm_prompt = build_prompt(issue, issue_ref, &resolved, &unresolved);
+
+    let fmm_context = build_fmm_context(&sandbox.fmm_dir);
+
+    // --- Run control variant FIRST (cold cache, no sidecars) ---
+    println!(
+        "\n{} Running {} variant...",
+        "1/2".cyan().bold(),
+        "control".white().bold()
+    );
+    println!("  {} No sidecars, no skill, no MCP", "Config:".dimmed());
+
+    let control_result = invoke_claude_with_options(InvokeOptions {
+        prompt: &control_prompt,
+        repo_dir: &sandbox.control_dir,
+        model: &options.model,
+        max_turns: options.max_turns,
+        max_budget: options.max_budget,
+        allowed_tools: Some("Read,Write,Edit,Glob,Grep,Bash"),
+        setting_sources: Some(""),
+        append_system_prompt: None,
+    })?;
+
+    println!(
+        "  {} {}, {} turns, {} tool calls, ${:.4}",
+        if control_result.success {
+            "OK".green()
+        } else {
+            "FAIL".red()
+        },
+        if control_result.success {
+            "success"
+        } else {
+            "failed"
+        },
+        control_result.metrics.turns,
+        control_result.metrics.tool_calls,
+        control_result.metrics.cost_usd,
+    );
+
+    // --- Run FMM variant SECOND (sidecars + skill + MCP) ---
+    println!(
+        "\n{} Running {} variant...",
+        "2/2".cyan().bold(),
+        "fmm".green().bold()
+    );
+    println!("  {} Sidecars + skill + MCP + context", "Config:".dimmed());
+
+    let fmm_result = invoke_claude_with_options(InvokeOptions {
+        prompt: &fmm_prompt,
+        repo_dir: &sandbox.fmm_dir,
+        model: &options.model,
+        max_turns: options.max_turns,
+        max_budget: options.max_budget,
+        allowed_tools: Some("Read,Write,Edit,Glob,Grep,Bash"),
+        setting_sources: Some("local"),
+        append_system_prompt: Some(&fmm_context),
+    })?;
+
+    println!(
+        "  {} {}, {} turns, {} tool calls, ${:.4}",
+        if fmm_result.success {
+            "OK".green()
+        } else {
+            "FAIL".red()
+        },
+        if fmm_result.success {
+            "success"
+        } else {
+            "failed"
+        },
+        fmm_result.metrics.turns,
+        fmm_result.metrics.tool_calls,
+        fmm_result.metrics.cost_usd,
+    );
+
+    // --- Generate report ---
+    let total_cost = control_result.metrics.cost_usd + fmm_result.metrics.cost_usd;
+
+    let report = report::IssueComparisonReport::new(report::ReportInput {
+        issue_url: url,
+        issue_title: &issue.title,
+        issue_number: issue_ref.number,
+        repo: &repo_slug,
+        model: &options.model,
+        max_budget_usd: options.max_budget,
+        max_turns: options.max_turns,
+        control_metrics: &control_result.metrics,
+        fmm_metrics: &fmm_result.metrics,
+    });
+
+    report.print_summary();
+
+    // Save report files
+    if let Some(ref output_dir) = options.output {
+        let saved = report.save(std::path::Path::new(output_dir))?;
+        println!();
+        for path in &saved {
+            println!("  {} {}", "Saved:".bold(), path.dimmed());
+        }
+    } else {
+        // Default: print JSON to allow piping
+        println!("\n{}", "--- JSON Report ---".dimmed());
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    }
+
+    println!("\n  {} ${:.4}", "Total cost:".bold(), total_cost);
+
+    Ok(())
+}
+
+/// Build a raw issue prompt without sidecar references (for control variant).
+fn build_raw_issue_prompt(issue: &Issue, issue_ref: &IssueRef) -> String {
+    let mut prompt = String::new();
+
+    prompt.push_str(&format!(
+        "## Task\nFix GitHub issue #{} in {}/{}: {}\n\n",
+        issue.number, issue_ref.owner, issue_ref.repo, issue.title
+    ));
+
+    prompt.push_str(&format!("## Issue Description\n{}\n\n", issue.body));
+
+    prompt.push_str("## Instructions\n");
+    prompt.push_str("1. Explore the codebase to find the relevant files\n");
+    prompt.push_str("2. Make minimal changes to fix the issue\n");
+    prompt.push_str("3. Stay consistent with existing code style\n");
+    prompt.push_str("4. Do NOT modify unrelated files\n");
+    prompt.push_str(
+        "5. Run tests if available (look for package.json scripts, Makefile, Cargo.toml, etc.)\n",
+    );
+
+    prompt
+}
+
+/// Build FMM context string for system prompt injection.
+fn build_fmm_context(fmm_dir: &std::path::Path) -> String {
+    let has_sidecars = walkdir::WalkDir::new(fmm_dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .any(|e| e.path().extension().and_then(|ext| ext.to_str()) == Some("fmm"));
+
+    if !has_sidecars {
+        return String::new();
+    }
+
+    r#"This repository has .fmm sidecar files — structured metadata companions for source files.
+
+For every source file (e.g. foo.ts), there may be a foo.ts.fmm containing:
+- exports: what the file defines
+- imports: external packages used
+- dependencies: local files it imports
+- loc: file size
+
+Use sidecars to navigate: Grep "exports:.*SymbolName" **/*.fmm to find files.
+Only open source files you need to edit."#
+        .to_string()
+}
+
+fn generate_compare_job_id(issue_ref: &IssueRef) -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let duration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+
+    let ts = duration.as_secs();
+    let ns = duration.subsec_nanos();
+    let random: u16 = ((ns / 1000) % 65536) as u16;
+
+    // Sanitize repo name: only keep alphanumeric, hyphens, underscores
+    let safe_repo: String = issue_ref
+        .repo
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+
+    format!(
+        "gh-cmp-{}-{}-{:x}-{:04x}",
+        safe_repo, issue_ref.number, ts, random
+    )
 }
 
 fn get_head_sha(repo_dir: &std::path::Path) -> Result<String> {
@@ -172,7 +409,6 @@ fn get_head_sha(repo_dir: &std::path::Path) -> Result<String> {
 }
 
 fn verify_changes(repo_dir: &std::path::Path, pre_claude_head: &str) -> Result<bool> {
-    // Check for working tree changes (unstaged, staged, or untracked)
     let status = std::process::Command::new("git")
         .args(["status", "--porcelain"])
         .current_dir(repo_dir)
@@ -183,7 +419,6 @@ fn verify_changes(repo_dir: &std::path::Path, pre_claude_head: &str) -> Result<b
         return Ok(true);
     }
 
-    // Check if Claude made its own commits by comparing current HEAD to pre-invoke HEAD
     let current_head = get_head_sha(repo_dir)?;
     if current_head != pre_claude_head {
         return Ok(true);
@@ -206,7 +441,6 @@ fn commit_changes(repo_dir: &std::path::Path, issue: &Issue) -> Result<()> {
         );
     }
 
-    // Check if there's anything to commit (Claude may have committed already)
     let status = std::process::Command::new("git")
         .args(["diff", "--cached", "--quiet"])
         .current_dir(repo_dir)
@@ -214,7 +448,6 @@ fn commit_changes(repo_dir: &std::path::Path, issue: &Issue) -> Result<()> {
         .context("Failed to check staged changes")?;
 
     if status.status.success() {
-        // Nothing staged — Claude already committed its changes
         return Ok(());
     }
 
