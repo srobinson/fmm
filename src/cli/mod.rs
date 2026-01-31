@@ -210,6 +210,10 @@ pub enum Commands {
         /// Install all integrations (non-interactive)
         #[arg(long)]
         all: bool,
+
+        /// Skip auto-generating sidecars (config files only)
+        #[arg(long)]
+        no_generate: bool,
     },
 
     /// Show current fmm status and configuration
@@ -712,7 +716,15 @@ pub fn clean(path: &str, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn init(skill: bool, mcp: bool, all: bool) -> Result<()> {
+pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> {
+    println!(
+        "\n{}",
+        "Frontmatter Matters — metadata sidecars for LLM code navigation"
+            .cyan()
+            .bold()
+    );
+    println!();
+
     let specific = skill || mcp;
     let full_setup = !specific || all;
 
@@ -730,6 +742,70 @@ pub fn init(skill: bool, mcp: bool, all: bool) -> Result<()> {
         init_mcp_config()?;
     }
 
+    // Auto-generate sidecars unless --no-generate or partial install
+    if full_setup && !no_generate {
+        println!();
+        let config = Config::load().unwrap_or_default();
+        let files = collect_files(".", &config)?;
+
+        if !files.is_empty() {
+            // Detect languages present
+            let mut lang_set = std::collections::BTreeSet::new();
+            for file in &files {
+                if let Some(ext) = file.extension().and_then(|e| e.to_str()) {
+                    lang_set.insert(ext.to_string());
+                }
+            }
+            println!(
+                "{} {} source files detected ({})",
+                "✓".green(),
+                files.len(),
+                lang_set.into_iter().collect::<Vec<_>>().join(", ")
+            );
+
+            println!("{}", "Generating sidecars...".green().bold());
+            generate(".", false)?;
+
+            // Show one sample sidecar
+            let root = resolve_root(".")?;
+            if let Some(sample_file) = files.iter().find(|f| sidecar_path_for(f).exists()) {
+                let sidecar = sidecar_path_for(sample_file);
+                if let Ok(content) = std::fs::read_to_string(&sidecar) {
+                    let rel = sample_file
+                        .strip_prefix(&root)
+                        .unwrap_or(sample_file)
+                        .display();
+                    println!(
+                        "\n{} {}:",
+                        "Sample sidecar for".dimmed(),
+                        rel.to_string().white().bold()
+                    );
+                    for line in content.lines().take(15) {
+                        println!("  {}", line.dimmed());
+                    }
+                    if content.lines().count() > 15 {
+                        println!("  {}", "...".dimmed());
+                    }
+                }
+
+                // Suggest a search using a real export
+                let manifest = crate::manifest::Manifest::load_from_sidecars(&root)?;
+                if let Some((export_name, _)) = manifest.export_index.iter().next() {
+                    println!(
+                        "\n  {} Try: fmm search --export {}",
+                        "next:".cyan(),
+                        export_name
+                    );
+                }
+            }
+        } else {
+            println!(
+                "{} No supported source files found — sidecars will be created when you add code",
+                "!".yellow()
+            );
+        }
+    }
+
     println!();
     println!("{}", "Setup complete!".green().bold());
     if install_config {
@@ -741,10 +817,18 @@ pub fn init(skill: bool, mcp: bool, all: bool) -> Result<()> {
     if install_mcp {
         println!("  MCP:      .mcp.json");
     }
-    println!(
-        "\n  {} Run 'fmm generate' to create sidecars — your AI assistant will navigate via metadata",
-        "next:".cyan()
-    );
+
+    if no_generate || specific {
+        println!(
+            "\n  {} Run 'fmm generate' to create sidecars — your AI assistant will navigate via metadata",
+            "next:".cyan()
+        );
+    } else {
+        println!(
+            "\n  {} Your AI assistant now navigates this codebase via metadata sidecars",
+            "✓".green()
+        );
+    }
 
     Ok(())
 }

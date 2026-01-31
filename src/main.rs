@@ -26,9 +26,13 @@ fn main() -> Result<()> {
             println!("{}", "Cleaning sidecars...".green().bold());
             cli::clean(&path, dry_run)?;
         }
-        Commands::Init { skill, mcp, all } => {
-            println!("{}", "Initializing fmm...".green().bold());
-            cli::init(skill, mcp, all)?;
+        Commands::Init {
+            skill,
+            mcp,
+            all,
+            no_generate,
+        } => {
+            cli::init(skill, mcp, all, no_generate)?;
         }
         Commands::Status => {
             cli::status()?;
