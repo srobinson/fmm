@@ -109,6 +109,12 @@ pub enum Commands {
     /// Start MCP server for LLM integration (alias for 'mcp')
     Serve,
 
+    /// GitHub integrations (issue fixing, PR creation)
+    Gh {
+        #[command(subcommand)]
+        subcommand: GhSubcommand,
+    },
+
     /// Compare FMM vs control performance on a GitHub repository
     Compare {
         /// GitHub repository URL (e.g., https://github.com/owner/repo)
@@ -162,6 +168,44 @@ pub enum OutputFormat {
     Json,
     Markdown,
     Both,
+}
+
+/// GitHub subcommands
+#[derive(Subcommand)]
+pub enum GhSubcommand {
+    /// Fix a GitHub issue: clone repo, generate sidecars, invoke Claude, create PR
+    Issue {
+        /// GitHub issue URL (e.g., https://github.com/owner/repo/issues/123)
+        url: String,
+
+        /// Claude model to use
+        #[arg(long, default_value = "sonnet")]
+        model: String,
+
+        /// Maximum turns for Claude
+        #[arg(long, default_value = "30")]
+        max_turns: u32,
+
+        /// Maximum budget in USD
+        #[arg(long, default_value = "5.0")]
+        max_budget: f64,
+
+        /// Show plan without executing (extract refs + assembled prompt)
+        #[arg(short = 'n', long)]
+        dry_run: bool,
+
+        /// Git branch prefix
+        #[arg(long, default_value = "fmm")]
+        branch_prefix: String,
+
+        /// Commit and push only, skip PR creation
+        #[arg(long)]
+        no_pr: bool,
+
+        /// Override workspace directory
+        #[arg(long)]
+        workspace: Option<String>,
+    },
 }
 
 /// Resolve the root directory from the target path.

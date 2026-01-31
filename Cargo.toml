@@ -48,6 +48,9 @@ log = "0.4"
 anyhow = "1.0"
 thiserror = "2.0"
 
+# Regex
+regex = "1.12"
+
 # Platform directories (for caching)
 dirs = "5.0"
 

@@ -1,8 +1,9 @@
 use anyhow::Result;
 use clap::Parser as ClapParser;
 use colored::Colorize;
-use fmm::cli::{self, Cli, Commands, OutputFormat};
+use fmm::cli::{self, Cli, Commands, GhSubcommand, OutputFormat};
 use fmm::compare;
+use fmm::gh;
 use fmm::mcp;
 
 fn main() -> Result<()> {
@@ -41,6 +42,29 @@ fn main() -> Result<()> {
         } => {
             cli::search(export, imports, loc, depends_on, json)?;
         }
+        Commands::Gh { subcommand } => match subcommand {
+            GhSubcommand::Issue {
+                url,
+                model,
+                max_turns,
+                max_budget,
+                dry_run,
+                branch_prefix,
+                no_pr,
+                workspace,
+            } => {
+                let options = gh::GhIssueOptions {
+                    model,
+                    max_turns,
+                    max_budget,
+                    dry_run,
+                    branch_prefix,
+                    no_pr,
+                    workspace,
+                };
+                gh::gh_issue(&url, options)?;
+            }
+        },
         Commands::Mcp | Commands::Serve => {
             let mut server = mcp::McpServer::new();
             server.run()?;
