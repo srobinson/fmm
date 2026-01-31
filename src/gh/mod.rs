@@ -324,6 +324,10 @@ pub fn run_issue_compare(
         fmm_result.metrics.cost_usd,
     );
 
+    // --- Capture diffs before sandbox drops ---
+    let control_diff = capture_diff(&sandbox.control_dir);
+    let fmm_diff = capture_diff(&sandbox.fmm_dir);
+
     // --- Generate report ---
     let report = report::IssueComparisonReport::new(report::ReportInput {
         issue_url: url,
@@ -335,6 +339,8 @@ pub fn run_issue_compare(
         max_turns,
         control_metrics: &control_result.metrics,
         fmm_metrics: &fmm_result.metrics,
+        control_diff: &control_diff,
+        fmm_diff: &fmm_diff,
     });
 
     Ok(report)
@@ -485,6 +491,30 @@ fn commit_changes(repo_dir: &std::path::Path, issue: &Issue) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Capture the git diff from a sandbox directory before cleanup.
+/// Tries staged+unstaged first, falls back to committed diff against parent.
+fn capture_diff(repo_dir: &std::path::Path) -> String {
+    let output = std::process::Command::new("git")
+        .args(["diff", "HEAD"])
+        .current_dir(repo_dir)
+        .output();
+
+    match output {
+        Ok(o) if !o.stdout.is_empty() => String::from_utf8_lossy(&o.stdout).to_string(),
+        _ => {
+            // Claude may have committed directly — diff against parent
+            let output = std::process::Command::new("git")
+                .args(["diff", "HEAD~1..HEAD"])
+                .current_dir(repo_dir)
+                .output();
+            match output {
+                Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
+                Err(_) => String::new(),
+            }
+        }
+    }
 }
 
 fn push_branch(repo_dir: &std::path::Path, branch: &str) -> Result<()> {

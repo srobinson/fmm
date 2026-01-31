@@ -823,6 +823,8 @@ mod tests {
             max_turns: 30,
             control_metrics: &control,
             fmm_metrics: &fmm,
+            control_diff: "",
+            fmm_diff: "",
         })
     }
 

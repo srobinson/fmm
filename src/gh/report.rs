@@ -2,6 +2,7 @@
 
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -37,12 +38,21 @@ pub struct VariantResult {
     pub tool_calls: u32,
     pub read_calls: u32,
     pub files_read: u32,
+    pub files_changed: u32,
+    pub tools_by_name: HashMap<String, u32>,
     pub success: bool,
     pub error: Option<String>,
+    #[serde(skip)]
+    pub diff: String,
 }
 
-impl From<&RunMetrics> for VariantResult {
-    fn from(m: &RunMetrics) -> Self {
+impl VariantResult {
+    fn from_metrics(m: &RunMetrics, diff: &str) -> Self {
+        let files_changed = diff
+            .lines()
+            .filter(|l| l.starts_with("diff --git"))
+            .count() as u32;
+
         Self {
             input_tokens: m.input_tokens,
             output_tokens: m.output_tokens,
@@ -54,8 +64,11 @@ impl From<&RunMetrics> for VariantResult {
             tool_calls: m.tool_calls,
             read_calls: m.read_calls,
             files_read: m.files_accessed.len() as u32,
+            files_changed,
+            tools_by_name: m.tools_by_name.clone(),
             success: m.success,
             error: m.error.clone(),
+            diff: diff.to_string(),
         }
     }
 }
@@ -83,12 +96,14 @@ pub struct ReportInput<'a> {
     pub max_turns: u32,
     pub control_metrics: &'a RunMetrics,
     pub fmm_metrics: &'a RunMetrics,
+    pub control_diff: &'a str,
+    pub fmm_diff: &'a str,
 }
 
 impl IssueComparisonReport {
     pub fn new(input: ReportInput<'_>) -> Self {
-        let control = VariantResult::from(input.control_metrics);
-        let fmm = VariantResult::from(input.fmm_metrics);
+        let control = VariantResult::from_metrics(input.control_metrics, input.control_diff);
+        let fmm = VariantResult::from_metrics(input.fmm_metrics, input.fmm_diff);
         let savings = Self::calculate_savings(&control, &fmm);
         let verdict = Self::generate_verdict(&savings);
 
@@ -202,7 +217,34 @@ impl IssueComparisonReport {
             self.fmm.files_read as u64,
             self.savings.files_read_pct,
         );
+        self.print_row(
+            "Files changed",
+            self.control.files_changed as u64,
+            self.fmm.files_changed as u64,
+            -1.0,
+        );
         self.print_duration_row();
+
+        // Tool call breakdown
+        if !self.control.tools_by_name.is_empty() || !self.fmm.tools_by_name.is_empty() {
+            println!("\n  {}", "Tool breakdown:".bold());
+            let mut all_tools: Vec<&str> = self
+                .control
+                .tools_by_name
+                .keys()
+                .chain(self.fmm.tools_by_name.keys())
+                .map(|s| s.as_str())
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .collect();
+            all_tools.sort();
+
+            for tool in &all_tools {
+                let c = self.control.tools_by_name.get(*tool).copied().unwrap_or(0);
+                let f = self.fmm.tools_by_name.get(*tool).copied().unwrap_or(0);
+                println!("    {:16} {:>6} {:>6}", tool, c, f);
+            }
+        }
 
         println!("\n  {} {}", "Verdict:".bold(), self.verdict.green());
     }
@@ -351,6 +393,12 @@ impl IssueComparisonReport {
             self.savings.files_read_pct
         ));
         md.push_str(&format!(
+            "| Files changed | {} | {} | {} | — |\n",
+            self.control.files_changed,
+            self.fmm.files_changed,
+            delta_str(self.control.files_changed as u64, self.fmm.files_changed as u64)
+        ));
+        md.push_str(&format!(
             "| Duration | {:.0}s | {:.0}s | {} | {:.0}% |\n\n",
             self.control.duration_ms as f64 / 1000.0,
             self.fmm.duration_ms as f64 / 1000.0,
@@ -358,7 +406,56 @@ impl IssueComparisonReport {
             self.savings.duration_pct
         ));
 
+        // Tool breakdown
+        if !self.control.tools_by_name.is_empty() || !self.fmm.tools_by_name.is_empty() {
+            md.push_str("### Tool Breakdown\n\n");
+            md.push_str("| Tool | Control | FMM |\n");
+            md.push_str("|------|---------|-----|\n");
+
+            let mut all_tools: Vec<&str> = self
+                .control
+                .tools_by_name
+                .keys()
+                .chain(self.fmm.tools_by_name.keys())
+                .map(|s| s.as_str())
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .collect();
+            all_tools.sort();
+
+            for tool in &all_tools {
+                let c = self.control.tools_by_name.get(*tool).copied().unwrap_or(0);
+                let f = self.fmm.tools_by_name.get(*tool).copied().unwrap_or(0);
+                md.push_str(&format!("| {} | {} | {} |\n", tool, c, f));
+            }
+            md.push('\n');
+        }
+
         md.push_str(&format!("**Verdict:** {}\n", self.verdict));
+
+        // Truncated diffs
+        fn truncated_diff(diff: &str, max_lines: usize) -> String {
+            let lines: Vec<&str> = diff.lines().collect();
+            if lines.is_empty() {
+                return "(no changes)".to_string();
+            }
+            let shown: Vec<&str> = lines.iter().take(max_lines).copied().collect();
+            let mut out = shown.join("\n");
+            if lines.len() > max_lines {
+                out.push_str(&format!("\n\n... ({} more lines)", lines.len() - max_lines));
+            }
+            out
+        }
+
+        if !self.control.diff.is_empty() || !self.fmm.diff.is_empty() {
+            md.push_str("\n### Diffs\n\n");
+            md.push_str("<details>\n<summary>Control diff</summary>\n\n```diff\n");
+            md.push_str(&truncated_diff(&self.control.diff, 100));
+            md.push_str("\n```\n</details>\n\n");
+            md.push_str("<details>\n<summary>FMM diff</summary>\n\n```diff\n");
+            md.push_str(&truncated_diff(&self.fmm.diff, 100));
+            md.push_str("\n```\n</details>\n");
+        }
 
         md
     }
@@ -382,6 +479,18 @@ impl IssueComparisonReport {
         let md_path = output_dir.join(format!("{}.md", base));
         fs::write(&md_path, self.to_markdown())?;
         saved.push(md_path.display().to_string());
+
+        if !self.control.diff.is_empty() {
+            let diff_path = output_dir.join("control.diff");
+            fs::write(&diff_path, &self.control.diff)?;
+            saved.push(diff_path.display().to_string());
+        }
+
+        if !self.fmm.diff.is_empty() {
+            let diff_path = output_dir.join("fmm.diff");
+            fs::write(&diff_path, &self.fmm.diff)?;
+            saved.push(diff_path.display().to_string());
+        }
 
         Ok(saved)
     }
@@ -487,6 +596,8 @@ mod tests {
             max_turns: 30,
             control_metrics: &control,
             fmm_metrics: &fmm,
+            control_diff: "",
+            fmm_diff: "",
         });
 
         assert!(report.savings.input_tokens_pct > 70.0);
@@ -510,6 +621,8 @@ mod tests {
             max_turns: 30,
             control_metrics: &control,
             fmm_metrics: &fmm,
+            control_diff: "",
+            fmm_diff: "",
         });
 
         let md = report.to_markdown();
@@ -534,6 +647,8 @@ mod tests {
             max_turns: 30,
             control_metrics: &control,
             fmm_metrics: &fmm,
+            control_diff: "",
+            fmm_diff: "",
         });
 
         let json = serde_json::to_string(&report).unwrap();
@@ -570,6 +685,8 @@ mod tests {
             max_turns: 30,
             control_metrics: &control,
             fmm_metrics: &fmm,
+            control_diff: "",
+            fmm_diff: "",
         });
 
         assert!(report.verdict.contains("did not reduce"));
