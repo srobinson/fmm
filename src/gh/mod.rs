@@ -100,6 +100,9 @@ pub fn gh_issue(url: &str, options: GhIssueOptions) -> Result<()> {
     let branch = create_branch(&repo_dir, &options.branch_prefix, issue_ref.number)?;
     println!("  {} {}", "Branch:".bold(), branch);
 
+    // Record HEAD before Claude runs so we can detect if it made commits
+    let pre_claude_head = get_head_sha(&repo_dir)?;
+
     // 13. Invoke Claude
     println!("{}", "Running Claude...".green().bold());
     let result = invoke_claude(
@@ -125,8 +128,8 @@ pub fn gh_issue(url: &str, options: GhIssueOptions) -> Result<()> {
         anyhow::bail!("Claude failed to fix the issue: {}", result.response_text);
     }
 
-    // 14. Verify changes
-    let has_changes = verify_changes(&repo_dir)?;
+    // 14. Verify changes (working tree or new commits)
+    let has_changes = verify_changes(&repo_dir, &pre_claude_head)?;
     if !has_changes {
         println!(
             "{}",
@@ -135,7 +138,7 @@ pub fn gh_issue(url: &str, options: GhIssueOptions) -> Result<()> {
         return Ok(());
     }
 
-    // 15. Commit
+    // 15. Commit (skip if Claude already committed and working tree is clean)
     commit_changes(&repo_dir, &issue)?;
 
     // 16. Push
@@ -158,15 +161,35 @@ pub fn gh_issue(url: &str, options: GhIssueOptions) -> Result<()> {
     Ok(())
 }
 
-fn verify_changes(repo_dir: &std::path::Path) -> Result<bool> {
+fn get_head_sha(repo_dir: &std::path::Path) -> Result<String> {
     let output = std::process::Command::new("git")
-        .args(["diff", "--stat"])
+        .args(["rev-parse", "HEAD"])
         .current_dir(repo_dir)
         .output()
-        .context("Failed to run git diff")?;
+        .context("Failed to get HEAD sha")?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(!stdout.trim().is_empty())
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn verify_changes(repo_dir: &std::path::Path, pre_claude_head: &str) -> Result<bool> {
+    // Check for working tree changes (unstaged, staged, or untracked)
+    let status = std::process::Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(repo_dir)
+        .output()
+        .context("Failed to run git status")?;
+
+    if !String::from_utf8_lossy(&status.stdout).trim().is_empty() {
+        return Ok(true);
+    }
+
+    // Check if Claude made its own commits by comparing current HEAD to pre-invoke HEAD
+    let current_head = get_head_sha(repo_dir)?;
+    if current_head != pre_claude_head {
+        return Ok(true);
+    }
+
+    Ok(false)
 }
 
 fn commit_changes(repo_dir: &std::path::Path, issue: &Issue) -> Result<()> {
@@ -181,6 +204,18 @@ fn commit_changes(repo_dir: &std::path::Path, issue: &Issue) -> Result<()> {
             "git add failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+
+    // Check if there's anything to commit (Claude may have committed already)
+    let status = std::process::Command::new("git")
+        .args(["diff", "--cached", "--quiet"])
+        .current_dir(repo_dir)
+        .output()
+        .context("Failed to check staged changes")?;
+
+    if status.status.success() {
+        // Nothing staged — Claude already committed its changes
+        return Ok(());
     }
 
     let commit_msg = format!("fix: {} (#{})", issue.title, issue.number);
