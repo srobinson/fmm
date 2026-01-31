@@ -248,7 +248,9 @@ impl IssueComparisonReport {
 
     fn print_row_cost(&self, label: &str, control: f64, fmm: f64, savings_pct: f64) {
         let delta = fmm - control;
-        let delta_str = if delta <= 0.0 {
+        let delta_str = if delta.abs() < 0.005 {
+            "$0.00".to_string()
+        } else if delta < 0.0 {
             format!("-${:.2}", delta.abs())
         } else {
             format!("+${:.2}", delta)
@@ -267,7 +269,9 @@ impl IssueComparisonReport {
         let c = self.control.duration_ms as f64 / 1000.0;
         let f = self.fmm.duration_ms as f64 / 1000.0;
         let delta = f - c;
-        let delta_str = if delta <= 0.0 {
+        let delta_str = if delta.abs() < 0.5 {
+            "0s".to_string()
+        } else if delta < 0.0 {
             format!("-{:.0}s", delta.abs())
         } else {
             format!("+{:.0}s", delta)
@@ -423,7 +427,9 @@ fn delta_str_signed(control: u64, fmm: u64) -> String {
 
 fn cost_delta_str(control: f64, fmm: f64) -> String {
     let d = fmm - control;
-    if d <= 0.0 {
+    if d.abs() < 0.005 {
+        "$0.00".to_string()
+    } else if d < 0.0 {
         format!("-${:.2}", d.abs())
     } else {
         format!("+${:.2}", d)
@@ -433,7 +439,9 @@ fn cost_delta_str(control: f64, fmm: f64) -> String {
 fn duration_delta_str(control_ms: u64, fmm_ms: u64) -> String {
     let d = fmm_ms as i64 - control_ms as i64;
     let secs = d.abs() as f64 / 1000.0;
-    if d <= 0 {
+    if d == 0 {
+        "0s".to_string()
+    } else if d < 0 {
         format!("-{:.0}s", secs)
     } else {
         format!("+{:.0}s", secs)
