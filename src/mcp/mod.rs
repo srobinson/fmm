@@ -98,6 +98,27 @@ impl McpServer {
         self.manifest = Manifest::load_from_sidecars(&self.root).ok();
     }
 
+    /// Cap MCP tool responses to prevent context bombs.
+    /// Large responses get truncated to disk by Claude, defeating the purpose.
+    const MAX_RESPONSE_BYTES: usize = 10_240;
+
+    fn cap_response(text: String) -> String {
+        if text.len() <= Self::MAX_RESPONSE_BYTES {
+            return text;
+        }
+        let truncated = &text[..Self::MAX_RESPONSE_BYTES];
+        // Find last newline to avoid cutting mid-line
+        let cut_point = truncated.rfind('\n').unwrap_or(Self::MAX_RESPONSE_BYTES);
+        let mut result = text[..cut_point].to_string();
+        let total_lines = text.lines().count();
+        let shown_lines = result.lines().count();
+        result.push_str(&format!(
+            "\n\n[Truncated — showing {}/{} lines. Use more specific filters.]",
+            shown_lines, total_lines
+        ));
+        result
+    }
+
     fn require_manifest(&self) -> Result<&Manifest, String> {
         self.manifest
             .as_ref()
@@ -284,9 +305,6 @@ impl McpServer {
                     }
                 }),
             },
-            // fmm_get_manifest and fmm_project_overview REMOVED —
-            // dumping the entire index is an anti-pattern (ALP-396).
-            // Use targeted tools: fmm_lookup_export, fmm_search, fmm_dependency_graph.
         ];
 
         Ok(json!({ "tools": tools }))
@@ -327,12 +345,15 @@ impl McpServer {
         };
 
         match result {
-            Ok(text) => Ok(json!({
-                "content": [{
-                    "type": "text",
-                    "text": text
-                }]
-            })),
+            Ok(text) => {
+                let text = Self::cap_response(text);
+                Ok(json!({
+                    "content": [{
+                        "type": "text",
+                        "text": text
+                    }]
+                }))
+            }
             Err(e) => Ok(json!({
                 "content": [{
                     "type": "text",
