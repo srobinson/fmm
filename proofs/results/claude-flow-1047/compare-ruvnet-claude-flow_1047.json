@@ -1,0 +1,48 @@
+{
+  "issue_url": "https://github.com/ruvnet/claude-flow/issues/1047",
+  "issue_title": "Statusline ADR count is hardcoded to 0/0",
+  "issue_number": 1047,
+  "repo": "ruvnet/claude-flow",
+  "model": "sonnet",
+  "max_budget_usd": 5.0,
+  "max_turns": 30,
+  "timestamp": "2026-01-31T17:26:03.887779+00:00",
+  "control": {
+    "input_tokens": 26,
+    "output_tokens": 7830,
+    "cache_read_tokens": 1746492,
+    "cache_creation_tokens": 68864,
+    "cost_usd": 0.9134196,
+    "turns": 31,
+    "duration_ms": 210019,
+    "tool_calls": 35,
+    "read_calls": 9,
+    "files_read": 9,
+    "success": true,
+    "error": null
+  },
+  "fmm": {
+    "input_tokens": 18,
+    "output_tokens": 10264,
+    "cache_read_tokens": 2394161,
+    "cache_creation_tokens": 88632,
+    "cost_usd": 1.2212832999999996,
+    "turns": 29,
+    "duration_ms": 246477,
+    "tool_calls": 28,
+    "read_calls": 10,
+    "files_read": 10,
+    "success": true,
+    "error": null
+  },
+  "savings": {
+    "input_tokens_pct": 30.76923076923077,
+    "total_tokens_pct": -30.880855397148675,
+    "cost_pct": -33.70452090145642,
+    "turns_pct": 6.451612903225806,
+    "tool_calls_pct": 20.0,
+    "files_read_pct": -11.11111111111111,
+    "duration_pct": -17.35938177022079
+  },
+  "verdict": "fmm did not reduce token usage in this run."
+}
