@@ -1,9 +1,26 @@
 # Installation
 
-## From crates.io
+## From crates.io (recommended)
 
 ```bash
 cargo install fmm
+```
+
+## Pre-built binaries
+
+Download pre-built binaries from [GitHub Releases](https://github.com/mdcontext/fmm/releases):
+
+| Platform | Architecture | Download |
+|----------|-------------|----------|
+| macOS | Apple Silicon (M1+) | `fmm-aarch64-apple-darwin.tar.gz` |
+| macOS | Intel | `fmm-x86_64-apple-darwin.tar.gz` |
+| Linux | x86_64 | `fmm-x86_64-unknown-linux-gnu.tar.gz` |
+| Windows | x86_64 | `fmm-x86_64-pc-windows-msvc.zip` |
+
+```bash
+# Example: macOS Apple Silicon
+curl -fsSL https://github.com/mdcontext/fmm/releases/latest/download/fmm-aarch64-apple-darwin.tar.gz | tar xz
+sudo mv fmm /usr/local/bin/
 ```
 
 ## From source

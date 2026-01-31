@@ -3,11 +3,14 @@ name = "fmm"
 version = "0.1.0"
 edition = "2021"
 authors = ["Stuart Robinson <stuart@alphabio.com>"]
-description = "Frontmatter Matters - Auto-generate code frontmatter for LLM-optimized navigation"
+description = "Auto-generate code metadata sidecars for LLM-optimized navigation"
 license = "MIT"
 repository = "https://github.com/mdcontext/fmm"
-keywords = ["frontmatter", "llm", "code-analysis", "ast", "documentation"]
+homepage = "https://mdcontext.github.io/fmm/"
+readme = "README.md"
+keywords = ["llm", "code-analysis", "ast", "mcp", "sidecar"]
 categories = ["command-line-utilities", "development-tools"]
+exclude = ["research/", "experiments/", ".nancy/", "demos/", "docs/"]
 
 [dependencies]
 # Core parsing
