@@ -21,6 +21,9 @@ Thumbs.db
 # Testing
 /tmp
 
+# mdBook build output
+docs/book/
+
 # Nested fmm manifests (keep root .fmm/ but ignore in subdirs)
 */**/.fmm/
 
