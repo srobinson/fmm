@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -83,6 +83,42 @@ fn default_true() -> bool {
 
 fn default_max_file_size() -> usize {
     1024 // 1MB in KB
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GlobalConfig {
+    pub workspace_dir: PathBuf,
+}
+
+impl Default for GlobalConfig {
+    fn default() -> Self {
+        let workspace_dir = dirs::data_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("fmm")
+            .join("workspaces");
+        Self { workspace_dir }
+    }
+}
+
+impl GlobalConfig {
+    pub fn load() -> Self {
+        let config_path = dirs::config_dir().map(|d| d.join("fmm").join("config.json"));
+
+        let Some(path) = config_path else {
+            return Self::default();
+        };
+
+        if !path.exists() {
+            return Self::default();
+        }
+
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => return Self::default(),
+        };
+
+        serde_json::from_str(&content).unwrap_or_default()
+    }
 }
 
 #[cfg(test)]
@@ -244,5 +280,36 @@ mod tests {
         assert_eq!(config.include_loc, deserialized.include_loc);
         assert_eq!(config.include_complexity, deserialized.include_complexity);
         assert_eq!(config.max_file_size, deserialized.max_file_size);
+    }
+
+    // GlobalConfig tests
+
+    #[test]
+    fn global_config_default_has_platform_workspace() {
+        let config = GlobalConfig::default();
+        let path_str = config.workspace_dir.to_string_lossy();
+        assert!(path_str.contains("fmm"));
+        assert!(path_str.contains("workspaces"));
+    }
+
+    #[test]
+    fn global_config_load_returns_defaults_when_no_file() {
+        // With no config file, load() should return defaults without error
+        let config = GlobalConfig::load();
+        assert!(config.workspace_dir.to_string_lossy().contains("fmm"));
+    }
+
+    #[test]
+    fn global_config_parses_valid_json() {
+        let json = r#"{"workspace_dir": "/tmp/my-workspaces"}"#;
+        let config: GlobalConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.workspace_dir, PathBuf::from("/tmp/my-workspaces"));
+    }
+
+    #[test]
+    fn global_config_invalid_json_returns_default() {
+        let result: Result<GlobalConfig, _> = serde_json::from_str("not json");
+        assert!(result.is_err());
+        // load() would fall back to default in this case
     }
 }
