@@ -304,20 +304,7 @@ fn count_unique_languages(corpus: &Corpus) -> usize {
         .issues
         .iter()
         .flat_map(|i| i.tags.iter())
-        .filter(|t| {
-            matches!(
-                t.as_str(),
-                "typescript"
-                    | "javascript"
-                    | "python"
-                    | "rust"
-                    | "go"
-                    | "java"
-                    | "cpp"
-                    | "csharp"
-                    | "ruby"
-            )
-        })
+        .filter(|t| LANGUAGES.contains(&t.as_str()))
         .map(|t| t.as_str())
         .collect();
     langs.len()
