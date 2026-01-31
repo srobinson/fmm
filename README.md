@@ -2,8 +2,8 @@
 
 **Metadata sidecars that give LLMs a map of your codebase.**
 
-[![CI](https://github.com/mdcontext/fmm/actions/workflows/ci.yml/badge.svg)](https://github.com/mdcontext/fmm/actions/workflows/ci.yml)
-[![Docs](https://github.com/mdcontext/fmm/actions/workflows/docs.yml/badge.svg)](https://mdcontext.github.io/fmm/)
+[![CI](https://github.com/srobinson/fmm/actions/workflows/ci.yml/badge.svg)](https://github.com/srobinson/fmm/actions/workflows/ci.yml)
+[![Docs](https://github.com/srobinson/fmm/actions/workflows/docs.yml/badge.svg)](https://docs.fmm.dev/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Languages](https://img.shields.io/badge/languages-9-informational.svg)](#supported-languages)
 
@@ -116,7 +116,7 @@ fmm includes a built-in MCP server. Configure via `fmm init --mcp` or manually:
 | `fmm_dependency_graph` | Get upstream dependencies and downstream dependents |
 | `fmm_search` | Search by export, imports, dependencies, LOC range |
 
-See the full [MCP Tools reference](https://mdcontext.github.io/fmm/reference/mcp-tools.html) for schemas and examples.
+See the full [MCP Tools reference](https://docs.fmm.dev/reference/mcp-tools.html) for schemas and examples.
 
 ## Evidence
 
@@ -193,7 +193,7 @@ All languages extract: **exports**, **imports**, **dependencies**, **LOC**.
 | `fmm mcp` | Start MCP server |
 | `fmm completions <shell>` | Generate shell completions (bash, zsh, fish, powershell) |
 
-Full reference: [CLI docs](https://mdcontext.github.io/fmm/reference/cli.html)
+Full reference: [CLI docs](https://docs.fmm.dev/reference/cli.html)
 
 ## CI/CD Integration
 
@@ -207,12 +207,12 @@ Full reference: [CLI docs](https://mdcontext.github.io/fmm/reference/cli.html)
 
 ## Documentation
 
-- [Getting Started](https://mdcontext.github.io/fmm/getting-started/quickstart.html) — first sidecar in 60 seconds
-- [CLI Reference](https://mdcontext.github.io/fmm/reference/cli.html) — all commands and options
-- [Sidecar Format](https://mdcontext.github.io/fmm/reference/sidecar-format.html) — YAML specification
-- [MCP Tools](https://mdcontext.github.io/fmm/reference/mcp-tools.html) — tool schemas for LLM agents
-- [Configuration](https://mdcontext.github.io/fmm/reference/configuration.html) — .fmmrc.json options
-- [llms.txt](https://mdcontext.github.io/fmm/llms.txt) — AI-readable documentation index
+- [Getting Started](https://docs.fmm.dev/getting-started/quickstart.html) — first sidecar in 60 seconds
+- [CLI Reference](https://docs.fmm.dev/reference/cli.html) — all commands and options
+- [Sidecar Format](https://docs.fmm.dev/reference/sidecar-format.html) — YAML specification
+- [MCP Tools](https://docs.fmm.dev/reference/mcp-tools.html) — tool schemas for LLM agents
+- [Configuration](https://docs.fmm.dev/reference/configuration.html) — .fmmrc.json options
+- [llms.txt](https://docs.fmm.dev/llms.txt) — AI-readable documentation index
 
 ## Contributing
 

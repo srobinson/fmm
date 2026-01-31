@@ -8,7 +8,7 @@ cargo install fmm
 
 ## Pre-built binaries
 
-Download pre-built binaries from [GitHub Releases](https://github.com/mdcontext/fmm/releases):
+Download pre-built binaries from [GitHub Releases](https://github.com/srobinson/fmm/releases):
 
 | Platform | Architecture | Download |
 |----------|-------------|----------|
@@ -19,14 +19,14 @@ Download pre-built binaries from [GitHub Releases](https://github.com/mdcontext/
 
 ```bash
 # Example: macOS Apple Silicon
-curl -fsSL https://github.com/mdcontext/fmm/releases/latest/download/fmm-aarch64-apple-darwin.tar.gz | tar xz
+curl -fsSL https://github.com/srobinson/fmm/releases/latest/download/fmm-aarch64-apple-darwin.tar.gz | tar xz
 sudo mv fmm /usr/local/bin/
 ```
 
 ## From source
 
 ```bash
-git clone https://github.com/mdcontext/fmm
+git clone https://github.com/srobinson/fmm
 cd fmm
 cargo install --path .
 ```

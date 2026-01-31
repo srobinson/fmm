@@ -6,14 +6,14 @@ fmm generates .fmm sidecar files alongside your source code. Each sidecar is a s
 
 ## Docs
 
-- [Introduction](https://mdcontext.github.io/fmm/introduction.html): What fmm is, why sidecars, how it works
-- [Installation](https://mdcontext.github.io/fmm/getting-started/installation.html): Install from crates.io or source, shell completions
-- [Quickstart](https://mdcontext.github.io/fmm/getting-started/quickstart.html): First sidecar in 60 seconds — init, search, validate
-- [CLI Reference](https://mdcontext.github.io/fmm/reference/cli.html): All commands, options, and examples
-- [Sidecar Format](https://mdcontext.github.io/fmm/reference/sidecar-format.html): .fmm YAML schema, fields, language-specific extensions
-- [Configuration](https://mdcontext.github.io/fmm/reference/configuration.html): .fmmrc.json options, .fmmignore, MCP server config
-- [MCP Tools](https://mdcontext.github.io/fmm/reference/mcp-tools.html): MCP server tool schemas for LLM agent integration
+- [Introduction](https://docs.fmm.dev/introduction.html): What fmm is, why sidecars, how it works
+- [Installation](https://docs.fmm.dev/getting-started/installation.html): Install from crates.io or source, shell completions
+- [Quickstart](https://docs.fmm.dev/getting-started/quickstart.html): First sidecar in 60 seconds — init, search, validate
+- [CLI Reference](https://docs.fmm.dev/reference/cli.html): All commands, options, and examples
+- [Sidecar Format](https://docs.fmm.dev/reference/sidecar-format.html): .fmm YAML schema, fields, language-specific extensions
+- [Configuration](https://docs.fmm.dev/reference/configuration.html): .fmmrc.json options, .fmmignore, MCP server config
+- [MCP Tools](https://docs.fmm.dev/reference/mcp-tools.html): MCP server tool schemas for LLM agent integration
 
 ## Optional
 
-- [Full documentation](https://mdcontext.github.io/fmm/llms-full.txt): Complete documentation in a single file
+- [Full documentation](https://docs.fmm.dev/llms-full.txt): Complete documentation in a single file

@@ -70,7 +70,7 @@ Examples
 
 Learn more
 
-  https://github.com/mdcontext/fmm
+  https://github.com/srobinson/fmm
 
 ###### **Subcommands:**
 

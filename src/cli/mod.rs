@@ -45,7 +45,7 @@ const AFTER_LONG_HELP: &str = cstr!(
 
 <bold><underline>Learn more</underline></bold>
 
-  https://github.com/mdcontext/fmm"#
+  https://github.com/srobinson/fmm"#
 );
 
 const BEFORE_LONG_HELP: &str = cstr!(
