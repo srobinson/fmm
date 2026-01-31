@@ -367,10 +367,11 @@ pub fn run_batch(options: BatchOptions) -> Result<()> {
         }
     }
 
-    // Per-issue budget: divide total evenly across remaining issues, capped at $5
+    // Per-issue budget: divide remaining budget evenly across remaining issues, capped at $5
     let remaining = total - checkpoint.len();
+    let remaining_budget = options.max_budget - total_cost;
     let per_issue_budget = if remaining > 0 {
-        (options.max_budget / remaining as f64).min(5.0)
+        (remaining_budget / remaining as f64).min(5.0)
     } else {
         5.0
     };
@@ -552,8 +553,8 @@ fn print_dry_run(corpus: &Corpus, options: &BatchOptions) -> Result<()> {
     println!("  {} {}", "Issues:".bold(), corpus.issues.len());
     println!("  {} {}", "Model:".bold(), options.model);
     println!(
-        "  {} ${:.2}/issue",
-        "Max budget:".bold(),
+        "  {} ${:.2}",
+        "Max budget (total):".bold(),
         options.max_budget
     );
     println!("  {} {}", "Output:".bold(), options.output_dir.display());
