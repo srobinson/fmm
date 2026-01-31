@@ -87,9 +87,9 @@ run_task() {
 
     # Reset git state for next run
     (cd "$working_dir" && git checkout . 2>/dev/null && git clean -fd 2>/dev/null) || true
-    # Re-generate sidecars for FMM condition (git clean removes them)
+    # Re-generate sidecars + skill + MCP for FMM condition (git clean removes them all)
     if [ "$cond" = "B" ]; then
-        (cd "$working_dir" && fmm generate . 2>/dev/null) || true
+        (cd "$working_dir" && fmm generate . 2>/dev/null && fmm init --all 2>/dev/null) || true
     fi
 }
 

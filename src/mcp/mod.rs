@@ -106,9 +106,12 @@ impl McpServer {
         if text.len() <= Self::MAX_RESPONSE_BYTES {
             return text;
         }
-        let truncated = &text[..Self::MAX_RESPONSE_BYTES];
+        // Find a valid UTF-8 boundary at or before MAX_RESPONSE_BYTES
+        let byte_limit = Self::MAX_RESPONSE_BYTES;
+        let safe_limit = text.floor_char_boundary(byte_limit);
+        let truncated = &text[..safe_limit];
         // Find last newline to avoid cutting mid-line
-        let cut_point = truncated.rfind('\n').unwrap_or(Self::MAX_RESPONSE_BYTES);
+        let cut_point = truncated.rfind('\n').unwrap_or(safe_limit);
         let mut result = text[..cut_point].to_string();
         let total_lines = text.lines().count();
         let shown_lines = result.lines().count();
@@ -691,5 +694,22 @@ mod tests {
     fn test_server_construction() {
         let server = McpServer::new();
         assert!(server.root.is_absolute() || server.root.as_os_str().is_empty());
+    }
+
+    #[test]
+    fn cap_response_handles_multibyte_utf8() {
+        // Build a string that would split a multi-byte char at MAX_RESPONSE_BYTES
+        let prefix = "x".repeat(McpServer::MAX_RESPONSE_BYTES - 1);
+        // 4-byte emoji straddles the boundary
+        let text = format!("{}🦀 and more text after", prefix);
+        let result = McpServer::cap_response(text);
+        assert!(result.is_char_boundary(result.len()));
+        assert!(result.contains("[Truncated"));
+    }
+
+    #[test]
+    fn cap_response_passes_through_short_text() {
+        let short = "hello world".to_string();
+        assert_eq!(McpServer::cap_response(short.clone()), short);
     }
 }
