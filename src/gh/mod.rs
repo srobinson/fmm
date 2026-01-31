@@ -1,3 +1,4 @@
+pub mod batch;
 mod github;
 mod prompt;
 mod references;
@@ -180,6 +181,46 @@ fn gh_issue_compare(
     issue_ref: &IssueRef,
     options: &GhIssueOptions,
 ) -> Result<()> {
+    let report = run_issue_compare(
+        url,
+        issue,
+        issue_ref,
+        &options.model,
+        options.max_turns,
+        options.max_budget,
+    )?;
+
+    report.print_summary();
+
+    // Save report files
+    if let Some(ref output_dir) = options.output {
+        let saved = report.save(std::path::Path::new(output_dir))?;
+        println!();
+        for path in &saved {
+            println!("  {} {}", "Saved:".bold(), path.dimmed());
+        }
+    } else {
+        // Default: print JSON to allow piping
+        println!("\n{}", "--- JSON Report ---".dimmed());
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    }
+
+    let total_cost = report.control.cost_usd + report.fmm.cost_usd;
+    println!("\n  {} ${:.4}", "Total cost:".bold(), total_cost);
+
+    Ok(())
+}
+
+/// Run a single issue A/B comparison and return the report.
+/// This is the reusable core used by both `fmm gh issue --compare` and `fmm gh batch`.
+pub fn run_issue_compare(
+    url: &str,
+    issue: &Issue,
+    issue_ref: &IssueRef,
+    model: &str,
+    max_turns: u32,
+    max_budget: f64,
+) -> Result<report::IssueComparisonReport> {
     let repo_slug = format!("{}/{}", issue_ref.owner, issue_ref.repo);
 
     println!(
@@ -197,10 +238,8 @@ fn gh_issue_compare(
     println!("  {} Cloned into dual sandboxes", "OK".green());
 
     // --- Build prompts ---
-    // Control prompt: raw issue only (no sidecar references)
     let control_prompt = build_raw_issue_prompt(issue, issue_ref);
 
-    // FMM prompt: generate sidecars, extract + resolve references, build enriched prompt
     println!("{}", "Generating FMM sidecars...".green().bold());
     sandbox.generate_fmm_manifest()?;
     sandbox.setup_fmm_integration()?;
@@ -211,7 +250,6 @@ fn gh_issue_compare(
     let refs = extract_references(&issue.body);
     let (resolved, unresolved) = resolve_references(&refs, &manifest);
     let fmm_prompt = build_prompt(issue, issue_ref, &resolved, &unresolved);
-
     let fmm_context = build_fmm_context(&sandbox.fmm_dir);
 
     // --- Run control variant FIRST (cold cache, no sidecars) ---
@@ -225,9 +263,9 @@ fn gh_issue_compare(
     let control_result = invoke_claude_with_options(InvokeOptions {
         prompt: &control_prompt,
         repo_dir: &sandbox.control_dir,
-        model: &options.model,
-        max_turns: options.max_turns,
-        max_budget: options.max_budget,
+        model,
+        max_turns,
+        max_budget,
         allowed_tools: Some("Read,Write,Edit,Glob,Grep,Bash"),
         setting_sources: Some(""),
         append_system_prompt: None,
@@ -261,9 +299,9 @@ fn gh_issue_compare(
     let fmm_result = invoke_claude_with_options(InvokeOptions {
         prompt: &fmm_prompt,
         repo_dir: &sandbox.fmm_dir,
-        model: &options.model,
-        max_turns: options.max_turns,
-        max_budget: options.max_budget,
+        model,
+        max_turns,
+        max_budget,
         allowed_tools: Some("Read,Write,Edit,Glob,Grep,Bash"),
         setting_sources: Some("local"),
         append_system_prompt: Some(&fmm_context),
@@ -287,38 +325,19 @@ fn gh_issue_compare(
     );
 
     // --- Generate report ---
-    let total_cost = control_result.metrics.cost_usd + fmm_result.metrics.cost_usd;
-
     let report = report::IssueComparisonReport::new(report::ReportInput {
         issue_url: url,
         issue_title: &issue.title,
         issue_number: issue_ref.number,
         repo: &repo_slug,
-        model: &options.model,
-        max_budget_usd: options.max_budget,
-        max_turns: options.max_turns,
+        model,
+        max_budget_usd: max_budget,
+        max_turns,
         control_metrics: &control_result.metrics,
         fmm_metrics: &fmm_result.metrics,
     });
 
-    report.print_summary();
-
-    // Save report files
-    if let Some(ref output_dir) = options.output {
-        let saved = report.save(std::path::Path::new(output_dir))?;
-        println!();
-        for path in &saved {
-            println!("  {} {}", "Saved:".bold(), path.dimmed());
-        }
-    } else {
-        // Default: print JSON to allow piping
-        println!("\n{}", "--- JSON Report ---".dimmed());
-        println!("{}", serde_json::to_string_pretty(&report)?);
-    }
-
-    println!("\n  {} ${:.4}", "Total cost:".bold(), total_cost);
-
-    Ok(())
+    Ok(report)
 }
 
 /// Build a raw issue prompt without sidecar references (for control variant).

@@ -1,0 +1,148 @@
+{
+  "issues": [
+    {
+      "url": "https://github.com/pmndrs/zustand/issues/2710",
+      "tags": ["typescript", "small", "bugfix"]
+    },
+    {
+      "url": "https://github.com/colinhacks/zod/issues/3624",
+      "tags": ["typescript", "medium", "bugfix"]
+    },
+    {
+      "url": "https://github.com/TanStack/query/issues/8280",
+      "tags": ["typescript", "large", "feature"]
+    },
+    {
+      "url": "https://github.com/jotaijs/jotai/issues/2735",
+      "tags": ["typescript", "small", "bugfix"]
+    },
+    {
+      "url": "https://github.com/trpc/trpc/issues/6102",
+      "tags": ["typescript", "large", "refactor"]
+    },
+    {
+      "url": "https://github.com/pallets/flask/issues/5645",
+      "tags": ["python", "medium", "bugfix"]
+    },
+    {
+      "url": "https://github.com/pydantic/pydantic/issues/10541",
+      "tags": ["python", "large", "bugfix"]
+    },
+    {
+      "url": "https://github.com/tiangolo/fastapi/issues/12500",
+      "tags": ["python", "medium", "feature"]
+    },
+    {
+      "url": "https://github.com/psf/requests/issues/6730",
+      "tags": ["python", "small", "bugfix"]
+    },
+    {
+      "url": "https://github.com/pallets/click/issues/2774",
+      "tags": ["python", "small", "bugfix"]
+    },
+    {
+      "url": "https://github.com/BurntSushi/ripgrep/issues/2930",
+      "tags": ["rust", "medium", "bugfix"]
+    },
+    {
+      "url": "https://github.com/serde-rs/serde/issues/2810",
+      "tags": ["rust", "large", "feature"]
+    },
+    {
+      "url": "https://github.com/tokio-rs/tokio/issues/6840",
+      "tags": ["rust", "massive", "bugfix"]
+    },
+    {
+      "url": "https://github.com/clap-rs/clap/issues/5775",
+      "tags": ["rust", "medium", "feature"]
+    },
+    {
+      "url": "https://github.com/hyperium/hyper/issues/3694",
+      "tags": ["rust", "medium", "bugfix"]
+    },
+    {
+      "url": "https://github.com/gin-gonic/gin/issues/3960",
+      "tags": ["go", "medium", "bugfix"]
+    },
+    {
+      "url": "https://github.com/gofiber/fiber/issues/3129",
+      "tags": ["go", "medium", "bugfix"]
+    },
+    {
+      "url": "https://github.com/gorilla/mux/issues/710",
+      "tags": ["go", "small", "feature"]
+    },
+    {
+      "url": "https://github.com/spf13/cobra/issues/2155",
+      "tags": ["go", "small", "bugfix"]
+    },
+    {
+      "url": "https://github.com/stretchr/testify/issues/1589",
+      "tags": ["go", "small", "bugfix"]
+    },
+    {
+      "url": "https://github.com/spring-projects/spring-boot/issues/42410",
+      "tags": ["java", "massive", "bugfix"]
+    },
+    {
+      "url": "https://github.com/google/guava/issues/7255",
+      "tags": ["java", "massive", "feature"]
+    },
+    {
+      "url": "https://github.com/apache/commons-lang/issues/1215",
+      "tags": ["java", "medium", "bugfix"]
+    },
+    {
+      "url": "https://github.com/square/okhttp/issues/8220",
+      "tags": ["java", "large", "bugfix"]
+    },
+    {
+      "url": "https://github.com/nlohmann/json/issues/4359",
+      "tags": ["cpp", "medium", "bugfix"]
+    },
+    {
+      "url": "https://github.com/gabime/spdlog/issues/3133",
+      "tags": ["cpp", "small", "bugfix"]
+    },
+    {
+      "url": "https://github.com/catchorg/Catch2/issues/2917",
+      "tags": ["cpp", "medium", "feature"]
+    },
+    {
+      "url": "https://github.com/fmtlib/fmt/issues/4172",
+      "tags": ["cpp", "medium", "bugfix"]
+    },
+    {
+      "url": "https://github.com/dotnet/runtime/issues/109560",
+      "tags": ["csharp", "massive", "bugfix"]
+    },
+    {
+      "url": "https://github.com/dotnet/aspnetcore/issues/58560",
+      "tags": ["csharp", "massive", "feature"]
+    },
+    {
+      "url": "https://github.com/AutoMapper/AutoMapper/issues/4356",
+      "tags": ["csharp", "medium", "bugfix"]
+    },
+    {
+      "url": "https://github.com/JamesNK/Newtonsoft.Json/issues/2946",
+      "tags": ["csharp", "medium", "bugfix"]
+    },
+    {
+      "url": "https://github.com/rails/rails/issues/53590",
+      "tags": ["ruby", "massive", "bugfix"]
+    },
+    {
+      "url": "https://github.com/faker-ruby/faker/issues/2939",
+      "tags": ["ruby", "medium", "bugfix"]
+    },
+    {
+      "url": "https://github.com/heartcombo/devise/issues/5752",
+      "tags": ["ruby", "medium", "feature"]
+    },
+    {
+      "url": "https://github.com/rubocop/rubocop/issues/13417",
+      "tags": ["ruby", "large", "bugfix"]
+    }
+  ]
+}
