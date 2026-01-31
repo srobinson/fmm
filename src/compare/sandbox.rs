@@ -86,22 +86,41 @@ impl Sandbox {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 
-    /// Generate FMM manifest for the FMM variant
+    /// Generate FMM sidecars for the FMM variant
     pub fn generate_fmm_manifest(&self) -> Result<()> {
-        // Run fmm generate in the FMM directory
         let fmm_binary = std::env::current_exe().context("Failed to get current executable")?;
 
         let output = Command::new(&fmm_binary)
             .arg("generate")
-            .arg("--manifest-only")
+            .arg(".")
             .current_dir(&self.fmm_dir)
             .output()
             .context("Failed to run fmm generate")?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            // Don't fail if fmm generate fails (might be unsupported language)
             eprintln!("Warning: fmm generate had issues: {}", stderr);
+        }
+
+        Ok(())
+    }
+
+    /// Install skill file and MCP config in the FMM variant workspace.
+    /// This enables the Skill + MCP delivery mechanism (proven best by Exp15).
+    pub fn setup_fmm_integration(&self) -> Result<()> {
+        let fmm_binary = std::env::current_exe().context("Failed to get current executable")?;
+
+        // Run `fmm init --all` which installs both skill and .mcp.json
+        let output = Command::new(&fmm_binary)
+            .arg("init")
+            .arg("--all")
+            .current_dir(&self.fmm_dir)
+            .output()
+            .context("Failed to run fmm init")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("fmm init --all failed: {}", stderr);
         }
 
         Ok(())

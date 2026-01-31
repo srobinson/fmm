@@ -113,14 +113,7 @@ run_query() {
 
   local system_prompt="You are a coding assistant. Help the developer navigate and understand this codebase. Use available tools to explore files and directories. Be thorough and accurate."
 
-  # Treatment gets fmm navigation instructions via --append-system-prompt
-  # This simulates what happens when a project has CLAUDE.md with fmm guidance
-  local fmm_hint=""
-  if [ "$condition" = "treatment" ]; then
-    fmm_hint="This project uses fmm metadata. Check .fmm/index.json FIRST before reading source files. The manifest contains exports, imports, dependencies, and LOC for every file — use it to navigate without opening source."
-  fi
-
-  # Empty MCP config to prevent ambient MCP servers
+  # Empty MCP config to prevent ambient MCP servers (control only)
   local empty_mcp
   empty_mcp=$(mktemp)
   echo '{"mcpServers":{}}' > "$empty_mcp"
@@ -129,6 +122,8 @@ run_query() {
   start_time=$(date +%s)
 
   # Build Claude CLI command
+  # Treatment: --setting-sources local picks up .claude/skills/ and .mcp.json
+  # Control: --setting-sources "" with empty MCP for full isolation
   local -a claude_args=(
     --print
     --verbose
@@ -137,16 +132,21 @@ run_query() {
     --output-format stream-json
     --system-prompt "$system_prompt"
     --model "$MODEL"
-    --setting-sources ""
-    --strict-mcp-config
-    --mcp-config "$empty_mcp"
     --disable-slash-commands
-    --tools "Bash,Read,Glob,Grep"
     --max-budget-usd "$MAX_BUDGET"
   )
 
-  if [ -n "$fmm_hint" ]; then
-    claude_args+=(--append-system-prompt "$fmm_hint")
+  if [ "$condition" = "treatment" ]; then
+    # Skill + MCP delivery (proven best by Exp15)
+    claude_args+=(--setting-sources "local")
+  else
+    # Fully isolated: no skills, no MCP, no user settings
+    claude_args+=(
+      --setting-sources ""
+      --strict-mcp-config
+      --mcp-config "$empty_mcp"
+      --tools "Bash,Read,Glob,Grep"
+    )
   fi
 
   # Run Claude from within the repo directory
