@@ -13,7 +13,7 @@ mod cache;
 mod orchestrator;
 mod report;
 mod runner;
-mod sandbox;
+pub mod sandbox;
 mod tasks;
 
 pub use orchestrator::{CompareOptions, Orchestrator};

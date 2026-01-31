@@ -86,6 +86,8 @@ fn main() -> Result<()> {
                 branch_prefix,
                 no_pr,
                 workspace,
+                compare,
+                output,
             } => {
                 let options = gh::GhIssueOptions {
                     model,
@@ -95,6 +97,8 @@ fn main() -> Result<()> {
                     branch_prefix,
                     no_pr,
                     workspace,
+                    compare,
+                    output,
                 };
                 gh::gh_issue(&url, options)?;
             }
