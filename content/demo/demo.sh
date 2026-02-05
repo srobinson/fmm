@@ -5,7 +5,7 @@ set -euo pipefail
 #
 # This script runs the same navigation query against a codebase twice:
 #   1. WITHOUT fmm (control) — LLM brute-forces with grep+read
-#   2. WITH fmm (treatment) — LLM reads .fmm/index.json first, then targeted reads
+#   2. WITH fmm (treatment) — LLM reads .fmm sidecars first, then targeted reads
 #
 # Requirements: Rust/cargo, claude CLI (with ANTHROPIC_API_KEY set)
 # Cost: ~$0.15 total (two Claude Sonnet queries)
@@ -113,13 +113,13 @@ info "Generating fmm sidecars for treatment codebase..."
 (cd "$TREATMENT_DIR" && "$FMM_BIN" init 2>&1) || true
 (cd "$TREATMENT_DIR" && "$FMM_BIN" generate 2>&1) || true
 
-SIDECAR_COUNT=$(find "$TREATMENT_DIR" -name "*.fmm" -o -name "index.json" -path "*/.fmm/*" 2>/dev/null | wc -l | tr -d ' ')
+SIDECAR_COUNT=$(find "$TREATMENT_DIR" -name "*.fmm" 2>/dev/null | wc -l | tr -d ' ')
 if [ "$SIDECAR_COUNT" -eq 0 ]; then
   warn "No sidecars generated. Checking alternative output..."
   find "$TREATMENT_DIR" -name ".fmm" -type d 2>/dev/null
   # Try without init
   (cd "$TREATMENT_DIR" && "$FMM_BIN" generate --format sidecar 2>&1) || true
-  SIDECAR_COUNT=$(find "$TREATMENT_DIR" -name "*.fmm" -o -name "index.json" -path "*/.fmm/*" 2>/dev/null | wc -l | tr -d ' ')
+  SIDECAR_COUNT=$(find "$TREATMENT_DIR" -name "*.fmm" 2>/dev/null | wc -l | tr -d ' ')
 fi
 ok "Generated $SIDECAR_COUNT fmm artifacts in treatment codebase"
 
@@ -129,8 +129,8 @@ cat > "$TREATMENT_DIR/.claude/CLAUDE.md" << 'CLAUDEMD'
 # FMM Navigation
 
 This codebase has fmm (Frontmatter Matters) sidecars. Before reading source files:
-1. Check .fmm/index.json for a full codebase map
-2. Read .fmm sidecar files (*.fmm) for file metadata (exports, imports, deps)
+1. Check for .fmm sidecar files (*.fmm) next to source files
+2. Read sidecars for file metadata (exports, imports, deps, LOC)
 3. Only open source files you actually need to read or edit
 CLAUDEMD
 ok "Created .claude/CLAUDE.md hint in treatment codebase"
@@ -231,7 +231,7 @@ def parse_trace(filepath):
     total_output_tokens = 0
     cost_usd = 0.0
     first_tool = None
-    read_fmm_index = False
+    read_fmm_sidecar = False
 
     try:
         with open(filepath) as f:
@@ -269,8 +269,8 @@ def parse_trace(filepath):
                                 fp = tc["input"].get("file_path", "")
                                 if fp:
                                     files_read.add(fp)
-                                    if "index.json" in fp and ".fmm" in fp:
-                                        read_fmm_index = True
+                                    if fp.endswith(".fmm"):
+                                        read_fmm_sidecar = True
 
                 if etype == "result":
                     model_usage = event.get("modelUsage", {})
@@ -298,7 +298,7 @@ def parse_trace(filepath):
         "tokens_total": total_input_tokens + total_output_tokens,
         "cost_usd": cost_usd,
         "first_tool": first_tool or "(none)",
-        "read_fmm_index": read_fmm_index,
+        "read_fmm_sidecar": read_fmm_sidecar,
     }
 
 
@@ -336,7 +336,7 @@ rows = [
     ("Total tokens",      f"{control['tokens_total']:,}",   f"{treatment['tokens_total']:,}"),
     ("Cost (USD)",        f"${control['cost_usd']:.4f}",    f"${treatment['cost_usd']:.4f}"),
     ("Duration",          f"{control_dur}s",                 f"{treatment_dur}s"),
-    ("Read .fmm/index?",  "No",                             "Yes" if treatment["read_fmm_index"] else "No"),
+    ("Read .fmm sidecars?", "No",                            "Yes" if treatment["read_fmm_sidecar"] else "No"),
 ]
 
 for label, ctrl, treat in rows:
@@ -372,14 +372,14 @@ print(f"    Treatment: {treatment['first_tool']}")
 
 # Behavioral insight
 print()
-if treatment["read_fmm_index"]:
-    print("  KEY BEHAVIOR: With fmm, the LLM's first action was to read the")
-    print("  .fmm/index.json manifest, then make targeted file reads.")
+if treatment["read_fmm_sidecar"]:
+    print("  KEY BEHAVIOR: With fmm, the LLM read .fmm sidecar files")
+    print("  to understand the codebase, then made targeted source reads.")
     print("  Without fmm, it brute-forced with grep across all files.")
 else:
-    print("  NOTE: The LLM did not read .fmm/index.json in this run.")
+    print("  NOTE: The LLM did not read .fmm sidecar files in this run.")
     print("  This can happen — re-run for more samples. The CLAUDE.md hint")
-    print("  triggers manifest-first behavior in the majority of runs.")
+    print("  triggers sidecar-first behavior in the majority of runs.")
 
 print()
 print("=" * W)

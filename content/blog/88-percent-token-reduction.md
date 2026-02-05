@@ -75,12 +75,12 @@ Four categories designed to cover the spectrum of how LLMs interact with codebas
 
 | | Control | Treatment |
 |---|---|---|
-| Codebase | Raw source files | Same source files + `.fmm/index.json` |
-| Instructions | None | CLAUDE.md entry: "Check .fmm/ for codebase index" |
+| Codebase | Raw source files | Same source files + `.fmm` sidecars |
+| Instructions | None | CLAUDE.md entry: "Check .fmm sidecar files for metadata" |
 | Model | Claude Opus 4.5 | Claude Opus 4.5 |
 | Isolation | Full | Full |
 
-The treatment adds exactly two things: the manifest file and a one-line instruction telling the LLM it exists.
+The treatment adds exactly two things: the sidecar files and a one-line instruction telling the LLM they exist.
 
 ---
 
@@ -90,7 +90,7 @@ The treatment adds exactly two things: the manifest file and a one-line instruct
 
 | Task | Control (lines read) | fmm (lines read) | Reduction | Notes |
 |------|--------------------:|------------------:|----------:|-------|
-| Code review | 1,824 | 65 | **96.4%** | Manifest provided change context without full file reads |
+| Code review | 1,824 | 65 | **96.4%** | Sidecars provided change context without full file reads |
 | Refactor analysis | 2,800 | 345 | **87.7%** | More tool calls but far fewer lines per call |
 | Security review (4 files, 123 LOC) | 123 | 120 | **~0%** | Must read every line for security audit |
 | Architecture exploration | 7,135 | 180 | **97.5%** | Zero full file reads; frontmatter alone was sufficient |
@@ -106,12 +106,12 @@ The LLM's default strategy is brute force. It greps for keywords, opens every ma
 
 **Treatment behavior (with fmm):**
 ```
-read .fmm/index.json -> identify relevant files -> read first 15 lines (metadata) -> done
+read .fmm sidecars -> identify relevant files -> open only what's needed -> done
 ```
 
-With the manifest, the LLM's first action was always `Read(.fmm/index.json)`. It got a structural map of the entire codebase in one read, then selectively opened only the files it needed -- and often only read the metadata header, not the full source.
+With sidecars, the LLM's first action was always to read `.fmm` files. It got a structural map of relevant modules in a few small reads, then selectively opened only the source files it needed.
 
-On Test 3, the fmm agent analyzed the same 12 files but read only 180 total lines (12 x 15 lines of metadata). Its own summary: "No full file reads were necessary -- frontmatter provided complete dependency and export information."
+On Test 3, the fmm agent analyzed the same 12 files but read only 180 total lines of sidecar metadata. Its own summary: "No full file reads were necessary -- sidecars provided complete dependency and export information."
 
 Both agents produced equivalent architecture diagrams and export documentation. Same output quality, 97.5% less input.
 
@@ -119,7 +119,7 @@ Both agents produced equivalent architecture diagrams and export documentation. 
 
 Test 1 (refactor analysis) is interesting: the fmm agent made **more** tool calls (23 vs 17) but read **far fewer** lines (345 vs 2,800). It also identified more affected files (20+ vs 14).
 
-The manifest gave it a dependency graph. Instead of deep-reading a few files, it did many quick lookups across the manifest to trace the full impact chain. More calls, less data per call, better coverage. The strategy shifted from "read everything in a few files" to "peek at metadata across many files."
+The sidecars gave it a dependency graph. Instead of deep-reading a few files, it did many quick lookups across sidecars to trace the full impact chain. More calls, less data per call, better coverage. The strategy shifted from "read everything in a few files" to "peek at metadata across many files."
 
 ---
 
@@ -131,11 +131,11 @@ Test 2 was deliberately designed to find the floor. A 4-file codebase with 123 l
 
 Result: 123 lines read (control) vs 120 lines read (fmm). Effectively zero improvement.
 
-This is correct behavior. Security review requires reading actual code, not metadata. You cannot find an SQL injection vulnerability by looking at an exports list. And on a 4-file codebase, the manifest overhead (reading the index, parsing metadata) is proportionally large compared to just reading the files directly.
+This is correct behavior. Security review requires reading actual code, not metadata. You cannot find an SQL injection vulnerability by looking at an exports list. And on a 4-file codebase, the sidecar overhead is proportionally large compared to just reading the files directly.
 
 ### The Crossover Point
 
-fmm has a startup cost: reading and parsing the manifest. It pays off when triage savings exceed that cost.
+fmm has a startup cost: reading sidecar files. It pays off when triage savings exceed that cost.
 
 ```
 If avg file = 100 lines
@@ -161,7 +161,7 @@ fmm helps with navigation (finding where things are and how they connect). It do
 
 ## Delivery Mechanism Matters
 
-We didn't stop at proving the manifest works. We tested *how* to deliver it to the LLM (exp15: 48 runs, 4 conditions, 4 task types, 3 runs each).
+We didn't stop at proving the metadata works. We tested *how* to deliver it to the LLM (exp15: 48 runs, 4 conditions, 4 task types, 3 runs each).
 
 ### Conditions
 
@@ -174,7 +174,7 @@ We didn't stop at proving the manifest works. We tested *how* to deliver it to t
 
 ### Results
 
-| Condition | Avg Tool Calls | Avg Cost | Manifest Access Rate |
+| Condition | Avg Tool Calls | Avg Cost | Sidecar Access Rate |
 |---|---:|---:|---:|
 | A: CLAUDE.md only | 22.2 | $0.55 | 83% |
 | B: Skill only | 22.5 | $0.47 | 75% |
@@ -183,9 +183,9 @@ We didn't stop at proving the manifest works. We tested *how* to deliver it to t
 
 Skill + MCP is strictly best: **30% fewer tool calls** than CLAUDE.md alone, **25% cheaper**, **20% faster** (68.5s vs 85.8s average).
 
-The skill provides behavioral guidance ("check the manifest first"). The MCP server provides structured queries (`fmm_lookup_export`, `fmm_dependency_graph`). Neither alone is optimal.
+The skill provides behavioral guidance ("check sidecars first"). The MCP server provides structured queries (`fmm_lookup_export`, `fmm_dependency_graph`). Neither alone is optimal.
 
-Notable: MCP alone (condition C) still achieved 58% manifest access without any instructions. Tool descriptions alone triggered some manifest-aware behavior. But it missed the manifest in 42% of runs, particularly for dependency mapping tasks where the LLM never thought to check.
+Notable: MCP alone (condition C) still achieved 58% sidecar access without any instructions. Tool descriptions alone triggered some metadata-aware behavior. But it missed sidecars in 42% of runs, particularly for dependency mapping tasks where the LLM never thought to check.
 
 ---
 
@@ -226,8 +226,8 @@ Real-world validation on a codebase we don't own.
 
 ```bash
 $ git clone ruvnet/claude-flow    # 9,008 files
-$ fmm init                        # 3 seconds
-# Generated .fmm/index.json (2,221 source files indexed)
+$ fmm init && fmm generate        # 3 seconds
+# Generated 2,221 .fmm sidecar files
 ```
 
 ### Without fmm (estimated)
@@ -236,7 +236,7 @@ Grep 9,000 files for "model", "opus", "sonnet". Hundreds of matches across docs,
 
 ### With fmm
 
-The manifest mapped the codebase structure. Navigated straight to 2 files:
+The sidecars mapped the codebase structure. Navigated straight to 2 files:
 
 ```
 v3/@claude-flow/cli/src/services/headless-worker-executor.ts
@@ -284,8 +284,8 @@ All experiment data, scripts, and raw traces are in the repository:
 research/
   exp13/          # Core 88-97% reduction experiments
     FINDINGS.md   # Full results and analysis
-  exp14/          # LLM manifest discovery experiments (12 runs)
-    FINDINGS.md   # Finding: LLMs never discover .fmm/ organically
+  exp14/          # LLM metadata discovery experiments (12 runs)
+    FINDINGS.md   # Finding: LLMs never discover metadata organically
     results/      # Raw traces per run
   exp15/          # Delivery mechanism comparison (48 runs)
     FINDINGS.md   # CLAUDE.md vs Skill vs MCP vs Skill+MCP
@@ -308,7 +308,7 @@ cd fmm/research/exp13
 
 # The test codebase (agentic-flow) is referenced in the findings.
 # Control: run Claude Code against raw codebase with isolation flags
-# Treatment: run against same codebase with .fmm/index.json present
+# Treatment: run against same codebase with .fmm sidecars generated
 
 # Isolation flags used:
 claude --setting-sources "" \
@@ -341,29 +341,29 @@ We want to be explicit about what this research does and does not show.
 
 **What we validated:**
 - 88-97% reduction in lines read for navigation tasks on codebases with 100+ files
-- The manifest approach works when the LLM is instructed to use it
+- The sidecar approach works when the LLM is instructed to use it
 - Delivery via Skill + MCP is the most efficient mechanism
 - The approach works on real codebases we don't own (claude-flow, 9,008 files)
 
 **What we did not validate:**
 - Cross-model generalization (tested primarily on Claude Opus 4.5 and Sonnet 4.5; not tested on GPT-4o, Gemini, or open-source models)
 - Languages beyond TypeScript (tree-sitter supports many languages; the experiments used TypeScript exclusively)
-- Long-session effects (all tests were single-query; we haven't measured manifest staleness in multi-hour sessions)
+- Long-session effects (all tests were single-query; we haven't measured sidecar staleness in multi-hour sessions)
 - Team-scale deployment (the claude-flow case study is a single-developer workflow)
 
 **Honest caveats:**
 - The 0% reduction on the 4-file security review is a real limitation, not an edge case. Any task requiring full source reads will not benefit.
 - "88-97%" is the range across four specific task types on one codebase. Your mileage will vary based on codebase size, task type, and model.
 - The annual cost projections are extrapolations, not measurements. The per-query reduction percentages are measured; the dollar figures are modeled.
-- LLMs do not discover the manifest organically. Across 12 isolated runs in exp14, 0/12 found `.fmm/index.json` without being told about it. The instruction is required.
+- LLMs do not discover metadata organically. Across 12 isolated runs in exp14, 0/12 found `.fmm` files without being told about them. The instruction is required.
 
 ---
 
 ## Conclusion
 
-LLMs navigate codebases by reading files. On real codebases, they read far more than they need to. Structured metadata -- exports, imports, dependencies, LOC per file -- gives the LLM a map. With that map, it reads 88-97% fewer lines for navigation tasks while producing equivalent output.
+LLMs navigate codebases by reading files. On real codebases, they read far more than they need to. Structured sidecar metadata -- exports, imports, dependencies, LOC per file -- gives the LLM a map. With that map, it reads 88-97% fewer lines for navigation tasks while producing equivalent output.
 
-The mechanism is simple: instead of grepping and reading every matching file, the LLM reads compact sidecars and makes targeted source reads. The economics compound with codebase size and query frequency.
+The mechanism is simple: instead of grepping and reading every matching file, the LLM reads compact `.fmm` sidecars and makes targeted source reads. The economics compound with codebase size and query frequency.
 
 fmm generates those sidecars. One command, sub-second on codebases with thousands of files, zero infrastructure, deterministic output.
 
