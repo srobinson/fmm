@@ -1,18 +1,91 @@
 ---
 name: fmm-navigate
-description: Navigate codebases using .fmm sidecar files — read sidecars before source, use MCP tools for lookup and graph queries
+description: Navigate codebases using FMM MCP tools for O(1) symbol lookups and dependency graphs. ALWAYS use MCP tools before grep/read.
 ---
 
-# fmm — Sidecar-First Code Navigation
+# fmm — MCP-First Code Navigation
 
-Source files in this project have `.fmm` sidecar companions. For every `foo.ts` there may be a `foo.ts.fmm` containing structured metadata — exports, imports, dependencies, and file size.
+This codebase has FMM metadata available via MCP tools. Use them for instant, structured lookups instead of grep/read.
 
-## Reading Sidecars
+## MCP Tools (ALWAYS USE THESE FIRST)
 
-Before opening a source file, check if it has a sidecar:
+| Tool | Use Case | Example |
+|------|----------|---------|
+| `mcp__fmm__fmm_lookup_export` | "Where is X defined?" | `fmm_lookup_export(name: "createPipeline")` |
+| `mcp__fmm__fmm_dependency_graph` | "What depends on this file?" | `fmm_dependency_graph(file: "src/core/index.ts")` |
+| `mcp__fmm__fmm_list_exports` | "Find exports matching X" | `fmm_list_exports(pattern: "swarm")` |
+| `mcp__fmm__fmm_file_info` | "What does this file export?" | `fmm_file_info(file: "src/utils/helpers.ts")` |
+| `mcp__fmm__fmm_search` | Multi-criteria search | `fmm_search(imports: "lodash", min_loc: 100)` |
+
+## Navigation Protocol
+
+### "Where is X defined?"
 
 ```
-# foo.ts.fmm
+1. Call mcp__fmm__fmm_lookup_export(name: "X")
+2. If found → you have the file path, DONE
+3. If not found → try mcp__fmm__fmm_list_exports(pattern: "X") for fuzzy match
+4. Only then fall back to Grep on source files
+```
+
+**DO NOT** start with `Grep "export.*X"` — use the MCP tool.
+
+### "What files depend on this file?"
+
+```
+1. Call mcp__fmm__fmm_dependency_graph(file: "src/foo.ts")
+2. Response includes "downstream" array with all dependents
+3. DONE — no need to grep or read any files
+```
+
+### "Find all exports related to X"
+
+```
+1. Call mcp__fmm__fmm_list_exports(pattern: "X")
+2. Response lists all matching exports with their files
+3. DONE
+```
+
+### "What does this module export?"
+
+```
+1. Call mcp__fmm__fmm_file_info(file: "src/module/index.ts")
+2. Response includes exports, imports, dependencies, LOC
+3. DONE — no need to read the source file
+```
+
+### "Describe the architecture"
+
+```
+1. Call mcp__fmm__fmm_list_exports() to get all exports
+2. Call mcp__fmm__fmm_dependency_graph on key entry points
+3. Build mental model from structured responses
+4. Only read source files for specific implementation details
+```
+
+## When to Use Each Tool
+
+| Task | Tool | Why |
+|------|------|-----|
+| Find symbol definition | `fmm_lookup_export` | O(1) lookup, returns file + metadata |
+| Find similar exports | `fmm_list_exports` | Pattern search, returns all matches |
+| Impact analysis | `fmm_dependency_graph` | Pre-computed upstream/downstream |
+| File summary | `fmm_file_info` | Exports/imports/LOC without reading |
+| Complex queries | `fmm_search` | Combine filters (imports X, size > N) |
+
+## When to Fall Back to Grep/Read
+
+Only use Grep/Read when:
+- MCP tool returns no results
+- You need to search inside function bodies (not just exports)
+- You need to understand implementation details before editing
+- You need to read test files or documentation
+
+## Sidecar Files (Fallback)
+
+If MCP tools are unavailable, sidecar files exist at `filename.ext.fmm`:
+
+```yaml
 file: src/core/pipeline.ts
 fmm: v0.2
 exports: [createPipeline, PipelineConfig, PipelineError]
@@ -21,48 +94,11 @@ dependencies: [./engine, ./validators, ../utils/logger]
 loc: 142
 ```
 
-A sidecar tells you everything about a file's role without reading the source. Use this to decide which files you actually need to open.
-
-## Navigation Strategy
-
-### Finding which files to edit
-1. `Grep "exports:.*DropColumn" **/*.fmm` — find sidecars mentioning a symbol
-2. Read the matching `.fmm` file — get the full metadata (exports, deps, loc)
-3. Only then open the source file if you need to edit it
-
-### "Where is X defined?"
-1. `Grep "exports:.*X" **/*.fmm` — search sidecar exports
-2. Or call `fmm_lookup_export(name: "X")` if MCP is available
-3. Only fall back to Grep on source if not found in sidecars
-
-### "What depends on this file?"
-1. Call `fmm_dependency_graph(file)` if MCP is available
-2. Or `Grep "dependencies:.*filename" **/*.fmm` to find dependents
-3. Read sidecars of affected files to understand the blast radius
-
-### "Describe the architecture"
-1. `Glob **/*.fmm` to discover all sidecar files
-2. Read sidecars to understand the module graph from exports + dependencies
-3. DO NOT start by reading source files — sidecars give you the structure
-
-### "Which files use package X?"
-1. `Grep "imports:.*X" **/*.fmm` — find all files importing that package
-2. Or call `fmm_search(imports: "X")` if MCP is available
-
-## MCP Tools
-
-When the fmm MCP server is available, these tools query the pre-built index:
-
-- **`fmm_lookup_export(name)`** — O(1) symbol -> file lookup
-- **`fmm_list_exports(pattern?, file?)`** — search exports by substring
-- **`fmm_file_info(file)`** — file metadata from the sidecar
-- **`fmm_dependency_graph(file)`** — upstream deps + downstream dependents
-- **`fmm_search({export?, imports?, depends_on?, min_loc?, max_loc?})`** — multi-criteria search
+Use `Grep "exports:.*SymbolName" **/*.fmm` as fallback when MCP is not available.
 
 ## Rules
 
-1. **CHECK SIDECARS FIRST** — before reading any source file, check if `filename.fmm` exists
-2. **USE SIDECARS TO NAVIGATE** — grep sidecars to find relevant files, not source code
-3. **ONLY OPEN SOURCE FILES YOU WILL EDIT** — sidecars tell you the file's role; only read source when you need to see or modify the implementation
-4. **USE MCP TOOLS** when available — `fmm_lookup_export` and `fmm_search` are faster than grep
-5. **FALL BACK** to Grep/Glob on source only when searching file *contents* (not structure)
+1. **MCP TOOLS ARE PRIMARY** — Always call `fmm_*` tools before grep/read
+2. **STRUCTURED > UNSTRUCTURED** — MCP returns parsed JSON, grep returns text
+3. **ONE CALL > MANY CALLS** — `fmm_dependency_graph` replaces multiple grep/read sequences
+4. **READ SOURCE ONLY WHEN EDITING** — Sidecars/MCP tell you what you need for navigation

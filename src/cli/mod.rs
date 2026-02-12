@@ -290,6 +290,42 @@ pub enum Commands {
     )]
     Mcp,
 
+    /// Ask a natural language question about the codebase
+    #[command(
+        long_about = "Ask a natural language question about the codebase using FMM metadata.\n\n\
+            Runs Claude with FMM MCP tools pre-configured, enabling efficient codebase \
+            exploration without manual grep/read operations. Useful for questions that \
+            don't fit structured search patterns.",
+        after_long_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+
+  <dim>$</dim> <bold>fmm run "What's the architecture of the auth module?"</bold>
+
+  <dim>$</dim> <bold>fmm run "Which files have the most dependencies?"</bold>
+
+  <dim>$</dim> <bold>fmm run "Find all async functions that call the database"</bold>
+
+  <dim>$</dim> <bold>fmm run "What would break if I delete utils/format.ts?"</bold>
+
+  <dim>$</dim> <bold>fmm run "Summarize the entry points and their dependencies"</bold>"#),
+    )]
+    Run {
+        /// Natural language question about the codebase
+        query: String,
+
+        /// Claude model to use (sonnet, opus, haiku)
+        #[arg(long, default_value = "sonnet")]
+        model: String,
+
+        /// Maximum turns
+        #[arg(long, default_value = "10")]
+        max_turns: u32,
+
+        /// Maximum budget in USD
+        #[arg(long, default_value = "1.0")]
+        max_budget: f64,
+    },
+
     /// Alias for 'mcp'
     #[command(hide = true)]
     Serve,
@@ -947,17 +983,18 @@ fn init_config() -> Result<()> {
 const SKILL_CONTENT: &str = include_str!("../../docs/fmm-navigate.md");
 
 pub fn init_skill() -> Result<()> {
-    let skill_dir = Path::new(".claude").join("skills");
-    let skill_path = skill_dir.join("fmm-navigate.md");
+    let skill_dir = Path::new(".claude").join("skills").join("fmm-navigate");
+    let skill_path = skill_dir.join("SKILL.md");
 
-    std::fs::create_dir_all(&skill_dir).context("Failed to create .claude/skills/ directory")?;
+    std::fs::create_dir_all(&skill_dir)
+        .context("Failed to create .claude/skills/fmm-navigate/ directory")?;
 
     if skill_path.exists() {
         let existing =
             std::fs::read_to_string(&skill_path).context("Failed to read existing skill file")?;
         if existing == SKILL_CONTENT {
             println!(
-                "{} .claude/skills/fmm-navigate.md already up to date (skipping)",
+                "{} .claude/skills/fmm-navigate/SKILL.md already up to date (skipping)",
                 "!".yellow()
             );
             return Ok(());
@@ -967,7 +1004,7 @@ pub fn init_skill() -> Result<()> {
     std::fs::write(&skill_path, SKILL_CONTENT).context("Failed to write skill file")?;
 
     println!(
-        "{} Installed Claude skill at .claude/skills/fmm-navigate.md",
+        "{} Installed Claude skill at .claude/skills/fmm-navigate/SKILL.md",
         "✓".green()
     );
     Ok(())
@@ -1335,6 +1372,70 @@ fn matches_loc_filter(loc: usize, op: &str, value: usize) -> bool {
         "=" => loc == value,
         _ => false,
     }
+}
+
+pub fn run(query: &str, model: &str, max_turns: u32, max_budget: f64) -> Result<()> {
+    let cwd = std::env::current_dir()?;
+    let mcp_path = cwd.join(".mcp.json");
+    let mcp_exists = mcp_path.exists();
+
+    let sidecars: usize = WalkBuilder::new(&cwd)
+        .hidden(false)
+        .git_global(false)
+        .git_ignore(false)
+        .git_exclude(false)
+        .build()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_some_and(|ft| ft.is_file()))
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "fmm"))
+        .count();
+
+    if sidecars == 0 {
+        println!(
+            "{} No .fmm sidecars found in the current directory",
+            "!".yellow()
+        );
+        println!(
+            "\n  {} Run 'fmm generate' first to create sidecars",
+            "hint:".cyan()
+        );
+        return Ok(());
+    }
+
+    if !mcp_exists {
+        println!("{} No .mcp.json found, creating one...", "!".yellow());
+        init_mcp_config()?;
+    }
+
+    println!("{} Running: {}", "→".cyan(), query.white().italic());
+    println!(
+        "  {} sidecars, model: {}, max_turns: {}, budget: ${:.2}",
+        sidecars, model, max_turns, max_budget
+    );
+    println!();
+
+    let status = std::process::Command::new("claude")
+        .arg("-p")
+        .arg(query)
+        .arg("--model")
+        .arg(model)
+        .arg("--max-turns")
+        .arg(max_turns.to_string())
+        .arg("--max-budget-usd")
+        .arg(max_budget.to_string())
+        .arg("--mcp-config")
+        .arg(".mcp.json")
+        .arg("--allowedTools")
+        .arg("Read,Glob,Grep,LS,mcp__fmm__fmm_lookup_export,mcp__fmm__fmm_list_exports,mcp__fmm__fmm_file_info,mcp__fmm__fmm_dependency_graph,mcp__fmm__fmm_search")
+        .current_dir(&cwd)
+        .status()
+        .context("Failed to run Claude. Is 'claude' CLI installed?")?;
+
+    if !status.success() {
+        anyhow::bail!("Claude exited with non-zero status");
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
