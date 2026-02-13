@@ -9,7 +9,7 @@ use super::collect_files;
 use super::resolve_root;
 use super::sidecar;
 
-const SKILL_CONTENT: &str = include_str!("../../docs/fmm-navigate.md");
+const SKILL_CONTENT: &str = include_str!("../../.claude/skills/fmm-navigate/SKILL.md");
 
 pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> {
     println!(
