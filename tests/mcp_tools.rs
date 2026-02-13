@@ -83,35 +83,35 @@ fn setup_mcp_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     std::fs::create_dir_all(&db).unwrap();
     std::fs::create_dir_all(&utils).unwrap();
 
-    // Write source files and their sidecars
+    // Write source files and their v0.3 sidecars (with line ranges)
     write_source_and_sidecar(
         &auth.join("session.ts"),
-        "export function createSession() {}\nexport function validateSession() {}\nimport jwt from 'jwt';\nimport redis from 'redis';\nimport { Types } from './types';\nimport { Config } from '../config';\n",
-        "file: src/auth/session.ts\nfmm: v0.2\nexports: [createSession, validateSession]\nimports: [jwt, redis]\ndependencies: [./types, ../config]\nloc: 234\n",
+        "import jwt from 'jwt';\nimport redis from 'redis';\nimport { Types } from './types';\nimport { Config } from '../config';\n\nexport function createSession() {\n  return jwt.sign({});\n}\n\nexport function validateSession(token: string) {\n  return jwt.verify(token);\n}\n",
+        "file: src/auth/session.ts\nfmm: v0.3\nexports:\n  createSession: [6, 8]\n  validateSession: [10, 12]\nimports: [jwt, redis]\ndependencies: [./types, ../config]\nloc: 12\n",
     );
 
     write_source_and_sidecar(
         &auth.join("types.ts"),
-        "export interface SessionToken {}\nexport type UserRole = 'admin' | 'user';\n",
-        "file: src/auth/types.ts\nfmm: v0.2\nexports: [SessionToken, UserRole]\nimports: []\ndependencies: []\nloc: 45\n",
+        "export interface SessionToken {\n  token: string;\n  expires: number;\n}\n\nexport type UserRole = 'admin' | 'user';\n",
+        "file: src/auth/types.ts\nfmm: v0.3\nexports:\n  SessionToken: [1, 4]\n  UserRole: [6, 6]\nimports: []\ndependencies: []\nloc: 6\n",
     );
 
     write_source_and_sidecar(
         &src.join("config.ts"),
-        "import dotenv from 'dotenv';\nexport function loadConfig() {}\nexport interface AppConfig {}\n",
-        "file: src/config.ts\nfmm: v0.2\nexports: [loadConfig, AppConfig]\nimports: [dotenv]\ndependencies: []\nloc: 120\n",
+        "import dotenv from 'dotenv';\n\nexport function loadConfig() {\n  dotenv.config();\n  return {};\n}\n\nexport interface AppConfig {\n  port: number;\n}\n",
+        "file: src/config.ts\nfmm: v0.3\nexports:\n  loadConfig: [3, 6]\n  AppConfig: [8, 10]\nimports: [dotenv]\ndependencies: []\nloc: 10\n",
     );
 
     write_source_and_sidecar(
         &db.join("pool.ts"),
-        "import pg from 'pg';\nimport { Config } from '../config';\nexport class Pool {}\nexport function createPool() {}\n",
-        "file: src/db/pool.ts\nfmm: v0.2\nexports: [Pool, createPool]\nimports: [pg]\ndependencies: [../config]\nloc: 89\n",
+        "import pg from 'pg';\nimport { Config } from '../config';\n\nexport class Pool {\n  private client: pg.Client;\n}\n\nexport function createPool() {\n  return new Pool();\n}\n",
+        "file: src/db/pool.ts\nfmm: v0.3\nexports:\n  Pool: [4, 6]\n  createPool: [8, 10]\nimports: [pg]\ndependencies: [../config]\nloc: 10\n",
     );
 
     write_source_and_sidecar(
         &utils.join("crypto.ts"),
-        "import bcrypt from 'bcrypt';\nexport function hashPassword() {}\nexport function verifyPassword() {}\n",
-        "file: src/utils/crypto.ts\nfmm: v0.2\nexports: [hashPassword, verifyPassword]\nimports: [bcrypt]\ndependencies: []\nloc: 67\n",
+        "import bcrypt from 'bcrypt';\n\nexport function hashPassword(pw: string) {\n  return bcrypt.hash(pw, 10);\n}\n\nexport function verifyPassword(pw: string, hash: string) {\n  return bcrypt.compare(pw, hash);\n}\n",
+        "file: src/utils/crypto.ts\nfmm: v0.3\nexports:\n  hashPassword: [3, 5]\n  verifyPassword: [7, 9]\nimports: [bcrypt]\ndependencies: []\nloc: 9\n",
     );
 
     // Build server from the temp directory
@@ -308,4 +308,92 @@ fn search_loc_range() {
     let paths: Vec<&String> = matches.iter().map(|(p, _)| *p).collect();
     assert!(paths.contains(&&"src/db/pool.ts".to_string()));
     assert!(paths.contains(&&"src/utils/crypto.ts".to_string()));
+}
+
+// --- fmm_read_symbol tests ---
+
+#[test]
+fn read_symbol_returns_source_lines() {
+    let (_tmp, server) = setup_mcp_server();
+    let result = server
+        .call_tool("fmm_read_symbol", serde_json::json!({"name": "createSession"}))
+        .unwrap();
+
+    let text = result["content"][0]["text"].as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+
+    assert_eq!(parsed["symbol"], "createSession");
+    assert_eq!(parsed["file"], "src/auth/session.ts");
+    assert_eq!(parsed["lines"], serde_json::json!([6, 8]));
+    let source = parsed["source"].as_str().unwrap();
+    assert!(source.contains("createSession"));
+    assert!(!source.contains("validateSession"));
+}
+
+#[test]
+fn read_symbol_not_found() {
+    let (_tmp, server) = setup_mcp_server();
+    let result = server
+        .call_tool("fmm_read_symbol", serde_json::json!({"name": "nonExistent"}))
+        .unwrap();
+
+    let is_error = result["isError"].as_bool().unwrap_or(false);
+    assert!(is_error);
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("not found"));
+}
+
+// --- fmm_file_outline tests ---
+
+#[test]
+fn file_outline_returns_symbols_with_lines() {
+    let (_tmp, server) = setup_mcp_server();
+    let result = server
+        .call_tool("fmm_file_outline", serde_json::json!({"file": "src/auth/session.ts"}))
+        .unwrap();
+
+    let text = result["content"][0]["text"].as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+
+    assert_eq!(parsed["file"], "src/auth/session.ts");
+    let symbols = parsed["symbols"].as_array().unwrap();
+    assert_eq!(symbols.len(), 2);
+
+    assert_eq!(symbols[0]["name"], "createSession");
+    assert_eq!(symbols[0]["lines"], serde_json::json!([6, 8]));
+    assert_eq!(symbols[0]["size"], 3);
+
+    assert_eq!(symbols[1]["name"], "validateSession");
+    assert_eq!(symbols[1]["lines"], serde_json::json!([10, 12]));
+    assert_eq!(symbols[1]["size"], 3);
+
+    assert!(parsed["imports"].as_array().unwrap().len() > 0);
+}
+
+#[test]
+fn file_outline_not_found() {
+    let (_tmp, server) = setup_mcp_server();
+    let result = server
+        .call_tool("fmm_file_outline", serde_json::json!({"file": "src/nonexistent.ts"}))
+        .unwrap();
+
+    let is_error = result["isError"].as_bool().unwrap_or(false);
+    assert!(is_error);
+}
+
+#[test]
+fn file_outline_shows_all_exports() {
+    let (_tmp, server) = setup_mcp_server();
+    let result = server
+        .call_tool("fmm_file_outline", serde_json::json!({"file": "src/utils/crypto.ts"}))
+        .unwrap();
+
+    let text = result["content"][0]["text"].as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+
+    let symbols = parsed["symbols"].as_array().unwrap();
+    let names: Vec<&str> = symbols.iter().map(|s| s["name"].as_str().unwrap()).collect();
+    assert!(names.contains(&"hashPassword"));
+    assert!(names.contains(&"verifyPassword"));
+    assert_eq!(parsed["loc"], 9);
 }
