@@ -798,6 +798,10 @@ mod tests {
             line: None,
         }];
         let (resolved, _) = resolve_references(&refs, &manifest);
-        assert!(resolved.len() <= 5, "Fallback should cap at 5, got {}", resolved.len());
+        assert!(
+            resolved.len() <= 5,
+            "Fallback should cap at 5, got {}",
+            resolved.len()
+        );
     }
 }

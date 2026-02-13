@@ -48,10 +48,7 @@ pub struct VariantResult {
 
 impl VariantResult {
     fn from_metrics(m: &RunMetrics, diff: &str) -> Self {
-        let files_changed = diff
-            .lines()
-            .filter(|l| l.starts_with("diff --git"))
-            .count() as u32;
+        let files_changed = diff.lines().filter(|l| l.starts_with("diff --git")).count() as u32;
 
         Self {
             input_tokens: m.input_tokens,
@@ -396,7 +393,10 @@ impl IssueComparisonReport {
             "| Files changed | {} | {} | {} | — |\n",
             self.control.files_changed,
             self.fmm.files_changed,
-            delta_str(self.control.files_changed as u64, self.fmm.files_changed as u64)
+            delta_str(
+                self.control.files_changed as u64,
+                self.fmm.files_changed as u64
+            )
         ));
         md.push_str(&format!(
             "| Duration | {:.0}s | {:.0}s | {} | {:.0}% |\n\n",
