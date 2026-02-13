@@ -376,7 +376,7 @@ fn file_outline_returns_symbols_with_lines() {
     assert_eq!(symbols[1]["lines"], serde_json::json!([10, 12]));
     assert_eq!(symbols[1]["size"], 3);
 
-    assert!(parsed["imports"].as_array().unwrap().len() > 0);
+    assert!(!parsed["imports"].as_array().unwrap().is_empty());
 }
 
 #[test]
