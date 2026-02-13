@@ -598,15 +598,12 @@ impl McpServer {
             .get(&args.name)
             .ok_or_else(|| format!("Export '{}' not found", args.name))?;
 
-        let lines = location
-            .lines
-            .as_ref()
-            .ok_or_else(|| {
-                format!(
-                    "No line range for '{}' — regenerate sidecars with 'fmm generate' for v0.3 format",
-                    args.name
-                )
-            })?;
+        let lines = location.lines.as_ref().ok_or_else(|| {
+            format!(
+                "No line range for '{}' — regenerate sidecars with 'fmm generate' for v0.3 format",
+                args.name
+            )
+        })?;
 
         let source_path = self.root.join(&location.file);
         let content = std::fs::read_to_string(&source_path)

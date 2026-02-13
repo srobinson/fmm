@@ -56,7 +56,7 @@ pub fn run(query: &str, model: &str, max_turns: u32, max_budget: f64) -> Result<
         .arg("--mcp-config")
         .arg(".mcp.json")
         .arg("--allowedTools")
-        .arg("Read,Glob,Grep,LS,mcp__fmm__fmm_lookup_export,mcp__fmm__fmm_list_exports,mcp__fmm__fmm_file_info,mcp__fmm__fmm_dependency_graph,mcp__fmm__fmm_search")
+        .arg("Read,Glob,Grep,LS,mcp__fmm__fmm_lookup_export,mcp__fmm__fmm_list_exports,mcp__fmm__fmm_file_info,mcp__fmm__fmm_dependency_graph,mcp__fmm__fmm_search,mcp__fmm__fmm_read_symbol,mcp__fmm__fmm_file_outline")
         .current_dir(&cwd)
         .status()
         .context("Failed to run Claude. Is 'claude' CLI installed?")?;

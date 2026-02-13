@@ -316,7 +316,10 @@ fn search_loc_range() {
 fn read_symbol_returns_source_lines() {
     let (_tmp, server) = setup_mcp_server();
     let result = server
-        .call_tool("fmm_read_symbol", serde_json::json!({"name": "createSession"}))
+        .call_tool(
+            "fmm_read_symbol",
+            serde_json::json!({"name": "createSession"}),
+        )
         .unwrap();
 
     let text = result["content"][0]["text"].as_str().unwrap();
@@ -334,7 +337,10 @@ fn read_symbol_returns_source_lines() {
 fn read_symbol_not_found() {
     let (_tmp, server) = setup_mcp_server();
     let result = server
-        .call_tool("fmm_read_symbol", serde_json::json!({"name": "nonExistent"}))
+        .call_tool(
+            "fmm_read_symbol",
+            serde_json::json!({"name": "nonExistent"}),
+        )
         .unwrap();
 
     let is_error = result["isError"].as_bool().unwrap_or(false);
@@ -349,7 +355,10 @@ fn read_symbol_not_found() {
 fn file_outline_returns_symbols_with_lines() {
     let (_tmp, server) = setup_mcp_server();
     let result = server
-        .call_tool("fmm_file_outline", serde_json::json!({"file": "src/auth/session.ts"}))
+        .call_tool(
+            "fmm_file_outline",
+            serde_json::json!({"file": "src/auth/session.ts"}),
+        )
         .unwrap();
 
     let text = result["content"][0]["text"].as_str().unwrap();
@@ -374,7 +383,10 @@ fn file_outline_returns_symbols_with_lines() {
 fn file_outline_not_found() {
     let (_tmp, server) = setup_mcp_server();
     let result = server
-        .call_tool("fmm_file_outline", serde_json::json!({"file": "src/nonexistent.ts"}))
+        .call_tool(
+            "fmm_file_outline",
+            serde_json::json!({"file": "src/nonexistent.ts"}),
+        )
         .unwrap();
 
     let is_error = result["isError"].as_bool().unwrap_or(false);
@@ -385,14 +397,20 @@ fn file_outline_not_found() {
 fn file_outline_shows_all_exports() {
     let (_tmp, server) = setup_mcp_server();
     let result = server
-        .call_tool("fmm_file_outline", serde_json::json!({"file": "src/utils/crypto.ts"}))
+        .call_tool(
+            "fmm_file_outline",
+            serde_json::json!({"file": "src/utils/crypto.ts"}),
+        )
         .unwrap();
 
     let text = result["content"][0]["text"].as_str().unwrap();
     let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
 
     let symbols = parsed["symbols"].as_array().unwrap();
-    let names: Vec<&str> = symbols.iter().map(|s| s["name"].as_str().unwrap()).collect();
+    let names: Vec<&str> = symbols
+        .iter()
+        .map(|s| s["name"].as_str().unwrap())
+        .collect();
     assert!(names.contains(&"hashPassword"));
     assert!(names.contains(&"verifyPassword"));
     assert_eq!(parsed["loc"], 9);
