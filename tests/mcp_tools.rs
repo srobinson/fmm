@@ -114,11 +114,8 @@ fn setup_mcp_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
         "file: src/utils/crypto.ts\nfmm: v0.3\nexports:\n  hashPassword: [3, 5]\n  verifyPassword: [7, 9]\nimports: [bcrypt]\ndependencies: []\nloc: 9\n",
     );
 
-    // Build server from the temp directory
-    let original = std::env::current_dir().unwrap();
-    std::env::set_current_dir(tmp.path()).unwrap();
-    let server = fmm::mcp::McpServer::new();
-    std::env::set_current_dir(original).unwrap();
+    // Build server from the temp directory (use with_root to avoid process-global cwd mutation)
+    let server = fmm::mcp::McpServer::with_root(tmp.path().to_path_buf());
 
     (tmp, server)
 }

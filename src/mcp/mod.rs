@@ -100,6 +100,10 @@ impl McpServer {
     pub fn new() -> Self {
         // Safe default: empty path is harmless; MCP server will report "no sidecars" if cwd fails
         let root = std::env::current_dir().unwrap_or_default();
+        Self::with_root(root)
+    }
+
+    pub fn with_root(root: PathBuf) -> Self {
         let manifest = Manifest::load_from_sidecars(&root).ok();
         Self { manifest, root }
     }
