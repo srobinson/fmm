@@ -4,7 +4,11 @@
 //! Calls tool handlers directly — no JSON-RPC server needed.
 
 use fmm::manifest::{FileEntry, Manifest};
-use fmm::parser::Metadata;
+use fmm::parser::{ExportEntry, Metadata};
+
+fn e(name: &str) -> ExportEntry {
+    ExportEntry::new(name.to_string(), 0, 0)
+}
 
 /// Build a test manifest with realistic data.
 fn test_manifest() -> Manifest {
@@ -13,7 +17,7 @@ fn test_manifest() -> Manifest {
     manifest.add_file(
         "src/auth/session.ts",
         Metadata {
-            exports: vec!["createSession".into(), "validateSession".into()],
+            exports: vec![e("createSession"), e("validateSession")],
             imports: vec!["jwt".into(), "redis".into()],
             dependencies: vec!["./types".into(), "../config".into()],
             loc: 234,
@@ -23,7 +27,7 @@ fn test_manifest() -> Manifest {
     manifest.add_file(
         "src/auth/types.ts",
         Metadata {
-            exports: vec!["SessionToken".into(), "UserRole".into()],
+            exports: vec![e("SessionToken"), e("UserRole")],
             imports: vec![],
             dependencies: vec![],
             loc: 45,
@@ -33,7 +37,7 @@ fn test_manifest() -> Manifest {
     manifest.add_file(
         "src/config.ts",
         Metadata {
-            exports: vec!["loadConfig".into(), "AppConfig".into()],
+            exports: vec![e("loadConfig"), e("AppConfig")],
             imports: vec!["dotenv".into()],
             dependencies: vec![],
             loc: 120,
@@ -43,7 +47,7 @@ fn test_manifest() -> Manifest {
     manifest.add_file(
         "src/db/pool.ts",
         Metadata {
-            exports: vec!["Pool".into(), "createPool".into()],
+            exports: vec![e("Pool"), e("createPool")],
             imports: vec!["pg".into()],
             dependencies: vec!["../config".into()],
             loc: 89,
@@ -53,7 +57,7 @@ fn test_manifest() -> Manifest {
     manifest.add_file(
         "src/utils/crypto.ts",
         Metadata {
-            exports: vec!["hashPassword".into(), "verifyPassword".into()],
+            exports: vec![e("hashPassword"), e("verifyPassword")],
             imports: vec!["bcrypt".into()],
             dependencies: vec![],
             loc: 67,

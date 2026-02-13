@@ -1,10 +1,10 @@
-use crate::parser::{Metadata, ParseResult, Parser};
+use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
-use super::query_helpers::collect_matches;
+use super::query_helpers::{collect_matches, collect_matches_with_lines, top_level_ancestor};
 
 pub struct JavaParser {
     parser: TSParser,
@@ -66,29 +66,27 @@ impl JavaParser {
         })
     }
 
-    fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+    fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<ExportEntry> {
         let source_bytes = source.as_bytes();
         let mut seen = HashSet::new();
         let mut exports = Vec::new();
 
-        // Top-level classes, interfaces, enums via collect_matches
-        for name in collect_matches(&self.class_query, root_node, source_bytes) {
-            if seen.insert(name.clone()) {
-                exports.push(name);
+        for entry in collect_matches_with_lines(&self.class_query, root_node, source_bytes) {
+            if seen.insert(entry.name.clone()) {
+                exports.push(entry);
             }
         }
-        for name in collect_matches(&self.interface_query, root_node, source_bytes) {
-            if seen.insert(name.clone()) {
-                exports.push(name);
+        for entry in collect_matches_with_lines(&self.interface_query, root_node, source_bytes) {
+            if seen.insert(entry.name.clone()) {
+                exports.push(entry);
             }
         }
-        for name in collect_matches(&self.enum_query, root_node, source_bytes) {
-            if seen.insert(name.clone()) {
-                exports.push(name);
+        for entry in collect_matches_with_lines(&self.enum_query, root_node, source_bytes) {
+            if seen.insert(entry.name.clone()) {
+                exports.push(entry);
             }
         }
 
-        // Public methods in top-level classes (needs manual cursor for has_public_modifier check)
         let mut cursor = QueryCursor::new();
         let mut iter = cursor.matches(&self.method_query, root_node, source_bytes);
         while let Some(m) = iter.next() {
@@ -99,7 +97,12 @@ impl JavaParser {
                         if let Ok(text) = method_node.utf8_text(source_bytes) {
                             let name = text.to_string();
                             if seen.insert(name.clone()) {
-                                exports.push(name);
+                                let decl = top_level_ancestor(capture.node);
+                                exports.push(ExportEntry::new(
+                                    name,
+                                    decl.start_position().row + 1,
+                                    decl.end_position().row + 1,
+                                ));
                             }
                         }
                     }
@@ -107,7 +110,7 @@ impl JavaParser {
             }
         }
 
-        exports.sort();
+        exports.sort_by(|a, b| a.name.cmp(&b.name));
         exports
     }
 
@@ -226,9 +229,18 @@ public class UserService {
 }
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.exports.contains(&"UserService".to_string()));
-        assert!(result.metadata.exports.contains(&"createUser".to_string()));
-        assert!(!result.metadata.exports.contains(&"validate".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"UserService".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"createUser".to_string()));
+        assert!(!result
+            .metadata
+            .export_names()
+            .contains(&"validate".to_string()));
     }
 
     #[test]
@@ -241,7 +253,10 @@ public interface Repository<T> {
 }
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.exports.contains(&"Repository".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"Repository".to_string()));
     }
 
     #[test]
@@ -293,7 +308,10 @@ public enum Status {
 }
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.exports.contains(&"Status".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"Status".to_string()));
     }
 
     #[test]

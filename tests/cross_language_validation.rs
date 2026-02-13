@@ -56,14 +56,14 @@ def encode_urlencoded_data(data: dict) -> typing.Tuple[bytes, str]:
     assert!(
         result
             .metadata
-            .exports
+            .export_names()
             .contains(&"encode_content".to_string()),
         "missing encode_content export"
     );
     assert!(
         result
             .metadata
-            .exports
+            .export_names()
             .contains(&"encode_urlencoded_data".to_string()),
         "missing encode_urlencoded_data export"
     );
@@ -118,15 +118,24 @@ __all__ = [
 
     // __all__ has 21 unique string entries
     assert_eq!(
-        result.metadata.exports.len(),
+        result.metadata.export_names().len(),
         21,
         "expected 21 exports from __all__"
     );
-    assert!(result.metadata.exports.contains(&"AsyncClient".to_string()));
-    assert!(result.metadata.exports.contains(&"Client".to_string()));
-    assert!(result.metadata.exports.contains(&"get".to_string()));
-    assert!(result.metadata.exports.contains(&"post".to_string()));
-    assert!(result.metadata.exports.contains(&"codes".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"AsyncClient".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Client".to_string()));
+    assert!(result.metadata.export_names().contains(&"get".to_string()));
+    assert!(result.metadata.export_names().contains(&"post".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"codes".to_string()));
 
     // Relative imports should be in dependencies
     assert!(
@@ -160,7 +169,10 @@ class QueryParams(typing.Mapping[str, str]):
     let mut parser = PythonParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
-    assert!(result.metadata.exports.contains(&"QueryParams".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"QueryParams".to_string()));
     assert!(result.metadata.imports.contains(&"typing".to_string()));
 
     // Should detect decorators
@@ -201,9 +213,18 @@ def process(data: Any) -> List:
     assert!(result.metadata.imports.contains(&"typing".to_string()));
 
     // Exports: public class, function, UPPER_CASE constant
-    assert!(result.metadata.exports.contains(&"DataHandler".to_string()));
-    assert!(result.metadata.exports.contains(&"process".to_string()));
-    assert!(result.metadata.exports.contains(&"API_VERSION".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"DataHandler".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"process".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"API_VERSION".to_string()));
 }
 
 // =============================================================================
@@ -260,10 +281,19 @@ pub fn load_config(path: &PathBuf) -> Result<Config> {
     let result = parser.parse(source).unwrap();
 
     // Exports: pub struct, pub enum, pub fn
-    assert!(result.metadata.exports.contains(&"Config".to_string()));
-    assert!(result.metadata.exports.contains(&"PagingMode".to_string()));
-    assert!(result.metadata.exports.contains(&"load_config".to_string()));
-    assert_eq!(result.metadata.exports.len(), 3);
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Config".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"PagingMode".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"load_config".to_string()));
+    assert_eq!(result.metadata.export_names().len(), 3);
 
     // Imports: anyhow, serde (not std)
     assert!(result.metadata.imports.contains(&"anyhow".to_string()));
@@ -350,9 +380,18 @@ pub async fn search_file(path: &str, config: &SearchConfig) -> Result<Vec<Match>
     let result = parser.parse(source).unwrap();
 
     // Exports
-    assert!(result.metadata.exports.contains(&"Searcher".to_string()));
-    assert!(result.metadata.exports.contains(&"Match".to_string()));
-    assert!(result.metadata.exports.contains(&"search_file".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Searcher".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Match".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"search_file".to_string()));
 
     // Imports (external crates only)
     assert!(result.metadata.imports.contains(&"anyhow".to_string()));
@@ -402,18 +441,27 @@ pub struct PublicType {
     let mut parser = RustParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
-    assert!(result.metadata.exports.contains(&"public_api".to_string()));
-    assert!(result.metadata.exports.contains(&"PublicType".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"public_api".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"PublicType".to_string()));
     assert!(!result
         .metadata
-        .exports
+        .export_names()
         .contains(&"internal_helper".to_string()));
-    assert!(!result.metadata.exports.contains(&"parent_only".to_string()));
     assert!(!result
         .metadata
-        .exports
+        .export_names()
+        .contains(&"parent_only".to_string()));
+    assert!(!result
+        .metadata
+        .export_names()
         .contains(&"totally_private".to_string()));
-    assert_eq!(result.metadata.exports.len(), 2);
+    assert_eq!(result.metadata.export_names().len(), 2);
 }
 
 /// Rust module with multiple derive blocks and use groups
@@ -458,9 +506,18 @@ impl std::fmt::Display for CacheError {
     let mut parser = RustParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
-    assert!(result.metadata.exports.contains(&"AppState".to_string()));
-    assert!(result.metadata.exports.contains(&"CacheEntry".to_string()));
-    assert!(result.metadata.exports.contains(&"CacheError".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"AppState".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"CacheEntry".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"CacheError".to_string()));
 
     assert!(result.metadata.imports.contains(&"anyhow".to_string()));
     assert!(result.metadata.imports.contains(&"serde".to_string()));
@@ -495,22 +552,22 @@ export { validateConfig } from './config';
     let mut parser = TypeScriptParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
-    assert_eq!(result.metadata.exports.len(), 4);
+    assert_eq!(result.metadata.export_names().len(), 4);
     assert!(result
         .metadata
-        .exports
+        .export_names()
         .contains(&"createContext".to_string()));
     assert!(result
         .metadata
-        .exports
+        .export_names()
         .contains(&"parseMarkdown".to_string()));
     assert!(result
         .metadata
-        .exports
+        .export_names()
         .contains(&"renderOutput".to_string()));
     assert!(result
         .metadata
-        .exports
+        .export_names()
         .contains(&"validateConfig".to_string()));
 
     // Re-exports (export { X } from './Y') are not import statements,
@@ -565,19 +622,19 @@ export const DEFAULT_PORT = 5432;
 
     assert!(result
         .metadata
-        .exports
+        .export_names()
         .contains(&"ConnectionOptions".to_string()));
     assert!(result
         .metadata
-        .exports
+        .export_names()
         .contains(&"ConnectionManager".to_string()));
     assert!(result
         .metadata
-        .exports
+        .export_names()
         .contains(&"createConnection".to_string()));
     assert!(result
         .metadata
-        .exports
+        .export_names()
         .contains(&"DEFAULT_PORT".to_string()));
 
     // External imports
@@ -666,11 +723,23 @@ func healthCheck(w http.ResponseWriter, r *http.Request) {
     let mut parser = GoParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
-    assert!(result.metadata.exports.contains(&"Response".to_string()));
-    assert!(result.metadata.exports.contains(&"Handler".to_string()));
-    assert!(result.metadata.exports.contains(&"NewHandler".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Response".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Handler".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"NewHandler".to_string()));
     // healthCheck is unexported (lowercase)
-    assert!(!result.metadata.exports.contains(&"healthCheck".to_string()));
+    assert!(!result
+        .metadata
+        .export_names()
+        .contains(&"healthCheck".to_string()));
 
     assert!(result
         .metadata
@@ -715,16 +784,22 @@ type cacheEntry struct {
     let mut parser = GoParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
-    assert!(result.metadata.exports.contains(&"Store".to_string()));
     assert!(result
         .metadata
-        .exports
+        .export_names()
+        .contains(&"Store".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
         .contains(&"PostgresStore".to_string()));
     assert!(result
         .metadata
-        .exports
+        .export_names()
         .contains(&"NewPostgresStore".to_string()));
-    assert!(!result.metadata.exports.contains(&"cacheEntry".to_string()));
+    assert!(!result
+        .metadata
+        .export_names()
+        .contains(&"cacheEntry".to_string()));
 
     assert!(result.metadata.imports.contains(&"context".to_string()));
     assert!(result.metadata.imports.contains(&"time".to_string()));
@@ -769,11 +844,20 @@ public class UserController {
 
     assert!(result
         .metadata
-        .exports
+        .export_names()
         .contains(&"UserController".to_string()));
-    assert!(result.metadata.exports.contains(&"getUsers".to_string()));
-    assert!(result.metadata.exports.contains(&"createUser".to_string()));
-    assert!(!result.metadata.exports.contains(&"validate".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"getUsers".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"createUser".to_string()));
+    assert!(!result
+        .metadata
+        .export_names()
+        .contains(&"validate".to_string()));
 
     let fields = result.custom_fields.unwrap();
     let annotations = fields.get("annotations").unwrap().as_array().unwrap();
@@ -811,11 +895,17 @@ public class StringValidator implements Validator<String> {
     let mut parser = JavaParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
-    assert!(result.metadata.exports.contains(&"Validator".to_string()));
-    assert!(result.metadata.exports.contains(&"Priority".to_string()));
     assert!(result
         .metadata
-        .exports
+        .export_names()
+        .contains(&"Validator".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Priority".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
         .contains(&"StringValidator".to_string()));
 }
 
@@ -875,9 +965,18 @@ struct EventData {
     let mut parser = CppParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
-    assert!(result.metadata.exports.contains(&"EventBus".to_string()));
-    assert!(result.metadata.exports.contains(&"Observable".to_string()));
-    assert!(result.metadata.exports.contains(&"EventData".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"EventBus".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Observable".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"EventData".to_string()));
 
     assert!(result.metadata.imports.contains(&"memory".to_string()));
     assert!(result.metadata.imports.contains(&"vector".to_string()));
@@ -935,16 +1034,28 @@ namespace MyApp.Services
 
     assert!(result
         .metadata
-        .exports
+        .export_names()
         .contains(&"IUserService".to_string()));
-    assert!(result.metadata.exports.contains(&"UserService".to_string()));
     assert!(result
         .metadata
-        .exports
+        .export_names()
+        .contains(&"UserService".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
         .contains(&"GetUserAsync".to_string()));
-    assert!(result.metadata.exports.contains(&"Delete".to_string()));
-    assert!(!result.metadata.exports.contains(&"Validate".to_string()));
-    assert!(!result.metadata.exports.contains(&"CacheHelper".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Delete".to_string()));
+    assert!(!result
+        .metadata
+        .export_names()
+        .contains(&"Validate".to_string()));
+    assert!(!result
+        .metadata
+        .export_names()
+        .contains(&"CacheHelper".to_string()));
 }
 
 // =============================================================================
@@ -998,9 +1109,15 @@ end
     let mut parser = RubyParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
-    assert!(result.metadata.exports.contains(&"User".to_string()));
-    assert!(result.metadata.exports.contains(&"Searchable".to_string()));
-    assert!(result.metadata.exports.contains(&"create_user".to_string()));
+    assert!(result.metadata.export_names().contains(&"User".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Searchable".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"create_user".to_string()));
 
     assert!(result.metadata.imports.contains(&"json".to_string()));
     assert!(result
@@ -1054,12 +1171,18 @@ end
     let mut parser = RubyParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
-    assert!(result.metadata.exports.contains(&"Loggable".to_string()));
     assert!(result
         .metadata
-        .exports
+        .export_names()
+        .contains(&"Loggable".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
         .contains(&"Configurable".to_string()));
-    assert!(result.metadata.exports.contains(&"Application".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Application".to_string()));
 
     assert!(result.metadata.imports.contains(&"logger".to_string()));
 

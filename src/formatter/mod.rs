@@ -23,7 +23,7 @@ impl Frontmatter {
         }
     }
 
-    /// Set the format version (e.g., "v0.2").
+    /// Set the format version (e.g., "v0.3").
     pub fn with_version(mut self, version: &str) -> Self {
         self.version = Some(version.to_string());
         self
@@ -54,9 +54,15 @@ impl Frontmatter {
             lines.push(format!("fmm: {}", version));
         }
 
-        // Exports
+        // Exports as YAML map with [start, end] line ranges
         if !self.metadata.exports.is_empty() {
-            lines.push(format!("exports: [{}]", self.metadata.exports.join(", ")));
+            lines.push("exports:".to_string());
+            for entry in &self.metadata.exports {
+                lines.push(format!(
+                    "  {}: [{}, {}]",
+                    entry.name, entry.start_line, entry.end_line
+                ));
+            }
         }
 
         // Imports (external packages only)
@@ -123,11 +129,19 @@ fn format_value(value: &serde_json::Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser::ExportEntry;
+
+    fn entry(name: &str, start: usize, end: usize) -> ExportEntry {
+        ExportEntry::new(name.to_string(), start, end)
+    }
 
     #[test]
     fn test_sidecar_output() {
         let metadata = Metadata {
-            exports: vec!["createSession".to_string(), "validateSession".to_string()],
+            exports: vec![
+                entry("createSession", 5, 20),
+                entry("validateSession", 22, 45),
+            ],
             imports: vec!["jwt".to_string(), "redis".to_string()],
             dependencies: vec!["./types".to_string(), "./config".to_string()],
             loc: 234,
@@ -137,12 +151,13 @@ mod tests {
         let rendered = fm.render();
 
         assert!(rendered.contains("file: src/auth/session.ts"));
-        assert!(rendered.contains("exports: [createSession, validateSession]"));
+        assert!(rendered.contains("exports:"));
+        assert!(rendered.contains("  createSession: [5, 20]"));
+        assert!(rendered.contains("  validateSession: [22, 45]"));
         assert!(rendered.contains("imports: [jwt, redis]"));
         assert!(rendered.contains("dependencies: [./types, ./config]"));
         assert!(rendered.contains("loc: 234"));
         assert!(rendered.contains("modified:"));
-        // No comment prefixes
         assert!(!rendered.contains("//"));
         assert!(!rendered.contains("# ---"));
         assert!(!rendered.contains("FMM ---"));
@@ -151,25 +166,25 @@ mod tests {
     #[test]
     fn test_sidecar_with_version() {
         let metadata = Metadata {
-            exports: vec!["foo".to_string()],
+            exports: vec![entry("foo", 1, 3)],
             imports: vec![],
             dependencies: vec![],
             loc: 10,
         };
 
-        let fm = Frontmatter::new("test.ts".to_string(), metadata).with_version("v0.2");
+        let fm = Frontmatter::new("test.ts".to_string(), metadata).with_version("v0.3");
         let rendered = fm.render();
 
-        assert!(rendered.contains("fmm: v0.2"));
+        assert!(rendered.contains("fmm: v0.3"));
         let lines: Vec<&str> = rendered.lines().collect();
         assert_eq!(lines[0], "file: test.ts");
-        assert_eq!(lines[1], "fmm: v0.2");
+        assert_eq!(lines[1], "fmm: v0.3");
     }
 
     #[test]
     fn test_sidecar_without_version() {
         let metadata = Metadata {
-            exports: vec!["foo".to_string()],
+            exports: vec![entry("foo", 1, 3)],
             imports: vec![],
             dependencies: vec![],
             loc: 10,
@@ -183,7 +198,7 @@ mod tests {
     #[test]
     fn test_sidecar_with_rust_custom_fields() {
         let metadata = Metadata {
-            exports: vec!["MyStruct".to_string()],
+            exports: vec![entry("MyStruct", 5, 15)],
             imports: vec!["std".to_string()],
             dependencies: vec![],
             loc: 50,
@@ -203,7 +218,7 @@ mod tests {
         );
 
         let fm = Frontmatter::new("src/lib.rs".to_string(), metadata)
-            .with_version("v0.2")
+            .with_version("v0.3")
             .with_custom_fields(Some("rust"), Some(&custom));
 
         let rendered = fm.render();
@@ -215,7 +230,7 @@ mod tests {
     #[test]
     fn test_sidecar_with_python_custom_fields() {
         let metadata = Metadata {
-            exports: vec!["MyClass".to_string()],
+            exports: vec![entry("MyClass", 1, 30)],
             imports: vec!["flask".to_string()],
             dependencies: vec![],
             loc: 100,
@@ -231,7 +246,7 @@ mod tests {
         );
 
         let fm = Frontmatter::new("app.py".to_string(), metadata)
-            .with_version("v0.2")
+            .with_version("v0.3")
             .with_custom_fields(Some("python"), Some(&custom));
 
         let rendered = fm.render();
@@ -242,7 +257,7 @@ mod tests {
     #[test]
     fn test_sidecar_no_custom_fields_when_none() {
         let metadata = Metadata {
-            exports: vec!["foo".to_string()],
+            exports: vec![entry("foo", 1, 3)],
             imports: vec![],
             dependencies: vec![],
             loc: 10,
@@ -257,7 +272,7 @@ mod tests {
     #[test]
     fn test_sidecar_no_custom_fields_when_empty() {
         let metadata = Metadata {
-            exports: vec!["foo".to_string()],
+            exports: vec![entry("foo", 1, 3)],
             imports: vec![],
             dependencies: vec![],
             loc: 10,

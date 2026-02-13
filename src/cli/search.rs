@@ -1,12 +1,16 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 
+use crate::manifest::ExportLines;
+
 /// Search result for JSON output
 #[derive(serde::Serialize)]
 struct SearchResult {
     file: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     exports: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    export_lines: Option<Vec<ExportLines>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     imports: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -46,6 +50,7 @@ pub fn search(
                 results.push(SearchResult {
                     file: file_path.clone(),
                     exports: Some(entry.exports.clone()),
+                    export_lines: entry.export_lines.clone(),
                     imports: Some(entry.imports.clone()),
                     dependencies: Some(entry.dependencies.clone()),
                     loc: Some(entry.loc),
@@ -68,6 +73,7 @@ pub fn search(
                 results.push(SearchResult {
                     file: file_path.clone(),
                     exports: Some(entry.exports.clone()),
+                    export_lines: entry.export_lines.clone(),
                     imports: Some(entry.imports.clone()),
                     dependencies: Some(entry.dependencies.clone()),
                     loc: Some(entry.loc),
@@ -90,6 +96,7 @@ pub fn search(
                 results.push(SearchResult {
                     file: file_path.clone(),
                     exports: Some(entry.exports.clone()),
+                    export_lines: entry.export_lines.clone(),
                     imports: Some(entry.imports.clone()),
                     dependencies: Some(entry.dependencies.clone()),
                     loc: Some(entry.loc),
@@ -108,6 +115,7 @@ pub fn search(
                     results.push(SearchResult {
                         file: file_path.clone(),
                         exports: Some(entry.exports.clone()),
+                        export_lines: entry.export_lines.clone(),
                         imports: Some(entry.imports.clone()),
                         dependencies: Some(entry.dependencies.clone()),
                         loc: Some(entry.loc),
@@ -125,6 +133,7 @@ pub fn search(
             results.push(SearchResult {
                 file: file_path.clone(),
                 exports: Some(entry.exports.clone()),
+                export_lines: entry.export_lines.clone(),
                 imports: Some(entry.imports.clone()),
                 dependencies: Some(entry.dependencies.clone()),
                 loc: Some(entry.loc),
@@ -150,7 +159,21 @@ pub fn search(
             println!("{}", result.file.white().bold());
             if let Some(ref exports) = result.exports {
                 if !exports.is_empty() {
-                    println!("  {} {}", "exports:".dimmed(), exports.join(", "));
+                    let formatted: Vec<String> = exports
+                        .iter()
+                        .enumerate()
+                        .map(|(i, name)| {
+                            if let Some(ref lines) = result.export_lines {
+                                if let Some(el) = lines.get(i) {
+                                    if el.start > 0 {
+                                        return format!("{} [{}-{}]", name, el.start, el.end);
+                                    }
+                                }
+                            }
+                            name.clone()
+                        })
+                        .collect();
+                    println!("  {} {}", "exports:".dimmed(), formatted.join(", "));
                 }
             }
             if let Some(ref imports) = result.imports {

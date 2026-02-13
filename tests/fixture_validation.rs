@@ -22,7 +22,7 @@ fn validate_python_fixture() {
         "fetch_data",
         "transform",
     ];
-    assert_eq!(result.metadata.exports, expected_exports);
+    assert_eq!(result.metadata.export_names(), expected_exports);
 
     // Expected imports: requests, pandas (external packages)
     // pathlib is stdlib but still extracted as import
@@ -50,11 +50,11 @@ fn validate_python_fixture() {
     // Verify _internal_helper and _INTERNAL_TIMEOUT are NOT exported
     assert!(!result
         .metadata
-        .exports
+        .export_names()
         .contains(&"_internal_helper".to_string()));
     assert!(!result
         .metadata
-        .exports
+        .export_names()
         .contains(&"_INTERNAL_TIMEOUT".to_string()));
 }
 
@@ -67,7 +67,7 @@ fn validate_rust_fixture() {
 
     // Expected exports: pub items only (not pub(crate), pub(super), or private)
     let expected_exports = vec!["Config", "Error", "Pipeline", "Status", "process"];
-    assert_eq!(result.metadata.exports, expected_exports);
+    assert_eq!(result.metadata.export_names(), expected_exports);
 
     // Expected imports: anyhow, serde, tokio (external crates, not std)
     assert!(result.metadata.imports.contains(&"anyhow".to_string()));
@@ -121,13 +121,16 @@ fn validate_rust_fixture() {
     // Verify pub(crate) and pub(super) items are NOT exported
     assert!(!result
         .metadata
-        .exports
+        .export_names()
         .contains(&"internal_helper".to_string()));
     assert!(!result
         .metadata
-        .exports
+        .export_names()
         .contains(&"parent_visible".to_string()));
-    assert!(!result.metadata.exports.contains(&"private_fn".to_string()));
+    assert!(!result
+        .metadata
+        .export_names()
+        .contains(&"private_fn".to_string()));
 }
 
 #[test]
@@ -148,7 +151,7 @@ fn validate_go_fixture() {
         "StatusActive",
         "StatusInactive",
     ];
-    assert_eq!(result.metadata.exports, expected_exports);
+    assert_eq!(result.metadata.export_names(), expected_exports);
 
     // Imports: stdlib packages
     assert!(result
@@ -171,13 +174,16 @@ fn validate_go_fixture() {
     // Non-exported items should not be in exports
     assert!(!result
         .metadata
-        .exports
+        .export_names()
         .contains(&"internalTimeout".to_string()));
     assert!(!result
         .metadata
-        .exports
+        .export_names()
         .contains(&"privateState".to_string()));
-    assert!(!result.metadata.exports.contains(&"helperFunc".to_string()));
+    assert!(!result
+        .metadata
+        .export_names()
+        .contains(&"helperFunc".to_string()));
 
     assert!(result.metadata.loc > 50);
 }
@@ -192,21 +198,36 @@ fn validate_java_fixture() {
     // Top-level classes, interfaces, enums
     assert!(result
         .metadata
-        .exports
+        .export_names()
         .contains(&"DataProcessor".to_string()));
-    assert!(result.metadata.exports.contains(&"Repository".to_string()));
-    assert!(result.metadata.exports.contains(&"Status".to_string()));
     assert!(result
         .metadata
-        .exports
+        .export_names()
+        .contains(&"Repository".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Status".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
         .contains(&"ProcessConfig".to_string()));
 
     // Public methods
-    assert!(result.metadata.exports.contains(&"process".to_string()));
-    assert!(result.metadata.exports.contains(&"transform".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"process".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"transform".to_string()));
 
     // Private methods should not be exported
-    assert!(!result.metadata.exports.contains(&"validate".to_string()));
+    assert!(!result
+        .metadata
+        .export_names()
+        .contains(&"validate".to_string()));
 
     // Imports
     assert!(result.metadata.imports.contains(&"java.util".to_string()));
@@ -239,12 +260,30 @@ fn validate_cpp_fixture() {
     let result = parser.parse(source).unwrap();
 
     // Classes, structs, enums, functions, templates
-    assert!(result.metadata.exports.contains(&"Engine".to_string()));
-    assert!(result.metadata.exports.contains(&"Config".to_string()));
-    assert!(result.metadata.exports.contains(&"Point".to_string()));
-    assert!(result.metadata.exports.contains(&"Status".to_string()));
-    assert!(result.metadata.exports.contains(&"Pipeline".to_string()));
-    assert!(result.metadata.exports.contains(&"process".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Engine".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Config".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Point".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Status".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Pipeline".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"process".to_string()));
 
     // System includes
     assert!(result.metadata.imports.contains(&"vector".to_string()));
@@ -284,19 +323,31 @@ fn validate_csharp_fixture() {
     let result = parser.parse(source).unwrap();
 
     // Public types only
-    assert!(result.metadata.exports.contains(&"DataService".to_string()));
-    assert!(result.metadata.exports.contains(&"IRepository".to_string()));
-    assert!(result.metadata.exports.contains(&"Status".to_string()));
     assert!(result
         .metadata
-        .exports
+        .export_names()
+        .contains(&"DataService".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"IRepository".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Status".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
         .contains(&"ProcessConfig".to_string()));
-    assert!(result.metadata.exports.contains(&"Transform".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Transform".to_string()));
 
     // Internal class should NOT be exported
     assert!(!result
         .metadata
-        .exports
+        .export_names()
         .contains(&"InternalHelper".to_string()));
 
     // Using statements
@@ -327,19 +378,25 @@ fn validate_ruby_fixture() {
     // Classes, modules, top-level methods
     assert!(result
         .metadata
-        .exports
+        .export_names()
         .contains(&"DataProcessor".to_string()));
     assert!(result
         .metadata
-        .exports
+        .export_names()
         .contains(&"ProcessConfig".to_string()));
-    assert!(result.metadata.exports.contains(&"Cacheable".to_string()));
-    assert!(result.metadata.exports.contains(&"transform".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Cacheable".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"transform".to_string()));
 
     // Private methods excluded
     assert!(!result
         .metadata
-        .exports
+        .export_names()
         .contains(&"_internal_helper".to_string()));
 
     // Imports (require)

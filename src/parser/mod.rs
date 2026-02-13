@@ -5,12 +5,37 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// A single exported symbol with its source location (1-indexed lines).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExportEntry {
+    pub name: String,
+    pub start_line: usize,
+    pub end_line: usize,
+}
+
+impl ExportEntry {
+    pub fn new(name: String, start_line: usize, end_line: usize) -> Self {
+        Self {
+            name,
+            start_line,
+            end_line,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Metadata {
-    pub exports: Vec<String>,
+    pub exports: Vec<ExportEntry>,
     pub imports: Vec<String>,
     pub dependencies: Vec<String>,
     pub loc: usize,
+}
+
+impl Metadata {
+    /// Convenience: get export names as strings (for backward-compat in tests/comparisons).
+    pub fn export_names(&self) -> Vec<String> {
+        self.exports.iter().map(|e| e.name.clone()).collect()
+    }
 }
 
 /// Result of parsing a source file: metadata plus optional language-specific fields.
@@ -166,7 +191,7 @@ mod tests {
         let registry = ParserRegistry::with_builtins();
         let mut parser = registry.get_parser("ts").unwrap();
         let result = parser.parse("export function hello() {}").unwrap();
-        assert_eq!(result.metadata.exports, vec!["hello"]);
+        assert_eq!(result.metadata.export_names(), vec!["hello"]);
     }
 
     #[test]
@@ -176,8 +201,9 @@ mod tests {
         let result = parser
             .parse("def hello():\n    pass\n\ndef world():\n    pass")
             .unwrap();
-        assert!(result.metadata.exports.contains(&"hello".to_string()));
-        assert!(result.metadata.exports.contains(&"world".to_string()));
+        let names = result.metadata.export_names();
+        assert!(names.contains(&"hello".to_string()));
+        assert!(names.contains(&"world".to_string()));
     }
 
     #[test]
@@ -185,7 +211,7 @@ mod tests {
         let registry = ParserRegistry::with_builtins();
         let mut parser = registry.get_parser("rs").unwrap();
         let result = parser.parse("pub fn hello() {}").unwrap();
-        assert_eq!(result.metadata.exports, vec!["hello"]);
+        assert_eq!(result.metadata.export_names(), vec!["hello"]);
     }
 
     #[test]

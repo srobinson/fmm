@@ -373,19 +373,40 @@ impl McpServer {
         let args: LookupExportArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
-        match manifest.export_index.get(&args.name) {
-            Some(file_path) => {
-                let entry = manifest.files.get(file_path);
-                let result = json!({
-                    "file": file_path,
+        match manifest.export_locations.get(&args.name) {
+            Some(location) => {
+                let entry = manifest.files.get(&location.file);
+                let mut result = json!({
+                    "symbol": args.name,
+                    "file": location.file,
                     "exports": entry.map(|e| &e.exports),
                     "imports": entry.map(|e| &e.imports),
                     "dependencies": entry.map(|e| &e.dependencies),
                     "loc": entry.map(|e| e.loc),
                 });
+                if let Some(ref lines) = location.lines {
+                    result["lines"] = json!([lines.start, lines.end]);
+                }
                 serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
             }
-            None => Err(format!("Export '{}' not found", args.name)),
+            None => {
+                // Fallback to export_index for backward compat
+                match manifest.export_index.get(&args.name) {
+                    Some(file_path) => {
+                        let entry = manifest.files.get(file_path);
+                        let result = json!({
+                            "symbol": args.name,
+                            "file": file_path,
+                            "exports": entry.map(|e| &e.exports),
+                            "imports": entry.map(|e| &e.imports),
+                            "dependencies": entry.map(|e| &e.dependencies),
+                            "loc": entry.map(|e| e.loc),
+                        });
+                        serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+                    }
+                    None => Err(format!("Export '{}' not found", args.name)),
+                }
+            }
         }
     }
 
@@ -396,12 +417,26 @@ impl McpServer {
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
         if let Some(ref file_path) = args.file {
-            // List exports from a specific file
+            // List exports from a specific file, with line ranges if available
             match manifest.files.get(file_path) {
                 Some(entry) => {
+                    let exports_with_lines: Vec<Value> = entry
+                        .exports
+                        .iter()
+                        .enumerate()
+                        .map(|(i, name)| {
+                            let mut obj = json!({"name": name});
+                            if let Some(ref el) = entry.export_lines {
+                                if let Some(lines) = el.get(i) {
+                                    obj["lines"] = json!([lines.start, lines.end]);
+                                }
+                            }
+                            obj
+                        })
+                        .collect();
                     let result = json!({
                         "file": file_path,
-                        "exports": entry.exports,
+                        "exports": exports_with_lines,
                     });
                     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
                 }
@@ -419,7 +454,15 @@ impl McpServer {
 
             let result: Vec<Value> = matches
                 .iter()
-                .map(|(name, path)| json!({"export": name, "file": path}))
+                .map(|(name, path)| {
+                    let mut obj = json!({"export": name, "file": path});
+                    if let Some(loc) = manifest.export_locations.get(*name) {
+                        if let Some(ref lines) = loc.lines {
+                            obj["lines"] = json!([lines.start, lines.end]);
+                        }
+                    }
+                    obj
+                })
                 .collect();
             serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
         } else {

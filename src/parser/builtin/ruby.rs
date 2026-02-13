@@ -1,5 +1,5 @@
-use super::query_helpers::{collect_matches, collect_named_matches};
-use crate::parser::{Metadata, ParseResult, Parser};
+use super::query_helpers::{collect_matches_with_lines, collect_named_matches, top_level_ancestor};
+use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
@@ -53,36 +53,45 @@ impl RubyParser {
         })
     }
 
-    fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+    fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<ExportEntry> {
         let source_bytes = source.as_bytes();
 
         let mut seen: HashSet<String> = HashSet::new();
+        let mut exports = Vec::new();
 
-        // Top-level classes
-        for name in collect_matches(&self.class_query, root_node, source_bytes) {
-            seen.insert(name);
+        for entry in collect_matches_with_lines(&self.class_query, root_node, source_bytes) {
+            if seen.insert(entry.name.clone()) {
+                exports.push(entry);
+            }
         }
 
-        // Top-level modules
-        for name in collect_matches(&self.module_query, root_node, source_bytes) {
-            seen.insert(name);
+        for entry in collect_matches_with_lines(&self.module_query, root_node, source_bytes) {
+            if seen.insert(entry.name.clone()) {
+                exports.push(entry);
+            }
         }
 
-        // Top-level methods (not starting with _)
         let mut cursor = QueryCursor::new();
         let mut iter = cursor.matches(&self.method_query, root_node, source_bytes);
         while let Some(m) = iter.next() {
             for capture in m.captures {
                 if let Ok(text) = capture.node.utf8_text(source_bytes) {
                     if !text.starts_with('_') {
-                        seen.insert(text.to_string());
+                        let name = text.to_string();
+                        if seen.insert(name.clone()) {
+                            let decl = top_level_ancestor(capture.node);
+                            exports.push(ExportEntry::new(
+                                name,
+                                decl.start_position().row + 1,
+                                decl.end_position().row + 1,
+                            ));
+                        }
                     }
                 }
             }
         }
 
-        let mut exports: Vec<String> = seen.into_iter().collect();
-        exports.sort();
+        exports.sort_by(|a, b| a.name.cmp(&b.name));
         exports
     }
 
@@ -213,7 +222,10 @@ class UserService
 end
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.exports.contains(&"UserService".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"UserService".to_string()));
     }
 
     #[test]
@@ -235,9 +247,12 @@ end
         let result = parser.parse(source).unwrap();
         assert!(result
             .metadata
-            .exports
+            .export_names()
             .contains(&"Serializable".to_string()));
-        assert!(result.metadata.exports.contains(&"Cacheable".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"Cacheable".to_string()));
     }
 
     #[test]
@@ -255,11 +270,11 @@ end
         let result = parser.parse(source).unwrap();
         assert!(result
             .metadata
-            .exports
+            .export_names()
             .contains(&"helper_method".to_string()));
         assert!(!result
             .metadata
-            .exports
+            .export_names()
             .contains(&"_private_method".to_string()));
     }
 
