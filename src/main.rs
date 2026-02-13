@@ -1,9 +1,7 @@
 use anyhow::Result;
 use clap::{CommandFactory, Parser as ClapParser};
 use colored::Colorize;
-use fmm::cli::{self, Cli, Commands, GhSubcommand, OutputFormat};
-use fmm::compare;
-use fmm::gh;
+use fmm::cli::{self, Cli, Commands};
 use fmm::mcp;
 
 fn main() -> Result<()> {
@@ -76,106 +74,12 @@ fn main() -> Result<()> {
         } => {
             cli::search(export, imports, loc, depends_on, json)?;
         }
-        Commands::Gh { subcommand } => match subcommand {
-            GhSubcommand::Issue {
-                url,
-                model,
-                max_turns,
-                max_budget,
-                dry_run,
-                branch_prefix,
-                no_pr,
-                workspace,
-                compare,
-                output,
-            } => {
-                let options = gh::GhIssueOptions {
-                    model,
-                    max_turns,
-                    max_budget,
-                    dry_run,
-                    branch_prefix,
-                    no_pr,
-                    workspace,
-                    compare,
-                    output,
-                };
-                gh::gh_issue(&url, options)?;
-            }
-            GhSubcommand::Batch {
-                corpus,
-                output,
-                model,
-                max_turns,
-                max_budget,
-                dry_run,
-                resume,
-                validate,
-            } => {
-                if validate {
-                    let exit_code = gh::batch::run_validate(&corpus)?;
-                    std::process::exit(exit_code);
-                }
-                let options = gh::batch::BatchOptions {
-                    corpus_path: corpus,
-                    output_dir: output,
-                    model,
-                    max_turns,
-                    max_budget,
-                    dry_run,
-                    resume,
-                };
-                gh::batch::run_batch(options)?;
-            }
-        },
         Commands::Mcp | Commands::Serve => {
             let mut server = mcp::McpServer::new();
             server.run()?;
         }
-        Commands::Run {
-            query,
-            model,
-            max_turns,
-            max_budget,
-        } => {
-            cli::run(&query, &model, max_turns, max_budget)?;
-        }
         Commands::Completions { shell } => {
             clap_complete::generate(shell, &mut Cli::command(), "fmm", &mut std::io::stdout());
-        }
-        Commands::Compare {
-            url,
-            branch,
-            src_path,
-            tasks,
-            runs,
-            output,
-            format,
-            max_budget,
-            no_cache,
-            quick,
-            model,
-        } => {
-            let report_format = match format {
-                OutputFormat::Json => compare::ReportFormat::Json,
-                OutputFormat::Markdown => compare::ReportFormat::Markdown,
-                OutputFormat::Both => compare::ReportFormat::Both,
-            };
-
-            let options = compare::CompareOptions {
-                branch,
-                src_path,
-                task_set: tasks,
-                runs,
-                output,
-                format: report_format,
-                max_budget,
-                use_cache: !no_cache,
-                quick,
-                model,
-            };
-
-            compare::compare(&url, options)?;
         }
     }
 

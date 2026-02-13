@@ -1,10 +1,7 @@
 pub mod cli;
-pub mod compare;
 pub mod config;
 pub mod extractor;
 pub mod formatter;
-pub mod gh;
 pub mod manifest;
 pub mod mcp;
-pub mod metrics;
 pub mod parser;

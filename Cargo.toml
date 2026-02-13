@@ -10,7 +10,7 @@ homepage = "https://mdcontext.github.io/fmm/"
 readme = "README.md"
 keywords = ["llm", "code-analysis", "ast", "mcp", "sidecar"]
 categories = ["command-line-utilities", "development-tools"]
-exclude = ["research/", "experiments/", ".nancy/", "demos/", "docs/"]
+exclude = [".nancy/", "docs/"]
 
 [dependencies]
 # Core parsing
@@ -34,7 +34,6 @@ color-print = "0.3"
 colored = "2.1"
 
 # File handling
-walkdir = "2.5"
 ignore = "0.4"  # Respects .gitignore
 
 # Parallelism
@@ -48,18 +47,10 @@ serde_json = "1.0"
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
 
-# Logging
-log = "0.4"
-
 # Error handling
 anyhow = "1.0"
 thiserror = "2.0"
 
-# Regex
-regex = "1.12"
-
-# Platform directories (for caching)
-dirs = "5.0"
 
 [dev-dependencies]
 tempfile = "3.14"

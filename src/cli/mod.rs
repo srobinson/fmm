@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 use clap_complete::Shell;
 use color_print::cstr;
 use ignore::WalkBuilder;
@@ -8,15 +8,12 @@ use std::path::{Path, PathBuf};
 use crate::config::Config;
 
 pub mod init;
-mod run;
 mod search;
 mod sidecar;
 mod status;
 
-// Re-export public API so main.rs needs zero changes
 pub use init::init;
 pub use init::init_skill;
-pub use run::run;
 pub use search::search;
 pub use sidecar::{clean, generate, update, validate};
 pub use status::status;
@@ -73,11 +70,9 @@ const BEFORE_LONG_HELP: &str = cstr!(
 
 <bold><underline>Integration</underline></bold>
   <bold>mcp</bold>           Start MCP server for LLM tool integration
-  <bold>gh</bold>            GitHub integrations (issue fixing, PR creation)
 
 <bold><underline>Analysis</underline></bold>
   <bold>search</bold>        Query sidecars by export, import, dependency, or LOC
-  <bold>compare</bold>       Benchmark FMM vs control on a GitHub repository
 "#
 );
 
@@ -301,42 +296,6 @@ pub enum Commands {
     )]
     Mcp,
 
-    /// Ask a natural language question about the codebase
-    #[command(
-        long_about = "Ask a natural language question about the codebase using FMM metadata.\n\n\
-            Runs Claude with FMM MCP tools pre-configured, enabling efficient codebase \
-            exploration without manual grep/read operations. Useful for questions that \
-            don't fit structured search patterns.",
-        after_long_help = cstr!(
-            r#"<bold><underline>Examples</underline></bold>
-
-  <dim>$</dim> <bold>fmm run "What's the architecture of the auth module?"</bold>
-
-  <dim>$</dim> <bold>fmm run "Which files have the most dependencies?"</bold>
-
-  <dim>$</dim> <bold>fmm run "Find all async functions that call the database"</bold>
-
-  <dim>$</dim> <bold>fmm run "What would break if I delete utils/format.ts?"</bold>
-
-  <dim>$</dim> <bold>fmm run "Summarize the entry points and their dependencies"</bold>"#),
-    )]
-    Run {
-        /// Natural language question about the codebase
-        query: String,
-
-        /// Claude model to use (sonnet, opus, haiku)
-        #[arg(long, default_value = "sonnet")]
-        model: String,
-
-        /// Maximum turns
-        #[arg(long, default_value = "10")]
-        max_turns: u32,
-
-        /// Maximum budget in USD
-        #[arg(long, default_value = "1.0")]
-        max_budget: f64,
-    },
-
     /// Alias for 'mcp'
     #[command(hide = true)]
     Serve,
@@ -359,210 +318,8 @@ pub enum Commands {
         shell: Shell,
     },
 
-    /// GitHub integrations (issue fixing, PR creation)
-    #[command(
-        long_about = "GitHub workflow integrations powered by fmm sidecar metadata.\n\n\
-            Currently supports automated issue fixing: clone a repo, generate sidecars, \
-            extract code references from the issue, and invoke Claude with focused context \
-            to create a PR."
-    )]
-    Gh {
-        #[command(subcommand)]
-        subcommand: GhSubcommand,
-    },
-
-    /// Benchmark FMM vs control on a GitHub repository
-    #[command(
-        long_about = "Run controlled comparisons of FMM-assisted vs unassisted Claude \
-            performance on a GitHub repository.\n\n\
-            Clones the repo, generates sidecars, runs a set of coding tasks with and \
-            without FMM, and produces a report comparing token usage, cost, and quality.",
-        after_long_help = cstr!(
-            r#"<bold><underline>Examples</underline></bold>
-
-  <dim>$</dim> <bold>fmm compare https://github.com/owner/repo</bold>
-    Run standard benchmark suite
-
-  <dim>$</dim> <bold>fmm compare https://github.com/owner/repo --quick</bold>
-    Quick mode with fewer tasks
-
-  <dim>$</dim> <bold>fmm compare https://github.com/owner/repo --format json -o results/</bold>
-    JSON output to a specific directory"#),
-    )]
-    Compare {
-        /// GitHub repository URL (e.g., https://github.com/owner/repo)
-        url: String,
-
-        /// Branch to compare (default: main)
-        #[arg(short, long)]
-        branch: Option<String>,
-
-        /// Path within repo to analyze
-        #[arg(long)]
-        src_path: Option<String>,
-
-        /// Task set to use (standard, quick, or path to custom JSON)
-        #[arg(long, default_value = "standard")]
-        tasks: String,
-
-        /// Number of runs per task
-        #[arg(long, default_value = "1")]
-        runs: u32,
-
-        /// Output directory for results
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-
-        /// Output format
-        #[arg(long, value_enum, default_value = "both")]
-        format: OutputFormat,
-
-        /// Maximum budget in USD
-        #[arg(long, default_value = "10.0")]
-        max_budget: f64,
-
-        /// Skip cache (always re-run tasks)
-        #[arg(long)]
-        no_cache: bool,
-
-        /// Quick mode (fewer tasks, faster results)
-        #[arg(long)]
-        quick: bool,
-
-        /// Model to use
-        #[arg(long, default_value = "sonnet")]
-        model: String,
-    },
 }
 
-/// Output format for comparison reports
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum OutputFormat {
-    Json,
-    Markdown,
-    Both,
-}
-
-/// GitHub subcommands
-#[derive(Subcommand)]
-pub enum GhSubcommand {
-    /// Fix a GitHub issue: clone, generate sidecars, invoke Claude, create PR
-    #[command(
-        long_about = "Automated GitHub issue fixing powered by fmm.\n\n\
-            Pipeline: parse issue URL → fetch issue details → clone repo → generate \
-            sidecars → extract code references → resolve against sidecar index → build \
-            focused prompt → create branch → invoke Claude → commit → push → create PR.",
-        after_long_help = cstr!(
-            r#"<bold><underline>Examples</underline></bold>
-
-  <dim>$</dim> <bold>fmm gh issue https://github.com/owner/repo/issues/42</bold>
-    Fix an issue and create a PR
-
-  <dim>$</dim> <bold>fmm gh issue https://github.com/owner/repo/issues/42 -n</bold>
-    Dry run — show extracted refs and assembled prompt
-
-  <dim>$</dim> <bold>fmm gh issue https://github.com/owner/repo/issues/42 --no-pr</bold>
-    Fix and commit but skip PR creation
-
-  <dim>$</dim> <bold>fmm gh issue https://github.com/owner/repo/issues/42 --compare</bold>
-    A/B comparison — run control vs fmm, output token savings report"#),
-    )]
-    Issue {
-        /// GitHub issue URL (e.g., https://github.com/owner/repo/issues/123)
-        url: String,
-
-        /// Claude model to use
-        #[arg(long, default_value = "sonnet")]
-        model: String,
-
-        /// Maximum turns for Claude
-        #[arg(long, default_value = "30")]
-        max_turns: u32,
-
-        /// Maximum budget in USD
-        #[arg(long, default_value = "5.0")]
-        max_budget: f64,
-
-        /// Show plan without executing (extract refs + assembled prompt)
-        #[arg(short = 'n', long)]
-        dry_run: bool,
-
-        /// Git branch prefix
-        #[arg(long, default_value = "fmm")]
-        branch_prefix: String,
-
-        /// Commit and push only, skip PR creation
-        #[arg(long)]
-        no_pr: bool,
-
-        /// Override workspace directory
-        #[arg(long)]
-        workspace: Option<String>,
-
-        /// Run A/B comparison: control (no sidecars) vs fmm (with sidecars).
-        /// Outputs a comparison report instead of creating a PR.
-        #[arg(long)]
-        compare: bool,
-
-        /// Output directory for comparison report (only used with --compare)
-        #[arg(long)]
-        output: Option<String>,
-    },
-
-    /// Run batch A/B comparisons across a corpus of GitHub issues
-    #[command(
-        long_about = "Run A/B comparisons (control vs fmm) across a corpus of GitHub issues.\n\n\
-            Reads an issues.json corpus file, runs each issue through the compare pipeline, \
-            checkpoints progress for resume, and aggregates results into proof-dataset.json \
-            and proof-dataset.md.",
-        after_long_help = cstr!(
-            r#"<bold><underline>Examples</underline></bold>
-
-  <dim>$</dim> <bold>fmm gh batch proofs/issues.json --dry-run</bold>
-    Show plan + cost estimate without running
-
-  <dim>$</dim> <bold>fmm gh batch proofs/issues.json --output proofs/dataset/ --max-budget 100</bold>
-    Run full corpus with $100 total budget
-
-  <dim>$</dim> <bold>fmm gh batch proofs/issues.json --output proofs/dataset/ --resume</bold>
-    Resume a previous run, skipping completed issues
-
-  <dim>$</dim> <bold>fmm gh batch proofs/issues.json --validate</bold>
-    Check all URLs exist and print corpus health report"#),
-    )]
-    Batch {
-        /// Path to corpus file (issues.json)
-        corpus: PathBuf,
-
-        /// Output directory for results and checkpoint
-        #[arg(short, long, default_value = "proofs/dataset")]
-        output: PathBuf,
-
-        /// Claude model to use
-        #[arg(long, default_value = "sonnet")]
-        model: String,
-
-        /// Maximum turns per issue
-        #[arg(long, default_value = "30")]
-        max_turns: u32,
-
-        /// Maximum budget in USD (total across all issues)
-        #[arg(long, default_value = "100.0")]
-        max_budget: f64,
-
-        /// Show plan + cost estimate without executing
-        #[arg(short = 'n', long)]
-        dry_run: bool,
-
-        /// Resume from checkpoint, skipping completed issues
-        #[arg(long)]
-        resume: bool,
-
-        /// Validate corpus: check all URLs exist via GitHub API, print health report
-        #[arg(long)]
-        validate: bool,
-    },
-}
 
 /// Resolve the root directory from the target path.
 /// If a directory, use it directly. If a file, use its parent.

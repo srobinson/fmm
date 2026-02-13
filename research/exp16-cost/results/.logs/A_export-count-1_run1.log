@@ -1,8 +1,0 @@
-[05:17:45] === exp16: condition=A task=export-count-1 ===
-[05:17:45] Copying codebase...
-[05:17:47] Condition A: vanilla Claude
-[05:17:48] Running Claude...
-[05:17:48]   Prompt: How many symbols does `packages/agentdb/src/services/auth.service.ts` export? Reply with ONLY the number, nothing else.
-[05:17:48]   Args: --output-format stream-json --verbose --no-session-persistence --max-turns 30 --model claude-sonnet-4-5-20250929 --allowedTools Bash,Glob,Grep,Read,Write,Edit
-[05:17:54] Claude finished successfully
-[05:17:54] === Done ===

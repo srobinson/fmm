@@ -1,8 +1,0 @@
-[05:16:59] === exp16: condition=A task=deps-list-1 ===
-[05:16:59] Copying codebase...
-[05:17:01] Condition A: vanilla Claude
-[05:17:02] Running Claude...
-[05:17:02]   Prompt: List ALL local file dependencies of `agentic-flow/src/proxy/adaptive-proxy.ts` (the local files it imports from). Reply with ONLY the list of dependency paths, one per line, nothing else.
-[05:17:02]   Args: --output-format stream-json --verbose --no-session-persistence --max-turns 30 --model claude-sonnet-4-5-20250929 --allowedTools Bash,Glob,Grep,Read,Write,Edit
-[05:17:09] Claude finished successfully
-[05:17:09] === Done ===

@@ -1,6 +1,0 @@
-results/
-*.log
-*.md
-!fmm-navigate.md
-.env
-.git

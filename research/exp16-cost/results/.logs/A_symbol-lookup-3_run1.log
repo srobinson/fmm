@@ -1,8 +1,0 @@
-[05:16:55] === exp16: condition=A task=symbol-lookup-3 ===
-[05:16:55] Copying codebase...
-[05:16:58] Condition A: vanilla Claude
-[05:16:58] Running Claude...
-[05:16:58]   Prompt: Which file exports the symbol `BillingSystem`? Reply with ONLY the file path, nothing else.
-[05:16:58]   Args: --output-format stream-json --verbose --no-session-persistence --max-turns 30 --model claude-sonnet-4-5-20250929 --allowedTools Bash,Glob,Grep,Read,Write,Edit
-[05:17:08] Claude finished successfully
-[05:17:08] === Done ===
