@@ -1,3 +1,4 @@
+use crate::parser::ExportEntry;
 use std::collections::HashSet;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Query, QueryCursor};
@@ -47,6 +48,45 @@ pub fn collect_named_matches(
     }
     let mut results: Vec<String> = seen.into_iter().collect();
     results.sort();
+    results
+}
+
+pub fn top_level_ancestor(node: tree_sitter::Node) -> tree_sitter::Node {
+    let mut current = node;
+    while let Some(parent) = current.parent() {
+        if parent.parent().is_none() {
+            return current;
+        }
+        current = parent;
+    }
+    current
+}
+
+pub fn collect_matches_with_lines(
+    query: &Query,
+    root_node: tree_sitter::Node,
+    source_bytes: &[u8],
+) -> Vec<ExportEntry> {
+    let mut seen = HashSet::new();
+    let mut results = Vec::new();
+    let mut cursor = QueryCursor::new();
+    let mut iter = cursor.matches(query, root_node, source_bytes);
+    while let Some(m) = iter.next() {
+        for capture in m.captures {
+            if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                let name = text.to_string();
+                if seen.insert(name.clone()) {
+                    let decl = top_level_ancestor(capture.node);
+                    results.push(ExportEntry::new(
+                        name,
+                        decl.start_position().row + 1,
+                        decl.end_position().row + 1,
+                    ));
+                }
+            }
+        }
+    }
+    results.sort_by(|a, b| a.name.cmp(&b.name));
     results
 }
 

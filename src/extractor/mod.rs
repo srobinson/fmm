@@ -134,7 +134,7 @@ impl FileProcessor {
             .map(|p| p.language_id().to_string());
 
         let frontmatter = Frontmatter::new(relative_path.display().to_string(), metadata.clone())
-            .with_version("v0.2")
+            .with_version("v0.3")
             .with_custom_fields(language_id.as_deref(), custom_fields);
 
         Ok(format!("{}\n", frontmatter.render()))

@@ -1,5 +1,5 @@
-use super::query_helpers::collect_matches;
-use crate::parser::{Metadata, ParseResult, Parser};
+use super::query_helpers::collect_matches_with_lines;
+use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::HashSet;
 use streaming_iterator::StreamingIterator;
@@ -66,7 +66,7 @@ impl GoParser {
         name.starts_with(|c: char| c.is_uppercase())
     }
 
-    fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+    fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<ExportEntry> {
         let source_bytes = source.as_bytes();
         let queries = [
             &self.func_query,
@@ -76,16 +76,16 @@ impl GoParser {
         ];
 
         let mut seen = HashSet::new();
+        let mut exports = Vec::new();
         for query in queries {
-            for name in collect_matches(query, root_node, source_bytes) {
-                if Self::is_exported(&name) {
-                    seen.insert(name);
+            for entry in collect_matches_with_lines(query, root_node, source_bytes) {
+                if Self::is_exported(&entry.name) && seen.insert(entry.name.clone()) {
+                    exports.push(entry);
                 }
             }
         }
 
-        let mut exports: Vec<String> = seen.into_iter().collect();
-        exports.sort();
+        exports.sort_by(|a, b| a.name.cmp(&b.name));
         exports
     }
 
@@ -179,11 +179,11 @@ func unexportedFunc() {}
         let result = parser.parse(source).unwrap();
         assert!(result
             .metadata
-            .exports
+            .export_names()
             .contains(&"ExportedFunc".to_string()));
         assert!(!result
             .metadata
-            .exports
+            .export_names()
             .contains(&"unexportedFunc".to_string()));
     }
 
@@ -206,9 +206,18 @@ type Service interface {
 }
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.exports.contains(&"Config".to_string()));
-        assert!(result.metadata.exports.contains(&"Service".to_string()));
-        assert!(!result.metadata.exports.contains(&"handler".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"Config".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"Service".to_string()));
+        assert!(!result
+            .metadata
+            .export_names()
+            .contains(&"handler".to_string()));
     }
 
     #[test]
@@ -247,13 +256,22 @@ var GlobalState = "init"
 var localVar = "hidden"
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.exports.contains(&"MaxRetries".to_string()));
-        assert!(result.metadata.exports.contains(&"GlobalState".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"MaxRetries".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"GlobalState".to_string()));
         assert!(!result
             .metadata
-            .exports
+            .export_names()
             .contains(&"internalLimit".to_string()));
-        assert!(!result.metadata.exports.contains(&"localVar".to_string()));
+        assert!(!result
+            .metadata
+            .export_names()
+            .contains(&"localVar".to_string()));
     }
 
     #[test]

@@ -1,5 +1,5 @@
-use super::query_helpers::collect_matches;
-use crate::parser::{Metadata, ParseResult, Parser};
+use super::query_helpers::{collect_matches, collect_matches_with_lines};
+use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
@@ -78,7 +78,7 @@ impl CppParser {
         })
     }
 
-    fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+    fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<ExportEntry> {
         let source_bytes = source.as_bytes();
         let queries = [
             &self.func_query,
@@ -89,14 +89,16 @@ impl CppParser {
         ];
 
         let mut seen = HashSet::new();
+        let mut exports = Vec::new();
         for query in queries {
-            for name in collect_matches(query, root_node, source_bytes) {
-                seen.insert(name);
+            for entry in collect_matches_with_lines(query, root_node, source_bytes) {
+                if seen.insert(entry.name.clone()) {
+                    exports.push(entry);
+                }
             }
         }
 
-        let mut exports: Vec<String> = seen.into_iter().collect();
-        exports.sort();
+        exports.sort_by(|a, b| a.name.cmp(&b.name));
         exports
     }
 
@@ -214,8 +216,11 @@ void processData() {
 }
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.exports.contains(&"main".to_string()));
-        assert!(result.metadata.exports.contains(&"processData".to_string()));
+        assert!(result.metadata.export_names().contains(&"main".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"processData".to_string()));
     }
 
     #[test]
@@ -234,8 +239,14 @@ struct Point {
 };
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.exports.contains(&"Engine".to_string()));
-        assert!(result.metadata.exports.contains(&"Point".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"Engine".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"Point".to_string()));
     }
 
     #[test]
@@ -290,7 +301,10 @@ class Container {
 };
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.exports.contains(&"Container".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"Container".to_string()));
     }
 
     #[test]

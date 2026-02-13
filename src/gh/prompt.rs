@@ -51,12 +51,21 @@ pub fn build_prompt(
     }
 
     prompt.push_str("## Instructions\n");
-    prompt.push_str("1. Read the relevant source files listed above\n");
-    prompt.push_str("2. Make minimal changes to fix the issue\n");
-    prompt.push_str("3. Stay consistent with existing code style\n");
-    prompt.push_str("4. Do NOT modify unrelated files\n");
     prompt.push_str(
-        "5. Run tests if available (look for package.json scripts, Makefile, Cargo.toml, etc.)\n",
+        "The file metadata above (exports, imports, dependencies, LOC) is from sidecar analysis.\n",
+    );
+    prompt
+        .push_str("Use it to understand the codebase structure WITHOUT reading source files.\n\n");
+    prompt.push_str(
+        "1. Study the metadata above to understand which files are relevant and how they connect\n",
+    );
+    prompt.push_str("2. Do NOT read source files just to explore — the metadata already tells you what each file exports and imports\n");
+    prompt.push_str("3. ONLY read a source file when you are ready to edit it\n");
+    prompt.push_str("4. Make minimal changes to fix the issue\n");
+    prompt.push_str("5. Stay consistent with existing code style\n");
+    prompt.push_str("6. Do NOT modify unrelated files\n");
+    prompt.push_str(
+        "7. Run tests if available (look for package.json scripts, Makefile, Cargo.toml, etc.)\n",
     );
 
     prompt
@@ -182,6 +191,7 @@ mod tests {
     fn prompt_has_instructions() {
         let prompt = build_prompt(&mock_issue(), &mock_issue_ref(), &[], &[]);
         assert!(prompt.contains("Instructions"));
+        assert!(prompt.contains("ONLY read a source file when you are ready to edit it"));
         assert!(prompt.contains("minimal changes"));
     }
 

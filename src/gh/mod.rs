@@ -380,16 +380,21 @@ fn build_fmm_context(fmm_dir: &std::path::Path) -> String {
         return String::new();
     }
 
-    r#"This repository has .fmm sidecar files — structured metadata companions for source files.
+    r#"IMPORTANT: This repository has .fmm sidecar files. You MUST use them.
 
-For every source file (e.g. foo.ts), there may be a foo.ts.fmm containing:
-- exports: what the file defines
-- imports: external packages used
-- dependencies: local files it imports
-- loc: file size
+Every source file has a companion .fmm file (e.g. foo.ts → foo.ts.fmm) containing YAML metadata:
+  exports: what the file defines
+  imports: external packages used
+  dependencies: local files it imports
+  loc: lines of code
 
-Use sidecars to navigate: Grep "exports:.*SymbolName" **/*.fmm to find files.
-Only open source files you need to edit."#
+RULES — follow these strictly:
+1. BEFORE reading any source file, read its .fmm sidecar first
+2. To find where a symbol is defined: Grep "exports:.*SymbolName" **/*.fmm
+3. To understand a file's role: Read the .fmm file — it tells you exports, imports, and dependencies
+4. ONLY open a source file when you have decided to EDIT it
+5. NEVER read a source file just to understand what it does — the .fmm file already tells you
+6. You will be evaluated on how few source files you read unnecessarily"#
         .to_string()
 }
 

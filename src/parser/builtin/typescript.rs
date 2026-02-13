@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 
-use crate::parser::{Metadata, ParseResult, Parser};
+use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
-use super::query_helpers::collect_matches;
+use super::query_helpers::collect_matches_with_lines;
 
 pub struct TypeScriptParser {
     parser: TSParser,
@@ -45,18 +45,20 @@ impl TypeScriptParser {
         })
     }
 
-    fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+    fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<ExportEntry> {
         let source_bytes = source.as_bytes();
         let mut seen: HashSet<String> = HashSet::new();
+        let mut exports = Vec::new();
 
         for query in &self.export_queries {
-            for name in collect_matches(query, root_node, source_bytes) {
-                seen.insert(name);
+            for entry in collect_matches_with_lines(query, root_node, source_bytes) {
+                if seen.insert(entry.name.clone()) {
+                    exports.push(entry);
+                }
             }
         }
 
-        let mut exports: Vec<String> = seen.into_iter().collect();
-        exports.sort();
+        exports.sort_by(|a, b| a.name.cmp(&b.name));
         exports
     }
 
@@ -155,45 +157,60 @@ mod tests {
     #[test]
     fn exports_named_function() {
         let result = parse("export function greet(name: string) { return `Hi ${name}`; }");
-        assert!(result.metadata.exports.contains(&"greet".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"greet".to_string()));
     }
 
     #[test]
     fn exports_arrow_function_via_const() {
         let result = parse("export const add = (a: number, b: number) => a + b;");
-        assert!(result.metadata.exports.contains(&"add".to_string()));
+        assert!(result.metadata.export_names().contains(&"add".to_string()));
     }
 
     #[test]
     fn exports_class() {
         let result = parse("export class UserService { constructor() {} }");
-        assert!(result.metadata.exports.contains(&"UserService".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"UserService".to_string()));
     }
 
     #[test]
     fn exports_interface() {
         let result = parse("export interface Config { debug: boolean; }");
-        assert!(result.metadata.exports.contains(&"Config".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"Config".to_string()));
     }
 
     #[test]
     fn exports_multiple_from_clause() {
         let result = parse("export { foo, bar, baz } from './other';");
-        assert!(result.metadata.exports.contains(&"foo".to_string()));
-        assert!(result.metadata.exports.contains(&"bar".to_string()));
-        assert!(result.metadata.exports.contains(&"baz".to_string()));
+        assert!(result.metadata.export_names().contains(&"foo".to_string()));
+        assert!(result.metadata.export_names().contains(&"bar".to_string()));
+        assert!(result.metadata.export_names().contains(&"baz".to_string()));
     }
 
     #[test]
     fn exports_const_variable() {
         let result = parse("export const MAX_RETRIES = 3;");
-        assert!(result.metadata.exports.contains(&"MAX_RETRIES".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"MAX_RETRIES".to_string()));
     }
 
     #[test]
     fn exports_let_variable() {
         let result = parse("export let counter = 0;");
-        assert!(result.metadata.exports.contains(&"counter".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"counter".to_string()));
     }
 
     #[test]
@@ -204,7 +221,10 @@ export function alpha() {}
 export const middle = 1;
 "#;
         let result = parse(source);
-        assert_eq!(result.metadata.exports, vec!["alpha", "middle", "zebra"]);
+        assert_eq!(
+            result.metadata.export_names(),
+            vec!["alpha", "middle", "zebra"]
+        );
     }
 
     // --- Import extraction ---
@@ -341,7 +361,7 @@ export const DEFAULT_PORT = 5432;
 "#;
         let result = parse(source);
         assert_eq!(
-            result.metadata.exports,
+            result.metadata.export_names(),
             vec![
                 "DEFAULT_PORT",
                 "DatabaseConfig",
@@ -377,7 +397,7 @@ export { Logger } from './logger';
 "#;
         let result = parse(source);
         assert_eq!(
-            result.metadata.exports,
+            result.metadata.export_names(),
             vec!["AuthService", "Logger", "UserService"]
         );
         // Re-exports via `export { X } from '...'` don't produce import_statements,

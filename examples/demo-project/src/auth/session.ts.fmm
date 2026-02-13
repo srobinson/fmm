@@ -1,7 +1,10 @@
----
 file: src/auth/session.ts
-exports: [SessionPayload, createSession, validateSession, destroySession]
+fmm: v0.3
+exports:
+  SessionPayload: [5, 10]
+  createSession: [12, 18]
+  validateSession: [20, 26]
+  destroySession: [28, 30]
 imports: [jsonwebtoken]
 dependencies: [../config, ../db/users]
-loc: 32
----
+loc: 31

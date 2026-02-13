@@ -49,6 +49,16 @@ struct SearchArgs {
     max_loc: Option<usize>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ReadSymbolArgs {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct FileOutlineArgs {
+    file: String,
+}
+
 #[derive(Debug, Serialize)]
 struct JsonRpcResponse {
     jsonrpc: String,
@@ -60,11 +70,11 @@ struct JsonRpcResponse {
 }
 
 #[derive(Debug, Serialize)]
-struct JsonRpcError {
-    code: i32,
-    message: String,
+pub struct JsonRpcError {
+    pub code: i32,
+    pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    data: Option<Value>,
+    pub data: Option<Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -90,12 +100,22 @@ impl McpServer {
     pub fn new() -> Self {
         // Safe default: empty path is harmless; MCP server will report "no sidecars" if cwd fails
         let root = std::env::current_dir().unwrap_or_default();
+        Self::with_root(root)
+    }
+
+    pub fn with_root(root: PathBuf) -> Self {
         let manifest = Manifest::load_from_sidecars(&root).ok();
         Self { manifest, root }
     }
 
     fn reload(&mut self) {
         self.manifest = Manifest::load_from_sidecars(&self.root).ok();
+    }
+
+    /// Call a tool by name with JSON arguments. Useful for testing.
+    pub fn call_tool(&self, name: &str, arguments: Value) -> Result<Value, JsonRpcError> {
+        let params = json!({"name": name, "arguments": arguments});
+        self.handle_tool_call(&Some(params))
     }
 
     /// Cap MCP tool responses to prevent context bombs.
@@ -280,6 +300,34 @@ impl McpServer {
                 }),
             },
             Tool {
+                name: "fmm_read_symbol".to_string(),
+                description: "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Requires line-range data from v0.3 sidecars.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Exact export name to read (function, class, type, component)"
+                        }
+                    },
+                    "required": ["name"]
+                }),
+            },
+            Tool {
+                name: "fmm_file_outline".to_string(),
+                description: "Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "file": {
+                            "type": "string",
+                            "description": "File path to outline — returns all exports with line ranges and sizes"
+                        }
+                    },
+                    "required": ["file"]
+                }),
+            },
+            Tool {
                 name: "fmm_search".to_string(),
                 description: "Search files by structural criteria: exported symbol, imported package, local dependency, or LOC range. Filters combine with AND logic. Use for 'which files use crypto?', 'what depends on auth?'.".to_string(),
                 input_schema: json!({
@@ -339,6 +387,8 @@ impl McpServer {
             "fmm_file_info" => self.tool_file_info(&arguments),
             "fmm_dependency_graph" => self.tool_dependency_graph(&arguments),
             "fmm_search" => self.tool_search(&arguments),
+            "fmm_read_symbol" => self.tool_read_symbol(&arguments),
+            "fmm_file_outline" => self.tool_file_outline(&arguments),
             // Legacy aliases
             "fmm_find_export" => self.tool_lookup_export(&arguments),
             "fmm_find_symbol" => self.tool_lookup_export(&arguments),
@@ -373,19 +423,40 @@ impl McpServer {
         let args: LookupExportArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
-        match manifest.export_index.get(&args.name) {
-            Some(file_path) => {
-                let entry = manifest.files.get(file_path);
-                let result = json!({
-                    "file": file_path,
+        match manifest.export_locations.get(&args.name) {
+            Some(location) => {
+                let entry = manifest.files.get(&location.file);
+                let mut result = json!({
+                    "symbol": args.name,
+                    "file": location.file,
                     "exports": entry.map(|e| &e.exports),
                     "imports": entry.map(|e| &e.imports),
                     "dependencies": entry.map(|e| &e.dependencies),
                     "loc": entry.map(|e| e.loc),
                 });
+                if let Some(ref lines) = location.lines {
+                    result["lines"] = json!([lines.start, lines.end]);
+                }
                 serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
             }
-            None => Err(format!("Export '{}' not found", args.name)),
+            None => {
+                // Fallback to export_index for backward compat
+                match manifest.export_index.get(&args.name) {
+                    Some(file_path) => {
+                        let entry = manifest.files.get(file_path);
+                        let result = json!({
+                            "symbol": args.name,
+                            "file": file_path,
+                            "exports": entry.map(|e| &e.exports),
+                            "imports": entry.map(|e| &e.imports),
+                            "dependencies": entry.map(|e| &e.dependencies),
+                            "loc": entry.map(|e| e.loc),
+                        });
+                        serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+                    }
+                    None => Err(format!("Export '{}' not found", args.name)),
+                }
+            }
         }
     }
 
@@ -396,12 +467,26 @@ impl McpServer {
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
         if let Some(ref file_path) = args.file {
-            // List exports from a specific file
+            // List exports from a specific file, with line ranges if available
             match manifest.files.get(file_path) {
                 Some(entry) => {
+                    let exports_with_lines: Vec<Value> = entry
+                        .exports
+                        .iter()
+                        .enumerate()
+                        .map(|(i, name)| {
+                            let mut obj = json!({"name": name});
+                            if let Some(ref el) = entry.export_lines {
+                                if let Some(lines) = el.get(i) {
+                                    obj["lines"] = json!([lines.start, lines.end]);
+                                }
+                            }
+                            obj
+                        })
+                        .collect();
                     let result = json!({
                         "file": file_path,
-                        "exports": entry.exports,
+                        "exports": exports_with_lines,
                     });
                     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
                 }
@@ -419,7 +504,15 @@ impl McpServer {
 
             let result: Vec<Value> = matches
                 .iter()
-                .map(|(name, path)| json!({"export": name, "file": path}))
+                .map(|(name, path)| {
+                    let mut obj = json!({"export": name, "file": path});
+                    if let Some(loc) = manifest.export_locations.get(*name) {
+                        if let Some(ref lines) = loc.lines {
+                            obj["lines"] = json!([lines.start, lines.end]);
+                        }
+                    }
+                    obj
+                })
                 .collect();
             serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
         } else {
@@ -494,6 +587,92 @@ impl McpServer {
             "upstream": upstream,
             "downstream": downstream,
             "imports": entry.imports,
+        });
+        serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+    }
+
+    fn tool_read_symbol(&self, args: &Value) -> Result<String, String> {
+        let manifest = self.require_manifest()?;
+
+        let args: ReadSymbolArgs =
+            serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
+
+        let location = manifest
+            .export_locations
+            .get(&args.name)
+            .ok_or_else(|| format!("Export '{}' not found", args.name))?;
+
+        let lines = location.lines.as_ref().ok_or_else(|| {
+            format!(
+                "No line range for '{}' — regenerate sidecars with 'fmm generate' for v0.3 format",
+                args.name
+            )
+        })?;
+
+        let source_path = self.root.join(&location.file);
+        let content = std::fs::read_to_string(&source_path)
+            .map_err(|e| format!("Cannot read '{}': {}", location.file, e))?;
+
+        let source_lines: Vec<&str> = content.lines().collect();
+        let start = lines.start.saturating_sub(1); // 1-indexed → 0-indexed
+        let end = lines.end.min(source_lines.len());
+
+        if start >= source_lines.len() {
+            return Err(format!(
+                "Line range [{}, {}] out of bounds for '{}' ({} lines)",
+                lines.start,
+                lines.end,
+                location.file,
+                source_lines.len()
+            ));
+        }
+
+        let symbol_source = source_lines[start..end].join("\n");
+
+        let result = json!({
+            "symbol": args.name,
+            "file": location.file,
+            "lines": [lines.start, lines.end],
+            "source": symbol_source,
+        });
+        serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+    }
+
+    fn tool_file_outline(&self, args: &Value) -> Result<String, String> {
+        let manifest = self.require_manifest()?;
+
+        let args: FileOutlineArgs =
+            serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
+
+        let entry = manifest
+            .files
+            .get(&args.file)
+            .ok_or_else(|| format!("File '{}' not found in manifest", args.file))?;
+
+        let symbols: Vec<Value> = entry
+            .exports
+            .iter()
+            .enumerate()
+            .map(|(i, name)| {
+                let mut obj = json!({"name": name});
+                if let Some(ref el) = entry.export_lines {
+                    if let Some(lines) = el.get(i) {
+                        obj["lines"] = json!([lines.start, lines.end]);
+                        if lines.end >= lines.start {
+                            obj["size"] = json!(lines.end - lines.start + 1);
+                        }
+                    }
+                }
+                obj
+            })
+            .collect();
+
+        let result = json!({
+            "file": args.file,
+            "loc": entry.loc,
+            "imports": entry.imports,
+            "dependencies": entry.dependencies,
+            "symbols": symbols,
         });
         serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
     }

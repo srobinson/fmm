@@ -1,10 +1,10 @@
-use crate::parser::{Metadata, ParseResult, Parser};
+use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
-use super::query_helpers::collect_matches;
+use super::query_helpers::{collect_matches, top_level_ancestor};
 
 pub struct CSharpParser {
     parser: TSParser,
@@ -85,6 +85,7 @@ impl CSharpParser {
         root_node: tree_sitter::Node,
         source_bytes: &[u8],
         seen: &mut HashSet<String>,
+        exports: &mut Vec<ExportEntry>,
     ) {
         let mut cursor = QueryCursor::new();
         let mut iter = cursor.matches(query, root_node, source_bytes);
@@ -93,7 +94,15 @@ impl CSharpParser {
                 if let Some(parent) = capture.node.parent() {
                     if Self::has_public_modifier(parent, source_bytes) {
                         if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                            seen.insert(text.to_string());
+                            let name = text.to_string();
+                            if seen.insert(name.clone()) {
+                                let decl = top_level_ancestor(capture.node);
+                                exports.push(ExportEntry::new(
+                                    name,
+                                    decl.start_position().row + 1,
+                                    decl.end_position().row + 1,
+                                ));
+                            }
                         }
                     }
                 }
@@ -101,9 +110,10 @@ impl CSharpParser {
         }
     }
 
-    fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+    fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<ExportEntry> {
         let source_bytes = source.as_bytes();
         let mut seen = HashSet::new();
+        let mut exports = Vec::new();
 
         let queries = [
             &self.class_query,
@@ -114,11 +124,16 @@ impl CSharpParser {
         ];
 
         for query in queries {
-            Self::collect_public_declarations(query, root_node, source_bytes, &mut seen);
+            Self::collect_public_declarations(
+                query,
+                root_node,
+                source_bytes,
+                &mut seen,
+                &mut exports,
+            );
         }
 
-        let mut exports: Vec<String> = seen.into_iter().collect();
-        exports.sort();
+        exports.sort_by(|a, b| a.name.cmp(&b.name));
         exports
     }
 
@@ -218,12 +233,21 @@ namespace MyApp {
 }
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.exports.contains(&"UserService".to_string()));
-        assert!(result.metadata.exports.contains(&"CreateUser".to_string()));
-        assert!(!result.metadata.exports.contains(&"Validate".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"UserService".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"CreateUser".to_string()));
         assert!(!result
             .metadata
-            .exports
+            .export_names()
+            .contains(&"Validate".to_string()));
+        assert!(!result
+            .metadata
+            .export_names()
             .contains(&"InternalHelper".to_string()));
     }
 
@@ -236,7 +260,10 @@ public interface IRepository<T> {
 }
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.exports.contains(&"IRepository".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"IRepository".to_string()));
     }
 
     #[test]

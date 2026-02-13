@@ -1,5 +1,5 @@
-use super::query_helpers::collect_matches;
-use crate::parser::{Metadata, ParseResult, Parser};
+use super::query_helpers::{collect_matches, top_level_ancestor};
+use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
@@ -83,7 +83,7 @@ impl PythonParser {
         })
     }
 
-    fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+    fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<ExportEntry> {
         if let Some(all_exports) = self.extract_dunder_all(source, root_node) {
             return all_exports;
         }
@@ -99,26 +99,26 @@ impl PythonParser {
                 for capture in m.captures {
                     if let Ok(text) = capture.node.utf8_text(source_bytes) {
                         if !text.starts_with('_') && filter(text) && seen.insert(text.to_string()) {
-                            exports.push(text.to_string());
+                            let decl = top_level_ancestor(capture.node);
+                            exports.push(ExportEntry::new(
+                                text.to_string(),
+                                decl.start_position().row + 1,
+                                decl.end_position().row + 1,
+                            ));
                         }
                     }
                 }
             }
         };
 
-        // Top-level function definitions
         collect_filtered(&self.func_query, |_| true);
-
-        // Top-level class definitions
         collect_filtered(&self.class_query, |_| true);
-
-        // Top-level assignments (module-level constants)
         collect_filtered(&self.assign_query, |name| {
             name.chars().all(|c| c.is_uppercase() || c == '_')
                 || name.chars().next().is_some_and(|c| c.is_uppercase())
         });
 
-        exports.sort();
+        exports.sort_by(|a, b| a.name.cmp(&b.name));
         exports
     }
 
@@ -127,7 +127,7 @@ impl PythonParser {
         &self,
         source: &str,
         root_node: tree_sitter::Node,
-    ) -> Option<Vec<String>> {
+    ) -> Option<Vec<ExportEntry>> {
         let source_bytes = source.as_bytes();
         let capture_names = self.dunder_all_query.capture_names();
         let mut cursor = QueryCursor::new();
@@ -146,6 +146,10 @@ impl PythonParser {
                 continue;
             }
 
+            let all_node = top_level_ancestor(name_capture.node);
+            let all_start = all_node.start_position().row + 1;
+            let all_end = all_node.end_position().row + 1;
+
             let mut seen = HashSet::new();
             let mut exports = Vec::new();
             let list_node = values_capture.node;
@@ -155,12 +159,12 @@ impl PythonParser {
                     if let Ok(text) = child.utf8_text(source_bytes) {
                         let name = text.trim_matches('\'').trim_matches('"').to_string();
                         if !name.is_empty() && seen.insert(name.clone()) {
-                            exports.push(name);
+                            exports.push(ExportEntry::new(name, all_start, all_end));
                         }
                     }
                 }
             }
-            exports.sort();
+            exports.sort_by(|a, b| a.name.cmp(&b.name));
             return Some(exports);
         }
         None
@@ -283,8 +287,14 @@ mod tests {
         let mut parser = PythonParser::new().unwrap();
         let source = "def hello():\n    pass\n\ndef world():\n    pass\n";
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.exports.contains(&"hello".to_string()));
-        assert!(result.metadata.exports.contains(&"world".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"hello".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"world".to_string()));
         assert_eq!(result.metadata.loc, 5);
     }
 
@@ -293,8 +303,14 @@ mod tests {
         let mut parser = PythonParser::new().unwrap();
         let source = "class MyClass:\n    pass\n\nclass _Private:\n    pass\n";
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.exports.contains(&"MyClass".to_string()));
-        assert!(!result.metadata.exports.contains(&"_Private".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"MyClass".to_string()));
+        assert!(!result
+            .metadata
+            .export_names()
+            .contains(&"_Private".to_string()));
     }
 
     #[test]
@@ -322,8 +338,14 @@ mod tests {
         let mut parser = PythonParser::new().unwrap();
         let source = "def _private():\n    pass\n\ndef public():\n    pass\n";
         let result = parser.parse(source).unwrap();
-        assert!(!result.metadata.exports.contains(&"_private".to_string()));
-        assert!(result.metadata.exports.contains(&"public".to_string()));
+        assert!(!result
+            .metadata
+            .export_names()
+            .contains(&"_private".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"public".to_string()));
     }
 
     #[test]
@@ -366,7 +388,10 @@ class _InternalClass:
     pass
 "#;
         let result = parser.parse(source).unwrap();
-        assert_eq!(result.metadata.exports, vec!["PublicClass", "public_func"]);
+        assert_eq!(
+            result.metadata.export_names(),
+            vec!["PublicClass", "public_func"]
+        );
     }
 
     #[test]
@@ -392,7 +417,10 @@ def also_public():
     pass
 "#;
         let result = parser.parse(source).unwrap();
-        assert_eq!(result.metadata.exports, vec!["only_this"]);
-        assert!(!result.metadata.exports.contains(&"also_public".to_string()));
+        assert_eq!(result.metadata.export_names(), vec!["only_this"]);
+        assert!(!result
+            .metadata
+            .export_names()
+            .contains(&"also_public".to_string()));
     }
 }

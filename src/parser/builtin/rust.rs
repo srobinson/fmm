@@ -1,4 +1,5 @@
-use crate::parser::{Metadata, ParseResult, Parser};
+use super::query_helpers::top_level_ancestor;
+use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
@@ -78,7 +79,7 @@ impl RustParser {
         })
     }
 
-    fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+    fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<ExportEntry> {
         let mut seen = HashSet::new();
         let mut exports = Vec::new();
         let source_bytes = source.as_bytes();
@@ -104,17 +105,22 @@ impl RustParser {
                         }
                     }
                     if let Ok(text) = name.node.utf8_text(source_bytes) {
-                        let name = text.to_string();
-                        if seen.insert(name.clone()) {
-                            exports.push(name);
+                        let name_str = text.to_string();
+                        if seen.insert(name_str.clone()) {
+                            let decl = top_level_ancestor(name.node);
+                            exports.push(ExportEntry::new(
+                                name_str,
+                                decl.start_position().row + 1,
+                                decl.end_position().row + 1,
+                            ));
                         }
                     }
                 }
             }
         }
 
-        exports.sort();
-        exports.dedup();
+        exports.sort_by(|a, b| a.name.cmp(&b.name));
+        exports.dedup_by(|a, b| a.name == b.name);
         exports
     }
 
@@ -455,9 +461,18 @@ mod tests {
         let mut parser = RustParser::new().unwrap();
         let source = "pub fn hello() {}\nfn private() {}\npub fn world() {}";
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.exports.contains(&"hello".to_string()));
-        assert!(result.metadata.exports.contains(&"world".to_string()));
-        assert!(!result.metadata.exports.contains(&"private".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"hello".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"world".to_string()));
+        assert!(!result
+            .metadata
+            .export_names()
+            .contains(&"private".to_string()));
     }
 
     #[test]
@@ -465,9 +480,12 @@ mod tests {
         let mut parser = RustParser::new().unwrap();
         let source = "pub struct Foo {}\npub enum Bar { A, B }\nstruct Private {}";
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.exports.contains(&"Foo".to_string()));
-        assert!(result.metadata.exports.contains(&"Bar".to_string()));
-        assert!(!result.metadata.exports.contains(&"Private".to_string()));
+        assert!(result.metadata.export_names().contains(&"Foo".to_string()));
+        assert!(result.metadata.export_names().contains(&"Bar".to_string()));
+        assert!(!result
+            .metadata
+            .export_names()
+            .contains(&"Private".to_string()));
     }
 
     #[test]
@@ -507,9 +525,18 @@ mod tests {
         let source =
             "pub fn visible() {}\npub(crate) fn internal() {}\npub(super) fn parent_only() {}";
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.exports.contains(&"visible".to_string()));
-        assert!(!result.metadata.exports.contains(&"internal".to_string()));
-        assert!(!result.metadata.exports.contains(&"parent_only".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"visible".to_string()));
+        assert!(!result
+            .metadata
+            .export_names()
+            .contains(&"internal".to_string()));
+        assert!(!result
+            .metadata
+            .export_names()
+            .contains(&"parent_only".to_string()));
     }
 
     #[test]

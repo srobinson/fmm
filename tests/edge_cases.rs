@@ -152,7 +152,10 @@ fn rust_unicode_in_strings() {
     let mut parser = RustParser::new().unwrap();
     let source = "pub fn hello() -> &'static str { \"こんにちは\" }";
     let result = parser.parse(source).unwrap();
-    assert!(result.metadata.exports.contains(&"hello".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"hello".to_string()));
 }
 
 // --- Windows line endings (CRLF) ---
@@ -162,8 +165,14 @@ fn typescript_crlf_line_endings() {
     let mut parser = TypeScriptParser::new().unwrap();
     let source = "export function hello() {}\r\nexport const world = 42;\r\n";
     let result = parser.parse(source).unwrap();
-    assert!(result.metadata.exports.contains(&"hello".to_string()));
-    assert!(result.metadata.exports.contains(&"world".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"hello".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"world".to_string()));
 }
 
 #[test]
@@ -171,8 +180,14 @@ fn python_crlf_line_endings() {
     let mut parser = PythonParser::new().unwrap();
     let source = "def hello():\r\n    pass\r\n\r\nclass World:\r\n    pass\r\n";
     let result = parser.parse(source).unwrap();
-    assert!(result.metadata.exports.contains(&"hello".to_string()));
-    assert!(result.metadata.exports.contains(&"World".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"hello".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"World".to_string()));
 }
 
 #[test]
@@ -180,8 +195,14 @@ fn rust_crlf_line_endings() {
     let mut parser = RustParser::new().unwrap();
     let source = "pub fn hello() {}\r\npub struct World {}\r\n";
     let result = parser.parse(source).unwrap();
-    assert!(result.metadata.exports.contains(&"hello".to_string()));
-    assert!(result.metadata.exports.contains(&"World".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"hello".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"World".to_string()));
 }
 
 // --- Whitespace-only files ---
@@ -337,7 +358,7 @@ fn cpp_crlf_line_endings() {
     let source = "#include <vector>\r\nclass Foo {};\r\n";
     let result = parser.parse(source).unwrap();
     assert!(result.metadata.imports.contains(&"vector".to_string()));
-    assert!(result.metadata.exports.contains(&"Foo".to_string()));
+    assert!(result.metadata.export_names().contains(&"Foo".to_string()));
 }
 
 // =============================================================================

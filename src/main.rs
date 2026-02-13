@@ -132,6 +132,14 @@ fn main() -> Result<()> {
             let mut server = mcp::McpServer::new();
             server.run()?;
         }
+        Commands::Run {
+            query,
+            model,
+            max_turns,
+            max_budget,
+        } => {
+            cli::run(&query, &model, max_turns, max_budget)?;
+        }
         Commands::Completions { shell } => {
             clap_complete::generate(shell, &mut Cli::command(), "fmm", &mut std::io::stdout());
         }

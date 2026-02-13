@@ -589,6 +589,7 @@ mod tests {
             "src/auth/login.ts".to_string(),
             FileEntry {
                 exports: vec!["login".to_string(), "logout".to_string()],
+                export_lines: None,
                 imports: vec!["express".to_string()],
                 dependencies: vec!["src/auth/utils.ts".to_string()],
                 loc: 150,
@@ -598,6 +599,7 @@ mod tests {
             "src/auth/utils.ts".to_string(),
             FileEntry {
                 exports: vec!["hashPassword".to_string()],
+                export_lines: None,
                 imports: vec!["bcrypt".to_string()],
                 dependencies: vec![],
                 loc: 40,
@@ -607,6 +609,7 @@ mod tests {
             "src/index.ts".to_string(),
             FileEntry {
                 exports: vec!["app".to_string()],
+                export_lines: None,
                 imports: vec!["express".to_string()],
                 dependencies: vec!["src/auth/login.ts".to_string()],
                 loc: 30,
@@ -624,6 +627,7 @@ mod tests {
             generated: chrono::Utc::now(),
             files,
             export_index,
+            export_locations: HashMap::new(),
         }
     }
 
@@ -706,6 +710,7 @@ mod tests {
                 path.clone(),
                 FileEntry {
                     exports: vec![export.clone()],
+                    export_lines: None,
                     imports: vec![],
                     dependencies: vec![],
                     loc: 10,
@@ -719,6 +724,7 @@ mod tests {
             generated: chrono::Utc::now(),
             files,
             export_index,
+            export_locations: HashMap::new(),
         };
 
         let refs: Vec<CodeReference> = (0..30)
@@ -738,6 +744,7 @@ mod tests {
             "v2/bin/hooks.js".to_string(),
             FileEntry {
                 exports: vec!["hooksAction".to_string()],
+                export_lines: None,
                 imports: vec![],
                 dependencies: vec![],
                 loc: 1200,
@@ -762,6 +769,7 @@ mod tests {
             "src/init/statusline-generator.ts".to_string(),
             FileEntry {
                 exports: vec!["generateStatuslineHook".to_string()],
+                export_lines: None,
                 imports: vec![],
                 dependencies: vec![],
                 loc: 1246,
@@ -786,6 +794,7 @@ mod tests {
                 format!("pkg{}/index.ts", i),
                 FileEntry {
                     exports: vec![],
+                    export_lines: None,
                     imports: vec![],
                     dependencies: vec![],
                     loc: 10,
@@ -798,6 +807,10 @@ mod tests {
             line: None,
         }];
         let (resolved, _) = resolve_references(&refs, &manifest);
-        assert!(resolved.len() <= 5, "Fallback should cap at 5, got {}", resolved.len());
+        assert!(
+            resolved.len() <= 5,
+            "Fallback should cap at 5, got {}",
+            resolved.len()
+        );
     }
 }
