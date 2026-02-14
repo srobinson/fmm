@@ -426,3 +426,64 @@ fn ruby_no_exports_all_private() {
     let result = parser.parse(source).unwrap();
     assert!(result.metadata.exports.is_empty());
 }
+
+// --- TypeScript default export edge cases ---
+
+#[test]
+fn typescript_default_anonymous_arrow_not_captured() {
+    let mut parser = TypeScriptParser::new().unwrap();
+    let result = parser.parse("export default () => {};").unwrap();
+    assert!(result.metadata.exports.is_empty());
+}
+
+#[test]
+fn typescript_default_anonymous_class_not_captured() {
+    let mut parser = TypeScriptParser::new().unwrap();
+    let result = parser.parse("export default class { run() {} }").unwrap();
+    assert!(result.metadata.exports.is_empty());
+}
+
+#[test]
+fn typescript_default_object_literal_not_captured() {
+    let mut parser = TypeScriptParser::new().unwrap();
+    let result = parser
+        .parse("export default { key: 'value', num: 42 };")
+        .unwrap();
+    assert!(result.metadata.exports.is_empty());
+}
+
+#[test]
+fn typescript_default_and_named_coexist() {
+    let mut parser = TypeScriptParser::new().unwrap();
+    let source = r#"
+export const helper = () => {};
+export function util() {}
+export default function Main() {}
+"#;
+    let result = parser.parse(source).unwrap();
+    assert_eq!(
+        result.metadata.export_names(),
+        vec!["Main", "helper", "util"]
+    );
+}
+
+#[test]
+fn typescript_type_only_exports() {
+    let mut parser = TypeScriptParser::new().unwrap();
+    let source = r#"
+export type A = string;
+export type B = number;
+export type C = A | B;
+"#;
+    let result = parser.parse(source).unwrap();
+    assert_eq!(result.metadata.export_names(), vec!["A", "B", "C"]);
+}
+
+#[test]
+fn typescript_default_identifier_deduplicates_with_named() {
+    let mut parser = TypeScriptParser::new().unwrap();
+    // If Component is both in an export clause and a default, it should appear once
+    let source = "export { Component };\nexport default Component;";
+    let result = parser.parse(source).unwrap();
+    assert_eq!(result.metadata.export_names(), vec!["Component"]);
+}

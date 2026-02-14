@@ -681,6 +681,84 @@ function mergeConfig(base: Record<string, unknown>, overrides: Record<string, un
     assert!(result.metadata.imports.contains(&"path".to_string()));
 }
 
+/// TypeScript with default exports, type aliases, and named exports mixed
+#[test]
+fn typescript_real_repo_default_and_type_exports() {
+    let source = r#"
+import React from 'react';
+import { useStore } from './store';
+import type { Theme } from './theme';
+
+export type AppProps = {
+    title: string;
+    theme: Theme;
+};
+
+export interface AppState {
+    loading: boolean;
+    error: string | null;
+}
+
+export const APP_VERSION = "2.0.0";
+
+export default function App({ title, theme }: AppProps) {
+    const store = useStore();
+    return React.createElement('div', { className: theme }, title);
+}
+"#;
+    let mut parser = TypeScriptParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    assert_eq!(
+        result.metadata.export_names(),
+        vec!["APP_VERSION", "App", "AppProps", "AppState"]
+    );
+    assert!(result.metadata.imports.contains(&"react".to_string()));
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"./store".to_string()));
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"./theme".to_string()));
+}
+
+/// TypeScript default export of existing binding (common React pattern)
+#[test]
+fn typescript_real_repo_default_export_identifier() {
+    let source = r#"
+import { connect } from 'react-redux';
+import { fetchUser } from './actions';
+
+interface Props {
+    userId: string;
+    name: string;
+}
+
+function UserProfile({ userId, name }: Props) {
+    return null;
+}
+
+const mapStateToProps = (state: any) => ({
+    name: state.user.name,
+});
+
+const ConnectedProfile = connect(mapStateToProps)(UserProfile);
+
+export default ConnectedProfile;
+"#;
+    let mut parser = TypeScriptParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    assert_eq!(result.metadata.export_names(), vec!["ConnectedProfile"]);
+    assert!(result.metadata.imports.contains(&"react-redux".to_string()));
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"./actions".to_string()));
+}
+
 // =============================================================================
 // Go validation — snippets from real-world Go patterns
 // =============================================================================
