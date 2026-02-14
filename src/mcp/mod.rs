@@ -42,6 +42,7 @@ struct DependencyGraphArgs {
 
 #[derive(Debug, Deserialize)]
 struct SearchArgs {
+    term: Option<String>,
     export: Option<String>,
     imports: Option<String>,
     depends_on: Option<String>,
@@ -329,13 +330,17 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_search".to_string(),
-                description: "Search files by structural criteria: exported symbol, imported package, local dependency, or LOC range. Filters combine with AND logic. Use for 'which files use crypto?', 'what depends on auth?'.".to_string(),
+                description: "Universal codebase search. Use 'term' for smart search across exports, files, and imports (like 'fmm search <term>'). Use structured filters (export, imports, depends_on, LOC) for precise queries. Filters combine with AND logic.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
+                        "term": {
+                            "type": "string",
+                            "description": "Universal search term — searches exports (exact then fuzzy), file paths, and imports. Returns grouped results. Use alone without other filters."
+                        },
                         "export": {
                             "type": "string",
-                            "description": "Find the file that exports this symbol (exact match)"
+                            "description": "Find files exporting this symbol (exact match, then case-insensitive substring fallback)"
                         },
                         "imports": {
                             "type": "string",
@@ -683,17 +688,34 @@ impl McpServer {
         let args: SearchArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
+        // Universal term search: search across exports, files, and imports
+        if let Some(ref term) = args.term {
+            return self.term_search(manifest, term);
+        }
+
         let mut results: Vec<(&String, &crate::manifest::FileEntry)> = Vec::new();
 
         let has_export = args.export.is_some();
         let has_imports = args.imports.is_some();
         let has_depends_on = args.depends_on.is_some();
 
-        // Search by export
+        // Search by export — exact first, then fuzzy fallback
         if let Some(ref export) = args.export {
             if let Some(file_path) = manifest.export_index.get(export.as_str()) {
                 if let Some(entry) = manifest.files.get(file_path) {
                     results.push((file_path, entry));
+                }
+            } else {
+                // Fuzzy fallback: case-insensitive substring
+                let export_lower = export.to_lowercase();
+                for (name, file_path) in &manifest.export_index {
+                    if name.to_lowercase().contains(&export_lower) {
+                        if let Some(entry) = manifest.files.get(file_path) {
+                            if !results.iter().any(|(f, _)| *f == file_path) {
+                                results.push((file_path, entry));
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -754,18 +776,150 @@ impl McpServer {
 
         let output: Vec<Value> = results
             .iter()
-            .map(|(path, entry)| {
-                json!({
-                    "file": path,
-                    "exports": entry.exports,
-                    "imports": entry.imports,
-                    "dependencies": entry.dependencies,
-                    "loc": entry.loc,
-                })
-            })
+            .map(|(path, entry)| self.file_result_with_lines(manifest, path, entry))
             .collect();
 
         serde_json::to_string_pretty(&output).map_err(|e| e.to_string())
+    }
+
+    /// Universal term search: searches exports, file paths, and imports.
+    /// Returns grouped JSON with exact exports ranked before fuzzy.
+    fn term_search(
+        &self,
+        manifest: &crate::manifest::Manifest,
+        term: &str,
+    ) -> Result<String, String> {
+        let term_lower = term.to_lowercase();
+
+        // 1. Exact export matches (O(1) via export_locations/export_index)
+        let mut exact_exports: Vec<Value> = Vec::new();
+        if let Some(loc) = manifest.export_locations.get(term) {
+            let mut obj = json!({"name": term, "file": loc.file});
+            if let Some(ref lines) = loc.lines {
+                obj["lines"] = json!([lines.start, lines.end]);
+            }
+            exact_exports.push(obj);
+        } else if let Some(file_path) = manifest.export_index.get(term) {
+            let mut obj = json!({"name": term, "file": file_path});
+            if let Some(loc) = manifest.export_locations.get(term) {
+                if let Some(ref lines) = loc.lines {
+                    obj["lines"] = json!([lines.start, lines.end]);
+                }
+            }
+            exact_exports.push(obj);
+        }
+
+        // 2. Fuzzy export matches (case-insensitive substring, excluding exact)
+        let mut fuzzy_exports: Vec<Value> = Vec::new();
+        for (name, file_path) in &manifest.export_index {
+            if name == term {
+                continue; // Already in exact
+            }
+            if name.to_lowercase().contains(&term_lower) {
+                let mut obj = json!({"name": name, "file": file_path});
+                if let Some(loc) = manifest.export_locations.get(name.as_str()) {
+                    if let Some(ref lines) = loc.lines {
+                        obj["lines"] = json!([lines.start, lines.end]);
+                    }
+                }
+                fuzzy_exports.push(obj);
+            }
+        }
+        fuzzy_exports.sort_by(|a, b| {
+            a["name"]
+                .as_str()
+                .unwrap_or("")
+                .cmp(b["name"].as_str().unwrap_or(""))
+        });
+
+        let mut all_exports = exact_exports;
+        all_exports.append(&mut fuzzy_exports);
+
+        // 3. File path matches (case-insensitive substring)
+        let mut file_matches: Vec<Value> = Vec::new();
+        for (file_path, entry) in &manifest.files {
+            if file_path.to_lowercase().contains(&term_lower) {
+                file_matches.push(self.file_result_with_lines(manifest, file_path, entry));
+            }
+        }
+        file_matches.sort_by(|a, b| {
+            a["file"]
+                .as_str()
+                .unwrap_or("")
+                .cmp(b["file"].as_str().unwrap_or(""))
+        });
+
+        // 4. Import matches (package names matching term)
+        let mut import_matches: Vec<Value> = Vec::new();
+        let mut seen_packages: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for (file_path, entry) in &manifest.files {
+            for imp in &entry.imports {
+                if imp.to_lowercase().contains(&term_lower) && seen_packages.insert(imp.clone()) {
+                    let files_using: Vec<&String> = manifest
+                        .files
+                        .iter()
+                        .filter(|(_, e)| e.imports.contains(imp))
+                        .map(|(p, _)| p)
+                        .collect();
+                    let _ = file_path; // used via manifest iteration
+                    import_matches.push(json!({"package": imp, "files": files_using}));
+                }
+            }
+        }
+        import_matches.sort_by(|a, b| {
+            a["package"]
+                .as_str()
+                .unwrap_or("")
+                .cmp(b["package"].as_str().unwrap_or(""))
+        });
+
+        let result = json!({
+            "exports": all_exports,
+            "files": file_matches,
+            "imports": import_matches,
+        });
+
+        serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+    }
+
+    /// Build a file result object with export line ranges included.
+    fn file_result_with_lines(
+        &self,
+        manifest: &crate::manifest::Manifest,
+        path: &str,
+        entry: &crate::manifest::FileEntry,
+    ) -> Value {
+        let exports_with_lines: Vec<Value> = entry
+            .exports
+            .iter()
+            .enumerate()
+            .map(|(i, name)| {
+                // Try export_lines on the entry first, then export_locations
+                if let Some(ref el) = entry.export_lines {
+                    if let Some(lines) = el.get(i) {
+                        if lines.start > 0 {
+                            return json!({"name": name, "lines": [lines.start, lines.end]});
+                        }
+                    }
+                }
+                if let Some(loc) = manifest.export_locations.get(name.as_str()) {
+                    if let Some(ref lines) = loc.lines {
+                        if lines.start > 0 {
+                            return json!({"name": name, "lines": [lines.start, lines.end]});
+                        }
+                    }
+                }
+                json!(name)
+            })
+            .collect();
+
+        json!({
+            "file": path,
+            "exports": exports_with_lines,
+            "imports": entry.imports,
+            "dependencies": entry.dependencies,
+            "loc": entry.loc,
+        })
     }
 }
 

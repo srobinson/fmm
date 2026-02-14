@@ -412,3 +412,244 @@ fn file_outline_shows_all_exports() {
     assert!(names.contains(&"verifyPassword"));
     assert_eq!(parsed["loc"], 9);
 }
+
+// --- fmm_search universal term search tests (ALP-549) ---
+
+#[test]
+fn search_term_finds_exact_export() {
+    let (_tmp, server) = setup_mcp_server();
+    let result = server
+        .call_tool("fmm_search", serde_json::json!({"term": "createSession"}))
+        .unwrap();
+
+    let text = result["content"][0]["text"].as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+
+    let exports = parsed["exports"].as_array().unwrap();
+    assert!(!exports.is_empty());
+    assert_eq!(exports[0]["name"], "createSession");
+    assert_eq!(exports[0]["file"], "src/auth/session.ts");
+    // Should include line ranges
+    assert!(exports[0].get("lines").is_some());
+}
+
+#[test]
+fn search_term_finds_fuzzy_exports() {
+    let (_tmp, server) = setup_mcp_server();
+    let result = server
+        .call_tool("fmm_search", serde_json::json!({"term": "session"}))
+        .unwrap();
+
+    let text = result["content"][0]["text"].as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+
+    let exports = parsed["exports"].as_array().unwrap();
+    let names: Vec<&str> = exports
+        .iter()
+        .map(|e| e["name"].as_str().unwrap())
+        .collect();
+    // Should find createSession, validateSession, SessionToken
+    assert!(names.contains(&"createSession"));
+    assert!(names.contains(&"validateSession"));
+    assert!(names.contains(&"SessionToken"));
+}
+
+#[test]
+fn search_term_finds_file_path_matches() {
+    let (_tmp, server) = setup_mcp_server();
+    let result = server
+        .call_tool("fmm_search", serde_json::json!({"term": "crypto"}))
+        .unwrap();
+
+    let text = result["content"][0]["text"].as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+
+    let files = parsed["files"].as_array().unwrap();
+    assert!(!files.is_empty());
+    assert!(files
+        .iter()
+        .any(|f| f["file"].as_str().unwrap().contains("crypto")));
+}
+
+#[test]
+fn search_term_finds_import_matches() {
+    let (_tmp, server) = setup_mcp_server();
+    let result = server
+        .call_tool("fmm_search", serde_json::json!({"term": "bcrypt"}))
+        .unwrap();
+
+    let text = result["content"][0]["text"].as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+
+    let imports = parsed["imports"].as_array().unwrap();
+    assert!(!imports.is_empty());
+    assert!(imports
+        .iter()
+        .any(|i| i["package"].as_str().unwrap() == "bcrypt"));
+    // Should list files using bcrypt
+    let files = imports[0]["files"].as_array().unwrap();
+    assert!(!files.is_empty());
+}
+
+#[test]
+fn search_term_returns_grouped_json() {
+    let (_tmp, server) = setup_mcp_server();
+    let result = server
+        .call_tool("fmm_search", serde_json::json!({"term": "config"}))
+        .unwrap();
+
+    let text = result["content"][0]["text"].as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+
+    // Should have all three groups
+    assert!(parsed.get("exports").is_some());
+    assert!(parsed.get("files").is_some());
+    assert!(parsed.get("imports").is_some());
+}
+
+#[test]
+fn search_term_case_insensitive() {
+    let (_tmp, server) = setup_mcp_server();
+    let result = server
+        .call_tool("fmm_search", serde_json::json!({"term": "POOL"}))
+        .unwrap();
+
+    let text = result["content"][0]["text"].as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+
+    let exports = parsed["exports"].as_array().unwrap();
+    let names: Vec<&str> = exports
+        .iter()
+        .map(|e| e["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"Pool") || names.contains(&"createPool"));
+
+    let files = parsed["files"].as_array().unwrap();
+    assert!(files
+        .iter()
+        .any(|f| f["file"].as_str().unwrap().contains("pool")));
+}
+
+// --- fmm_search fuzzy export filter tests (ALP-550) ---
+
+#[test]
+fn search_export_fuzzy_fallback() {
+    let (_tmp, server) = setup_mcp_server();
+    // "Password" substring matches hashPassword, verifyPassword
+    let result = server
+        .call_tool("fmm_search", serde_json::json!({"export": "Password"}))
+        .unwrap();
+
+    let text = result["content"][0]["text"].as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    let results = parsed.as_array().unwrap();
+    // Should find the file containing hashPassword and verifyPassword
+    assert!(!results.is_empty());
+    assert!(results
+        .iter()
+        .any(|r| r["file"].as_str().unwrap().contains("crypto")));
+}
+
+#[test]
+fn search_export_exact_still_works() {
+    let (_tmp, server) = setup_mcp_server();
+    let result = server
+        .call_tool("fmm_search", serde_json::json!({"export": "createSession"}))
+        .unwrap();
+
+    let text = result["content"][0]["text"].as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    let results = parsed.as_array().unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0]["file"], "src/auth/session.ts");
+}
+
+#[test]
+fn search_export_fuzzy_case_insensitive() {
+    let (_tmp, server) = setup_mcp_server();
+    let result = server
+        .call_tool("fmm_search", serde_json::json!({"export": "pool"}))
+        .unwrap();
+
+    let text = result["content"][0]["text"].as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    let results = parsed.as_array().unwrap();
+    assert!(!results.is_empty());
+    assert!(results
+        .iter()
+        .any(|r| r["file"].as_str().unwrap().contains("pool")));
+}
+
+// --- fmm_search line ranges in output tests (ALP-551) ---
+
+#[test]
+fn search_results_include_line_ranges() {
+    let (_tmp, server) = setup_mcp_server();
+    let result = server
+        .call_tool("fmm_search", serde_json::json!({"export": "createSession"}))
+        .unwrap();
+
+    let text = result["content"][0]["text"].as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    let results = parsed.as_array().unwrap();
+    assert!(!results.is_empty());
+
+    // Exports should include line ranges
+    let exports = results[0]["exports"].as_array().unwrap();
+    let has_lines = exports.iter().any(|e| e.get("lines").is_some());
+    assert!(has_lines, "Export results should include line ranges");
+}
+
+#[test]
+fn search_term_exports_include_line_ranges() {
+    let (_tmp, server) = setup_mcp_server();
+    let result = server
+        .call_tool("fmm_search", serde_json::json!({"term": "hashPassword"}))
+        .unwrap();
+
+    let text = result["content"][0]["text"].as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+
+    let exports = parsed["exports"].as_array().unwrap();
+    assert!(!exports.is_empty());
+    // Exact match should have lines
+    let exact = &exports[0];
+    assert_eq!(exact["name"], "hashPassword");
+    assert!(exact.get("lines").is_some());
+    let lines = exact["lines"].as_array().unwrap();
+    assert_eq!(lines[0], 3);
+    assert_eq!(lines[1], 5);
+}
+
+// --- Existing flag-based behavior unchanged ---
+
+#[test]
+fn search_existing_flags_still_work() {
+    let (_tmp, server) = setup_mcp_server();
+
+    // imports filter
+    let result = server
+        .call_tool("fmm_search", serde_json::json!({"imports": "jwt"}))
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    let results = parsed.as_array().unwrap();
+    assert!(results
+        .iter()
+        .any(|r| r["file"].as_str().unwrap() == "src/auth/session.ts"));
+
+    // min_loc filter
+    let result = server
+        .call_tool("fmm_search", serde_json::json!({"min_loc": 11}))
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    let results = parsed.as_array().unwrap();
+    assert!(results
+        .iter()
+        .any(|r| r["file"].as_str().unwrap() == "src/auth/session.ts"));
+    // Files with loc < 11 should not be included
+    assert!(!results
+        .iter()
+        .any(|r| r["file"].as_str().unwrap() == "src/utils/crypto.ts")); // loc: 9
+}
