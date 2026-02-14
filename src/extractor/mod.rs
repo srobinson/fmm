@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::config::Config;
 use crate::formatter::Frontmatter;
 use crate::parser::{Metadata, ParseResult, ParserRegistry};
 
@@ -28,7 +27,7 @@ pub fn sidecar_path_for(path: &Path) -> PathBuf {
 }
 
 impl FileProcessor {
-    pub fn new(_config: &Config, root: &Path) -> Self {
+    pub fn new(root: &Path) -> Self {
         Self {
             root: root.to_path_buf(),
             registry: ParserRegistry::with_builtins(),

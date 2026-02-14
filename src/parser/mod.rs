@@ -1,5 +1,4 @@
 pub mod builtin;
-pub mod plugin;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};

@@ -45,7 +45,7 @@ fn process_files(path: &str, dry_run: bool, action: SidecarAction) -> Result<()>
     let results: Vec<_> = files
         .par_iter()
         .filter_map(|file| {
-            let processor = FileProcessor::new(&config, &root);
+            let processor = FileProcessor::new(&root);
             let result = match action {
                 SidecarAction::Generate => processor.generate(file, dry_run),
                 SidecarAction::Update => processor.update(file, dry_run),
@@ -139,7 +139,7 @@ pub fn validate(path: &str) -> Result<()> {
     let invalid: Vec<_> = files
         .par_iter()
         .filter_map(|file| {
-            let processor = FileProcessor::new(&config, &root);
+            let processor = FileProcessor::new(&root);
             match processor.validate(file) {
                 Ok(true) => None,
                 Ok(false) => {
@@ -198,7 +198,7 @@ pub fn clean(path: &str, dry_run: bool) -> Result<()> {
             println!("  Would remove: {}", display);
             removed += 1;
         } else {
-            let processor = FileProcessor::new(&config, &root);
+            let processor = FileProcessor::new(&root);
             match processor.clean(file) {
                 Ok(true) => {
                     println!("{} Removed {}", "✓".green(), display);
