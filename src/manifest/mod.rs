@@ -132,8 +132,7 @@ impl Manifest {
                         if existing != &key {
                             let existing_is_ts =
                                 existing.ends_with(".ts") || existing.ends_with(".tsx");
-                            let new_is_js =
-                                key.ends_with(".js") || key.ends_with(".jsx");
+                            let new_is_js = key.ends_with(".js") || key.ends_with(".jsx");
                             if existing_is_ts && new_is_js {
                                 continue;
                             }
@@ -180,8 +179,7 @@ impl Manifest {
                 None => (true, false),
                 Some(existing) if existing == path => (true, false),
                 Some(existing) => {
-                    let existing_is_ts =
-                        existing.ends_with(".ts") || existing.ends_with(".tsx");
+                    let existing_is_ts = existing.ends_with(".ts") || existing.ends_with(".tsx");
                     let new_is_js = path.ends_with(".js") || path.ends_with(".jsx");
                     if existing_is_ts && new_is_js {
                         // Expected: .ts takes priority over .js — no warning

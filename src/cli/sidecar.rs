@@ -139,20 +139,18 @@ pub fn validate(path: &str) -> Result<()> {
     let processor = FileProcessor::new(&root);
     let invalid: Vec<_> = files
         .par_iter()
-        .filter_map(|file| {
-            match processor.validate(file) {
-                Ok(true) => None,
-                Ok(false) => {
-                    let sidecar = sidecar_path_for(file);
-                    let reason = if sidecar.exists() {
-                        "sidecar out of date"
-                    } else {
-                        "missing sidecar"
-                    };
-                    Some((file.to_path_buf(), reason.to_string()))
-                }
-                Err(e) => Some((file.to_path_buf(), format!("Error: {}", e))),
+        .filter_map(|file| match processor.validate(file) {
+            Ok(true) => None,
+            Ok(false) => {
+                let sidecar = sidecar_path_for(file);
+                let reason = if sidecar.exists() {
+                    "sidecar out of date"
+                } else {
+                    "missing sidecar"
+                };
+                Some((file.to_path_buf(), reason.to_string()))
             }
+            Err(e) => Some((file.to_path_buf(), format!("Error: {}", e))),
         })
         .collect();
 

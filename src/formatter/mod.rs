@@ -72,7 +72,12 @@ impl Frontmatter {
 
         // Imports (external packages only)
         if !self.metadata.imports.is_empty() {
-            let items: Vec<_> = self.metadata.imports.iter().map(|s| yaml_escape(s)).collect();
+            let items: Vec<_> = self
+                .metadata
+                .imports
+                .iter()
+                .map(|s| yaml_escape(s))
+                .collect();
             lines.push(format!("imports: [{}]", items.join(", ")));
         }
 
@@ -111,7 +116,9 @@ impl Frontmatter {
 /// Quote a string if it contains YAML-special characters that would break parsing.
 /// Returns the original string unmodified when safe, or wraps it in single quotes.
 fn yaml_escape(s: &str) -> String {
-    const SPECIAL: &[char] = &[':', '#', '[', ']', '{', '}', ',', '&', '*', '!', '|', '>', '\'', '"', '%', '@', '`'];
+    const SPECIAL: &[char] = &[
+        ':', '#', '[', ']', '{', '}', ',', '&', '*', '!', '|', '>', '\'', '"', '%', '@', '`',
+    ];
     if s.is_empty() || s.contains(SPECIAL) {
         format!("'{}'", s.replace('\'', "''"))
     } else {
@@ -369,18 +376,17 @@ mod tests {
             dependencies: vec![],
             loc: 20,
         };
-        let fm = Frontmatter::new("src/utils/key:value.ts".to_string(), metadata)
-            .with_version("v0.3");
+        let fm =
+            Frontmatter::new("src/utils/key:value.ts".to_string(), metadata).with_version("v0.3");
         let rendered = fm.render();
 
         // Parse back through serde_yaml
         let parsed: serde_yaml::Value = serde_yaml::from_str(&rendered).unwrap();
+        assert_eq!(parsed["file"].as_str().unwrap(), "src/utils/key:value.ts");
         assert_eq!(
-            parsed["file"].as_str().unwrap(),
-            "src/utils/key:value.ts"
-        );
-        assert_eq!(
-            parsed["imports"].as_sequence().unwrap()[0].as_str().unwrap(),
+            parsed["imports"].as_sequence().unwrap()[0]
+                .as_str()
+                .unwrap(),
             "@scope/pkg"
         );
         // Export names are map keys

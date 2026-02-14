@@ -41,8 +41,8 @@ impl Config {
 
 fn default_languages() -> HashSet<String> {
     [
-        "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "cpp", "hpp", "cc", "hh", "cxx",
-        "hxx", "cs", "rb",
+        "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "cpp", "hpp", "cc", "hh", "cxx", "hxx",
+        "cs", "rb",
     ]
     .iter()
     .map(|s| s.to_string())
@@ -59,8 +59,8 @@ mod tests {
     fn default_config_has_expected_languages() {
         let config = Config::default();
         for ext in [
-            "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "cpp", "hpp", "cc", "hh",
-            "cxx", "hxx", "cs", "rb",
+            "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "cpp", "hpp", "cc", "hh", "cxx",
+            "hxx", "cs", "rb",
         ] {
             assert!(config.languages.contains(ext), "missing extension: {ext}");
         }

@@ -178,9 +178,6 @@ mod tests {
     fn content_without_modified_detects_real_changes() {
         let v1 = "file: src/foo.rs\nexports:\n  bar: [1, 5]\nloc: 10\nmodified: 2026-01-01";
         let v2 = "file: src/foo.rs\nexports:\n  bar: [1, 5]\n  baz: [6, 10]\nloc: 20\nmodified: 2026-02-14";
-        assert_ne!(
-            content_without_modified(v1),
-            content_without_modified(v2)
-        );
+        assert_ne!(content_without_modified(v1), content_without_modified(v2));
     }
 }
