@@ -11,12 +11,14 @@ pub mod init;
 mod search;
 mod sidecar;
 mod status;
+mod watch;
 
 pub use init::init;
 pub use init::init_skill;
 pub use search::search;
 pub use sidecar::{clean, generate, validate};
 pub use status::status;
+pub use watch::watch;
 
 // -- Help text constants (keeps the derive attrs readable) --
 
@@ -28,6 +30,7 @@ const SHORT_HELP: &str = cstr!(
     r#"<bold><underline>Commands</underline></bold>
   <bold>init</bold>          Set up config, Claude skill, and MCP server
   <bold>generate</bold>      Create and update .fmm sidecars (exports, imports, deps, LOC)
+  <bold>watch</bold>         Watch source files and regenerate sidecars on change
   <bold>validate</bold>      Check sidecars are current (CI-friendly, exit 1 if stale)
   <bold>search</bold>        Smart search — exports, files, imports (just works)
   <bold>mcp</bold>           Start MCP server (7 tools for LLM navigation)
@@ -43,6 +46,7 @@ const LONG_HELP: &str = cstr!(
     r#"<bold><underline>Commands</underline></bold>
   <bold>init</bold>          Set up config, Claude skill, and MCP server
   <bold>generate</bold>      Create and update .fmm sidecars (exports, imports, deps, LOC)
+  <bold>watch</bold>         Watch source files and regenerate sidecars on change
   <bold>validate</bold>      Check sidecars are current (CI-friendly, exit 1 if stale)
   <bold>search</bold>        Smart search — exports, files, imports (just works)
   <bold>mcp</bold>           Start MCP server (7 tools for LLM navigation)
@@ -61,6 +65,7 @@ const LONG_HELP: &str = cstr!(
 <bold><underline>Workflows</underline></bold>
   <dim>$</dim> <bold>fmm init</bold>                              <dim># One-command setup</dim>
   <dim>$</dim> <bold>fmm generate && fmm validate</bold>          <dim># CI pipeline</dim>
+  <dim>$</dim> <bold>fmm watch</bold>                             <dim># Live sidecar regeneration</dim>
   <dim>$</dim> <bold>fmm search store</bold>                      <dim># Smart search across everything</dim>
   <dim>$</dim> <bold>fmm search --export createStore</bold>       <dim># O(1) symbol lookup + fuzzy</dim>
   <dim>$</dim> <bold>fmm search --depends-on src/auth.ts</bold>   <dim># Impact analysis</dim>
@@ -201,6 +206,39 @@ pub enum Commands {
         /// Show what would be removed without deleting files
         #[arg(short = 'n', long)]
         dry_run: bool,
+    },
+
+    /// Watch source files and regenerate sidecars on change
+    #[command(
+        long_about = "Watch source files for changes and regenerate affected sidecars automatically.\n\n\
+            Runs an initial generate pass on startup, then watches for file create, modify, and \
+            delete events. Debounces rapid changes (default: 300ms) to avoid redundant work.",
+        after_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+  <dim>$</dim> <bold>fmm watch</bold>               <dim># Watch current directory</dim>
+  <dim>$</dim> <bold>fmm watch src/</bold>           <dim># Watch specific directory</dim>
+  <dim>$</dim> <bold>fmm watch --debounce 500</bold> <dim># Custom debounce (500ms)</dim>"#),
+        after_long_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+  <dim>$</dim> <bold>fmm watch</bold>                          <dim># Watch current directory</dim>
+  <dim>$</dim> <bold>fmm watch src/</bold>                      <dim># Watch specific directory</dim>
+  <dim>$</dim> <bold>fmm watch --debounce 500</bold>            <dim># Custom debounce (500ms)</dim>
+
+<bold><underline>Notes</underline></bold>
+  Runs 'fmm generate' on startup to ensure all sidecars exist.
+  Only prints when a sidecar actually changes — quiet by default.
+  Changes to .fmm files are ignored (no feedback loops).
+  Respects .gitignore and .fmmignore for file exclusion.
+  Press Ctrl+C to stop watching."#),
+    )]
+    Watch {
+        /// Path to directory to watch
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Debounce delay in milliseconds
+        #[arg(long, default_value = "300")]
+        debounce: u64,
     },
 
     /// Set up config, Claude skill, and MCP server

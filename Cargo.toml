@@ -35,6 +35,9 @@ colored = "2.1"
 
 # File handling
 ignore = "0.4"  # Respects .gitignore
+notify = "7.0"
+notify-debouncer-full = "0.4"
+ctrlc = "3.4"
 
 # Parallelism
 rayon = "1.10"

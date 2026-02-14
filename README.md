@@ -55,6 +55,7 @@ npm install -g frontmatter-matters
 ```bash
 fmm init                              # One-command setup
 fmm generate && fmm validate          # CI pipeline
+fmm watch                             # Live sidecar regeneration
 fmm search --export createStore       # O(1) symbol lookup
 fmm search --depends-on src/auth.ts   # Impact analysis
 fmm search --loc ">500"              # Find large files
@@ -69,6 +70,7 @@ That's it. Your AI coding assistant now navigates via metadata instead of brute-
 |---------|---------|
 | `fmm init` | Set up config, Claude skill, and MCP server |
 | `fmm generate [path]` | Create and update .fmm sidecars (exports, imports, deps, LOC) |
+| `fmm watch [path]` | Watch source files and regenerate sidecars on change |
 | `fmm validate [path]` | Check sidecars are current (CI-friendly, exit 1 if stale) |
 | `fmm search` | Query the index (O(1) export lookup, dependency graphs) |
 | `fmm mcp` | Start MCP server (7 tools for LLM navigation) |
