@@ -1,6 +1,6 @@
 [package]
 name = "fmm"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Stuart Robinson <stuart@alphabio.com>"]
 description = "Auto-generate code metadata sidecars for LLM-optimized navigation"
