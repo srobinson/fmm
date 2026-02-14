@@ -79,6 +79,9 @@ fn run() -> anyhow::Result<()> {
             println!("{}", "Cleaning sidecars...".green().bold());
             cli::clean(&path, dry_run)?;
         }
+        Commands::Watch { path, debounce } => {
+            cli::watch(&path, debounce)?;
+        }
         Commands::Init {
             skill,
             mcp,
