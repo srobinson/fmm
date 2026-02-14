@@ -132,14 +132,22 @@ impl Manifest {
                         if existing != &key {
                             let existing_is_ts =
                                 existing.ends_with(".ts") || existing.ends_with(".tsx");
+                            let new_is_ts = key.ends_with(".ts") || key.ends_with(".tsx");
+                            let existing_is_js =
+                                existing.ends_with(".js") || existing.ends_with(".jsx");
                             let new_is_js = key.ends_with(".js") || key.ends_with(".jsx");
                             if existing_is_ts && new_is_js {
+                                // .js never overwrites .ts — expected, no warning
                                 continue;
                             }
-                            eprintln!(
-                                "warning: export '{}' in {} shadows {}",
-                                export, key, existing
-                            );
+                            if existing_is_js && new_is_ts {
+                                // .ts takes priority over .js — expected, no warning
+                            } else {
+                                eprintln!(
+                                    "warning: export '{}' in {} shadows {}",
+                                    export, key, existing
+                                );
+                            }
                         }
                     }
                     manifest.export_index.insert(export.clone(), key.clone());
@@ -180,10 +188,15 @@ impl Manifest {
                 Some(existing) if existing == path => (true, false),
                 Some(existing) => {
                     let existing_is_ts = existing.ends_with(".ts") || existing.ends_with(".tsx");
+                    let existing_is_js = existing.ends_with(".js") || existing.ends_with(".jsx");
+                    let new_is_ts = path.ends_with(".ts") || path.ends_with(".tsx");
                     let new_is_js = path.ends_with(".js") || path.ends_with(".jsx");
                     if existing_is_ts && new_is_js {
-                        // Expected: .ts takes priority over .js — no warning
+                        // .js never overwrites .ts — expected, no warning
                         (false, false)
+                    } else if existing_is_js && new_is_ts {
+                        // .ts takes priority over .js — expected, no warning
+                        (true, false)
                     } else {
                         (true, true)
                     }
@@ -524,6 +537,33 @@ modified: 2026-01-30"#;
         manifest.add_file("src/app.js", meta_js);
 
         // .ts should win — .js doesn't overwrite
+        assert_eq!(
+            manifest.export_index.get("App"),
+            Some(&"src/app.ts".to_string())
+        );
+    }
+
+    #[test]
+    fn js_then_ts_order_ts_still_wins() {
+        let mut manifest = Manifest::new();
+
+        let meta_js = Metadata {
+            exports: vec![entry("App", 1, 50)],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 50,
+        };
+        let meta_ts = Metadata {
+            exports: vec![entry("App", 1, 50)],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 50,
+        };
+
+        // JS added first, then TS — TS should still win
+        manifest.add_file("src/app.js", meta_js);
+        manifest.add_file("src/app.ts", meta_ts);
+
         assert_eq!(
             manifest.export_index.get("App"),
             Some(&"src/app.ts".to_string())
