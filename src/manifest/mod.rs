@@ -128,6 +128,26 @@ impl Manifest {
                 };
 
                 for (i, export) in file_entry.exports.iter().enumerate() {
+                    if let Some(existing) = manifest.export_index.get(export) {
+                        if existing != &key {
+                            let existing_is_ts =
+                                existing.ends_with(".ts") || existing.ends_with(".tsx");
+                            let new_is_ts = key.ends_with(".ts") || key.ends_with(".tsx");
+                            let existing_is_js =
+                                existing.ends_with(".js") || existing.ends_with(".jsx");
+                            let new_is_js = key.ends_with(".js") || key.ends_with(".jsx");
+                            if existing_is_ts && new_is_js {
+                                // .js never overwrites .ts — expected, no warning
+                                continue;
+                            }
+                            if !(existing_is_js && new_is_ts) {
+                                eprintln!(
+                                    "warning: export '{}' in {} shadows {}",
+                                    export, key, existing
+                                );
+                            }
+                        }
+                    }
                     manifest.export_index.insert(export.clone(), key.clone());
                     let lines = file_entry
                         .export_lines
@@ -161,14 +181,32 @@ impl Manifest {
         }
 
         for export_entry in &metadata.exports {
-            let should_insert = match self.export_index.get(&export_entry.name) {
-                None => true,
+            let (should_insert, should_warn) = match self.export_index.get(&export_entry.name) {
+                None => (true, false),
+                Some(existing) if existing == path => (true, false),
                 Some(existing) => {
                     let existing_is_ts = existing.ends_with(".ts") || existing.ends_with(".tsx");
+                    let existing_is_js = existing.ends_with(".js") || existing.ends_with(".jsx");
+                    let new_is_ts = path.ends_with(".ts") || path.ends_with(".tsx");
                     let new_is_js = path.ends_with(".js") || path.ends_with(".jsx");
-                    !(existing_is_ts && new_is_js)
+                    if existing_is_ts && new_is_js {
+                        // .js never overwrites .ts — expected, no warning
+                        (false, false)
+                    } else if existing_is_js && new_is_ts {
+                        // .ts takes priority over .js — expected, no warning
+                        (true, false)
+                    } else {
+                        (true, true)
+                    }
                 }
             };
+            if should_warn {
+                let old = &self.export_index[&export_entry.name];
+                eprintln!(
+                    "warning: export '{}' in {} shadows {}",
+                    export_entry.name, path, old
+                );
+            }
             if should_insert {
                 self.export_index
                     .insert(export_entry.name.clone(), path.to_string());
@@ -447,6 +485,87 @@ modified: 2026-01-30"#;
         assert!(!manifest.has_file("remove.ts"));
         assert!(!manifest.export_index.contains_key("toRemove"));
         assert!(!manifest.export_locations.contains_key("toRemove"));
+    }
+
+    #[test]
+    fn cross_file_collision_shadows_old_entry() {
+        let mut manifest = Manifest::new();
+
+        let meta_a = Metadata {
+            exports: vec![entry("Config", 1, 10)],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 20,
+        };
+        let meta_b = Metadata {
+            exports: vec![entry("Config", 5, 15)],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 30,
+        };
+
+        manifest.add_file("src/config/types.rs", meta_a);
+        manifest.add_file("src/config/defaults.rs", meta_b);
+
+        // Last writer wins
+        assert_eq!(
+            manifest.export_index.get("Config"),
+            Some(&"src/config/defaults.rs".to_string())
+        );
+    }
+
+    #[test]
+    fn ts_over_js_priority_no_shadow() {
+        let mut manifest = Manifest::new();
+
+        let meta_ts = Metadata {
+            exports: vec![entry("App", 1, 50)],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 50,
+        };
+        let meta_js = Metadata {
+            exports: vec![entry("App", 1, 50)],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 50,
+        };
+
+        manifest.add_file("src/app.ts", meta_ts);
+        manifest.add_file("src/app.js", meta_js);
+
+        // .ts should win — .js doesn't overwrite
+        assert_eq!(
+            manifest.export_index.get("App"),
+            Some(&"src/app.ts".to_string())
+        );
+    }
+
+    #[test]
+    fn js_then_ts_order_ts_still_wins() {
+        let mut manifest = Manifest::new();
+
+        let meta_js = Metadata {
+            exports: vec![entry("App", 1, 50)],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 50,
+        };
+        let meta_ts = Metadata {
+            exports: vec![entry("App", 1, 50)],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 50,
+        };
+
+        // JS added first, then TS — TS should still win
+        manifest.add_file("src/app.js", meta_js);
+        manifest.add_file("src/app.ts", meta_ts);
+
+        assert_eq!(
+            manifest.export_index.get("App"),
+            Some(&"src/app.ts".to_string())
+        );
     }
 
     #[test]

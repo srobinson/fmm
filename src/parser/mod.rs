@@ -1,5 +1,4 @@
 pub mod builtin;
-pub mod plugin;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -61,12 +60,14 @@ type ParserFactory = Box<dyn Fn() -> Result<Box<dyn Parser>> + Send + Sync>;
 /// Registry that maps file extensions to parser constructors.
 pub struct ParserRegistry {
     factories: HashMap<String, ParserFactory>,
+    language_ids: HashMap<String, &'static str>,
 }
 
 impl ParserRegistry {
     pub fn new() -> Self {
         Self {
             factories: HashMap::new(),
+            language_ids: HashMap::new(),
         }
     }
 
@@ -98,35 +99,54 @@ impl ParserRegistry {
         self.register(&["ts", "tsx", "js", "jsx"], || {
             Ok(Box::new(builtin::typescript::TypeScriptParser::new()?))
         });
+        self.register_language_id(&["ts", "tsx", "js", "jsx"], "typescript");
 
         // Python
         self.register(&["py"], || {
             Ok(Box::new(builtin::python::PythonParser::new()?))
         });
+        self.register_language_id(&["py"], "python");
 
         // Rust
         self.register(&["rs"], || Ok(Box::new(builtin::rust::RustParser::new()?)));
+        self.register_language_id(&["rs"], "rust");
 
         // Go
         self.register(&["go"], || Ok(Box::new(builtin::go::GoParser::new()?)));
+        self.register_language_id(&["go"], "go");
 
         // Java
         self.register(&["java"], || {
             Ok(Box::new(builtin::java::JavaParser::new()?))
         });
+        self.register_language_id(&["java"], "java");
 
         // C++
         self.register(&["cpp", "hpp", "cc", "hh", "cxx", "hxx"], || {
             Ok(Box::new(builtin::cpp::CppParser::new()?))
         });
+        self.register_language_id(&["cpp", "hpp", "cc", "hh", "cxx", "hxx"], "cpp");
 
         // C#
         self.register(&["cs"], || {
             Ok(Box::new(builtin::csharp::CSharpParser::new()?))
         });
+        self.register_language_id(&["cs"], "csharp");
 
         // Ruby
         self.register(&["rb"], || Ok(Box::new(builtin::ruby::RubyParser::new()?)));
+        self.register_language_id(&["rb"], "ruby");
+    }
+
+    fn register_language_id(&mut self, extensions: &[&str], language_id: &'static str) {
+        for ext in extensions {
+            self.language_ids.insert(ext.to_string(), language_id);
+        }
+    }
+
+    /// Get the language ID for a file extension without constructing a parser.
+    pub fn language_id_for(&self, extension: &str) -> Option<&'static str> {
+        self.language_ids.get(extension).copied()
     }
 
     /// Get a new parser instance for the given file extension.
@@ -178,6 +198,20 @@ mod tests {
         assert!(registry.has_parser("hpp"));
         assert!(registry.has_parser("cs"));
         assert!(registry.has_parser("rb"));
+    }
+
+    #[test]
+    fn language_id_for_avoids_parser_construction() {
+        let registry = ParserRegistry::with_builtins();
+        assert_eq!(registry.language_id_for("rs"), Some("rust"));
+        assert_eq!(registry.language_id_for("ts"), Some("typescript"));
+        assert_eq!(registry.language_id_for("py"), Some("python"));
+        assert_eq!(registry.language_id_for("go"), Some("go"));
+        assert_eq!(registry.language_id_for("java"), Some("java"));
+        assert_eq!(registry.language_id_for("cpp"), Some("cpp"));
+        assert_eq!(registry.language_id_for("cs"), Some("csharp"));
+        assert_eq!(registry.language_id_for("rb"), Some("ruby"));
+        assert_eq!(registry.language_id_for("zig"), None);
     }
 
     #[test]

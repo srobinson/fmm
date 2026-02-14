@@ -42,10 +42,10 @@ fn process_files(path: &str, dry_run: bool, action: SidecarAction) -> Result<()>
 
     println!("Found {} files to process", files.len());
 
+    let processor = FileProcessor::new(&root);
     let results: Vec<_> = files
         .par_iter()
         .filter_map(|file| {
-            let processor = FileProcessor::new(&config, &root);
             let result = match action {
                 SidecarAction::Generate => processor.generate(file, dry_run),
                 SidecarAction::Update => processor.update(file, dry_run),
@@ -136,23 +136,21 @@ pub fn validate(path: &str) -> Result<()> {
 
     println!("Validating {} files...", files.len());
 
+    let processor = FileProcessor::new(&root);
     let invalid: Vec<_> = files
         .par_iter()
-        .filter_map(|file| {
-            let processor = FileProcessor::new(&config, &root);
-            match processor.validate(file) {
-                Ok(true) => None,
-                Ok(false) => {
-                    let sidecar = sidecar_path_for(file);
-                    let reason = if sidecar.exists() {
-                        "sidecar out of date"
-                    } else {
-                        "missing sidecar"
-                    };
-                    Some((file.to_path_buf(), reason.to_string()))
-                }
-                Err(e) => Some((file.to_path_buf(), format!("Error: {}", e))),
+        .filter_map(|file| match processor.validate(file) {
+            Ok(true) => None,
+            Ok(false) => {
+                let sidecar = sidecar_path_for(file);
+                let reason = if sidecar.exists() {
+                    "sidecar out of date"
+                } else {
+                    "missing sidecar"
+                };
+                Some((file.to_path_buf(), reason.to_string()))
             }
+            Err(e) => Some((file.to_path_buf(), format!("Error: {}", e))),
         })
         .collect();
 
@@ -182,29 +180,25 @@ pub fn clean(path: &str, dry_run: bool) -> Result<()> {
     let files = collect_files(path, &config)?;
     let root = resolve_root(path)?;
 
-    let mut removed = 0u32;
-
-    for file in &files {
-        let sidecar = sidecar_path_for(file);
-        if !sidecar.exists() {
-            continue;
-        }
-        let display = sidecar
-            .strip_prefix(&root)
-            .unwrap_or(&sidecar)
-            .display()
-            .to_string();
-        if dry_run {
-            println!("  Would remove: {}", display);
-            removed += 1;
-        } else {
-            let processor = FileProcessor::new(&config, &root);
+    let processor = FileProcessor::new(&root);
+    let results: Vec<_> = files
+        .par_iter()
+        .filter_map(|file| {
+            let sidecar = sidecar_path_for(file);
+            if !sidecar.exists() {
+                return None;
+            }
+            let display = sidecar
+                .strip_prefix(&root)
+                .unwrap_or(&sidecar)
+                .display()
+                .to_string();
+            if dry_run {
+                return Some((display, true));
+            }
             match processor.clean(file) {
-                Ok(true) => {
-                    println!("{} Removed {}", "✓".green(), display);
-                    removed += 1;
-                }
-                Ok(false) => {}
+                Ok(true) => Some((display, true)),
+                Ok(false) => None,
                 Err(e) => {
                     eprintln!(
                         "{} {}: {}\n  {} Check file permissions",
@@ -213,8 +207,17 @@ pub fn clean(path: &str, dry_run: bool) -> Result<()> {
                         e,
                         "hint:".cyan()
                     );
+                    None
                 }
             }
+        })
+        .collect();
+
+    for (display, _) in &results {
+        if dry_run {
+            println!("  Would remove: {}", display);
+        } else {
+            println!("{} Removed {}", "✓".green(), display);
         }
     }
 
@@ -232,7 +235,7 @@ pub fn clean(path: &str, dry_run: bool) -> Result<()> {
     println!(
         "\n{} {} sidecar(s) {}",
         "✓".green().bold(),
-        removed,
+        results.len(),
         if dry_run {
             "would be removed"
         } else {

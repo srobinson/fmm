@@ -3,9 +3,16 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::config::Config;
 use crate::formatter::Frontmatter;
 use crate::parser::{Metadata, ParseResult, ParserRegistry};
+
+/// Strip the `modified:` line so date-only changes don't trigger rewrites.
+fn content_without_modified(s: &str) -> String {
+    s.lines()
+        .filter(|line| !line.starts_with("modified:"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
 
 pub struct FileProcessor {
     root: std::path::PathBuf,
@@ -20,7 +27,7 @@ pub fn sidecar_path_for(path: &Path) -> PathBuf {
 }
 
 impl FileProcessor {
-    pub fn new(_config: &Config, root: &Path) -> Self {
+    pub fn new(root: &Path) -> Self {
         Self {
             root: root.to_path_buf(),
             registry: ParserRegistry::with_builtins(),
@@ -54,7 +61,7 @@ impl FileProcessor {
         let sidecar = sidecar_path_for(path);
         if sidecar.exists() {
             let old = fs::read_to_string(&sidecar)?;
-            if old.trim() == new_yaml.trim() {
+            if content_without_modified(&old) == content_without_modified(&new_yaml) {
                 return Ok(None);
             }
         }
@@ -79,7 +86,7 @@ impl FileProcessor {
             self.format_sidecar(path, &result.metadata, result.custom_fields.as_ref())?;
         let actual = fs::read_to_string(&sidecar)?;
 
-        Ok(actual.trim() == expected.trim())
+        Ok(content_without_modified(actual.trim()) == content_without_modified(expected.trim()))
     }
 
     /// Delete the sidecar file for a source file.
@@ -127,15 +134,11 @@ impl FileProcessor {
             Err(_) => path,
         };
 
-        let language_id = self
-            .registry
-            .get_parser(extension)
-            .ok()
-            .map(|p| p.language_id().to_string());
+        let language_id = self.registry.language_id_for(extension);
 
         let frontmatter = Frontmatter::new(relative_path.display().to_string(), metadata.clone())
             .with_version("v0.3")
-            .with_custom_fields(language_id.as_deref(), custom_fields);
+            .with_custom_fields(language_id, custom_fields);
 
         Ok(format!("{}\n", frontmatter.render()))
     }
@@ -158,5 +161,23 @@ mod tests {
             sidecar_path_for(path),
             PathBuf::from("/abs/path/to/file.ts.fmm")
         );
+    }
+
+    #[test]
+    fn content_without_modified_strips_date_line() {
+        let with_date = "file: src/foo.rs\nexports:\n  bar: [1, 5]\nloc: 10\nmodified: 2026-01-01";
+        let with_different_date =
+            "file: src/foo.rs\nexports:\n  bar: [1, 5]\nloc: 10\nmodified: 2026-02-14";
+        assert_eq!(
+            content_without_modified(with_date),
+            content_without_modified(with_different_date)
+        );
+    }
+
+    #[test]
+    fn content_without_modified_detects_real_changes() {
+        let v1 = "file: src/foo.rs\nexports:\n  bar: [1, 5]\nloc: 10\nmodified: 2026-01-01";
+        let v2 = "file: src/foo.rs\nexports:\n  bar: [1, 5]\n  baz: [6, 10]\nloc: 20\nmodified: 2026-02-14";
+        assert_ne!(content_without_modified(v1), content_without_modified(v2));
     }
 }

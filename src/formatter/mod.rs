@@ -46,8 +46,11 @@ impl Frontmatter {
     pub fn render(&self) -> String {
         let mut lines = Vec::new();
 
+        // YAML document start
+        lines.push("---".to_string());
+
         // File path (first — most useful for LLM orientation)
-        lines.push(format!("file: {}", self.file_path));
+        lines.push(format!("file: {}", yaml_escape(&self.file_path)));
 
         // Version
         if let Some(ref version) = self.version {
@@ -60,22 +63,33 @@ impl Frontmatter {
             for entry in &self.metadata.exports {
                 lines.push(format!(
                     "  {}: [{}, {}]",
-                    entry.name, entry.start_line, entry.end_line
+                    yaml_escape(&entry.name),
+                    entry.start_line,
+                    entry.end_line
                 ));
             }
         }
 
         // Imports (external packages only)
         if !self.metadata.imports.is_empty() {
-            lines.push(format!("imports: [{}]", self.metadata.imports.join(", ")));
+            let items: Vec<_> = self
+                .metadata
+                .imports
+                .iter()
+                .map(|s| yaml_escape(s))
+                .collect();
+            lines.push(format!("imports: [{}]", items.join(", ")));
         }
 
         // Dependencies (local relative imports)
         if !self.metadata.dependencies.is_empty() {
-            lines.push(format!(
-                "dependencies: [{}]",
-                self.metadata.dependencies.join(", ")
-            ));
+            let items: Vec<_> = self
+                .metadata
+                .dependencies
+                .iter()
+                .map(|s| yaml_escape(s))
+                .collect();
+            lines.push(format!("dependencies: [{}]", items.join(", ")));
         }
 
         // LOC
@@ -99,6 +113,19 @@ impl Frontmatter {
     }
 }
 
+/// Quote a string if it contains YAML-special characters that would break parsing.
+/// Returns the original string unmodified when safe, or wraps it in single quotes.
+fn yaml_escape(s: &str) -> String {
+    const SPECIAL: &[char] = &[
+        ':', '#', '[', ']', '{', '}', ',', '&', '*', '!', '|', '>', '\'', '"', '%', '@', '`',
+    ];
+    if s.is_empty() || s.contains(SPECIAL) {
+        format!("'{}'", s.replace('\'', "''"))
+    } else {
+        s.to_string()
+    }
+}
+
 /// Format a serde_json::Value for YAML-like output.
 fn format_value(value: &serde_json::Value) -> String {
     match value {
@@ -106,13 +133,13 @@ fn format_value(value: &serde_json::Value) -> String {
             let items: Vec<String> = arr
                 .iter()
                 .map(|v| match v {
-                    serde_json::Value::String(s) => s.clone(),
+                    serde_json::Value::String(s) => yaml_escape(s),
                     other => other.to_string(),
                 })
                 .collect();
             format!("[{}]", items.join(", "))
         }
-        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::String(s) => yaml_escape(s),
         serde_json::Value::Number(n) => n.to_string(),
         serde_json::Value::Bool(b) => b.to_string(),
         serde_json::Value::Null => "null".to_string(),
@@ -177,8 +204,9 @@ mod tests {
 
         assert!(rendered.contains("fmm: v0.3"));
         let lines: Vec<&str> = rendered.lines().collect();
-        assert_eq!(lines[0], "file: test.ts");
-        assert_eq!(lines[1], "fmm: v0.3");
+        assert_eq!(lines[0], "---");
+        assert_eq!(lines[1], "file: test.ts");
+        assert_eq!(lines[2], "fmm: v0.3");
     }
 
     #[test]
@@ -304,5 +332,64 @@ mod tests {
             serde_json::Value::String("b".to_string()),
         ]);
         assert_eq!(format_value(&arr), "[a, b]");
+    }
+
+    #[test]
+    fn yaml_escape_leaves_safe_strings_unquoted() {
+        assert_eq!(yaml_escape("createSession"), "createSession");
+        assert_eq!(yaml_escape("src/auth/session.ts"), "src/auth/session.ts");
+        assert_eq!(yaml_escape("./types"), "./types");
+        assert_eq!(yaml_escape("react-dom"), "react-dom");
+    }
+
+    #[test]
+    fn yaml_escape_quotes_special_characters() {
+        assert_eq!(yaml_escape("key:value"), "'key:value'");
+        assert_eq!(yaml_escape("foo#bar"), "'foo#bar'");
+        assert_eq!(yaml_escape("[array]"), "'[array]'");
+        assert_eq!(yaml_escape("@angular/core"), "'@angular/core'");
+        assert_eq!(yaml_escape(""), "''");
+    }
+
+    #[test]
+    fn yaml_escape_handles_embedded_single_quotes() {
+        assert_eq!(yaml_escape("it's:here"), "'it''s:here'");
+    }
+
+    #[test]
+    fn render_starts_with_yaml_document_marker() {
+        let metadata = Metadata {
+            exports: vec![],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 1,
+        };
+        let fm = Frontmatter::new("test.ts".to_string(), metadata);
+        assert!(fm.render().starts_with("---\n"));
+    }
+
+    #[test]
+    fn special_chars_roundtrip_through_yaml() {
+        let metadata = Metadata {
+            exports: vec![entry("Config:Base", 1, 10)],
+            imports: vec!["@scope/pkg".to_string()],
+            dependencies: vec![],
+            loc: 20,
+        };
+        let fm =
+            Frontmatter::new("src/utils/key:value.ts".to_string(), metadata).with_version("v0.3");
+        let rendered = fm.render();
+
+        // Parse back through serde_yaml
+        let parsed: serde_yaml::Value = serde_yaml::from_str(&rendered).unwrap();
+        assert_eq!(parsed["file"].as_str().unwrap(), "src/utils/key:value.ts");
+        assert_eq!(
+            parsed["imports"].as_sequence().unwrap()[0]
+                .as_str()
+                .unwrap(),
+            "@scope/pkg"
+        );
+        // Export names are map keys
+        assert!(parsed["exports"]["Config:Base"].is_sequence());
     }
 }
