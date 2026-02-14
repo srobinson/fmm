@@ -1,25 +1,20 @@
 # fmm — Frontmatter Matters
 
-**Metadata sidecars that give LLMs a map of your codebase.**
+**80-90% fewer file reads for LLM agents.**
 
-[![CI](https://github.com/mdcontext/fmm/actions/workflows/ci.yml/badge.svg)](https://github.com/mdcontext/fmm/actions/workflows/ci.yml)
-[![Docs](https://github.com/mdcontext/fmm/actions/workflows/docs.yml/badge.svg)](https://mdcontext.github.io/fmm/)
+[![CI](https://github.com/srobinson/fmm/actions/workflows/ci.yml/badge.svg)](https://github.com/srobinson/fmm/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Languages](https://img.shields.io/badge/languages-9-informational.svg)](#supported-languages)
 
-<!-- TODO: Replace with animated SVG from asciinema recording
-     Record: asciinema rec --command "./demos/01-getting-started.sh"
-     Convert: svg-term --in demos/01-getting-started.cast --out docs/src/hero.svg -->
-
 ```bash
-cargo install fmm && cd your-project && fmm init
+npx frontmatter-matters init
 ```
 
 |  | Without fmm | With fmm |
 |--|------------|----------|
 | **How LLM navigates** | grep → read entire file → summarize, repeat | Read sidecar metadata → open only needed files |
 | **Tokens for 500 files** | ~50,000 | ~2,000 |
-| **Reduction** | — | **96%** |
+| **Reduction** | — | **88-97%** |
 
 ## What it does
 
@@ -33,7 +28,10 @@ src/auth/session.ts.fmm  ← 7 lines of metadata
 ```yaml
 ---
 file: src/auth/session.ts
-exports: [createSession, validateSession, destroySession]
+exports:
+  createSession: [12, 45]
+  validateSession: [47, 89]
+  destroySession: [91, 110]
 imports: [jsonwebtoken]
 dependencies: [../config, ../db/users]
 loc: 234
@@ -42,26 +40,68 @@ loc: 234
 
 LLMs read sidecars first, then open source files only when they need to edit.
 
+## Installation
+
+```bash
+# npm (recommended)
+npx frontmatter-matters --help
+
+# Or install globally
+npm install -g frontmatter-matters
+```
+
 ## Quick start
 
 ```bash
-cargo install fmm
-cd your-project
-fmm init        # creates config, skill, MCP server + generates sidecars
+fmm init                              # One-command setup
+fmm generate && fmm validate          # CI pipeline
+fmm search --export createStore       # O(1) symbol lookup
+fmm search --depends-on src/auth.ts   # Impact analysis
+fmm search --loc ">500"              # Find large files
+fmm search --imports react --json     # Structured output
 ```
 
 That's it. Your AI coding assistant now navigates via metadata instead of brute-force file reads.
 
-Try a search:
+## Commands
 
-```bash
-fmm search --export createStore     # O(1) symbol lookup
-fmm search --imports react          # find all React consumers
-fmm search --loc ">500"             # find large files
-fmm search --depends-on src/db.ts   # impact analysis
+| Command | Purpose |
+|---------|---------|
+| `fmm init` | Set up config, Claude skill, and MCP server |
+| `fmm generate [path]` | Create .fmm sidecars (exports, imports, deps, LOC) |
+| `fmm update [path]` | Regenerate all sidecars from source |
+| `fmm validate [path]` | Check sidecars are current (CI-friendly, exit 1 if stale) |
+| `fmm search` | Query the index (O(1) export lookup, dependency graphs) |
+| `fmm mcp` | Start MCP server (7 tools for LLM navigation) |
+| `fmm status` | Show config and workspace stats |
+| `fmm clean [path]` | Remove all .fmm sidecars |
+
+Run `fmm --help` for workflows and examples, or `fmm <command> --help` for detailed per-command help.
+
+## MCP Tools
+
+fmm includes a built-in MCP server with 7 tools. Configure via `fmm init --mcp` or manually:
+
+```json
+{
+  "mcpServers": {
+    "fmm": {
+      "command": "npx",
+      "args": ["frontmatter-matters", "mcp"]
+    }
+  }
+}
 ```
 
-See the [demo project](examples/demo-project/) for a hands-on walkthrough.
+| Tool | Purpose |
+|------|---------|
+| `fmm_lookup_export` | Find which file defines a symbol — O(1) |
+| `fmm_read_symbol` | Extract exact source by symbol name (line ranges) |
+| `fmm_dependency_graph` | Upstream deps + downstream dependents |
+| `fmm_file_outline` | Table of contents with line ranges |
+| `fmm_list_exports` | Search exports by pattern (fuzzy) |
+| `fmm_file_info` | Structural profile without reading source |
+| `fmm_search` | Multi-criteria AND queries |
 
 ## How it works
 
@@ -72,9 +112,9 @@ See the [demo project](examples/demo-project/) for a hands-on walkthrough.
   Source Files          │   ┌──────────┐    ┌───────────┐    ┌────────────┐  │    LLM / MCP Client
   ─────────────────────►│   │  Parser   │───►│ Extractor │───►│  Sidecar   │  │◄──────────────────
   .ts .py .rs .go       │   │(tree-sit) │    │           │    │  Writer    │  │   fmm_lookup_export
-  .java .cpp .cs .rb    │   └──────────┘    └───────────┘    └─────┬──────┘  │   fmm_file_info
+  .java .cpp .cs .rb    │   └──────────┘    └───────────┘    └─────┬──────┘  │   fmm_read_symbol
                         │                                          │         │   fmm_dependency_graph
-                        │                                    ┌─────▼──────┐  │   fmm_list_exports
+                        │                                    ┌─────▼──────┐  │   fmm_file_outline
                         │                                    │  .fmm      │  │   fmm_search
                         │                                    │  sidecars   │  │
                         │                                    └─────┬──────┘  │
@@ -91,71 +131,9 @@ See the [demo project](examples/demo-project/) for a hands-on walkthrough.
 3. **Generate** — writes `.fmm` sidecar alongside each source file
 4. **Query** — MCP server or CLI reads sidecars on demand, builds in-memory index
 
-## LLM Integration
-
-### MCP Server (Recommended)
-
-fmm includes a built-in MCP server. Configure via `fmm init --mcp` or manually:
-
-```json
-{
-  "mcpServers": {
-    "fmm": {
-      "command": "fmm",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-| Tool | Purpose |
-|------|---------|
-| `fmm_lookup_export` | Find which file exports a symbol (O(1) lookup) |
-| `fmm_list_exports` | List exports matching a pattern or from a file |
-| `fmm_file_info` | Get a file's structural profile |
-| `fmm_dependency_graph` | Get upstream dependencies and downstream dependents |
-| `fmm_search` | Search by export, imports, dependencies, LOC range |
-
-See the full [MCP Tools reference](https://mdcontext.github.io/fmm/reference/mcp-tools.html) for schemas and examples.
-
-## Evidence
-
-Five experiments validate fmm's impact. All data is reproducible — see the [research/](research/) directory.
-
-| Experiment | Finding | Data |
-|------------|---------|------|
-| **Exp13**: Token reduction | 88-97% fewer tokens on real navigation tasks | 244-file TS codebase, 4 task types |
-| **Exp14**: Organic discovery | LLMs never find `.fmm/` without instruction | 0/12 sessions across 4 conditions |
-| **Exp15**: Delivery mechanism | Skill + MCP = optimal integration | 48 runs, 30% fewer tool calls vs CLAUDE.md alone |
-| **Exp16**: Cost isolation | MCP eliminates grep, structured queries replace brute-force | Docker-isolated A/B comparison |
-| **Proof harness** | -36% tool calls, -53% source reads on architecture queries | Live A/B with Claude Sonnet |
-
-### Case Study: claude-flow (#1044)
-
-Real-world bug fix on a 9,008-file repository:
-
-```
-$ fmm init                     # 3 seconds, 2,221 files indexed
-$ fmm_lookup_export("model")   # → 2 files (not 50+)
-$ # 5-line fix, clean PR pushed
-```
-
-Without fmm: ~30-50 file reads to find the bug. With fmm: 2.
-
-## The Economics
-
-| Model | Cost/1M tokens | 100-file scan without fmm | With fmm sidecars | Savings |
-|-------|----------------|---------------------------|--------------------| --------|
-| Claude Opus 4.5 | $5.00 | $0.25 | $0.008 | **97%** |
-| Claude Sonnet 4.5 | $3.00 | $0.15 | $0.005 | **97%** |
-| GPT-4o | $2.50 | $0.13 | $0.004 | **97%** |
-
-**At scale** ([Exp15](research/exp15/FINDINGS.md)):
-- Solo developer (50 queries/day): **$6K-10K/year saved**
-- Small team (500 queries/day): **$10K-25K/year saved**
-- Enterprise (10K queries/day): **$50K+/year saved**
-
 ## Supported Languages
+
+TypeScript · JavaScript · Python · Rust · Go · Java · C++ · C# · Ruby
 
 | Language | Extensions | Custom Fields |
 |----------|-----------|---------------|
@@ -177,23 +155,6 @@ All languages extract: **exports**, **imports**, **dependencies**, **LOC**.
 - **<1ms** per file parse (TypeScript, Python, Rust)
 - **Parallel** across all CPU cores (rayon)
 - **Incremental** — only updates changed files
-- **Constant memory** — streams files
-
-## CLI Reference
-
-| Command | Purpose |
-|---------|---------|
-| `fmm init` | Initialize config, skill, and MCP server setup |
-| `fmm generate [path]` | Create sidecars for files that don't have them |
-| `fmm update [path]` | Regenerate all sidecars |
-| `fmm validate [path]` | Check sidecars are current (CI-friendly) |
-| `fmm clean [path]` | Remove all sidecar files |
-| `fmm status` | Show project status and configuration |
-| `fmm search` | Query sidecars by export, import, LOC, dependency |
-| `fmm mcp` | Start MCP server |
-| `fmm completions <shell>` | Generate shell completions (bash, zsh, fish, powershell) |
-
-Full reference: [CLI docs](https://mdcontext.github.io/fmm/reference/cli.html)
 
 ## CI/CD Integration
 
@@ -201,18 +162,10 @@ Full reference: [CLI docs](https://mdcontext.github.io/fmm/reference/cli.html)
 # GitHub Actions
 - name: Validate fmm sidecars
   run: |
-    cargo install fmm
-    fmm validate src/
+    npx frontmatter-matters validate
 ```
 
-## Documentation
-
-- [Getting Started](https://mdcontext.github.io/fmm/getting-started/quickstart.html) — first sidecar in 60 seconds
-- [CLI Reference](https://mdcontext.github.io/fmm/reference/cli.html) — all commands and options
-- [Sidecar Format](https://mdcontext.github.io/fmm/reference/sidecar-format.html) — YAML specification
-- [MCP Tools](https://mdcontext.github.io/fmm/reference/mcp-tools.html) — tool schemas for LLM agents
-- [Configuration](https://mdcontext.github.io/fmm/reference/configuration.html) — .fmmrc.json options
-- [llms.txt](https://mdcontext.github.io/fmm/llms.txt) — AI-readable documentation index
+88-97% token reduction measured on real codebases.
 
 ## Contributing
 
