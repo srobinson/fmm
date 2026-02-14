@@ -1,0 +1,16 @@
+#!/usr/bin/env node
+
+const { execFileSync } = require("child_process");
+const path = require("path");
+const fs = require("fs");
+
+const localBin = path.join(__dirname, "..", "scripts", "fmm");
+const binary = fs.existsSync(localBin) ? localBin : "fmm";
+
+try {
+  execFileSync(binary, process.argv.slice(2), { stdio: "inherit" });
+} catch (e) {
+  if (e.status !== null) process.exit(e.status);
+  console.error("fmm not found. Run: npm rebuild fmm");
+  process.exit(1);
+}

@@ -1,0 +1,30 @@
+{
+  "name": "frontmatter-matters",
+  "version": "0.1.0",
+  "description": "Auto-generate code metadata sidecars for LLM-optimized navigation. No AST dumps, no embeddings — just structured YAML.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/srobinson/fmm"
+  },
+  "homepage": "https://mdcontext.github.io/fmm/",
+  "keywords": [
+    "llm",
+    "code-analysis",
+    "ast",
+    "mcp",
+    "sidecar",
+    "frontmatter",
+    "tree-sitter"
+  ],
+  "bin": {
+    "fmm": "bin/fmm"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "files": [
+    "bin/fmm",
+    "scripts/install.js"
+  ]
+}
