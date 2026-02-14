@@ -1,78 +1,16 @@
-//! MCP tool end-to-end tests.
+//! MCP tool integration tests.
 //!
-//! Tests each MCP tool handler with a real manifest built from temp fixtures.
-//! Calls tool handlers directly — no JSON-RPC server needed.
+//! Every test calls through McpServer::call_tool — the real JSON-RPC path.
+//! A shared fixture builds sidecars in a temp dir so the server loads a
+//! realistic manifest with v0.3 line ranges.
 
-use fmm::manifest::{FileEntry, Manifest};
-use fmm::parser::{ExportEntry, Metadata};
+use serde_json::{json, Value};
 
-fn e(name: &str) -> ExportEntry {
-    ExportEntry::new(name.to_string(), 0, 0)
-}
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
 
-/// Build a test manifest with realistic data.
-fn test_manifest() -> Manifest {
-    let mut manifest = Manifest::new();
-
-    manifest.add_file(
-        "src/auth/session.ts",
-        Metadata {
-            exports: vec![e("createSession"), e("validateSession")],
-            imports: vec!["jwt".into(), "redis".into()],
-            dependencies: vec!["./types".into(), "../config".into()],
-            loc: 234,
-        },
-    );
-
-    manifest.add_file(
-        "src/auth/types.ts",
-        Metadata {
-            exports: vec![e("SessionToken"), e("UserRole")],
-            imports: vec![],
-            dependencies: vec![],
-            loc: 45,
-        },
-    );
-
-    manifest.add_file(
-        "src/config.ts",
-        Metadata {
-            exports: vec![e("loadConfig"), e("AppConfig")],
-            imports: vec!["dotenv".into()],
-            dependencies: vec![],
-            loc: 120,
-        },
-    );
-
-    manifest.add_file(
-        "src/db/pool.ts",
-        Metadata {
-            exports: vec![e("Pool"), e("createPool")],
-            imports: vec!["pg".into()],
-            dependencies: vec!["../config".into()],
-            loc: 89,
-        },
-    );
-
-    manifest.add_file(
-        "src/utils/crypto.ts",
-        Metadata {
-            exports: vec![e("hashPassword"), e("verifyPassword")],
-            imports: vec!["bcrypt".into()],
-            dependencies: vec![],
-            loc: 67,
-        },
-    );
-
-    manifest
-}
-
-// --- Helper to call tool handlers via McpServer's handle_request ---
-// Since tool handlers are private, we test through the JSON-RPC handle_request path.
-// We need to construct McpServer with our test manifest.
-
-/// Build an MCP server with a pre-loaded manifest by writing sidecars to a temp dir
-/// and letting the server load them.
+/// Build an MCP server backed by sidecars in a temp dir.
 fn setup_mcp_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     let tmp = tempfile::TempDir::new().unwrap();
     let src = tmp.path().join("src");
@@ -83,7 +21,6 @@ fn setup_mcp_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     std::fs::create_dir_all(&db).unwrap();
     std::fs::create_dir_all(&utils).unwrap();
 
-    // Write source files and their v0.3 sidecars (with line ranges)
     write_source_and_sidecar(
         &auth.join("session.ts"),
         "import jwt from 'jwt';\nimport redis from 'redis';\nimport { Types } from './types';\nimport { Config } from '../config';\n\nexport function createSession() {\n  return jwt.sign({});\n}\n\nexport function validateSession(token: string) {\n  return jwt.verify(token);\n}\n",
@@ -114,9 +51,7 @@ fn setup_mcp_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
         "file: src/utils/crypto.ts\nfmm: v0.3\nexports:\n  hashPassword: [3, 5]\n  verifyPassword: [7, 9]\nimports: [bcrypt]\ndependencies: []\nloc: 9\n",
     );
 
-    // Build server from the temp directory (use with_root to avoid process-global cwd mutation)
     let server = fmm::mcp::McpServer::with_root(tmp.path().to_path_buf());
-
     (tmp, server)
 }
 
@@ -127,150 +62,45 @@ fn write_source_and_sidecar(source_path: &std::path::Path, source: &str, sidecar
     std::fs::write(std::path::PathBuf::from(sidecar_path), sidecar).unwrap();
 }
 
-// The MCP tool handlers are private methods on McpServer.
-// We test them by building a manifest and verifying it loads correctly,
-// then test the manifest-based query logic that the tools use.
+/// Call a tool and parse the JSON response body.
+fn call_tool_json(server: &fmm::mcp::McpServer, tool: &str, args: Value) -> Value {
+    let result = server.call_tool(tool, args).unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    serde_json::from_str(text).unwrap()
+}
+
+/// Call a tool expecting an error response.
+fn call_tool_expect_error(server: &fmm::mcp::McpServer, tool: &str, args: Value) -> String {
+    let result = server.call_tool(tool, args).unwrap();
+    assert!(
+        result["isError"].as_bool().unwrap_or(false),
+        "Expected error but got success"
+    );
+    result["content"][0]["text"].as_str().unwrap().to_string()
+}
+
+// ---------------------------------------------------------------------------
+// Manifest loading (integration — validates sidecar discovery + YAML parse)
+// ---------------------------------------------------------------------------
 
 #[test]
 fn manifest_loads_from_sidecars() {
     let (tmp, _server) = setup_mcp_server();
 
     let manifest = fmm::manifest::Manifest::load_from_sidecars(tmp.path()).unwrap();
+    assert_eq!(manifest.files.len(), 5);
     assert!(manifest.files.contains_key("src/auth/session.ts"));
     assert!(manifest.files.contains_key("src/auth/types.ts"));
     assert!(manifest.files.contains_key("src/config.ts"));
     assert!(manifest.files.contains_key("src/db/pool.ts"));
     assert!(manifest.files.contains_key("src/utils/crypto.ts"));
-    assert_eq!(manifest.files.len(), 5);
-}
-
-#[test]
-fn lookup_export_finds_known_symbol() {
-    let manifest = test_manifest();
-
-    // Simulate fmm_lookup_export: look up "createSession"
-    let file_path = manifest.export_index.get("createSession");
-    assert_eq!(file_path, Some(&"src/auth/session.ts".to_string()));
-
-    let entry = manifest.files.get("src/auth/session.ts").unwrap();
-    assert_eq!(entry.loc, 234);
-    assert!(entry.exports.contains(&"createSession".to_string()));
-}
-
-#[test]
-fn lookup_export_returns_not_found() {
-    let manifest = test_manifest();
-
-    let result = manifest.export_index.get("nonexistentExport");
-    assert!(result.is_none());
-}
-
-#[test]
-fn list_exports_with_pattern() {
-    let manifest = test_manifest();
-
-    // Simulate fmm_list_exports with pattern "Session"
-    let pattern = "session";
-    let matches: Vec<(&String, &String)> = manifest
-        .export_index
-        .iter()
-        .filter(|(name, _)| name.to_lowercase().contains(pattern))
-        .collect();
-
-    assert!(matches.iter().any(|(name, _)| *name == "createSession"));
-    assert!(matches.iter().any(|(name, _)| *name == "validateSession"));
-    assert!(matches.iter().any(|(name, _)| *name == "SessionToken"));
-    assert_eq!(matches.len(), 3);
-}
-
-#[test]
-fn list_exports_for_file() {
-    let manifest = test_manifest();
-
-    let entry = manifest.files.get("src/auth/session.ts").unwrap();
-    assert_eq!(entry.exports, vec!["createSession", "validateSession"]);
-}
-
-#[test]
-fn list_exports_file_not_found() {
-    let manifest = test_manifest();
-    assert!(!manifest.files.contains_key("src/nonexistent.ts"));
-}
-
-#[test]
-fn file_info_returns_metadata() {
-    let manifest = test_manifest();
-
-    let entry = manifest.files.get("src/config.ts").unwrap();
-    assert_eq!(entry.exports, vec!["loadConfig", "AppConfig"]);
-    assert_eq!(entry.imports, vec!["dotenv"]);
-    assert!(entry.dependencies.is_empty());
-    assert_eq!(entry.loc, 120);
-}
-
-#[test]
-fn dependency_graph_shows_upstream() {
-    let manifest = test_manifest();
-
-    let entry = manifest.files.get("src/auth/session.ts").unwrap();
-    assert_eq!(entry.dependencies, vec!["./types", "../config"]);
-}
-
-#[test]
-fn search_by_min_loc() {
-    let manifest = test_manifest();
-
-    let min_loc = 100;
-    let matches: Vec<&String> = manifest
-        .files
-        .iter()
-        .filter(|(_, entry)| entry.loc >= min_loc)
-        .map(|(path, _)| path)
-        .collect();
-
-    assert!(matches.contains(&&"src/auth/session.ts".to_string())); // 234
-    assert!(matches.contains(&&"src/config.ts".to_string())); // 120
-    assert!(!matches.contains(&&"src/auth/types.ts".to_string())); // 45
-}
-
-#[test]
-fn search_by_imports() {
-    let manifest = test_manifest();
-
-    let import_name = "pg";
-    let matches: Vec<&String> = manifest
-        .files
-        .iter()
-        .filter(|(_, entry)| entry.imports.iter().any(|i| i.contains(import_name)))
-        .map(|(path, _)| path)
-        .collect();
-
-    assert_eq!(matches.len(), 1);
-    assert!(matches.contains(&&"src/db/pool.ts".to_string()));
-}
-
-#[test]
-fn search_by_dependency() {
-    let manifest = test_manifest();
-
-    let dep = "config";
-    let matches: Vec<&String> = manifest
-        .files
-        .iter()
-        .filter(|(_, entry)| entry.dependencies.iter().any(|d| d.contains(dep)))
-        .map(|(path, _)| path)
-        .collect();
-
-    assert!(matches.contains(&&"src/auth/session.ts".to_string()));
-    assert!(matches.contains(&&"src/db/pool.ts".to_string()));
-    assert_eq!(matches.len(), 2);
 }
 
 #[test]
 fn export_index_consistency() {
-    let manifest = test_manifest();
+    let (tmp, _server) = setup_mcp_server();
 
-    // Every export in the index should point to a file that actually has that export
+    let manifest = fmm::manifest::Manifest::load_from_sidecars(tmp.path()).unwrap();
     for (export_name, file_path) in &manifest.export_index {
         let entry = manifest.files.get(file_path).unwrap_or_else(|| {
             panic!(
@@ -287,44 +117,18 @@ fn export_index_consistency() {
     }
 }
 
-#[test]
-fn search_loc_range() {
-    let manifest = test_manifest();
-
-    let min_loc = 50;
-    let max_loc = 100;
-    let matches: Vec<(&String, &FileEntry)> = manifest
-        .files
-        .iter()
-        .filter(|(_, entry)| entry.loc >= min_loc && entry.loc <= max_loc)
-        .collect();
-
-    // Should match: db/pool.ts (89), utils/crypto.ts (67)
-    // Should NOT match: auth/session.ts (234), config.ts (120), auth/types.ts (45)
-    assert_eq!(matches.len(), 2);
-    let paths: Vec<&String> = matches.iter().map(|(p, _)| *p).collect();
-    assert!(paths.contains(&&"src/db/pool.ts".to_string()));
-    assert!(paths.contains(&&"src/utils/crypto.ts".to_string()));
-}
-
-// --- fmm_read_symbol tests ---
+// ---------------------------------------------------------------------------
+// fmm_read_symbol
+// ---------------------------------------------------------------------------
 
 #[test]
 fn read_symbol_returns_source_lines() {
     let (_tmp, server) = setup_mcp_server();
-    let result = server
-        .call_tool(
-            "fmm_read_symbol",
-            serde_json::json!({"name": "createSession"}),
-        )
-        .unwrap();
-
-    let text = result["content"][0]["text"].as_str().unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    let parsed = call_tool_json(&server, "fmm_read_symbol", json!({"name": "createSession"}));
 
     assert_eq!(parsed["symbol"], "createSession");
     assert_eq!(parsed["file"], "src/auth/session.ts");
-    assert_eq!(parsed["lines"], serde_json::json!([6, 8]));
+    assert_eq!(parsed["lines"], json!([6, 8]));
     let source = parsed["source"].as_str().unwrap();
     assert!(source.contains("createSession"));
     assert!(!source.contains("validateSession"));
@@ -333,44 +137,33 @@ fn read_symbol_returns_source_lines() {
 #[test]
 fn read_symbol_not_found() {
     let (_tmp, server) = setup_mcp_server();
-    let result = server
-        .call_tool(
-            "fmm_read_symbol",
-            serde_json::json!({"name": "nonExistent"}),
-        )
-        .unwrap();
-
-    let is_error = result["isError"].as_bool().unwrap_or(false);
-    assert!(is_error);
-    let text = result["content"][0]["text"].as_str().unwrap();
+    let text = call_tool_expect_error(&server, "fmm_read_symbol", json!({"name": "nonExistent"}));
     assert!(text.contains("not found"));
 }
 
-// --- fmm_file_outline tests ---
+// ---------------------------------------------------------------------------
+// fmm_file_outline
+// ---------------------------------------------------------------------------
 
 #[test]
 fn file_outline_returns_symbols_with_lines() {
     let (_tmp, server) = setup_mcp_server();
-    let result = server
-        .call_tool(
-            "fmm_file_outline",
-            serde_json::json!({"file": "src/auth/session.ts"}),
-        )
-        .unwrap();
-
-    let text = result["content"][0]["text"].as_str().unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+    let parsed = call_tool_json(
+        &server,
+        "fmm_file_outline",
+        json!({"file": "src/auth/session.ts"}),
+    );
 
     assert_eq!(parsed["file"], "src/auth/session.ts");
     let symbols = parsed["symbols"].as_array().unwrap();
     assert_eq!(symbols.len(), 2);
 
     assert_eq!(symbols[0]["name"], "createSession");
-    assert_eq!(symbols[0]["lines"], serde_json::json!([6, 8]));
+    assert_eq!(symbols[0]["lines"], json!([6, 8]));
     assert_eq!(symbols[0]["size"], 3);
 
     assert_eq!(symbols[1]["name"], "validateSession");
-    assert_eq!(symbols[1]["lines"], serde_json::json!([10, 12]));
+    assert_eq!(symbols[1]["lines"], json!([10, 12]));
     assert_eq!(symbols[1]["size"], 3);
 
     assert!(!parsed["imports"].as_array().unwrap().is_empty());
@@ -379,36 +172,316 @@ fn file_outline_returns_symbols_with_lines() {
 #[test]
 fn file_outline_not_found() {
     let (_tmp, server) = setup_mcp_server();
-    let result = server
-        .call_tool(
-            "fmm_file_outline",
-            serde_json::json!({"file": "src/nonexistent.ts"}),
-        )
-        .unwrap();
-
-    let is_error = result["isError"].as_bool().unwrap_or(false);
-    assert!(is_error);
+    let text = call_tool_expect_error(
+        &server,
+        "fmm_file_outline",
+        json!({"file": "src/nonexistent.ts"}),
+    );
+    assert!(text.contains("not found"));
 }
 
 #[test]
 fn file_outline_shows_all_exports() {
     let (_tmp, server) = setup_mcp_server();
-    let result = server
-        .call_tool(
-            "fmm_file_outline",
-            serde_json::json!({"file": "src/utils/crypto.ts"}),
-        )
-        .unwrap();
+    let parsed = call_tool_json(
+        &server,
+        "fmm_file_outline",
+        json!({"file": "src/utils/crypto.ts"}),
+    );
 
-    let text = result["content"][0]["text"].as_str().unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
-
-    let symbols = parsed["symbols"].as_array().unwrap();
-    let names: Vec<&str> = symbols
+    let names: Vec<&str> = parsed["symbols"]
+        .as_array()
+        .unwrap()
         .iter()
         .map(|s| s["name"].as_str().unwrap())
         .collect();
     assert!(names.contains(&"hashPassword"));
     assert!(names.contains(&"verifyPassword"));
     assert_eq!(parsed["loc"], 9);
+}
+
+// ---------------------------------------------------------------------------
+// fmm_dependency_graph (previously untested through MCP)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn dependency_graph_upstream_and_downstream() {
+    let (_tmp, server) = setup_mcp_server();
+    let parsed = call_tool_json(
+        &server,
+        "fmm_dependency_graph",
+        json!({"file": "src/auth/session.ts"}),
+    );
+
+    assert_eq!(parsed["file"], "src/auth/session.ts");
+
+    let upstream: Vec<&str> = parsed["upstream"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(upstream.contains(&"./types"));
+    assert!(upstream.contains(&"../config"));
+
+    let imports: Vec<&str> = parsed["imports"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(imports.contains(&"jwt"));
+    assert!(imports.contains(&"redis"));
+}
+
+#[test]
+fn dependency_graph_shows_downstream_dependents() {
+    let (_tmp, server) = setup_mcp_server();
+    // config.ts is depended on by session.ts and pool.ts
+    let parsed = call_tool_json(
+        &server,
+        "fmm_dependency_graph",
+        json!({"file": "src/config.ts"}),
+    );
+
+    let downstream: Vec<&str> = parsed["downstream"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(downstream.contains(&"src/auth/session.ts"));
+    assert!(downstream.contains(&"src/db/pool.ts"));
+    assert_eq!(downstream.len(), 2);
+}
+
+#[test]
+fn dependency_graph_not_found() {
+    let (_tmp, server) = setup_mcp_server();
+    let text = call_tool_expect_error(
+        &server,
+        "fmm_dependency_graph",
+        json!({"file": "src/nonexistent.ts"}),
+    );
+    assert!(text.contains("not found"));
+}
+
+// ---------------------------------------------------------------------------
+// fmm_search — universal term search
+// ---------------------------------------------------------------------------
+
+#[test]
+fn search_term_finds_exact_export() {
+    let (_tmp, server) = setup_mcp_server();
+    let parsed = call_tool_json(&server, "fmm_search", json!({"term": "createSession"}));
+
+    let exports = parsed["exports"].as_array().unwrap();
+    assert!(!exports.is_empty());
+    assert_eq!(exports[0]["name"], "createSession");
+    assert_eq!(exports[0]["file"], "src/auth/session.ts");
+    assert!(exports[0].get("lines").is_some());
+}
+
+#[test]
+fn search_term_finds_fuzzy_exports() {
+    let (_tmp, server) = setup_mcp_server();
+    let parsed = call_tool_json(&server, "fmm_search", json!({"term": "session"}));
+
+    let names: Vec<&str> = parsed["exports"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"createSession"));
+    assert!(names.contains(&"validateSession"));
+    assert!(names.contains(&"SessionToken"));
+}
+
+#[test]
+fn search_term_finds_file_path_matches() {
+    let (_tmp, server) = setup_mcp_server();
+    let parsed = call_tool_json(&server, "fmm_search", json!({"term": "crypto"}));
+
+    let files = parsed["files"].as_array().unwrap();
+    assert!(!files.is_empty());
+    assert!(files
+        .iter()
+        .any(|f| f["file"].as_str().unwrap().contains("crypto")));
+}
+
+#[test]
+fn search_term_finds_import_matches() {
+    let (_tmp, server) = setup_mcp_server();
+    let parsed = call_tool_json(&server, "fmm_search", json!({"term": "bcrypt"}));
+
+    let imports = parsed["imports"].as_array().unwrap();
+    assert!(!imports.is_empty());
+    assert!(imports
+        .iter()
+        .any(|i| i["package"].as_str().unwrap() == "bcrypt"));
+    let files = imports[0]["files"].as_array().unwrap();
+    assert!(!files.is_empty());
+}
+
+#[test]
+fn search_term_returns_grouped_json() {
+    let (_tmp, server) = setup_mcp_server();
+    let parsed = call_tool_json(&server, "fmm_search", json!({"term": "config"}));
+
+    assert!(parsed.get("exports").is_some());
+    assert!(parsed.get("files").is_some());
+    assert!(parsed.get("imports").is_some());
+}
+
+#[test]
+fn search_term_case_insensitive() {
+    let (_tmp, server) = setup_mcp_server();
+    let parsed = call_tool_json(&server, "fmm_search", json!({"term": "POOL"}));
+
+    let names: Vec<&str> = parsed["exports"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"Pool") || names.contains(&"createPool"));
+
+    let files = parsed["files"].as_array().unwrap();
+    assert!(files
+        .iter()
+        .any(|f| f["file"].as_str().unwrap().contains("pool")));
+}
+
+// ---------------------------------------------------------------------------
+// fmm_search — export filter (exact + fuzzy fallback)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn search_export_fuzzy_fallback() {
+    let (_tmp, server) = setup_mcp_server();
+    let parsed = call_tool_json(&server, "fmm_search", json!({"export": "Password"}));
+
+    let results = parsed.as_array().unwrap();
+    assert!(!results.is_empty());
+    assert!(results
+        .iter()
+        .any(|r| r["file"].as_str().unwrap().contains("crypto")));
+}
+
+#[test]
+fn search_export_exact_still_works() {
+    let (_tmp, server) = setup_mcp_server();
+    let parsed = call_tool_json(&server, "fmm_search", json!({"export": "createSession"}));
+
+    let results = parsed.as_array().unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0]["file"], "src/auth/session.ts");
+}
+
+#[test]
+fn search_export_fuzzy_case_insensitive() {
+    let (_tmp, server) = setup_mcp_server();
+    let parsed = call_tool_json(&server, "fmm_search", json!({"export": "pool"}));
+
+    let results = parsed.as_array().unwrap();
+    assert!(!results.is_empty());
+    assert!(results
+        .iter()
+        .any(|r| r["file"].as_str().unwrap().contains("pool")));
+}
+
+// ---------------------------------------------------------------------------
+// fmm_search — line ranges in output
+// ---------------------------------------------------------------------------
+
+#[test]
+fn search_results_include_line_ranges() {
+    let (_tmp, server) = setup_mcp_server();
+    let parsed = call_tool_json(&server, "fmm_search", json!({"export": "createSession"}));
+
+    let results = parsed.as_array().unwrap();
+    assert!(!results.is_empty());
+    let exports = results[0]["exports"].as_array().unwrap();
+    assert!(
+        exports.iter().any(|e| e.get("lines").is_some()),
+        "Export results should include line ranges"
+    );
+}
+
+#[test]
+fn search_term_exports_include_line_ranges() {
+    let (_tmp, server) = setup_mcp_server();
+    let parsed = call_tool_json(&server, "fmm_search", json!({"term": "hashPassword"}));
+
+    let exports = parsed["exports"].as_array().unwrap();
+    assert!(!exports.is_empty());
+    let exact = &exports[0];
+    assert_eq!(exact["name"], "hashPassword");
+    let lines = exact["lines"].as_array().unwrap();
+    assert_eq!(lines[0], 3);
+    assert_eq!(lines[1], 5);
+}
+
+// ---------------------------------------------------------------------------
+// fmm_search — structured filters (depends_on, LOC range)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn search_depends_on_filter() {
+    let (_tmp, server) = setup_mcp_server();
+    let parsed = call_tool_json(&server, "fmm_search", json!({"depends_on": "config"}));
+
+    let results = parsed.as_array().unwrap();
+    let files: Vec<&str> = results
+        .iter()
+        .map(|r| r["file"].as_str().unwrap())
+        .collect();
+    assert!(files.contains(&"src/auth/session.ts"));
+    assert!(files.contains(&"src/db/pool.ts"));
+    assert_eq!(files.len(), 2);
+}
+
+#[test]
+fn search_loc_range() {
+    let (_tmp, server) = setup_mcp_server();
+    let parsed = call_tool_json(&server, "fmm_search", json!({"min_loc": 7, "max_loc": 10}));
+
+    let results = parsed.as_array().unwrap();
+    let files: Vec<&str> = results
+        .iter()
+        .map(|r| r["file"].as_str().unwrap())
+        .collect();
+    // config.ts=10, pool.ts=10, crypto.ts=9 all match; session.ts=12, types.ts=6 don't
+    assert!(files.contains(&"src/config.ts"));
+    assert!(files.contains(&"src/db/pool.ts"));
+    assert!(files.contains(&"src/utils/crypto.ts"));
+    assert!(!files.contains(&"src/auth/session.ts"));
+    assert!(!files.contains(&"src/auth/types.ts"));
+}
+
+#[test]
+fn search_imports_filter() {
+    let (_tmp, server) = setup_mcp_server();
+    let parsed = call_tool_json(&server, "fmm_search", json!({"imports": "jwt"}));
+
+    let results = parsed.as_array().unwrap();
+    assert!(results
+        .iter()
+        .any(|r| r["file"].as_str().unwrap() == "src/auth/session.ts"));
+}
+
+#[test]
+fn search_min_loc_filter() {
+    let (_tmp, server) = setup_mcp_server();
+    let parsed = call_tool_json(&server, "fmm_search", json!({"min_loc": 11}));
+
+    let results = parsed.as_array().unwrap();
+    assert!(results
+        .iter()
+        .any(|r| r["file"].as_str().unwrap() == "src/auth/session.ts"));
+    // crypto.ts has loc: 9, should be excluded
+    assert!(!results
+        .iter()
+        .any(|r| r["file"].as_str().unwrap() == "src/utils/crypto.ts"));
 }
