@@ -1,6 +1,6 @@
 ---
 name: fmm-navigate
-description: Navigate codebases using FMM MCP tools for O(1) symbol lookups, source reads, and dependency graphs. ALWAYS use MCP tools before grep/read.
+description: "This project uses fmm (.fmmrc.json) for code metadata. INVOKE THIS SKILL before reading or searching source files — it provides the MCP-first navigation protocol that replaces grep/read with O(1) lookups."
 ---
 
 # fmm — MCP-First Code Navigation

@@ -107,7 +107,7 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
         println!("  Config:   .fmmrc.json");
     }
     if install_skill {
-        println!("  Skill:    .claude/skills/fmm-navigate.md");
+        println!("  Skill:    .claude/skills/fmm-navigate/SKILL.md");
     }
     if install_mcp {
         println!("  MCP:      .mcp.json");
