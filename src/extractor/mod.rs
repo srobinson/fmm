@@ -7,6 +7,14 @@ use crate::config::Config;
 use crate::formatter::Frontmatter;
 use crate::parser::{Metadata, ParseResult, ParserRegistry};
 
+/// Strip the `modified:` line so date-only changes don't trigger rewrites.
+fn content_without_modified(s: &str) -> String {
+    s.lines()
+        .filter(|line| !line.starts_with("modified:"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 pub struct FileProcessor {
     root: std::path::PathBuf,
     registry: ParserRegistry,
@@ -54,7 +62,7 @@ impl FileProcessor {
         let sidecar = sidecar_path_for(path);
         if sidecar.exists() {
             let old = fs::read_to_string(&sidecar)?;
-            if old.trim() == new_yaml.trim() {
+            if content_without_modified(&old) == content_without_modified(&new_yaml) {
                 return Ok(None);
             }
         }
@@ -79,7 +87,7 @@ impl FileProcessor {
             self.format_sidecar(path, &result.metadata, result.custom_fields.as_ref())?;
         let actual = fs::read_to_string(&sidecar)?;
 
-        Ok(actual.trim() == expected.trim())
+        Ok(content_without_modified(actual.trim()) == content_without_modified(expected.trim()))
     }
 
     /// Delete the sidecar file for a source file.
@@ -157,6 +165,27 @@ mod tests {
         assert_eq!(
             sidecar_path_for(path),
             PathBuf::from("/abs/path/to/file.ts.fmm")
+        );
+    }
+
+    #[test]
+    fn content_without_modified_strips_date_line() {
+        let with_date = "file: src/foo.rs\nexports:\n  bar: [1, 5]\nloc: 10\nmodified: 2026-01-01";
+        let with_different_date =
+            "file: src/foo.rs\nexports:\n  bar: [1, 5]\nloc: 10\nmodified: 2026-02-14";
+        assert_eq!(
+            content_without_modified(with_date),
+            content_without_modified(with_different_date)
+        );
+    }
+
+    #[test]
+    fn content_without_modified_detects_real_changes() {
+        let v1 = "file: src/foo.rs\nexports:\n  bar: [1, 5]\nloc: 10\nmodified: 2026-01-01";
+        let v2 = "file: src/foo.rs\nexports:\n  bar: [1, 5]\n  baz: [6, 10]\nloc: 20\nmodified: 2026-02-14";
+        assert_ne!(
+            content_without_modified(v1),
+            content_without_modified(v2)
         );
     }
 }
