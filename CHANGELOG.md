@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.2](https://github.com/srobinson/fmm/compare/v0.1.1...v0.1.2) (2026-02-14)
+
+
+### Features
+
+* world-class CLI help system ([#27](https://github.com/srobinson/fmm/issues/27)) ([dffbacf](https://github.com/srobinson/fmm/commit/dffbacf1d7105f4268c987b09f11f8e6c1e088f6))
+
+
+### Bug Fixes
+
+* remove crates.io publish from release pipeline ([#25](https://github.com/srobinson/fmm/issues/25)) ([39125dc](https://github.com/srobinson/fmm/commit/39125dc8f7f8f68370df1058a5a8ea20c4c058de))
+
 ## [0.1.1](https://github.com/srobinson/fmm/compare/v0.1.0...v0.1.1) (2026-02-14)
 
 
