@@ -7,32 +7,23 @@ use crate::extractor::{sidecar_path_for, FileProcessor};
 
 use super::{collect_files, resolve_root};
 
-/// Whether to create only new sidecars or overwrite all.
-enum SidecarAction {
-    Generate,
-    Update,
-}
-
-/// Shared processing logic for generate and update commands.
-fn process_files(path: &str, dry_run: bool, action: SidecarAction) -> Result<()> {
+pub fn generate(path: &str, dry_run: bool) -> Result<()> {
     let config = Config::load().unwrap_or_default();
     let files = collect_files(path, &config)?;
     let root = resolve_root(path)?;
 
     if files.is_empty() {
         println!("{} No supported source files found", "!".yellow());
-        if matches!(action, SidecarAction::Generate) {
-            println!(
-                "\n  {} Supported languages: {}",
-                "hint:".cyan(),
-                config
-                    .languages
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-        }
+        println!(
+            "\n  {} Supported languages: {}",
+            "hint:".cyan(),
+            config
+                .languages
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
         println!(
             "  {} Did you mean to run from your project root?",
             "hint:".cyan()
@@ -45,24 +36,18 @@ fn process_files(path: &str, dry_run: bool, action: SidecarAction) -> Result<()>
     let processor = FileProcessor::new(&root);
     let results: Vec<_> = files
         .par_iter()
-        .filter_map(|file| {
-            let result = match action {
-                SidecarAction::Generate => processor.generate(file, dry_run),
-                SidecarAction::Update => processor.update(file, dry_run),
-            };
-            match result {
-                Ok(Some(msg)) => Some((file.to_path_buf(), msg)),
-                Ok(None) => None,
-                Err(e) => {
-                    eprintln!(
-                        "{} {}: {}\n  {} Check file permissions and encoding",
-                        "error:".red().bold(),
-                        file.display(),
-                        e,
-                        "hint:".cyan()
-                    );
-                    None
-                }
+        .filter_map(|file| match processor.process(file, dry_run) {
+            Ok(Some(msg)) => Some((file.to_path_buf(), msg)),
+            Ok(None) => None,
+            Err(e) => {
+                eprintln!(
+                    "{} {}: {}\n  {} Check file permissions and encoding",
+                    "error:".red().bold(),
+                    file.display(),
+                    e,
+                    "hint:".cyan()
+                );
+                None
             }
         })
         .collect();
@@ -76,26 +61,12 @@ fn process_files(path: &str, dry_run: bool, action: SidecarAction) -> Result<()>
         }
     }
 
-    let (verb, next_hint) = match action {
-        SidecarAction::Generate => (
-            if dry_run {
-                "would be written"
-            } else {
-                "written"
-            },
-            "Run 'fmm validate' to verify, or 'fmm search --export <name>' to find symbols",
-        ),
-        SidecarAction::Update => (
-            if dry_run {
-                "would be updated"
-            } else {
-                "updated"
-            },
-            "Run 'fmm validate' to verify sidecars are consistent",
-        ),
-    };
-
     if !results.is_empty() {
+        let verb = if dry_run {
+            "would be written"
+        } else {
+            "written"
+        };
         println!(
             "\n{} {} sidecar(s) {}",
             "✓".green().bold(),
@@ -103,21 +74,16 @@ fn process_files(path: &str, dry_run: bool, action: SidecarAction) -> Result<()>
             verb
         );
         if !dry_run {
-            println!("\n  {} {}", "next:".cyan(), next_hint);
+            println!(
+                "\n  {} Run 'fmm validate' to verify, or 'fmm search --export <name>' to find symbols",
+                "next:".cyan()
+            );
         }
     } else {
         println!("{} All sidecars up to date", "✓".green());
     }
 
     Ok(())
-}
-
-pub fn generate(path: &str, dry_run: bool) -> Result<()> {
-    process_files(path, dry_run, SidecarAction::Generate)
-}
-
-pub fn update(path: &str, dry_run: bool) -> Result<()> {
-    process_files(path, dry_run, SidecarAction::Update)
 }
 
 pub fn validate(path: &str) -> Result<()> {
@@ -168,7 +134,7 @@ pub fn validate(path: &str) -> Result<()> {
             println!("  {} {}: {}", "✗".red(), rel.display(), msg.dimmed());
         }
         println!(
-            "\n  {} Run 'fmm update' to regenerate stale sidecars, or 'fmm generate' for missing ones",
+            "\n  {} Run 'fmm generate' to regenerate stale sidecars",
             "fix:".cyan()
         );
         anyhow::bail!("Sidecar validation failed");

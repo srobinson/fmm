@@ -34,32 +34,16 @@ impl FileProcessor {
         }
     }
 
-    pub fn generate(&self, path: &Path, dry_run: bool) -> Result<Option<String>> {
-        let sidecar = sidecar_path_for(path);
-        if sidecar.exists() {
-            return Ok(None);
-        }
-
-        let content = fs::read_to_string(path)?;
-        let result = self.parse_content(path, &content)?;
-        let yaml = self.format_sidecar(path, &result.metadata, result.custom_fields.as_ref())?;
-
-        if dry_run {
-            return Ok(Some(format!("Would write: {}", sidecar.display())));
-        }
-
-        fs::write(&sidecar, &yaml)?;
-        Ok(Some("Wrote sidecar".to_string()))
-    }
-
-    pub fn update(&self, path: &Path, dry_run: bool) -> Result<Option<String>> {
+    pub fn process(&self, path: &Path, dry_run: bool) -> Result<Option<String>> {
         let content = fs::read_to_string(path)?;
         let result = self.parse_content(path, &content)?;
         let new_yaml =
             self.format_sidecar(path, &result.metadata, result.custom_fields.as_ref())?;
 
         let sidecar = sidecar_path_for(path);
-        if sidecar.exists() {
+        let is_update = sidecar.exists();
+
+        if is_update {
             let old = fs::read_to_string(&sidecar)?;
             if content_without_modified(&old) == content_without_modified(&new_yaml) {
                 return Ok(None);
@@ -67,11 +51,19 @@ impl FileProcessor {
         }
 
         if dry_run {
-            return Ok(Some(format!("Would update: {}", sidecar.display())));
+            let verb = if is_update { "update" } else { "write" };
+            return Ok(Some(format!("Would {}: {}", verb, sidecar.display())));
         }
 
         fs::write(&sidecar, &new_yaml)?;
-        Ok(Some("Updated sidecar".to_string()))
+        Ok(Some(
+            if is_update {
+                "Updated sidecar"
+            } else {
+                "Wrote sidecar"
+            }
+            .to_string(),
+        ))
     }
 
     pub fn validate(&self, path: &Path) -> Result<bool> {

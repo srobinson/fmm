@@ -15,7 +15,7 @@ mod status;
 pub use init::init;
 pub use init::init_skill;
 pub use search::search;
-pub use sidecar::{clean, generate, update, validate};
+pub use sidecar::{clean, generate, validate};
 pub use status::status;
 
 // -- Help text constants (keeps the derive attrs readable) --
@@ -27,8 +27,7 @@ Frontmatter Matters — 80-90% fewer file reads for LLM agents";
 const SHORT_HELP: &str = cstr!(
     r#"<bold><underline>Commands</underline></bold>
   <bold>init</bold>          Set up config, Claude skill, and MCP server
-  <bold>generate</bold>      Create .fmm sidecars (exports, imports, deps, LOC)
-  <bold>update</bold>        Regenerate all sidecars from source
+  <bold>generate</bold>      Create and update .fmm sidecars (exports, imports, deps, LOC)
   <bold>validate</bold>      Check sidecars are current (CI-friendly, exit 1 if stale)
   <bold>search</bold>        Smart search — exports, files, imports (just works)
   <bold>mcp</bold>           Start MCP server (7 tools for LLM navigation)
@@ -43,8 +42,7 @@ https://github.com/srobinson/fmm"#
 const LONG_HELP: &str = cstr!(
     r#"<bold><underline>Commands</underline></bold>
   <bold>init</bold>          Set up config, Claude skill, and MCP server
-  <bold>generate</bold>      Create .fmm sidecars (exports, imports, deps, LOC)
-  <bold>update</bold>        Regenerate all sidecars from source
+  <bold>generate</bold>      Create and update .fmm sidecars (exports, imports, deps, LOC)
   <bold>validate</bold>      Check sidecars are current (CI-friendly, exit 1 if stale)
   <bold>search</bold>        Smart search — exports, files, imports (just works)
   <bold>mcp</bold>           Start MCP server (7 tools for LLM navigation)
@@ -107,12 +105,13 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Create .fmm sidecar files for source files
+    /// Create and update .fmm sidecar files for source files
     #[command(
-        long_about = "Create .fmm sidecar files for source files that don't already have them.\n\n\
+        alias = "update",
+        long_about = "Create and update .fmm sidecar files from source.\n\n\
             Each sidecar captures the file's exports, imports, dependencies, and line count \
-            in a compact YAML format. Existing sidecars are left untouched — use 'update' to \
-            refresh them.",
+            in a compact YAML format. New files get sidecars created; existing sidecars are \
+            updated only when content has actually changed.",
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm generate</bold>             <dim># All files in current directory</dim>
@@ -127,7 +126,8 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm generate && fmm validate</bold>        <dim># Generate then verify</dim>
 
 <bold><underline>Notes</underline></bold>
-  Skips files that already have .fmm sidecars — use 'update' to refresh.
+  Creates new sidecars and updates stale ones in a single pass.
+  Unchanged files are skipped — no unnecessary writes.
   Respects .gitignore and .fmmignore for file exclusion.
   Supports: TypeScript, JavaScript, Python, Rust, Go, Java, C++, C#, Ruby."#),
     )]
@@ -136,39 +136,7 @@ pub enum Commands {
         #[arg(default_value = ".")]
         path: String,
 
-        /// Show what would be created without writing files
-        #[arg(short = 'n', long)]
-        dry_run: bool,
-    },
-
-    /// Regenerate all .fmm sidecars from source
-    #[command(
-        long_about = "Regenerate all .fmm sidecar files from their source files.\n\n\
-            Unlike 'generate' which skips existing sidecars, 'update' overwrites every \
-            sidecar with fresh metadata. Use after refactoring or when sidecars may be stale.",
-        after_help = cstr!(
-            r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm update</bold>               <dim># Refresh all sidecars</dim>
-  <dim>$</dim> <bold>fmm update src/</bold>           <dim># Specific directory only</dim>
-  <dim>$</dim> <bold>fmm update -n</bold>             <dim># Preview what would change</dim>"#),
-        after_long_help = cstr!(
-            r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm update</bold>                         <dim># Refresh all sidecars</dim>
-  <dim>$</dim> <bold>fmm update src/</bold>                     <dim># Specific directory only</dim>
-  <dim>$</dim> <bold>fmm update src/auth.ts</bold>              <dim># Single file</dim>
-  <dim>$</dim> <bold>fmm update -n</bold>                       <dim># Preview what would change</dim>
-
-<bold><underline>Notes</underline></bold>
-  Unlike 'generate', this overwrites existing sidecars with fresh metadata.
-  Use after refactoring, renaming exports, or changing imports.
-  Skips unchanged files for speed — only rewrites stale sidecars."#),
-    )]
-    Update {
-        /// Path to file or directory
-        #[arg(default_value = ".")]
-        path: String,
-
-        /// Show what would be changed without writing files
+        /// Show what would be created/updated without writing files
         #[arg(short = 'n', long)]
         dry_run: bool,
     },
@@ -194,12 +162,12 @@ pub enum Commands {
   <dim>- run: npx frontmatter-matters validate</dim>
 
   <dim># Pre-commit hook (.husky/pre-commit):</dim>
-  <dim>fmm validate || (echo "Stale sidecars — run 'fmm update'" && exit 1)</dim>
+  <dim>fmm validate || (echo "Stale sidecars — run 'fmm generate'" && exit 1)</dim>
 
 <bold><underline>Notes</underline></bold>
   Exit code 0: all sidecars are current.
   Exit code 1: stale or missing sidecars found.
-  Run 'fmm update' to fix stale sidecars, 'fmm generate' for missing ones."#),
+  Run 'fmm generate' to create missing or update stale sidecars."#),
     )]
     Validate {
         /// Path to file or directory

@@ -1,4 +1,4 @@
-//! CLI integration tests for the generate → validate → update → clean workflow.
+//! CLI integration tests for the generate → validate → clean workflow.
 //!
 //! These tests exercise fmm's public CLI functions end-to-end using real
 //! temp directories with actual source files.
@@ -94,24 +94,40 @@ fn generate_sidecar_content_is_valid_yaml() {
 }
 
 #[test]
-fn generate_skips_existing_sidecars() {
+fn generate_skips_unchanged_sidecars() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
     fmm::cli::generate(path, false).unwrap();
 
-    // Get modification time of a sidecar
     let sidecar_path = tmp.path().join("src/auth.ts.fmm");
-    let first_modified = fs::metadata(&sidecar_path).unwrap().modified().unwrap();
+    let content_before = fs::read_to_string(&sidecar_path).unwrap();
 
-    // Small sleep to ensure time difference
-    std::thread::sleep(std::time::Duration::from_millis(50));
-
-    // Generate again — should skip
+    // Generate again — source unchanged, sidecar should be identical
     fmm::cli::generate(path, false).unwrap();
 
-    let second_modified = fs::metadata(&sidecar_path).unwrap().modified().unwrap();
-    assert_eq!(first_modified, second_modified);
+    let content_after = fs::read_to_string(&sidecar_path).unwrap();
+    assert_eq!(content_before, content_after);
+}
+
+#[test]
+fn generate_updates_stale_sidecars() {
+    let tmp = setup_project();
+    let path = tmp.path().to_str().unwrap();
+
+    fmm::cli::generate(path, false).unwrap();
+
+    // Modify source to add a new export
+    let auth_path = tmp.path().join("src/auth.ts");
+    let mut content = fs::read_to_string(&auth_path).unwrap();
+    content.push_str("\nexport const NEW_EXPORT = true;\n");
+    fs::write(&auth_path, content).unwrap();
+
+    // Generate again — should detect the change and update
+    fmm::cli::generate(path, false).unwrap();
+
+    let sidecar = sidecar_content(tmp.path(), "src/auth.ts");
+    assert!(sidecar.contains("NEW_EXPORT"));
 }
 
 #[test]
@@ -123,6 +139,26 @@ fn generate_dry_run_creates_no_files() {
 
     assert!(!sidecar_exists(tmp.path(), "src/auth.ts"));
     assert!(!sidecar_exists(tmp.path(), "src/db.ts"));
+}
+
+#[test]
+fn generate_dry_run_preserves_stale_sidecars() {
+    let tmp = setup_project();
+    let path = tmp.path().to_str().unwrap();
+
+    fmm::cli::generate(path, false).unwrap();
+
+    // Modify source
+    let auth_path = tmp.path().join("src/auth.ts");
+    let mut content = fs::read_to_string(&auth_path).unwrap();
+    content.push_str("\nexport const DRY_RUN_TEST = true;\n");
+    fs::write(&auth_path, content).unwrap();
+
+    fmm::cli::generate(path, true).unwrap();
+
+    // Sidecar should NOT contain the new export (dry run)
+    let sidecar = sidecar_content(tmp.path(), "src/auth.ts");
+    assert!(!sidecar.contains("DRY_RUN_TEST"));
 }
 
 #[test]
@@ -150,62 +186,6 @@ fn validate_fails_after_source_change() {
 
     let result = fmm::cli::validate(path);
     assert!(result.is_err());
-}
-
-#[test]
-fn update_refreshes_stale_sidecars() {
-    let tmp = setup_project();
-    let path = tmp.path().to_str().unwrap();
-
-    fmm::cli::generate(path, false).unwrap();
-
-    // Modify source
-    let auth_path = tmp.path().join("src/auth.ts");
-    let mut content = fs::read_to_string(&auth_path).unwrap();
-    content.push_str("\nexport const NEW_EXPORT = true;\n");
-    fs::write(&auth_path, content).unwrap();
-
-    fmm::cli::update(path, false).unwrap();
-
-    // Sidecar should now contain the new export
-    let sidecar = sidecar_content(tmp.path(), "src/auth.ts");
-    assert!(sidecar.contains("NEW_EXPORT"));
-}
-
-#[test]
-fn update_skips_unchanged_files() {
-    let tmp = setup_project();
-    let path = tmp.path().to_str().unwrap();
-
-    fmm::cli::generate(path, false).unwrap();
-
-    let sidecar_path = tmp.path().join("src/db.ts.fmm");
-    let content_before = fs::read_to_string(&sidecar_path).unwrap();
-
-    fmm::cli::update(path, false).unwrap();
-
-    let content_after = fs::read_to_string(&sidecar_path).unwrap();
-    assert_eq!(content_before, content_after);
-}
-
-#[test]
-fn update_dry_run_preserves_files() {
-    let tmp = setup_project();
-    let path = tmp.path().to_str().unwrap();
-
-    fmm::cli::generate(path, false).unwrap();
-
-    // Modify source
-    let auth_path = tmp.path().join("src/auth.ts");
-    let mut content = fs::read_to_string(&auth_path).unwrap();
-    content.push_str("\nexport const DRY_RUN_TEST = true;\n");
-    fs::write(&auth_path, content).unwrap();
-
-    fmm::cli::update(path, true).unwrap();
-
-    // Sidecar should NOT contain the new export
-    let sidecar = sidecar_content(tmp.path(), "src/auth.ts");
-    assert!(!sidecar.contains("DRY_RUN_TEST"));
 }
 
 #[test]
@@ -238,7 +218,7 @@ fn clean_dry_run_preserves_files() {
 }
 
 #[test]
-fn full_workflow_generate_validate_update_clean() {
+fn full_workflow_generate_validate_clean() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
@@ -249,16 +229,16 @@ fn full_workflow_generate_validate_update_clean() {
     // Validate (should pass)
     fmm::cli::validate(path).unwrap();
 
-    // Modify and update
+    // Modify source and re-generate (replaces old update step)
     let db_path = tmp.path().join("src/db.ts");
     fs::write(
         &db_path,
         "export function newConnect() {}\nexport const NEW_SIZE = 20;\n",
     )
     .unwrap();
-    fmm::cli::update(path, false).unwrap();
+    fmm::cli::generate(path, false).unwrap();
 
-    // Validate again (should pass after update)
+    // Validate again (should pass after generate updates stale sidecars)
     fmm::cli::validate(path).unwrap();
 
     // Clean
