@@ -324,7 +324,7 @@ pub enum Commands {
   <dim># Line count filters:</dim>
   <dim>$</dim> <bold>fmm search --loc ">>500"</bold>            <dim># Large files (over 500 lines)</dim>
   <dim>$</dim> <bold>fmm search --loc "<<50"</bold>             <dim># Small files (under 50 lines)</dim>
-  <dim>$</dim> <bold>fmm search --loc ">>100" --loc "<<300"</bold>    <dim># Range query (100-300 lines)</dim>
+  <dim>$</dim> <bold>fmm search --loc ">=100"</bold>            <dim># Files with 100+ lines</dim>
 
   <dim># Combined filters (AND logic):</dim>
   <dim>$</dim> <bold>fmm search --imports react --loc ">>200"</bold>  <dim># Large React files</dim>
