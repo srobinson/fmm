@@ -27,6 +27,10 @@ impl TypeScriptParser {
             "(export_statement (class_declaration name: (type_identifier) @name))",
             "(export_statement (interface_declaration name: (type_identifier) @name))",
             "(export_statement (export_clause (export_specifier name: (identifier) @name)))",
+            // export type Foo = { ... }
+            "(export_statement (type_alias_declaration name: (type_identifier) @name))",
+            // export default SomeIdentifier
+            "(export_statement value: (identifier) @name)",
         ];
 
         let export_queries: Vec<Query> = export_query_strs
@@ -404,5 +408,135 @@ export { Logger } from './logger';
         // so the current parser doesn't capture them as dependencies.
         // This is a known limitation — dependencies only come from `import` statements.
         assert!(result.metadata.dependencies.is_empty());
+    }
+
+    // --- Default export extraction ---
+
+    #[test]
+    fn exports_default_function() {
+        let result = parse("export default function App() { return null; }");
+        assert_eq!(result.metadata.export_names(), vec!["App"]);
+    }
+
+    #[test]
+    fn exports_default_class() {
+        let result = parse("export default class Router { navigate() {} }");
+        assert_eq!(result.metadata.export_names(), vec!["Router"]);
+    }
+
+    #[test]
+    fn exports_default_identifier() {
+        let source = "const Component = () => null;\nexport default Component;";
+        let result = parse(source);
+        assert_eq!(result.metadata.export_names(), vec!["Component"]);
+    }
+
+    #[test]
+    fn exports_default_anonymous_arrow_skipped() {
+        let result = parse("export default () => {};");
+        assert!(result.metadata.exports.is_empty());
+    }
+
+    #[test]
+    fn exports_default_anonymous_object_skipped() {
+        let result = parse("export default { key: 'value' };");
+        assert!(result.metadata.exports.is_empty());
+    }
+
+    #[test]
+    fn exports_default_function_line_range() {
+        let source = "// header\nexport default function App() {\n  return null;\n}\n";
+        let result = parse(source);
+        let app = result
+            .metadata
+            .exports
+            .iter()
+            .find(|e| e.name == "App")
+            .unwrap();
+        assert_eq!(app.start_line, 2);
+        assert_eq!(app.end_line, 4);
+    }
+
+    #[test]
+    fn exports_default_class_line_range() {
+        let source = "// header\nexport default class Router {\n  navigate() {}\n}\n";
+        let result = parse(source);
+        let router = result
+            .metadata
+            .exports
+            .iter()
+            .find(|e| e.name == "Router")
+            .unwrap();
+        assert_eq!(router.start_line, 2);
+        assert_eq!(router.end_line, 4);
+    }
+
+    #[test]
+    fn exports_default_identifier_line_range() {
+        let source = "const Foo = 1;\nexport default Foo;\n";
+        let result = parse(source);
+        let foo = result
+            .metadata
+            .exports
+            .iter()
+            .find(|e| e.name == "Foo")
+            .unwrap();
+        assert_eq!(foo.start_line, 2);
+        assert_eq!(foo.end_line, 2);
+    }
+
+    // --- Type alias export extraction ---
+
+    #[test]
+    fn exports_type_alias() {
+        let result = parse("export type User = { name: string; email: string };");
+        assert_eq!(result.metadata.export_names(), vec!["User"]);
+    }
+
+    #[test]
+    fn exports_type_alias_with_generics() {
+        let result = parse("export type Nullable<T> = T | null;");
+        assert_eq!(result.metadata.export_names(), vec!["Nullable"]);
+    }
+
+    #[test]
+    fn exports_type_alias_line_range() {
+        let source = "// types\nexport type Config = {\n  debug: boolean;\n  port: number;\n};\n";
+        let result = parse(source);
+        let cfg = result
+            .metadata
+            .exports
+            .iter()
+            .find(|e| e.name == "Config")
+            .unwrap();
+        assert_eq!(cfg.start_line, 2);
+        assert_eq!(cfg.end_line, 5);
+    }
+
+    // --- Mixed default + named + type exports ---
+
+    #[test]
+    fn exports_default_with_named_and_types() {
+        let source = r#"
+export type Props = { label: string };
+export const VERSION = "1.0";
+export default function App() { return null; }
+"#;
+        let result = parse(source);
+        assert_eq!(
+            result.metadata.export_names(),
+            vec!["App", "Props", "VERSION"]
+        );
+    }
+
+    #[test]
+    fn exports_default_identifier_with_named() {
+        let source = r#"
+export const helper = () => {};
+const Main = () => {};
+export default Main;
+"#;
+        let result = parse(source);
+        assert_eq!(result.metadata.export_names(), vec!["Main", "helper"]);
     }
 }
