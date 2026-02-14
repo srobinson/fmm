@@ -319,7 +319,6 @@ pub enum Commands {
     },
 }
 
-
 /// Resolve the root directory from the target path.
 /// If a directory, use it directly. If a file, use its parent.
 /// Falls back to CWD if the path doesn't exist.
