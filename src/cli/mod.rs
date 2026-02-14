@@ -30,7 +30,7 @@ const SHORT_HELP: &str = cstr!(
   <bold>generate</bold>      Create .fmm sidecars (exports, imports, deps, LOC)
   <bold>update</bold>        Regenerate all sidecars from source
   <bold>validate</bold>      Check sidecars are current (CI-friendly, exit 1 if stale)
-  <bold>search</bold>        Query the index (O(1) export lookup, dependency graphs)
+  <bold>search</bold>        Smart search — exports, files, imports (just works)
   <bold>mcp</bold>           Start MCP server (7 tools for LLM navigation)
   <bold>status</bold>        Show config and workspace stats
   <bold>clean</bold>         Remove all .fmm sidecars
@@ -46,7 +46,7 @@ const LONG_HELP: &str = cstr!(
   <bold>generate</bold>      Create .fmm sidecars (exports, imports, deps, LOC)
   <bold>update</bold>        Regenerate all sidecars from source
   <bold>validate</bold>      Check sidecars are current (CI-friendly, exit 1 if stale)
-  <bold>search</bold>        Query the index (O(1) export lookup, dependency graphs)
+  <bold>search</bold>        Smart search — exports, files, imports (just works)
   <bold>mcp</bold>           Start MCP server (7 tools for LLM navigation)
   <bold>status</bold>        Show config and workspace stats
   <bold>clean</bold>         Remove all .fmm sidecars
@@ -63,7 +63,8 @@ const LONG_HELP: &str = cstr!(
 <bold><underline>Workflows</underline></bold>
   <dim>$</dim> <bold>fmm init</bold>                              <dim># One-command setup</dim>
   <dim>$</dim> <bold>fmm generate && fmm validate</bold>          <dim># CI pipeline</dim>
-  <dim>$</dim> <bold>fmm search --export createStore</bold>       <dim># O(1) symbol lookup</dim>
+  <dim>$</dim> <bold>fmm search store</bold>                      <dim># Smart search across everything</dim>
+  <dim>$</dim> <bold>fmm search --export createStore</bold>       <dim># O(1) symbol lookup + fuzzy</dim>
   <dim>$</dim> <bold>fmm search --depends-on src/auth.ts</bold>   <dim># Impact analysis</dim>
   <dim>$</dim> <bold>fmm search --loc ">500"</bold>              <dim># Find large files</dim>
   <dim>$</dim> <bold>fmm search --imports react --json</bold>     <dim># Structured output</dim>
@@ -299,19 +300,28 @@ pub enum Commands {
     #[command(
         long_about = "Search sidecar metadata to find files by export name, import path, \
             dependency, or line count.\n\n\
-            Export lookups use a reverse index for O(1) performance. Filters can be combined \
-            with AND logic. With no filters, lists all indexed files.",
+            With a bare term (no flags), searches across all dimensions: exports, file paths, \
+            and imports — with smart ranking. Exact export matches appear first.\n\n\
+            Export lookups use a reverse index for O(1) performance. Flags narrow the search \
+            to a single dimension and can be combined with AND logic.",
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm search -e createStore</bold>  <dim># O(1) symbol lookup</dim>
-  <dim>$</dim> <bold>fmm search -i react</bold>         <dim># Files importing react</dim>
-  <dim>$</dim> <bold>fmm search -l ">500"</bold>       <dim># Large files</dim>"#),
+  <dim>$</dim> <bold>fmm search store</bold>            <dim># Smart search across everything</dim>
+  <dim>$</dim> <bold>fmm search -e createStore</bold>   <dim># Export lookup (exact + fuzzy)</dim>
+  <dim>$</dim> <bold>fmm search -i react</bold>          <dim># Files importing react</dim>
+  <dim>$</dim> <bold>fmm search -l ">500"</bold>        <dim># Large files</dim>"#),
         after_long_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
 
-  <dim># Symbol lookup (O(1) via reverse index):</dim>
-  <dim>$</dim> <bold>fmm search --export createStore</bold>    <dim># Find where createStore is defined</dim>
-  <dim>$</dim> <bold>fmm search --export "App"</bold>           <dim># Find the App component</dim>
+  <dim># Smart search (searches everything, best matches first):</dim>
+  <dim>$</dim> <bold>fmm search store</bold>                   <dim># Exports, files, and imports matching "store"</dim>
+  <dim>$</dim> <bold>fmm search createStore</bold>              <dim># Exact export match ranked first</dim>
+  <dim>$</dim> <bold>fmm search auth</bold>                     <dim># Find auth-related symbols and files</dim>
+
+  <dim># Export lookup (exact O(1), then fuzzy substring):</dim>
+  <dim>$</dim> <bold>fmm search --export createStore</bold>    <dim># Exact match</dim>
+  <dim>$</dim> <bold>fmm search --export store</bold>           <dim># Fuzzy: createStore, useStore, StoreProvider</dim>
+  <dim>$</dim> <bold>fmm search --export STORE</bold>           <dim># Case-insensitive fuzzy match</dim>
 
   <dim># Import analysis:</dim>
   <dim>$</dim> <bold>fmm search --imports react</bold>          <dim># All files importing react</dim>
@@ -330,17 +340,22 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm search --imports react --loc ">>200"</bold>  <dim># Large React files</dim>
 
   <dim># Structured output:</dim>
+  <dim>$</dim> <bold>fmm search store --json</bold>             <dim># JSON for scripting/piping</dim>
   <dim>$</dim> <bold>fmm search --export App --json</bold>      <dim># JSON for scripting/piping</dim>
   <dim>$</dim> <bold>fmm search --json</bold>                   <dim># All indexed files as JSON</dim>
 
 <bold><underline>Notes</underline></bold>
+  Bare search (<bold>fmm search <<term>></bold>) is the fastest way to find anything.
   Export lookup is O(1) — uses a pre-built reverse index, not file scanning.
-  With no filters, lists every indexed file with its metadata.
-  Combine filters to narrow results: all filters use AND logic.
+  Flags narrow search to one dimension. Without flags, searches everything.
   Use --json for machine-readable output (piping, scripts, CI)."#),
     )]
     Search {
-        /// Find file by export name (O(1) reverse-index lookup)
+        /// Search term — searches exports, files, and imports (smart ranking)
+        #[arg(value_name = "TERM")]
+        term: Option<String>,
+
+        /// Find file by export name (exact O(1) + fuzzy substring)
         #[arg(short = 'e', long = "export")]
         export: Option<String>,
 
