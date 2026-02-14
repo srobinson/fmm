@@ -67,10 +67,13 @@ impl Config {
 }
 
 fn default_languages() -> HashSet<String> {
-    ["ts", "tsx", "js", "jsx", "py", "rs", "go"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect()
+    [
+        "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "cpp", "hpp", "cc", "hh", "cxx",
+        "hxx", "cs", "rb",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
 }
 
 fn default_format() -> FrontmatterFormat {
@@ -94,14 +97,13 @@ mod tests {
     #[test]
     fn default_config_has_expected_languages() {
         let config = Config::default();
-        assert!(config.languages.contains("ts"));
-        assert!(config.languages.contains("tsx"));
-        assert!(config.languages.contains("js"));
-        assert!(config.languages.contains("jsx"));
-        assert!(config.languages.contains("py"));
-        assert!(config.languages.contains("rs"));
-        assert!(config.languages.contains("go"));
-        assert_eq!(config.languages.len(), 7);
+        for ext in [
+            "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "cpp", "hpp", "cc", "hh",
+            "cxx", "hxx", "cs", "rb",
+        ] {
+            assert!(config.languages.contains(ext), "missing extension: {ext}");
+        }
+        assert_eq!(config.languages.len(), 16);
     }
 
     #[test]
@@ -117,7 +119,7 @@ mod tests {
     fn returns_default_when_no_config_file() {
         let tmp = TempDir::new().unwrap();
         let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.languages.len(), 7);
+        assert_eq!(config.languages.len(), 16);
         assert!(config.include_loc);
         assert_eq!(config.max_file_size, 1024);
     }
@@ -219,8 +221,11 @@ mod tests {
         assert!(config.is_supported_language("ts"));
         assert!(config.is_supported_language("py"));
         assert!(config.is_supported_language("rs"));
-        assert!(!config.is_supported_language("cpp"));
-        assert!(!config.is_supported_language("java"));
+        assert!(config.is_supported_language("cpp"));
+        assert!(config.is_supported_language("java"));
+        assert!(config.is_supported_language("rb"));
+        assert!(config.is_supported_language("cs"));
+        assert!(!config.is_supported_language("zig"));
         assert!(!config.is_supported_language(""));
     }
 
@@ -230,7 +235,7 @@ mod tests {
         fs::write(tmp.path().join(".fmmrc.json"), "{}").unwrap();
 
         let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.languages.len(), 7);
+        assert_eq!(config.languages.len(), 16);
         assert!(config.include_loc);
         assert_eq!(config.max_file_size, 1024);
     }
