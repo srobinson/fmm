@@ -1,10 +1,39 @@
-use anyhow::Result;
 use clap::{CommandFactory, Parser as ClapParser};
 use colored::Colorize;
 use fmm::cli::{self, Cli, Commands};
 use fmm::mcp;
 
-fn main() -> Result<()> {
+fn main() {
+    if let Err(err) = run() {
+        print_error(&err);
+        std::process::exit(1);
+    }
+}
+
+fn print_error(err: &anyhow::Error) {
+    eprintln!("{} {}", "error:".red().bold(), err);
+    let chain: Vec<_> = err.chain().skip(1).collect();
+    if !chain.is_empty() {
+        for cause in chain {
+            eprintln!("  {} {}", "caused by:".yellow(), cause);
+        }
+    }
+
+    let msg = err.to_string();
+    if msg.contains("LOC") || msg.contains("loc") {
+        eprintln!(
+            "\n  {} Valid LOC filters: {}, {}, {}, {}, {}",
+            "hint:".cyan(),
+            ">500".bold(),
+            "<100".bold(),
+            "=200".bold(),
+            ">=50".bold(),
+            "<=1000".bold()
+        );
+    }
+}
+
+fn run() -> anyhow::Result<()> {
     let cli_args = Cli::parse();
 
     if cli_args.markdown_help {
