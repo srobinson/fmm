@@ -791,7 +791,7 @@ impl McpServer {
     ) -> Result<String, String> {
         let term_lower = term.to_lowercase();
 
-        // 1. Exact export matches (O(1) via export_locations/export_index)
+        // 1. Exact export match (O(1) via export_locations, fallback to export_index)
         let mut exact_exports: Vec<Value> = Vec::new();
         if let Some(loc) = manifest.export_locations.get(term) {
             let mut obj = json!({"name": term, "file": loc.file});
@@ -800,13 +800,7 @@ impl McpServer {
             }
             exact_exports.push(obj);
         } else if let Some(file_path) = manifest.export_index.get(term) {
-            let mut obj = json!({"name": term, "file": file_path});
-            if let Some(loc) = manifest.export_locations.get(term) {
-                if let Some(ref lines) = loc.lines {
-                    obj["lines"] = json!([lines.start, lines.end]);
-                }
-            }
-            exact_exports.push(obj);
+            exact_exports.push(json!({"name": term, "file": file_path}));
         }
 
         // 2. Fuzzy export matches (case-insensitive substring, excluding exact)
@@ -852,7 +846,7 @@ impl McpServer {
         // 4. Import matches (package names matching term)
         let mut import_matches: Vec<Value> = Vec::new();
         let mut seen_packages: std::collections::HashSet<String> = std::collections::HashSet::new();
-        for (file_path, entry) in &manifest.files {
+        for entry in manifest.files.values() {
             for imp in &entry.imports {
                 if imp.to_lowercase().contains(&term_lower) && seen_packages.insert(imp.clone()) {
                     let files_using: Vec<&String> = manifest
@@ -861,7 +855,6 @@ impl McpServer {
                         .filter(|(_, e)| e.imports.contains(imp))
                         .map(|(p, _)| p)
                         .collect();
-                    let _ = file_path; // used via manifest iteration
                     import_matches.push(json!({"package": imp, "files": files_using}));
                 }
             }
