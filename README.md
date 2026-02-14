@@ -68,8 +68,7 @@ That's it. Your AI coding assistant now navigates via metadata instead of brute-
 | Command | Purpose |
 |---------|---------|
 | `fmm init` | Set up config, Claude skill, and MCP server |
-| `fmm generate [path]` | Create .fmm sidecars (exports, imports, deps, LOC) |
-| `fmm update [path]` | Regenerate all sidecars from source |
+| `fmm generate [path]` | Create and update .fmm sidecars (exports, imports, deps, LOC) |
 | `fmm validate [path]` | Check sidecars are current (CI-friendly, exit 1 if stale) |
 | `fmm search` | Query the index (O(1) export lookup, dependency graphs) |
 | `fmm mcp` | Start MCP server (7 tools for LLM navigation) |

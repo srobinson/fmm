@@ -71,10 +71,6 @@ fn run() -> anyhow::Result<()> {
             println!("{}", "Generating sidecars...".green().bold());
             cli::generate(&path, dry_run)?;
         }
-        Commands::Update { path, dry_run } => {
-            println!("{}", "Updating sidecars...".green().bold());
-            cli::update(&path, dry_run)?;
-        }
         Commands::Validate { path } => {
             println!("{}", "Validating sidecars...".green().bold());
             cli::validate(&path)?;
