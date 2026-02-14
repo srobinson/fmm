@@ -245,5 +245,4 @@ mod tests {
         assert_eq!(config.include_complexity, deserialized.include_complexity);
         assert_eq!(config.max_file_size, deserialized.max_file_size);
     }
-
 }
