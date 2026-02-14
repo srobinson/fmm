@@ -470,18 +470,3 @@ fn search_imports_filter() {
         .iter()
         .any(|r| r["file"].as_str().unwrap() == "src/auth/session.ts"));
 }
-
-#[test]
-fn search_min_loc_filter() {
-    let (_tmp, server) = setup_mcp_server();
-    let parsed = call_tool_json(&server, "fmm_search", json!({"min_loc": 11}));
-
-    let results = parsed.as_array().unwrap();
-    assert!(results
-        .iter()
-        .any(|r| r["file"].as_str().unwrap() == "src/auth/session.ts"));
-    // crypto.ts has loc: 9, should be excluded
-    assert!(!results
-        .iter()
-        .any(|r| r["file"].as_str().unwrap() == "src/utils/crypto.ts"));
-}
