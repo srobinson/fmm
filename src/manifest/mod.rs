@@ -140,9 +140,7 @@ impl Manifest {
                                 // .js never overwrites .ts — expected, no warning
                                 continue;
                             }
-                            if existing_is_js && new_is_ts {
-                                // .ts takes priority over .js — expected, no warning
-                            } else {
+                            if !(existing_is_js && new_is_ts) {
                                 eprintln!(
                                     "warning: export '{}' in {} shadows {}",
                                     export, key, existing
