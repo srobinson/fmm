@@ -86,7 +86,7 @@ pub fn collect_matches_with_lines(
             }
         }
     }
-    results.sort_by(|a, b| a.name.cmp(&b.name));
+    results.sort_by_key(|e| e.start_line);
     results
 }
 

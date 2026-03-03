@@ -118,7 +118,7 @@ impl PythonParser {
                 || name.chars().next().is_some_and(|c| c.is_uppercase())
         });
 
-        exports.sort_by(|a, b| a.name.cmp(&b.name));
+        exports.sort_by_key(|e| e.start_line);
         exports
     }
 
@@ -164,7 +164,7 @@ impl PythonParser {
                     }
                 }
             }
-            exports.sort_by(|a, b| a.name.cmp(&b.name));
+            exports.sort_by_key(|e| e.start_line);
             return Some(exports);
         }
         None
@@ -390,7 +390,7 @@ class _InternalClass:
         let result = parser.parse(source).unwrap();
         assert_eq!(
             result.metadata.export_names(),
-            vec!["PublicClass", "public_func"]
+            vec!["public_func", "PublicClass"]
         );
     }
 

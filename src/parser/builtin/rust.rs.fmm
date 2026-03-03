@@ -2,11 +2,11 @@
 file: src/parser/builtin/rust.rs
 fmm: v0.3
 exports:
-  RustParser: [8, 16]
-  new: [18, 358]
+  RustParser: [7, 15]
+  new: [18, 79]
 imports: [anyhow, streaming_iterator, tree_sitter]
-dependencies: [crate, super]
-loc: 649
+dependencies: [crate]
+loc: 685
 modified: 2026-03-03
 rust:
   lifetimes: ['''static']

@@ -1,4 +1,3 @@
-use super::query_helpers::top_level_ancestor;
 use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -107,7 +106,7 @@ impl RustParser {
                     if let Ok(text) = name.node.utf8_text(source_bytes) {
                         let name_str = text.to_string();
                         if seen.insert(name_str.clone()) {
-                            let decl = top_level_ancestor(name.node);
+                            let decl = name.node.parent().unwrap_or(name.node);
                             exports.push(ExportEntry::new(
                                 name_str,
                                 decl.start_position().row + 1,
@@ -119,7 +118,7 @@ impl RustParser {
             }
         }
 
-        exports.sort_by(|a, b| a.name.cmp(&b.name));
+        exports.sort_by_key(|e| e.start_line);
         exports.dedup_by(|a, b| a.name == b.name);
         exports
     }
@@ -627,6 +626,43 @@ mod tests {
         let impls = fields.get("trait_impls").unwrap().as_array().unwrap();
         let names: Vec<&str> = impls.iter().map(|v| v.as_str().unwrap()).collect();
         assert!(names.contains(&"Display for Foo"));
+    }
+
+    #[test]
+    fn rust_impl_methods_get_own_line_ranges() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "\
+pub struct Foo {
+    x: i32,
+}
+
+impl Foo {
+    pub fn new(x: i32) -> Self {
+        Self { x }
+    }
+
+    pub fn get_x(&self) -> i32 {
+        self.x
+    }
+}";
+        let result = parser.parse(source).unwrap();
+        let exports = &result.metadata.exports;
+
+        let foo = exports.iter().find(|e| e.name == "Foo").unwrap();
+        assert_eq!(foo.start_line, 1);
+        assert_eq!(foo.end_line, 3);
+
+        let new_fn = exports.iter().find(|e| e.name == "new").unwrap();
+        assert_eq!(new_fn.start_line, 6);
+        assert_eq!(new_fn.end_line, 8);
+
+        let get_x = exports.iter().find(|e| e.name == "get_x").unwrap();
+        assert_eq!(get_x.start_line, 10);
+        assert_eq!(get_x.end_line, 12);
+
+        // Verify sorted by line number
+        assert!(exports[0].start_line <= exports[1].start_line);
+        assert!(exports[1].start_line <= exports[2].start_line);
     }
 
     #[test]

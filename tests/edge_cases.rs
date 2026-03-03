@@ -463,7 +463,7 @@ export default function Main() {}
     let result = parser.parse(source).unwrap();
     assert_eq!(
         result.metadata.export_names(),
-        vec!["Main", "helper", "util"]
+        vec!["helper", "util", "Main"]
     );
 }
 

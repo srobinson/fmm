@@ -3,9 +3,9 @@ file: fixtures/sample.rs
 fmm: v0.3
 exports:
   Config: [11, 14]
-  Error: [28, 30]
-  Pipeline: [22, 25]
   Status: [16, 20]
+  Pipeline: [22, 25]
+  Error: [28, 30]
   process: [38, 44]
 imports: [anyhow, serde, tokio]
 dependencies: [crate, super]
