@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/srobinson/fmm/compare/v0.1.2...v0.1.3) (2026-03-03)
+
+
+### Features
+
+* support multiple paths in generate, validate, and clean commands ([87478c3](https://github.com/srobinson/fmm/commit/87478c3ad70354614ffa16203b7cc9d091278787))
+
 ## [0.1.2](https://github.com/srobinson/fmm/compare/v0.1.1...v0.1.2) (2026-02-14)
 
 
