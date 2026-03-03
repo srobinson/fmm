@@ -9,6 +9,7 @@ use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::ruby::RubyParser;
 use fmm::parser::builtin::rust::RustParser;
 use fmm::parser::builtin::scala::ScalaParser;
+use fmm::parser::builtin::swift::SwiftParser;
 use fmm::parser::builtin::typescript::TypeScriptParser;
 use fmm::parser::builtin::zig::ZigParser;
 use fmm::parser::Parser;
@@ -803,4 +804,72 @@ fn scala_protected_excluded() {
     let names = result.metadata.export_names();
     assert!(!names.contains(&"Foo".to_string()));
     assert!(names.contains(&"Bar".to_string()));
+}
+
+// =============================================================================
+// Swift edge cases
+// =============================================================================
+
+#[test]
+fn swift_empty_file() {
+    let mut parser = SwiftParser::new().unwrap();
+    let result = parser.parse("").unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert!(result.metadata.imports.is_empty());
+    assert!(result.metadata.dependencies.is_empty());
+    assert_eq!(result.metadata.loc, 0);
+}
+
+#[test]
+fn swift_syntax_errors() {
+    let mut parser = SwiftParser::new().unwrap();
+    let source = "public func {{{{ invalid syntax !@#$";
+    let result = parser.parse(source);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn swift_no_exports() {
+    let mut parser = SwiftParser::new().unwrap();
+    let source = "private func helper() {}\ninternal struct Config {}\nfunc defaultFunc() {}\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+}
+
+#[test]
+fn swift_comments_only() {
+    let mut parser = SwiftParser::new().unwrap();
+    let source = "// Line comment\n/* Block comment */\n/// Doc comment\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert_eq!(result.metadata.loc, 3);
+}
+
+#[test]
+fn swift_crlf_line_endings() {
+    let mut parser = SwiftParser::new().unwrap();
+    let source = "import Foundation\r\npublic func hello() {}\r\npublic struct Point {}\r\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"hello".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Point".to_string()));
+}
+
+#[test]
+fn swift_mixed_visibility() {
+    let mut parser = SwiftParser::new().unwrap();
+    let source = "public func visible() {}\nprivate func hidden() {}\nfileprivate func alsoHidden() {}\nopen class Base {}\ninternal class NotExported {}\n";
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+    assert!(names.contains(&"visible".to_string()));
+    assert!(names.contains(&"Base".to_string()));
+    assert!(!names.contains(&"hidden".to_string()));
+    assert!(!names.contains(&"alsoHidden".to_string()));
+    assert!(!names.contains(&"NotExported".to_string()));
+    assert_eq!(names.len(), 2);
 }

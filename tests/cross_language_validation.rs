@@ -22,6 +22,7 @@ use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::ruby::RubyParser;
 use fmm::parser::builtin::rust::RustParser;
 use fmm::parser::builtin::scala::ScalaParser;
+use fmm::parser::builtin::swift::SwiftParser;
 use fmm::parser::builtin::typescript::TypeScriptParser;
 use fmm::parser::builtin::zig::ZigParser;
 use fmm::parser::Parser;
@@ -2077,4 +2078,130 @@ implicit val defaultConfig: JobConfig =
     let fields = result.custom_fields.unwrap();
     assert!(fields.contains_key("case_classes"));
     assert_eq!(fields.get("implicits").unwrap().as_u64().unwrap(), 1);
+}
+
+// =============================================================================
+// Swift validation — iOS app pattern
+// =============================================================================
+
+/// iOS app pattern — typical UIKit-based view controller with networking.
+#[test]
+fn swift_real_ios_app_pattern() {
+    let source = r#"import UIKit
+import Foundation
+
+public protocol DataSourceDelegate: AnyObject {
+    func dataDidUpdate()
+}
+
+open class TableViewController: UIViewController {
+    open func viewDidLoad() {
+        super.viewDidLoad()
+    }
+
+    open func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return 0
+    }
+
+    private func setupConstraints() {}
+}
+
+public struct CellModel {
+    public let title: String
+    public let subtitle: String
+}
+
+public enum Section: Int {
+    case header = 0
+    case content
+    case footer
+}
+"#;
+
+    let mut parser = SwiftParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Protocol
+    assert!(names.contains(&"DataSourceDelegate".to_string()));
+
+    // Open class
+    assert!(names.contains(&"TableViewController".to_string()));
+
+    // Struct
+    assert!(names.contains(&"CellModel".to_string()));
+
+    // Enum
+    assert!(names.contains(&"Section".to_string()));
+
+    // Private methods NOT exported
+    assert!(!names.contains(&"setupConstraints".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"UIKit".to_string()));
+    assert!(result.metadata.imports.contains(&"Foundation".to_string()));
+
+    // Custom fields
+    let fields = result.custom_fields.unwrap();
+    assert_eq!(fields.get("protocols").unwrap().as_u64().unwrap(), 1);
+}
+
+// =============================================================================
+// Swift validation — SwiftUI pattern
+// =============================================================================
+
+/// SwiftUI pattern — protocol-oriented with extensions.
+#[test]
+fn swift_real_swiftui_pattern() {
+    let source = r#"import SwiftUI
+
+public protocol Theme {
+    var primaryColor: Color { get }
+    var font: Font { get }
+}
+
+public struct AppTheme: Theme {
+    public var primaryColor: Color
+    public var font: Font
+}
+
+public extension View {
+    func themed(with theme: Theme) -> some View {
+        return self
+    }
+}
+
+public typealias ViewBuilder = () -> AnyView
+
+public let defaultTheme = AppTheme(primaryColor: .blue, font: .body)
+"#;
+
+    let mut parser = SwiftParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Protocol
+    assert!(names.contains(&"Theme".to_string()));
+
+    // Struct
+    assert!(names.contains(&"AppTheme".to_string()));
+
+    // Extension method
+    assert!(names.contains(&"themed".to_string()));
+
+    // Typealias
+    assert!(names.contains(&"ViewBuilder".to_string()));
+
+    // Public let
+    assert!(names.contains(&"defaultTheme".to_string()));
+
+    // Import
+    assert!(result.metadata.imports.contains(&"SwiftUI".to_string()));
+
+    // Custom fields
+    let fields = result.custom_fields.unwrap();
+    assert_eq!(fields.get("protocols").unwrap().as_u64().unwrap(), 1);
+    assert_eq!(fields.get("extensions").unwrap().as_u64().unwrap(), 1);
 }

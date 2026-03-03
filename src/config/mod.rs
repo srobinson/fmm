@@ -42,7 +42,7 @@ impl Config {
 fn default_languages() -> HashSet<String> {
     [
         "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "cpp", "hpp", "cc", "hh", "cxx", "hxx",
-        "cs", "rb", "php", "c", "h", "zig", "lua", "scala", "sc",
+        "cs", "rb", "php", "c", "h", "zig", "lua", "scala", "sc", "swift",
     ]
     .iter()
     .map(|s| s.to_string())
@@ -60,18 +60,18 @@ mod tests {
         let config = Config::default();
         for ext in [
             "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "cpp", "hpp", "cc", "hh", "cxx",
-            "hxx", "cs", "rb", "php", "c", "h", "zig", "lua", "scala", "sc",
+            "hxx", "cs", "rb", "php", "c", "h", "zig", "lua", "scala", "sc", "swift",
         ] {
             assert!(config.languages.contains(ext), "missing extension: {ext}");
         }
-        assert_eq!(config.languages.len(), 23);
+        assert_eq!(config.languages.len(), 24);
     }
 
     #[test]
     fn returns_default_when_no_config_file() {
         let tmp = TempDir::new().unwrap();
         let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.languages.len(), 23);
+        assert_eq!(config.languages.len(), 24);
     }
 
     #[test]
@@ -162,6 +162,7 @@ mod tests {
         assert!(config.is_supported_language("lua"));
         assert!(config.is_supported_language("scala"));
         assert!(config.is_supported_language("sc"));
+        assert!(config.is_supported_language("swift"));
         assert!(!config.is_supported_language(""));
     }
 
@@ -171,7 +172,7 @@ mod tests {
         fs::write(tmp.path().join(".fmmrc.json"), "{}").unwrap();
 
         let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.languages.len(), 23);
+        assert_eq!(config.languages.len(), 24);
     }
 
     #[test]
