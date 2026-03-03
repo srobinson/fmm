@@ -3,6 +3,7 @@ use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
 use fmm::parser::builtin::go::GoParser;
 use fmm::parser::builtin::java::JavaParser;
+use fmm::parser::builtin::kotlin::KotlinParser;
 use fmm::parser::builtin::lua::LuaParser;
 use fmm::parser::builtin::php::PhpParser;
 use fmm::parser::builtin::python::PythonParser;
@@ -871,5 +872,73 @@ fn swift_mixed_visibility() {
     assert!(!names.contains(&"hidden".to_string()));
     assert!(!names.contains(&"alsoHidden".to_string()));
     assert!(!names.contains(&"NotExported".to_string()));
+    assert_eq!(names.len(), 2);
+}
+
+// =============================================================================
+// Kotlin edge cases
+// =============================================================================
+
+#[test]
+fn kotlin_empty_file() {
+    let mut parser = KotlinParser::new().unwrap();
+    let result = parser.parse("").unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert!(result.metadata.imports.is_empty());
+    assert!(result.metadata.dependencies.is_empty());
+    assert_eq!(result.metadata.loc, 0);
+}
+
+#[test]
+fn kotlin_syntax_errors() {
+    let mut parser = KotlinParser::new().unwrap();
+    let source = "fun {{{{ invalid syntax !@#$";
+    let result = parser.parse(source);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn kotlin_no_exports() {
+    let mut parser = KotlinParser::new().unwrap();
+    let source = "private fun helper() {}\ninternal class Config\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+}
+
+#[test]
+fn kotlin_comments_only() {
+    let mut parser = KotlinParser::new().unwrap();
+    let source = "// Line comment\n/* Block comment */\n/** KDoc comment */\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert_eq!(result.metadata.loc, 3);
+}
+
+#[test]
+fn kotlin_crlf_line_endings() {
+    let mut parser = KotlinParser::new().unwrap();
+    let source = "import kotlin.collections.List\r\nfun hello() {}\r\nclass MyClass\r\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"hello".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"MyClass".to_string()));
+}
+
+#[test]
+fn kotlin_default_public_vs_private() {
+    let mut parser = KotlinParser::new().unwrap();
+    let source = "fun visible() {}\nprivate fun hidden() {}\ninternal fun alsoHidden() {}\nclass MyClass\nprivate class Secret\n";
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+    assert!(names.contains(&"visible".to_string()));
+    assert!(names.contains(&"MyClass".to_string()));
+    assert!(!names.contains(&"hidden".to_string()));
+    assert!(!names.contains(&"alsoHidden".to_string()));
+    assert!(!names.contains(&"Secret".to_string()));
     assert_eq!(names.len(), 2);
 }

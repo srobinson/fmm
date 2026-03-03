@@ -16,6 +16,7 @@ use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
 use fmm::parser::builtin::go::GoParser;
 use fmm::parser::builtin::java::JavaParser;
+use fmm::parser::builtin::kotlin::KotlinParser;
 use fmm::parser::builtin::lua::LuaParser;
 use fmm::parser::builtin::php::PhpParser;
 use fmm::parser::builtin::python::PythonParser;
@@ -2204,4 +2205,132 @@ public let defaultTheme = AppTheme(primaryColor: .blue, font: .body)
     let fields = result.custom_fields.unwrap();
     assert_eq!(fields.get("protocols").unwrap().as_u64().unwrap(), 1);
     assert_eq!(fields.get("extensions").unwrap().as_u64().unwrap(), 1);
+}
+
+// =============================================================================
+// Kotlin validation — Android ViewModel pattern
+// =============================================================================
+
+/// Android ViewModel pattern — typical MVVM architecture.
+#[test]
+fn kotlin_real_android_viewmodel_pattern() {
+    let source = r#"package com.example.ui
+
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+
+data class UiState(
+    val isLoading: Boolean = false,
+    val items: List<String> = emptyList(),
+    val error: String? = null
+)
+
+sealed class UiEvent {
+    object Refresh : UiEvent()
+    data class ItemClicked(val id: String) : UiEvent()
+}
+
+interface ViewModelContract {
+    val state: StateFlow<UiState>
+    fun onEvent(event: UiEvent)
+}
+
+class MainViewModel : ViewModelContract {
+    override val state: StateFlow<UiState> = MutableStateFlow(UiState())
+
+    override fun onEvent(event: UiEvent) {}
+
+    private fun loadItems() {}
+}
+
+object ViewModelFactory {
+    fun create(): MainViewModel = MainViewModel()
+}
+"#;
+
+    let mut parser = KotlinParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Data class
+    assert!(names.contains(&"UiState".to_string()));
+
+    // Sealed class
+    assert!(names.contains(&"UiEvent".to_string()));
+
+    // Interface
+    assert!(names.contains(&"ViewModelContract".to_string()));
+
+    // Class
+    assert!(names.contains(&"MainViewModel".to_string()));
+
+    // Object
+    assert!(names.contains(&"ViewModelFactory".to_string()));
+
+    // Private not exported
+    assert!(!names.contains(&"loadItems".to_string()));
+
+    // Imports (package roots)
+    assert!(result
+        .metadata
+        .imports
+        .contains(&"kotlinx.coroutines".to_string()));
+
+    // Custom fields
+    let fields = result.custom_fields.unwrap();
+    assert_eq!(fields.get("data_classes").unwrap().as_u64().unwrap(), 1);
+    assert_eq!(fields.get("sealed_classes").unwrap().as_u64().unwrap(), 1);
+}
+
+// =============================================================================
+// Kotlin validation — Ktor server pattern
+// =============================================================================
+
+/// Ktor server pattern — HTTP API setup.
+#[test]
+fn kotlin_real_ktor_server_pattern() {
+    let source = r#"package com.example.api
+
+import io.ktor.server.application.Application
+import io.ktor.server.routing.routing
+
+data class ApiResponse<T>(val data: T?, val message: String)
+
+interface UserService {
+    fun findById(id: String): Any?
+    fun save(user: Any): Boolean
+}
+
+class UserServiceImpl : UserService {
+    override fun findById(id: String): Any? = null
+    override fun save(user: Any): Boolean = true
+}
+
+fun configureRouting(app: Application) {}
+
+val API_VERSION = "v1"
+
+typealias Handler = (Any) -> ApiResponse<Any>
+"#;
+
+    let mut parser = KotlinParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    assert!(names.contains(&"ApiResponse".to_string()));
+    assert!(names.contains(&"UserService".to_string()));
+    assert!(names.contains(&"UserServiceImpl".to_string()));
+    assert!(names.contains(&"configureRouting".to_string()));
+    assert!(names.contains(&"API_VERSION".to_string()));
+    assert!(names.contains(&"Handler".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"io.ktor".to_string()));
+
+    // Custom fields
+    let fields = result.custom_fields.unwrap();
+    assert_eq!(fields.get("data_classes").unwrap().as_u64().unwrap(), 1);
 }

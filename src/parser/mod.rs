@@ -164,6 +164,12 @@ impl ParserRegistry {
             Ok(Box::new(builtin::swift::SwiftParser::new()?))
         });
         self.register_language_id(&["swift"], "swift");
+
+        // Kotlin
+        self.register(&["kt", "kts"], || {
+            Ok(Box::new(builtin::kotlin::KotlinParser::new()?))
+        });
+        self.register_language_id(&["kt", "kts"], "kotlin");
     }
 
     fn register_language_id(&mut self, extensions: &[&str], language_id: &'static str) {
@@ -234,6 +240,8 @@ mod tests {
         assert!(registry.has_parser("scala"));
         assert!(registry.has_parser("sc"));
         assert!(registry.has_parser("swift"));
+        assert!(registry.has_parser("kt"));
+        assert!(registry.has_parser("kts"));
     }
 
     #[test]
@@ -255,6 +263,8 @@ mod tests {
         assert_eq!(registry.language_id_for("scala"), Some("scala"));
         assert_eq!(registry.language_id_for("sc"), Some("scala"));
         assert_eq!(registry.language_id_for("swift"), Some("swift"));
+        assert_eq!(registry.language_id_for("kt"), Some("kotlin"));
+        assert_eq!(registry.language_id_for("kts"), Some("kotlin"));
     }
 
     #[test]
