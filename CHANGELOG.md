@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/srobinson/fmm/compare/v0.1.4...v0.1.5) (2026-03-03)
+
+
+### Bug Fixes
+
+* use parent node for Rust impl method line ranges, sort exports by line number ([#38](https://github.com/srobinson/fmm/issues/38)) ([d6e04d0](https://github.com/srobinson/fmm/commit/d6e04d05e7a8fabe79f8b1eccb98c31921d76272))
+
 ## [0.1.4](https://github.com/srobinson/fmm/compare/v0.1.3...v0.1.4) (2026-03-03)
 
 
