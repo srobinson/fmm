@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/srobinson/fmm/compare/v0.1.3...v0.1.4) (2026-03-03)
+
+
+### Features
+
+* make .claude/ dir creation opt-in in fmm init ([#36](https://github.com/srobinson/fmm/issues/36)) ([cd107a5](https://github.com/srobinson/fmm/commit/cd107a52af2b53421f6a62be7a0903b0401e5441))
+
 ## [0.1.3](https://github.com/srobinson/fmm/compare/v0.1.2...v0.1.3) (2026-03-03)
 
 
