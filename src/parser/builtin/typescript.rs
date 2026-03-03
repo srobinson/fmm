@@ -62,7 +62,7 @@ impl TypeScriptParser {
             }
         }
 
-        exports.sort_by(|a, b| a.name.cmp(&b.name));
+        exports.sort_by_key(|e| e.start_line);
         exports
     }
 
@@ -218,7 +218,7 @@ mod tests {
     }
 
     #[test]
-    fn exports_are_sorted_and_deduplicated() {
+    fn exports_are_sorted_by_line_and_deduplicated() {
         let source = r#"
 export function zebra() {}
 export function alpha() {}
@@ -227,7 +227,7 @@ export const middle = 1;
         let result = parse(source);
         assert_eq!(
             result.metadata.export_names(),
-            vec!["alpha", "middle", "zebra"]
+            vec!["zebra", "alpha", "middle"]
         );
     }
 
@@ -367,10 +367,10 @@ export const DEFAULT_PORT = 5432;
         assert_eq!(
             result.metadata.export_names(),
             vec![
-                "DEFAULT_PORT",
                 "DatabaseConfig",
                 "DatabaseService",
-                "createService"
+                "createService",
+                "DEFAULT_PORT"
             ]
         );
         assert_eq!(result.metadata.imports, vec!["winston"]);
@@ -402,7 +402,7 @@ export { Logger } from './logger';
         let result = parse(source);
         assert_eq!(
             result.metadata.export_names(),
-            vec!["AuthService", "Logger", "UserService"]
+            vec!["UserService", "AuthService", "Logger"]
         );
         // Re-exports via `export { X } from '...'` don't produce import_statements,
         // so the current parser doesn't capture them as dependencies.
@@ -525,7 +525,7 @@ export default function App() { return null; }
         let result = parse(source);
         assert_eq!(
             result.metadata.export_names(),
-            vec!["App", "Props", "VERSION"]
+            vec!["Props", "VERSION", "App"]
         );
     }
 
@@ -537,6 +537,6 @@ const Main = () => {};
 export default Main;
 "#;
         let result = parse(source);
-        assert_eq!(result.metadata.export_names(), vec!["Main", "helper"]);
+        assert_eq!(result.metadata.export_names(), vec!["helper", "Main"]);
     }
 }

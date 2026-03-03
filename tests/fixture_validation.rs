@@ -16,11 +16,11 @@ fn validate_python_fixture() {
 
     // Expected exports from __all__: fetch_data, transform, DataProcessor, ProcessConfig, MAX_RETRIES
     let expected_exports = vec![
-        "DataProcessor",
-        "MAX_RETRIES",
-        "ProcessConfig",
         "fetch_data",
         "transform",
+        "DataProcessor",
+        "ProcessConfig",
+        "MAX_RETRIES",
     ];
     assert_eq!(result.metadata.export_names(), expected_exports);
 
@@ -66,7 +66,7 @@ fn validate_rust_fixture() {
     let result = parser.parse(source).unwrap();
 
     // Expected exports: pub items only (not pub(crate), pub(super), or private)
-    let expected_exports = vec!["Config", "Error", "Pipeline", "Status", "process"];
+    let expected_exports = vec!["Config", "Status", "Pipeline", "Error", "process"];
     assert_eq!(result.metadata.export_names(), expected_exports);
 
     // Expected imports: anyhow, serde, tokio (external crates, not std)
@@ -142,14 +142,14 @@ fn validate_go_fixture() {
 
     // Exported: capitalized names only (StatusActive, StatusInactive are iota consts)
     let expected_exports = vec![
-        "Config",
-        "Handler",
         "MaxRetries",
-        "NewHandler",
-        "Process",
         "Status",
         "StatusActive",
         "StatusInactive",
+        "Config",
+        "Handler",
+        "NewHandler",
+        "Process",
     ];
     assert_eq!(result.metadata.export_names(), expected_exports);
 

@@ -4,8 +4,8 @@ fmm: v0.3
 exports:
   SessionPayload: [5, 10]
   createSession: [12, 18]
-  destroySession: [28, 30]
   validateSession: [20, 26]
+  destroySession: [28, 30]
 imports: [jsonwebtoken]
 dependencies: [../config, ../db/users]
 loc: 30

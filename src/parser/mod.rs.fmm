@@ -2,20 +2,20 @@
 file: src/parser/mod.rs
 fmm: v0.3
 exports:
+  builtin: [1, 1]
   ExportEntry: [9, 13]
+  new: [16, 22]
   Metadata: [26, 31]
+  export_names: [35, 37]
   ParseResult: [42, 45]
   Parser: [47, 56]
   ParserRegistry: [61, 64]
-  builtin: [1, 1]
-  export_names: [33, 38]
-  extensions: [66, 174]
-  get_parser: [66, 174]
-  has_parser: [66, 174]
-  language_id_for: [66, 174]
-  new: [15, 23]
-  register: [66, 174]
-  with_builtins: [66, 174]
+  with_builtins: [75, 79]
+  register: [82, 94]
+  language_id_for: [148, 150]
+  get_parser: [153, 159]
+  has_parser: [163, 165]
+  extensions: [169, 173]
 imports: [anyhow, serde]
 loc: 277
 modified: 2026-03-03

@@ -711,7 +711,7 @@ export default function App({ title, theme }: AppProps) {
 
     assert_eq!(
         result.metadata.export_names(),
-        vec!["APP_VERSION", "App", "AppProps", "AppState"]
+        vec!["AppProps", "AppState", "APP_VERSION", "App"]
     );
     assert!(result.metadata.imports.contains(&"react".to_string()));
     assert!(result

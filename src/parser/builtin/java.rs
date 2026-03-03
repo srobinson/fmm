@@ -110,7 +110,7 @@ impl JavaParser {
             }
         }
 
-        exports.sort_by(|a, b| a.name.cmp(&b.name));
+        exports.sort_by_key(|e| e.start_line);
         exports
     }
 

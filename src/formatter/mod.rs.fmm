@@ -3,10 +3,10 @@ file: src/formatter/mod.rs
 fmm: v0.3
 exports:
   Frontmatter: [6, 13]
-  new: [15, 114]
-  render: [15, 114]
-  with_custom_fields: [15, 114]
-  with_version: [15, 114]
+  new: [16, 24]
+  with_version: [27, 30]
+  with_custom_fields: [33, 44]
+  render: [46, 113]
 imports: [chrono]
 dependencies: [crate]
 loc: 395

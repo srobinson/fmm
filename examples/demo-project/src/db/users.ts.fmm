@@ -3,9 +3,9 @@ file: examples/demo-project/src/db/users.ts
 fmm: v0.3
 exports:
   User: [3, 8]
+  findUserByEmail: [10, 13]
   createUser: [15, 21]
   deleteUser: [23, 26]
-  findUserByEmail: [10, 13]
 dependencies: [./client]
 loc: 26
 modified: 2026-03-03
