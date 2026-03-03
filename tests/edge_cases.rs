@@ -3,6 +3,7 @@ use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
 use fmm::parser::builtin::go::GoParser;
 use fmm::parser::builtin::java::JavaParser;
+use fmm::parser::builtin::lua::LuaParser;
 use fmm::parser::builtin::php::PhpParser;
 use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::ruby::RubyParser;
@@ -679,4 +680,66 @@ fn zig_error_set() {
         .metadata
         .export_names()
         .contains(&"MyError".to_string()));
+}
+
+// =============================================================================
+// Lua edge cases
+// =============================================================================
+
+#[test]
+fn lua_empty_file() {
+    let mut parser = LuaParser::new().unwrap();
+    let result = parser.parse("").unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert!(result.metadata.imports.is_empty());
+    assert!(result.metadata.dependencies.is_empty());
+    assert_eq!(result.metadata.loc, 0);
+}
+
+#[test]
+fn lua_syntax_errors() {
+    let mut parser = LuaParser::new().unwrap();
+    let source = "function {{{{ invalid syntax !@#$";
+    let result = parser.parse(source);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn lua_no_exports() {
+    let mut parser = LuaParser::new().unwrap();
+    let source = "local function helper() return true end\nlocal x = 42\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+}
+
+#[test]
+fn lua_comments_only() {
+    let mut parser = LuaParser::new().unwrap();
+    let source = "-- Line comment\n--[[ Block comment ]]\n-- Another comment\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert_eq!(result.metadata.loc, 3);
+}
+
+#[test]
+fn lua_crlf_line_endings() {
+    let mut parser = LuaParser::new().unwrap();
+    let source = "local M = {}\r\nfunction M.hello() return true end\r\nreturn M\r\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"hello".to_string()));
+}
+
+#[test]
+fn lua_mixed_module_and_global() {
+    let mut parser = LuaParser::new().unwrap();
+    let source = "local M = {}\nfunction M.foo() end\nfunction bar() end\nlocal function baz() end\nreturn M\n";
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+    assert!(names.contains(&"foo".to_string()));
+    assert!(names.contains(&"bar".to_string()));
+    assert!(!names.contains(&"baz".to_string()));
+    assert_eq!(names.len(), 2);
 }

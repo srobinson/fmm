@@ -42,7 +42,7 @@ impl Config {
 fn default_languages() -> HashSet<String> {
     [
         "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "cpp", "hpp", "cc", "hh", "cxx", "hxx",
-        "cs", "rb", "php", "c", "h", "zig",
+        "cs", "rb", "php", "c", "h", "zig", "lua",
     ]
     .iter()
     .map(|s| s.to_string())
@@ -60,18 +60,18 @@ mod tests {
         let config = Config::default();
         for ext in [
             "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "cpp", "hpp", "cc", "hh", "cxx",
-            "hxx", "cs", "rb", "php", "c", "h", "zig",
+            "hxx", "cs", "rb", "php", "c", "h", "zig", "lua",
         ] {
             assert!(config.languages.contains(ext), "missing extension: {ext}");
         }
-        assert_eq!(config.languages.len(), 20);
+        assert_eq!(config.languages.len(), 21);
     }
 
     #[test]
     fn returns_default_when_no_config_file() {
         let tmp = TempDir::new().unwrap();
         let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.languages.len(), 20);
+        assert_eq!(config.languages.len(), 21);
     }
 
     #[test]
@@ -168,7 +168,7 @@ mod tests {
         fs::write(tmp.path().join(".fmmrc.json"), "{}").unwrap();
 
         let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.languages.len(), 20);
+        assert_eq!(config.languages.len(), 21);
     }
 
     #[test]

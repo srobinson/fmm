@@ -16,6 +16,7 @@ use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
 use fmm::parser::builtin::go::GoParser;
 use fmm::parser::builtin::java::JavaParser;
+use fmm::parser::builtin::lua::LuaParser;
 use fmm::parser::builtin::php::PhpParser;
 use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::ruby::RubyParser;
@@ -1797,4 +1798,136 @@ comptime {
     let fields = result.custom_fields.unwrap();
     assert_eq!(fields.get("comptime_blocks").unwrap().as_u64().unwrap(), 1);
     assert!(!fields.contains_key("test_blocks"));
+}
+
+// =============================================================================
+// Lua validation — Neovim plugin pattern
+// =============================================================================
+
+/// Neovim plugin pattern — typical Lua plugin module for Neovim.
+/// Inspired by common Neovim plugin structure (telescope, nvim-cmp, etc.).
+#[test]
+fn lua_real_neovim_plugin_pattern() {
+    let source = r#"local M = {}
+
+local api = require("vim.api")
+local fn = require("vim.fn")
+local config = require("./config")
+
+function M.setup(opts)
+    opts = opts or {}
+    M.config = vim.tbl_deep_extend("force", M.defaults, opts)
+end
+
+function M.run(args)
+    if not M.config then
+        error("Plugin not configured. Call setup() first.")
+    end
+    return M.config
+end
+
+function M.get_status()
+    return { active = true, version = "1.0" }
+end
+
+local function validate_opts(opts)
+    return type(opts) == "table"
+end
+
+local function apply_highlights()
+    api.nvim_set_hl(0, "MyPluginHL", { fg = "white" })
+end
+
+return M
+"#;
+
+    let mut parser = LuaParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Module methods
+    assert!(names.contains(&"setup".to_string()));
+    assert!(names.contains(&"run".to_string()));
+    assert!(names.contains(&"get_status".to_string()));
+
+    // Local functions excluded
+    assert!(!names.contains(&"validate_opts".to_string()));
+    assert!(!names.contains(&"apply_highlights".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"vim.api".to_string()));
+    assert!(result.metadata.imports.contains(&"vim.fn".to_string()));
+
+    // Dependencies
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"./config".to_string()));
+}
+
+// =============================================================================
+// Lua validation — Love2D game pattern
+// =============================================================================
+
+/// Love2D game pattern — typical Love2D game module with global callbacks.
+/// Inspired by Love2D game structure.
+#[test]
+fn lua_real_love2d_game_pattern() {
+    let source = r#"local physics = require("love.physics")
+local graphics = require("love.graphics")
+
+local world
+local player = { x = 0, y = 0, speed = 200 }
+
+function love_load()
+    world = physics.newWorld(0, 9.81 * 64, true)
+end
+
+function love_update(dt)
+    world:update(dt)
+    player.x = player.x + player.speed * dt
+end
+
+function love_draw()
+    graphics.print("Hello World", 400, 300)
+    graphics.circle("fill", player.x, player.y, 20)
+end
+
+local function reset_player()
+    player.x = 0
+    player.y = 0
+end
+
+local function check_bounds(x, y)
+    return x >= 0 and x <= 800 and y >= 0 and y <= 600
+end
+"#;
+
+    let mut parser = LuaParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Global functions (Love2D callbacks)
+    assert!(names.contains(&"love_load".to_string()));
+    assert!(names.contains(&"love_update".to_string()));
+    assert!(names.contains(&"love_draw".to_string()));
+
+    // Local functions excluded
+    assert!(!names.contains(&"reset_player".to_string()));
+    assert!(!names.contains(&"check_bounds".to_string()));
+
+    // Imports
+    assert!(result
+        .metadata
+        .imports
+        .contains(&"love.physics".to_string()));
+    assert!(result
+        .metadata
+        .imports
+        .contains(&"love.graphics".to_string()));
+
+    // No dependencies
+    assert!(result.metadata.dependencies.is_empty());
 }

@@ -3,6 +3,7 @@ use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
 use fmm::parser::builtin::go::GoParser;
 use fmm::parser::builtin::java::JavaParser;
+use fmm::parser::builtin::lua::LuaParser;
 use fmm::parser::builtin::php::PhpParser;
 use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::ruby::RubyParser;
@@ -645,6 +646,64 @@ fn validate_zig_fixture() {
         3,
         "should have 3 test blocks"
     );
+
+    // LOC
+    assert!(result.metadata.loc > 40);
+
+    // Exports should be sorted by line number
+    let lines: Vec<usize> = result
+        .metadata
+        .exports
+        .iter()
+        .map(|e| e.start_line)
+        .collect();
+    let mut sorted = lines.clone();
+    sorted.sort();
+    assert_eq!(lines, sorted);
+}
+
+#[test]
+fn validate_lua_fixture() {
+    let source = include_str!("../fixtures/sample.lua");
+
+    let mut parser = LuaParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Module methods (M.name pattern)
+    assert!(names.contains(&"init".to_string()));
+    assert!(names.contains(&"process".to_string()));
+    assert!(names.contains(&"transform".to_string()));
+    assert!(names.contains(&"status".to_string()));
+    assert!(names.contains(&"reset".to_string()));
+
+    // Global functions
+    assert!(names.contains(&"create_connection".to_string()));
+    assert!(names.contains(&"parse_config".to_string()));
+
+    // Local functions should NOT be exported
+    assert!(!names.contains(&"validate_input".to_string()));
+    assert!(!names.contains(&"format_output".to_string()));
+    assert!(!names.contains(&"log_action".to_string()));
+
+    // Imports (require calls with non-relative paths)
+    assert!(result.metadata.imports.contains(&"cjson".to_string()));
+    assert!(result.metadata.imports.contains(&"socket".to_string()));
+    assert!(result.metadata.imports.contains(&"log".to_string()));
+
+    // Dependencies (require calls with relative paths)
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"./config".to_string()));
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"../lib/utils".to_string()));
+
+    // No custom fields for Lua
+    assert!(result.custom_fields.is_none());
 
     // LOC
     assert!(result.metadata.loc > 40);
