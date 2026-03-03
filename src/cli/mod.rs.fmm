@@ -3,7 +3,7 @@ file: src/cli/mod.rs
 fmm: v0.3
 exports:
   Cli: [98, 109]
-  Commands: [112, 442]
+  Commands: [112, 445]
   init: [10, 10]
 imports: [anyhow, clap, clap_complete, color_print, ignore, init, search, sidecar, status, watch]
 dependencies: [crate]

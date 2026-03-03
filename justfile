@@ -37,6 +37,9 @@ run *ARGS:
 clean:
     cargo clean
 
+install:
+    cargo install --path .
+
 # Full CI check: format, clippy, test, build
 ci: check test build
     @echo "✓ All CI checks passed"

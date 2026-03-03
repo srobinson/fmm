@@ -1,5 +1,5 @@
 ---
-file: watch.rs
+file: src/cli/watch.rs
 fmm: v0.3
 exports:
   watch: [16, 80]
