@@ -144,6 +144,10 @@ impl ParserRegistry {
         // C
         self.register(&["c", "h"], || Ok(Box::new(builtin::c::CParser::new()?)));
         self.register_language_id(&["c", "h"], "c");
+
+        // Zig
+        self.register(&["zig"], || Ok(Box::new(builtin::zig::ZigParser::new()?)));
+        self.register_language_id(&["zig"], "zig");
     }
 
     fn register_language_id(&mut self, extensions: &[&str], language_id: &'static str) {
@@ -209,6 +213,7 @@ mod tests {
         assert!(registry.has_parser("php"));
         assert!(registry.has_parser("c"));
         assert!(registry.has_parser("h"));
+        assert!(registry.has_parser("zig"));
     }
 
     #[test]
@@ -225,7 +230,7 @@ mod tests {
         assert_eq!(registry.language_id_for("php"), Some("php"));
         assert_eq!(registry.language_id_for("c"), Some("c"));
         assert_eq!(registry.language_id_for("h"), Some("c"));
-        assert_eq!(registry.language_id_for("zig"), None);
+        assert_eq!(registry.language_id_for("zig"), Some("zig"));
     }
 
     #[test]

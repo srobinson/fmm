@@ -8,6 +8,7 @@ use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::ruby::RubyParser;
 use fmm::parser::builtin::rust::RustParser;
 use fmm::parser::builtin::typescript::TypeScriptParser;
+use fmm::parser::builtin::zig::ZigParser;
 use fmm::parser::Parser;
 
 // --- Empty files ---
@@ -616,4 +617,66 @@ fn c_header_only_macros() {
     assert!(names.contains(&"GUARD_H".to_string()));
     assert!(names.contains(&"MAX".to_string()));
     assert!(names.contains(&"VERSION".to_string()));
+}
+
+// =============================================================================
+// Zig edge cases
+// =============================================================================
+
+#[test]
+fn zig_empty_file() {
+    let mut parser = ZigParser::new().unwrap();
+    let result = parser.parse("").unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert!(result.metadata.imports.is_empty());
+    assert!(result.metadata.dependencies.is_empty());
+    assert_eq!(result.metadata.loc, 0);
+}
+
+#[test]
+fn zig_syntax_errors() {
+    let mut parser = ZigParser::new().unwrap();
+    let source = "pub fn {{{{ invalid syntax !@#$";
+    let result = parser.parse(source);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn zig_no_exports() {
+    let mut parser = ZigParser::new().unwrap();
+    let source = "const internal: u32 = 42;\nfn private() void {}\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+}
+
+#[test]
+fn zig_comments_only() {
+    let mut parser = ZigParser::new().unwrap();
+    let source = "// Just a comment\n/// Doc comment\n//! Module doc\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert_eq!(result.metadata.loc, 3);
+}
+
+#[test]
+fn zig_crlf_line_endings() {
+    let mut parser = ZigParser::new().unwrap();
+    let source = "const std = @import(\"std\");\r\npub fn hello() void {}\r\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.imports.contains(&"std".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"hello".to_string()));
+}
+
+#[test]
+fn zig_error_set() {
+    let mut parser = ZigParser::new().unwrap();
+    let source = "pub const MyError = error{ Foo, Bar, Baz };\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"MyError".to_string()));
 }

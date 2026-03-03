@@ -7,6 +7,7 @@ use fmm::parser::builtin::php::PhpParser;
 use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::ruby::RubyParser;
 use fmm::parser::builtin::rust::RustParser;
+use fmm::parser::builtin::zig::ZigParser;
 use fmm::parser::Parser;
 
 #[test]
@@ -571,6 +572,79 @@ fn validate_c_fixture() {
     let typedef_names: Vec<&str> = typedefs.iter().map(|v| v.as_str().unwrap()).collect();
     assert!(typedef_names.contains(&"Callback"));
     assert!(typedef_names.contains(&"HashValue"));
+
+    // LOC
+    assert!(result.metadata.loc > 40);
+
+    // Exports should be sorted by line number
+    let lines: Vec<usize> = result
+        .metadata
+        .exports
+        .iter()
+        .map(|e| e.start_line)
+        .collect();
+    let mut sorted = lines.clone();
+    sorted.sort();
+    assert_eq!(lines, sorted);
+}
+
+#[test]
+fn validate_zig_fixture() {
+    let source = include_str!("../fixtures/sample.zig");
+
+    let mut parser = ZigParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Pub const values
+    assert!(names.contains(&"MAX_RETRIES".to_string()));
+
+    // Pub var
+    assert!(names.contains(&"debug_enabled".to_string()));
+
+    // Pub const types (struct, enum, error, union)
+    assert!(names.contains(&"Config".to_string()));
+    assert!(names.contains(&"Status".to_string()));
+    assert!(names.contains(&"PipelineError".to_string()));
+    assert!(names.contains(&"ArrayList".to_string()));
+    assert!(names.contains(&"Value".to_string()));
+
+    // Pub functions
+    assert!(names.contains(&"processBatch".to_string()));
+    assert!(names.contains(&"transform".to_string()));
+
+    // Non-pub items should NOT be exported
+    assert!(!names.contains(&"internal_timeout".to_string()));
+    assert!(!names.contains(&"internalHelper".to_string()));
+    assert!(!names.contains(&"validateInput".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"std".to_string()));
+    assert!(result.metadata.imports.contains(&"builtin".to_string()));
+
+    // Dependencies (relative imports)
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"./utils.zig".to_string()));
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"../config.zig".to_string()));
+
+    // Custom fields: comptime_blocks and test_blocks
+    let fields = result.custom_fields.expect("should have custom fields");
+    assert_eq!(
+        fields.get("comptime_blocks").unwrap().as_u64().unwrap(),
+        2,
+        "should have 2 comptime blocks"
+    );
+    assert_eq!(
+        fields.get("test_blocks").unwrap().as_u64().unwrap(),
+        3,
+        "should have 3 test blocks"
+    );
 
     // LOC
     assert!(result.metadata.loc > 40);

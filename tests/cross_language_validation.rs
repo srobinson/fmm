@@ -21,6 +21,7 @@ use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::ruby::RubyParser;
 use fmm::parser::builtin::rust::RustParser;
 use fmm::parser::builtin::typescript::TypeScriptParser;
+use fmm::parser::builtin::zig::ZigParser;
 use fmm::parser::Parser;
 
 // =============================================================================
@@ -1622,4 +1623,178 @@ void gpio_set_handler(int pin, isr_handler_t handler) {
     assert_eq!(macros.len(), 3);
     let typedefs = fields.get("typedefs").unwrap().as_array().unwrap();
     assert_eq!(typedefs.len(), 2);
+}
+
+// =============================================================================
+// Zig validation — allocator pattern (idiomatic Zig memory management)
+// =============================================================================
+
+/// Zig allocator wrapper pattern — common in Zig libraries for custom memory allocation.
+/// Inspired by patterns from std.mem.Allocator usage in the Zig standard library.
+#[test]
+fn zig_real_allocator_pattern() {
+    let source = r#"const std = @import("std");
+const Allocator = std.mem.Allocator;
+const log = @import("./log.zig");
+
+pub const ArenaAllocator = struct {
+    child_allocator: Allocator,
+    buffer: []u8,
+    end_index: usize,
+
+    pub fn init(child_allocator: Allocator) ArenaAllocator {
+        return .{
+            .child_allocator = child_allocator,
+            .buffer = &.{},
+            .end_index = 0,
+        };
+    }
+
+    pub fn deinit(self: *ArenaAllocator) void {
+        _ = self;
+    }
+
+    pub fn allocator(self: *ArenaAllocator) Allocator {
+        _ = self;
+        return undefined;
+    }
+
+    fn alloc(ctx: *anyopaque, len: usize, ptr_align: u8, ret_addr: usize) ?[*]u8 {
+        _ = ctx;
+        _ = len;
+        _ = ptr_align;
+        _ = ret_addr;
+        return null;
+    }
+};
+
+pub const FixedBufferAllocator = struct {
+    buffer: []u8,
+    end_index: usize,
+
+    pub fn init(buf: []u8) FixedBufferAllocator {
+        return .{ .buffer = buf, .end_index = 0 };
+    }
+};
+
+pub fn createAllocator(backing: Allocator) ArenaAllocator {
+    return ArenaAllocator.init(backing);
+}
+
+test "arena allocator init" {
+    var arena = ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+}
+"#;
+
+    let mut parser = ZigParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Pub structs
+    assert!(names.contains(&"ArenaAllocator".to_string()));
+    assert!(names.contains(&"FixedBufferAllocator".to_string()));
+
+    // Pub function
+    assert!(names.contains(&"createAllocator".to_string()));
+
+    // Total top-level exports: 3
+    assert_eq!(names.len(), 3);
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"std".to_string()));
+
+    // Dependencies
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"./log.zig".to_string()));
+
+    // Custom fields
+    let fields = result.custom_fields.unwrap();
+    assert_eq!(fields.get("test_blocks").unwrap().as_u64().unwrap(), 1);
+}
+
+// =============================================================================
+// Zig validation — build.zig pattern (Zig build system configuration)
+// =============================================================================
+
+/// Zig build configuration pattern — typical build.zig structure.
+/// Inspired by real Zig project build files.
+#[test]
+fn zig_real_build_zig_pattern() {
+    let source = r#"const std = @import("std");
+const builtin = @import("builtin");
+
+pub const Package = struct {
+    name: []const u8,
+    version: []const u8,
+    dependencies: []const Dependency,
+
+    pub const Dependency = struct {
+        name: []const u8,
+        url: []const u8,
+    };
+};
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    const lib = b.addStaticLibrary(.{
+        .name = "mylib",
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    b.installArtifact(lib);
+
+    const main_tests = b.addTest(.{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const run_main_tests = b.addRunArtifact(main_tests);
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&run_main_tests.step);
+}
+
+pub const version = "0.1.0";
+pub const min_zig_version = "0.13.0";
+
+comptime {
+    const expected_zig = "0.13.0";
+    _ = expected_zig;
+}
+"#;
+
+    let mut parser = ZigParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Pub struct
+    assert!(names.contains(&"Package".to_string()));
+
+    // Pub function (the build function)
+    assert!(names.contains(&"build".to_string()));
+
+    // Pub const values
+    assert!(names.contains(&"version".to_string()));
+    assert!(names.contains(&"min_zig_version".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"std".to_string()));
+    assert!(result.metadata.imports.contains(&"builtin".to_string()));
+
+    // No dependencies (no relative imports)
+    assert!(result.metadata.dependencies.is_empty());
+
+    // Custom fields: comptime but no tests
+    let fields = result.custom_fields.unwrap();
+    assert_eq!(fields.get("comptime_blocks").unwrap().as_u64().unwrap(), 1);
+    assert!(!fields.contains_key("test_blocks"));
 }
