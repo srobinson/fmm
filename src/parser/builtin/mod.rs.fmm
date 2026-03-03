@@ -1,16 +1,20 @@
 ---
-file: mod.rs
+file: src/parser/builtin/mod.rs
 fmm: v0.3
 exports:
-  cpp: [1, 1]
-  csharp: [2, 2]
-  go: [3, 3]
-  java: [4, 4]
-  php: [5, 5]
-  python: [6, 6]
-  query_helpers: [7, 7]
-  ruby: [8, 8]
-  rust: [9, 9]
-  typescript: [10, 10]
-loc: 10
+  c: [1, 1]
+  cpp: [2, 2]
+  csharp: [3, 3]
+  go: [4, 4]
+  java: [5, 5]
+  lua: [6, 6]
+  php: [7, 7]
+  python: [8, 8]
+  query_helpers: [9, 9]
+  ruby: [10, 10]
+  rust: [11, 11]
+  scala: [12, 12]
+  typescript: [13, 13]
+  zig: [14, 14]
+loc: 14
 modified: 2026-03-03

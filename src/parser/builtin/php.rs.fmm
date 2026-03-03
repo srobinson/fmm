@@ -1,5 +1,5 @@
 ---
-file: php.rs
+file: src/parser/builtin/php.rs
 fmm: v0.3
 exports:
   PhpParser: [8, 21]

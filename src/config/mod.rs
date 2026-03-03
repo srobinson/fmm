@@ -159,6 +159,9 @@ mod tests {
         assert!(config.is_supported_language("c"));
         assert!(config.is_supported_language("h"));
         assert!(config.is_supported_language("zig"));
+        assert!(config.is_supported_language("lua"));
+        assert!(config.is_supported_language("scala"));
+        assert!(config.is_supported_language("sc"));
         assert!(!config.is_supported_language(""));
     }
 

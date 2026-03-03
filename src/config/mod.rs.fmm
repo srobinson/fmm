@@ -1,5 +1,5 @@
 ---
-file: mod.rs
+file: src/config/mod.rs
 fmm: v0.3
 exports:
   Config: [7, 11]
@@ -7,7 +7,7 @@ exports:
   load_from_dir: [26, 35]
   is_supported_language: [37, 39]
 imports: [anyhow, serde]
-loc: 179
+loc: 184
 modified: 2026-03-03
 rust:
   derives: [Clone, Debug, Deserialize, Serialize]

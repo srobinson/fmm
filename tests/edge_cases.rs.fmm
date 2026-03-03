@@ -1,6 +1,6 @@
 ---
-file: edge_cases.rs
+file: tests/edge_cases.rs
 fmm: v0.3
 imports: [fmm]
-loc: 551
+loc: 806
 modified: 2026-03-03
