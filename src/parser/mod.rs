@@ -152,6 +152,12 @@ impl ParserRegistry {
         // Lua
         self.register(&["lua"], || Ok(Box::new(builtin::lua::LuaParser::new()?)));
         self.register_language_id(&["lua"], "lua");
+
+        // Scala
+        self.register(&["scala", "sc"], || {
+            Ok(Box::new(builtin::scala::ScalaParser::new()?))
+        });
+        self.register_language_id(&["scala", "sc"], "scala");
     }
 
     fn register_language_id(&mut self, extensions: &[&str], language_id: &'static str) {
@@ -219,6 +225,8 @@ mod tests {
         assert!(registry.has_parser("h"));
         assert!(registry.has_parser("zig"));
         assert!(registry.has_parser("lua"));
+        assert!(registry.has_parser("scala"));
+        assert!(registry.has_parser("sc"));
     }
 
     #[test]
@@ -237,6 +245,8 @@ mod tests {
         assert_eq!(registry.language_id_for("h"), Some("c"));
         assert_eq!(registry.language_id_for("zig"), Some("zig"));
         assert_eq!(registry.language_id_for("lua"), Some("lua"));
+        assert_eq!(registry.language_id_for("scala"), Some("scala"));
+        assert_eq!(registry.language_id_for("sc"), Some("scala"));
     }
 
     #[test]

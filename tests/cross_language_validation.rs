@@ -21,6 +21,7 @@ use fmm::parser::builtin::php::PhpParser;
 use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::ruby::RubyParser;
 use fmm::parser::builtin::rust::RustParser;
+use fmm::parser::builtin::scala::ScalaParser;
 use fmm::parser::builtin::typescript::TypeScriptParser;
 use fmm::parser::builtin::zig::ZigParser;
 use fmm::parser::Parser;
@@ -1930,4 +1931,150 @@ end
 
     // No dependencies
     assert!(result.metadata.dependencies.is_empty());
+}
+
+// =============================================================================
+// Scala validation — Akka actor pattern
+// =============================================================================
+
+/// Akka actor pattern — typed actors with message handling.
+/// Inspired by Akka actor patterns.
+#[test]
+fn scala_real_akka_actor_pattern() {
+    let source = r#"package com.example.actors
+
+import akka.actor.Actor
+import akka.actor.Props
+import scala.collection.mutable
+
+case class ProcessMessage(data: String)
+case class ResultMessage(result: String)
+
+trait MessageHandler {
+  def handle(msg: Any): Unit
+}
+
+class DataActor extends Actor with MessageHandler {
+  private val buffer = mutable.ListBuffer.empty[String]
+
+  override def receive: Receive = {
+    case ProcessMessage(data) => sender() ! ResultMessage(data.toUpperCase)
+    case _ => ()
+  }
+
+  override def handle(msg: Any): Unit = ()
+  private def cleanup(): Unit = buffer.clear()
+}
+
+object DataActor {
+  def props: Props = Props(new DataActor)
+  val MAX_BUFFER: Int = 1000
+}
+"#;
+
+    let mut parser = ScalaParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Case classes (messages)
+    assert!(names.contains(&"ProcessMessage".to_string()));
+    assert!(names.contains(&"ResultMessage".to_string()));
+
+    // Trait
+    assert!(names.contains(&"MessageHandler".to_string()));
+
+    // Class
+    assert!(names.contains(&"DataActor".to_string()));
+
+    // Object
+    assert!(names.contains(&"DataActor".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"akka".to_string()));
+    assert!(result.metadata.imports.contains(&"scala".to_string()));
+
+    // Custom fields: case_classes
+    let fields = result.custom_fields.unwrap();
+    let cc = fields.get("case_classes").unwrap().as_array().unwrap();
+    assert_eq!(cc.len(), 2);
+}
+
+// =============================================================================
+// Scala validation — Spark job pattern
+// =============================================================================
+
+/// Spark job pattern — typical Spark data processing pipeline.
+/// Inspired by Apache Spark job structures.
+#[test]
+fn scala_real_spark_job_pattern() {
+    let source = r#"package com.example.spark
+
+import org.apache.spark.SparkConf
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.DataFrame
+
+case class JobConfig(
+  appName: String,
+  master: String,
+  inputPath: String,
+  outputPath: String
+)
+
+object SparkJob {
+  def main(args: Array[String]): Unit = {
+    val config = JobConfig("MyJob", "local[*]", args(0), args(1))
+    val spark = createSession(config)
+    val df = loadData(spark, config.inputPath)
+    val result = transformData(df)
+    saveData(result, config.outputPath)
+    spark.stop()
+  }
+
+  def createSession(config: JobConfig): SparkSession = {
+    SparkSession.builder()
+      .appName(config.appName)
+      .master(config.master)
+      .getOrCreate()
+  }
+
+  private def loadData(spark: SparkSession, path: String): DataFrame = {
+    spark.read.parquet(path)
+  }
+
+  private def saveData(df: DataFrame, path: String): Unit = {
+    df.write.parquet(path)
+  }
+}
+
+def transformData(df: DataFrame): DataFrame = df
+
+implicit val defaultConfig: JobConfig =
+  JobConfig("default", "local", "/input", "/output")
+"#;
+
+    let mut parser = ScalaParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Case class
+    assert!(names.contains(&"JobConfig".to_string()));
+
+    // Object
+    assert!(names.contains(&"SparkJob".to_string()));
+
+    // Top-level function
+    assert!(names.contains(&"transformData".to_string()));
+
+    // Implicit val
+    assert!(names.contains(&"defaultConfig".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"org".to_string()));
+
+    // Custom fields
+    let fields = result.custom_fields.unwrap();
+    assert!(fields.contains_key("case_classes"));
+    assert_eq!(fields.get("implicits").unwrap().as_u64().unwrap(), 1);
 }

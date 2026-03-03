@@ -8,6 +8,7 @@ use fmm::parser::builtin::php::PhpParser;
 use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::ruby::RubyParser;
 use fmm::parser::builtin::rust::RustParser;
+use fmm::parser::builtin::scala::ScalaParser;
 use fmm::parser::builtin::zig::ZigParser;
 use fmm::parser::Parser;
 
@@ -704,6 +705,98 @@ fn validate_lua_fixture() {
 
     // No custom fields for Lua
     assert!(result.custom_fields.is_none());
+
+    // LOC
+    assert!(result.metadata.loc > 40);
+
+    // Exports should be sorted by line number
+    let lines: Vec<usize> = result
+        .metadata
+        .exports
+        .iter()
+        .map(|e| e.start_line)
+        .collect();
+    let mut sorted = lines.clone();
+    sorted.sort();
+    assert_eq!(lines, sorted);
+}
+
+#[test]
+fn validate_scala_fixture() {
+    let source = include_str!("../fixtures/sample.scala");
+
+    let mut parser = ScalaParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Case classes
+    assert!(names.contains(&"Config".to_string()));
+    assert!(names.contains(&"Status".to_string()));
+    assert!(names.contains(&"Success".to_string()));
+    assert!(names.contains(&"Failure".to_string()));
+
+    // Traits
+    assert!(names.contains(&"Processor".to_string()));
+    assert!(names.contains(&"Repository".to_string()));
+    assert!(names.contains(&"Result".to_string()));
+
+    // Classes
+    assert!(names.contains(&"DataService".to_string()));
+    assert!(names.contains(&"LegacyProcessor".to_string()));
+
+    // Objects
+    assert!(names.contains(&"DataService".to_string()));
+    assert!(names.contains(&"Pipeline".to_string()));
+
+    // Top-level function
+    assert!(names.contains(&"transform".to_string()));
+
+    // Top-level val/var
+    assert!(names.contains(&"MAX_RETRIES".to_string()));
+    assert!(names.contains(&"globalState".to_string()));
+
+    // Implicit def
+    assert!(names.contains(&"stringToConfig".to_string()));
+
+    // Private items should NOT be exported
+    assert!(!names.contains(&"InternalHelper".to_string()));
+    assert!(!names.contains(&"InternalUtils".to_string()));
+
+    // Imports (root packages)
+    assert!(result.metadata.imports.contains(&"scala".to_string()));
+    assert!(result.metadata.imports.contains(&"akka".to_string()));
+    assert!(result.metadata.imports.contains(&"com".to_string()));
+
+    // Custom fields: case_classes
+    let fields = result.custom_fields.expect("should have custom fields");
+    let cc = fields
+        .get("case_classes")
+        .expect("should have case_classes")
+        .as_array()
+        .unwrap();
+    let cc_names: Vec<&str> = cc.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(cc_names.contains(&"Config"));
+    assert!(cc_names.contains(&"Status"));
+    assert!(cc_names.contains(&"Success"));
+    assert!(cc_names.contains(&"Failure"));
+
+    // Custom fields: implicits
+    assert_eq!(
+        fields.get("implicits").unwrap().as_u64().unwrap(),
+        1,
+        "should have 1 implicit definition"
+    );
+
+    // Custom fields: annotations
+    let annotations = fields
+        .get("annotations")
+        .expect("should have annotations")
+        .as_array()
+        .unwrap();
+    let ann_names: Vec<&str> = annotations.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(ann_names.contains(&"deprecated"));
+    assert!(ann_names.contains(&"volatile"));
 
     // LOC
     assert!(result.metadata.loc > 40);

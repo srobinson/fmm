@@ -8,6 +8,7 @@ use fmm::parser::builtin::php::PhpParser;
 use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::ruby::RubyParser;
 use fmm::parser::builtin::rust::RustParser;
+use fmm::parser::builtin::scala::ScalaParser;
 use fmm::parser::builtin::typescript::TypeScriptParser;
 use fmm::parser::builtin::zig::ZigParser;
 use fmm::parser::Parser;
@@ -742,4 +743,64 @@ fn lua_mixed_module_and_global() {
     assert!(names.contains(&"bar".to_string()));
     assert!(!names.contains(&"baz".to_string()));
     assert_eq!(names.len(), 2);
+}
+
+// =============================================================================
+// Scala edge cases
+// =============================================================================
+
+#[test]
+fn scala_empty_file() {
+    let mut parser = ScalaParser::new().unwrap();
+    let result = parser.parse("").unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert!(result.metadata.imports.is_empty());
+    assert!(result.metadata.dependencies.is_empty());
+    assert_eq!(result.metadata.loc, 0);
+}
+
+#[test]
+fn scala_syntax_errors() {
+    let mut parser = ScalaParser::new().unwrap();
+    let source = "class {{{{ invalid syntax !@#$";
+    let result = parser.parse(source);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn scala_no_exports() {
+    let mut parser = ScalaParser::new().unwrap();
+    let source = "private class Foo\nprivate object Bar\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+}
+
+#[test]
+fn scala_comments_only() {
+    let mut parser = ScalaParser::new().unwrap();
+    let source = "// Line comment\n/* Block comment */\n/** Scaladoc */\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert_eq!(result.metadata.loc, 3);
+}
+
+#[test]
+fn scala_crlf_line_endings() {
+    let mut parser = ScalaParser::new().unwrap();
+    let source = "import scala.io\r\nclass Foo\r\nobject Bar\r\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.imports.contains(&"scala".to_string()));
+    let names = result.metadata.export_names();
+    assert!(names.contains(&"Foo".to_string()));
+    assert!(names.contains(&"Bar".to_string()));
+}
+
+#[test]
+fn scala_protected_excluded() {
+    let mut parser = ScalaParser::new().unwrap();
+    let source = "protected class Foo\nclass Bar\n";
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+    assert!(!names.contains(&"Foo".to_string()));
+    assert!(names.contains(&"Bar".to_string()));
 }
