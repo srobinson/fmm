@@ -1,0 +1,13 @@
+---
+file: src/parser/builtin/c.rs
+fmm: v0.3
+exports:
+  CParser: [7, 13]
+  new: [16, 47]
+imports: [anyhow, streaming_iterator, tree_sitter]
+dependencies: [crate]
+loc: 418
+modified: 2026-03-03
+rust:
+  lifetimes: ['''static']
+  trait_impls: [Parser for CParser]

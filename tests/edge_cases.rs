@@ -1,11 +1,16 @@
+use fmm::parser::builtin::c::CParser;
 use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
 use fmm::parser::builtin::go::GoParser;
 use fmm::parser::builtin::java::JavaParser;
+use fmm::parser::builtin::lua::LuaParser;
+use fmm::parser::builtin::php::PhpParser;
 use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::ruby::RubyParser;
 use fmm::parser::builtin::rust::RustParser;
+use fmm::parser::builtin::scala::ScalaParser;
 use fmm::parser::builtin::typescript::TypeScriptParser;
+use fmm::parser::builtin::zig::ZigParser;
 use fmm::parser::Parser;
 
 // --- Empty files ---
@@ -486,4 +491,316 @@ fn typescript_default_identifier_deduplicates_with_named() {
     let source = "export { Component };\nexport default Component;";
     let result = parser.parse(source).unwrap();
     assert_eq!(result.metadata.export_names(), vec!["Component"]);
+}
+
+// =============================================================================
+// PHP edge cases
+// =============================================================================
+
+#[test]
+fn php_empty_file() {
+    let mut parser = PhpParser::new().unwrap();
+    let result = parser.parse("").unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert!(result.metadata.imports.is_empty());
+    assert!(result.metadata.dependencies.is_empty());
+    assert_eq!(result.metadata.loc, 0);
+}
+
+#[test]
+fn php_syntax_errors() {
+    let mut parser = PhpParser::new().unwrap();
+    let source = "<?php\nclass {{{{ invalid syntax !@#$";
+    let result = parser.parse(source);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn php_no_exports() {
+    let mut parser = PhpParser::new().unwrap();
+    // PHP file with only private/protected members
+    let source =
+        "<?php\nclass Foo {\n    private function bar() {}\n    protected function baz() {}\n}\n";
+    let result = parser.parse(source).unwrap();
+    // Class itself is still exported, but private/protected methods are not
+    assert!(result.metadata.export_names().contains(&"Foo".to_string()));
+    assert!(!result.metadata.export_names().contains(&"bar".to_string()));
+    assert!(!result.metadata.export_names().contains(&"baz".to_string()));
+}
+
+#[test]
+fn php_comments_only() {
+    let mut parser = PhpParser::new().unwrap();
+    let source = "<?php\n// Just a comment\n/* Block comment */\n/** Docblock */\n";
+    let result = parser.parse(source).unwrap();
+    // No classes/functions/constants
+    assert!(result.metadata.exports.is_empty());
+}
+
+#[test]
+fn php_crlf_line_endings() {
+    let mut parser = PhpParser::new().unwrap();
+    let source = "<?php\r\nclass Foo {}\r\nfunction bar() {}\r\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.export_names().contains(&"Foo".to_string()));
+    assert!(result.metadata.export_names().contains(&"bar".to_string()));
+}
+
+#[test]
+fn php_enum_with_methods() {
+    let mut parser = PhpParser::new().unwrap();
+    let source = "<?php\nenum Color {\n    case Red;\n    case Blue;\n    public function label(): string { return $this->name; }\n}\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Color".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"label".to_string()));
+}
+
+// =============================================================================
+// C edge cases
+// =============================================================================
+
+#[test]
+fn c_empty_file() {
+    let mut parser = CParser::new().unwrap();
+    let result = parser.parse("").unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert!(result.metadata.imports.is_empty());
+    assert!(result.metadata.dependencies.is_empty());
+    assert_eq!(result.metadata.loc, 0);
+}
+
+#[test]
+fn c_syntax_errors() {
+    let mut parser = CParser::new().unwrap();
+    let source = "int {{{{ invalid syntax !@#$";
+    let result = parser.parse(source);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn c_no_exports() {
+    let mut parser = CParser::new().unwrap();
+    let source = "static int helper() { return 0; }\nstatic void internal() {}\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+}
+
+#[test]
+fn c_comments_only() {
+    let mut parser = CParser::new().unwrap();
+    let source = "/* Block comment */\n// Line comment\n/* Another block */\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert_eq!(result.metadata.loc, 3);
+}
+
+#[test]
+fn c_crlf_line_endings() {
+    let mut parser = CParser::new().unwrap();
+    let source = "#include <stdio.h>\r\nint main() { return 0; }\r\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.imports.contains(&"stdio.h".to_string()));
+    assert!(result.metadata.export_names().contains(&"main".to_string()));
+}
+
+#[test]
+fn c_header_only_macros() {
+    let mut parser = CParser::new().unwrap();
+    let source =
+        "#ifndef GUARD_H\n#define GUARD_H\n#define MAX 100\n#define VERSION \"1.0\"\n#endif\n";
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+    assert!(names.contains(&"GUARD_H".to_string()));
+    assert!(names.contains(&"MAX".to_string()));
+    assert!(names.contains(&"VERSION".to_string()));
+}
+
+// =============================================================================
+// Zig edge cases
+// =============================================================================
+
+#[test]
+fn zig_empty_file() {
+    let mut parser = ZigParser::new().unwrap();
+    let result = parser.parse("").unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert!(result.metadata.imports.is_empty());
+    assert!(result.metadata.dependencies.is_empty());
+    assert_eq!(result.metadata.loc, 0);
+}
+
+#[test]
+fn zig_syntax_errors() {
+    let mut parser = ZigParser::new().unwrap();
+    let source = "pub fn {{{{ invalid syntax !@#$";
+    let result = parser.parse(source);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn zig_no_exports() {
+    let mut parser = ZigParser::new().unwrap();
+    let source = "const internal: u32 = 42;\nfn private() void {}\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+}
+
+#[test]
+fn zig_comments_only() {
+    let mut parser = ZigParser::new().unwrap();
+    let source = "// Just a comment\n/// Doc comment\n//! Module doc\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert_eq!(result.metadata.loc, 3);
+}
+
+#[test]
+fn zig_crlf_line_endings() {
+    let mut parser = ZigParser::new().unwrap();
+    let source = "const std = @import(\"std\");\r\npub fn hello() void {}\r\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.imports.contains(&"std".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"hello".to_string()));
+}
+
+#[test]
+fn zig_error_set() {
+    let mut parser = ZigParser::new().unwrap();
+    let source = "pub const MyError = error{ Foo, Bar, Baz };\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"MyError".to_string()));
+}
+
+// =============================================================================
+// Lua edge cases
+// =============================================================================
+
+#[test]
+fn lua_empty_file() {
+    let mut parser = LuaParser::new().unwrap();
+    let result = parser.parse("").unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert!(result.metadata.imports.is_empty());
+    assert!(result.metadata.dependencies.is_empty());
+    assert_eq!(result.metadata.loc, 0);
+}
+
+#[test]
+fn lua_syntax_errors() {
+    let mut parser = LuaParser::new().unwrap();
+    let source = "function {{{{ invalid syntax !@#$";
+    let result = parser.parse(source);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn lua_no_exports() {
+    let mut parser = LuaParser::new().unwrap();
+    let source = "local function helper() return true end\nlocal x = 42\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+}
+
+#[test]
+fn lua_comments_only() {
+    let mut parser = LuaParser::new().unwrap();
+    let source = "-- Line comment\n--[[ Block comment ]]\n-- Another comment\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert_eq!(result.metadata.loc, 3);
+}
+
+#[test]
+fn lua_crlf_line_endings() {
+    let mut parser = LuaParser::new().unwrap();
+    let source = "local M = {}\r\nfunction M.hello() return true end\r\nreturn M\r\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"hello".to_string()));
+}
+
+#[test]
+fn lua_mixed_module_and_global() {
+    let mut parser = LuaParser::new().unwrap();
+    let source = "local M = {}\nfunction M.foo() end\nfunction bar() end\nlocal function baz() end\nreturn M\n";
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+    assert!(names.contains(&"foo".to_string()));
+    assert!(names.contains(&"bar".to_string()));
+    assert!(!names.contains(&"baz".to_string()));
+    assert_eq!(names.len(), 2);
+}
+
+// =============================================================================
+// Scala edge cases
+// =============================================================================
+
+#[test]
+fn scala_empty_file() {
+    let mut parser = ScalaParser::new().unwrap();
+    let result = parser.parse("").unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert!(result.metadata.imports.is_empty());
+    assert!(result.metadata.dependencies.is_empty());
+    assert_eq!(result.metadata.loc, 0);
+}
+
+#[test]
+fn scala_syntax_errors() {
+    let mut parser = ScalaParser::new().unwrap();
+    let source = "class {{{{ invalid syntax !@#$";
+    let result = parser.parse(source);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn scala_no_exports() {
+    let mut parser = ScalaParser::new().unwrap();
+    let source = "private class Foo\nprivate object Bar\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+}
+
+#[test]
+fn scala_comments_only() {
+    let mut parser = ScalaParser::new().unwrap();
+    let source = "// Line comment\n/* Block comment */\n/** Scaladoc */\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert_eq!(result.metadata.loc, 3);
+}
+
+#[test]
+fn scala_crlf_line_endings() {
+    let mut parser = ScalaParser::new().unwrap();
+    let source = "import scala.io\r\nclass Foo\r\nobject Bar\r\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.imports.contains(&"scala".to_string()));
+    let names = result.metadata.export_names();
+    assert!(names.contains(&"Foo".to_string()));
+    assert!(names.contains(&"Bar".to_string()));
+}
+
+#[test]
+fn scala_protected_excluded() {
+    let mut parser = ScalaParser::new().unwrap();
+    let source = "protected class Foo\nclass Bar\n";
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+    assert!(!names.contains(&"Foo".to_string()));
+    assert!(names.contains(&"Bar".to_string()));
 }

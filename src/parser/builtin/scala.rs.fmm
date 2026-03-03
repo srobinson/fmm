@@ -1,0 +1,13 @@
+---
+file: src/parser/builtin/scala.rs
+fmm: v0.3
+exports:
+  ScalaParser: [6, 8]
+  new: [11, 19]
+imports: [anyhow, tree_sitter]
+dependencies: [crate]
+loc: 412
+modified: 2026-03-03
+rust:
+  lifetimes: ['''static']
+  trait_impls: [Parser for ScalaParser]

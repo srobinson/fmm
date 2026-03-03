@@ -1,10 +1,15 @@
+use fmm::parser::builtin::c::CParser;
 use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
 use fmm::parser::builtin::go::GoParser;
 use fmm::parser::builtin::java::JavaParser;
+use fmm::parser::builtin::lua::LuaParser;
+use fmm::parser::builtin::php::PhpParser;
 use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::ruby::RubyParser;
 use fmm::parser::builtin::rust::RustParser;
+use fmm::parser::builtin::scala::ScalaParser;
+use fmm::parser::builtin::zig::ZigParser;
 use fmm::parser::Parser;
 
 #[test]
@@ -422,4 +427,388 @@ fn validate_ruby_fixture() {
     assert!(mixin_names.contains(&"Enumerable"));
 
     assert!(result.metadata.loc > 50);
+}
+
+#[test]
+fn validate_php_fixture() {
+    let source = include_str!("../fixtures/sample.php");
+
+    let mut parser = PhpParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    // Top-level types: classes, interfaces, traits, enums
+    let names = result.metadata.export_names();
+    assert!(names.contains(&"UserController".to_string()));
+    assert!(names.contains(&"Repository".to_string()));
+    assert!(names.contains(&"Cacheable".to_string()));
+    assert!(names.contains(&"Loggable".to_string()));
+    assert!(names.contains(&"Status".to_string()));
+    assert!(names.contains(&"ProcessConfig".to_string()));
+
+    // Top-level functions
+    assert!(names.contains(&"transform".to_string()));
+    assert!(names.contains(&"processQueue".to_string()));
+
+    // Top-level constants
+    assert!(names.contains(&"MAX_RETRIES".to_string()));
+    assert!(names.contains(&"API_VERSION".to_string()));
+
+    // Public methods exported
+    assert!(names.contains(&"index".to_string()));
+    assert!(names.contains(&"show".to_string()));
+    assert!(names.contains(&"store".to_string()));
+    assert!(names.contains(&"create".to_string()));
+    assert!(names.contains(&"isValid".to_string()));
+
+    // Interface public methods
+    assert!(names.contains(&"find".to_string()));
+    assert!(names.contains(&"save".to_string()));
+    assert!(names.contains(&"delete".to_string()));
+
+    // Trait public methods
+    assert!(names.contains(&"cacheKey".to_string()));
+    assert!(names.contains(&"clearCache".to_string()));
+    assert!(names.contains(&"logAction".to_string()));
+
+    // Private/protected methods NOT exported
+    assert!(!names.contains(&"validateInput".to_string()));
+    assert!(!names.contains(&"authorize".to_string()));
+
+    // Namespace imports
+    assert!(result.metadata.imports.contains(&"App".to_string()));
+    assert!(result.metadata.imports.contains(&"Illuminate".to_string()));
+
+    // Dependencies (require/include paths)
+    assert!(!result.metadata.dependencies.is_empty());
+
+    // Custom fields: namespaces
+    let fields = result.custom_fields.expect("should have custom fields");
+    let namespaces = fields
+        .get("namespaces")
+        .expect("should have namespaces")
+        .as_array()
+        .unwrap();
+    assert!(!namespaces.is_empty());
+
+    // Custom fields: traits_used
+    let traits_used = fields
+        .get("traits_used")
+        .expect("should have traits_used")
+        .as_array()
+        .unwrap();
+    let trait_names: Vec<&str> = traits_used.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(trait_names.contains(&"Cacheable"));
+    assert!(trait_names.contains(&"Loggable"));
+
+    assert!(result.metadata.loc > 40);
+}
+
+#[test]
+fn validate_c_fixture() {
+    let source = include_str!("../fixtures/sample.c");
+
+    let mut parser = CParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Macros
+    assert!(names.contains(&"MAX_BUFFER_SIZE".to_string()));
+    assert!(names.contains(&"MIN".to_string()));
+    assert!(names.contains(&"API_VERSION".to_string()));
+
+    // Typedefs
+    assert!(names.contains(&"Callback".to_string()));
+    assert!(names.contains(&"HashValue".to_string()));
+
+    // Structs and enums
+    assert!(names.contains(&"Status".to_string()));
+    assert!(names.contains(&"Config".to_string()));
+    assert!(names.contains(&"Result".to_string()));
+
+    // Non-static functions (including pointer-returning ones)
+    assert!(names.contains(&"config_init".to_string()));
+    assert!(names.contains(&"process_data".to_string()));
+    assert!(names.contains(&"config_free".to_string()));
+    assert!(names.contains(&"transform".to_string()));
+    assert!(names.contains(&"get_buffer".to_string()));
+    assert!(names.contains(&"compute_hash".to_string()));
+
+    // Static functions should NOT be exported
+    assert!(!names.contains(&"validate_input".to_string()));
+    assert!(!names.contains(&"log_message".to_string()));
+
+    // System includes → imports
+    assert!(result.metadata.imports.contains(&"stdio.h".to_string()));
+    assert!(result.metadata.imports.contains(&"stdlib.h".to_string()));
+    assert!(result.metadata.imports.contains(&"string.h".to_string()));
+
+    // Local includes → dependencies
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"config.h".to_string()));
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"utils/helpers.h".to_string()));
+
+    // Custom fields: macros
+    let fields = result.custom_fields.expect("should have custom fields");
+    let macros = fields
+        .get("macros")
+        .expect("should have macros")
+        .as_array()
+        .unwrap();
+    let macro_names: Vec<&str> = macros.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(macro_names.contains(&"MAX_BUFFER_SIZE"));
+    assert!(macro_names.contains(&"MIN"));
+    assert!(macro_names.contains(&"API_VERSION"));
+
+    // Custom fields: typedefs
+    let typedefs = fields
+        .get("typedefs")
+        .expect("should have typedefs")
+        .as_array()
+        .unwrap();
+    let typedef_names: Vec<&str> = typedefs.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(typedef_names.contains(&"Callback"));
+    assert!(typedef_names.contains(&"HashValue"));
+
+    // LOC
+    assert!(result.metadata.loc > 40);
+
+    // Exports should be sorted by line number
+    let lines: Vec<usize> = result
+        .metadata
+        .exports
+        .iter()
+        .map(|e| e.start_line)
+        .collect();
+    let mut sorted = lines.clone();
+    sorted.sort();
+    assert_eq!(lines, sorted);
+}
+
+#[test]
+fn validate_zig_fixture() {
+    let source = include_str!("../fixtures/sample.zig");
+
+    let mut parser = ZigParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Pub const values
+    assert!(names.contains(&"MAX_RETRIES".to_string()));
+
+    // Pub var
+    assert!(names.contains(&"debug_enabled".to_string()));
+
+    // Pub const types (struct, enum, error, union)
+    assert!(names.contains(&"Config".to_string()));
+    assert!(names.contains(&"Status".to_string()));
+    assert!(names.contains(&"PipelineError".to_string()));
+    assert!(names.contains(&"ArrayList".to_string()));
+    assert!(names.contains(&"Value".to_string()));
+
+    // Pub functions
+    assert!(names.contains(&"processBatch".to_string()));
+    assert!(names.contains(&"transform".to_string()));
+
+    // Non-pub items should NOT be exported
+    assert!(!names.contains(&"internal_timeout".to_string()));
+    assert!(!names.contains(&"internalHelper".to_string()));
+    assert!(!names.contains(&"validateInput".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"std".to_string()));
+    assert!(result.metadata.imports.contains(&"builtin".to_string()));
+
+    // Dependencies (relative imports)
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"./utils.zig".to_string()));
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"../config.zig".to_string()));
+
+    // Custom fields: comptime_blocks and test_blocks
+    let fields = result.custom_fields.expect("should have custom fields");
+    assert_eq!(
+        fields.get("comptime_blocks").unwrap().as_u64().unwrap(),
+        2,
+        "should have 2 comptime blocks"
+    );
+    assert_eq!(
+        fields.get("test_blocks").unwrap().as_u64().unwrap(),
+        3,
+        "should have 3 test blocks"
+    );
+
+    // LOC
+    assert!(result.metadata.loc > 40);
+
+    // Exports should be sorted by line number
+    let lines: Vec<usize> = result
+        .metadata
+        .exports
+        .iter()
+        .map(|e| e.start_line)
+        .collect();
+    let mut sorted = lines.clone();
+    sorted.sort();
+    assert_eq!(lines, sorted);
+}
+
+#[test]
+fn validate_lua_fixture() {
+    let source = include_str!("../fixtures/sample.lua");
+
+    let mut parser = LuaParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Module methods (M.name pattern)
+    assert!(names.contains(&"init".to_string()));
+    assert!(names.contains(&"process".to_string()));
+    assert!(names.contains(&"transform".to_string()));
+    assert!(names.contains(&"status".to_string()));
+    assert!(names.contains(&"reset".to_string()));
+
+    // Global functions
+    assert!(names.contains(&"create_connection".to_string()));
+    assert!(names.contains(&"parse_config".to_string()));
+
+    // Local functions should NOT be exported
+    assert!(!names.contains(&"validate_input".to_string()));
+    assert!(!names.contains(&"format_output".to_string()));
+    assert!(!names.contains(&"log_action".to_string()));
+
+    // Imports (require calls with non-relative paths)
+    assert!(result.metadata.imports.contains(&"cjson".to_string()));
+    assert!(result.metadata.imports.contains(&"socket".to_string()));
+    assert!(result.metadata.imports.contains(&"log".to_string()));
+
+    // Dependencies (require calls with relative paths)
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"./config".to_string()));
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"../lib/utils".to_string()));
+
+    // No custom fields for Lua
+    assert!(result.custom_fields.is_none());
+
+    // LOC
+    assert!(result.metadata.loc > 40);
+
+    // Exports should be sorted by line number
+    let lines: Vec<usize> = result
+        .metadata
+        .exports
+        .iter()
+        .map(|e| e.start_line)
+        .collect();
+    let mut sorted = lines.clone();
+    sorted.sort();
+    assert_eq!(lines, sorted);
+}
+
+#[test]
+fn validate_scala_fixture() {
+    let source = include_str!("../fixtures/sample.scala");
+
+    let mut parser = ScalaParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Case classes
+    assert!(names.contains(&"Config".to_string()));
+    assert!(names.contains(&"Status".to_string()));
+    assert!(names.contains(&"Success".to_string()));
+    assert!(names.contains(&"Failure".to_string()));
+
+    // Traits
+    assert!(names.contains(&"Processor".to_string()));
+    assert!(names.contains(&"Repository".to_string()));
+    assert!(names.contains(&"Result".to_string()));
+
+    // Classes
+    assert!(names.contains(&"DataService".to_string()));
+    assert!(names.contains(&"LegacyProcessor".to_string()));
+
+    // Objects
+    assert!(names.contains(&"DataService".to_string()));
+    assert!(names.contains(&"Pipeline".to_string()));
+
+    // Top-level function
+    assert!(names.contains(&"transform".to_string()));
+
+    // Top-level val/var
+    assert!(names.contains(&"MAX_RETRIES".to_string()));
+    assert!(names.contains(&"globalState".to_string()));
+
+    // Implicit def
+    assert!(names.contains(&"stringToConfig".to_string()));
+
+    // Private items should NOT be exported
+    assert!(!names.contains(&"InternalHelper".to_string()));
+    assert!(!names.contains(&"InternalUtils".to_string()));
+
+    // Imports (root packages)
+    assert!(result.metadata.imports.contains(&"scala".to_string()));
+    assert!(result.metadata.imports.contains(&"akka".to_string()));
+    assert!(result.metadata.imports.contains(&"com".to_string()));
+
+    // Custom fields: case_classes
+    let fields = result.custom_fields.expect("should have custom fields");
+    let cc = fields
+        .get("case_classes")
+        .expect("should have case_classes")
+        .as_array()
+        .unwrap();
+    let cc_names: Vec<&str> = cc.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(cc_names.contains(&"Config"));
+    assert!(cc_names.contains(&"Status"));
+    assert!(cc_names.contains(&"Success"));
+    assert!(cc_names.contains(&"Failure"));
+
+    // Custom fields: implicits
+    assert_eq!(
+        fields.get("implicits").unwrap().as_u64().unwrap(),
+        1,
+        "should have 1 implicit definition"
+    );
+
+    // Custom fields: annotations
+    let annotations = fields
+        .get("annotations")
+        .expect("should have annotations")
+        .as_array()
+        .unwrap();
+    let ann_names: Vec<&str> = annotations.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(ann_names.contains(&"deprecated"));
+    assert!(ann_names.contains(&"volatile"));
+
+    // LOC
+    assert!(result.metadata.loc > 40);
+
+    // Exports should be sorted by line number
+    let lines: Vec<usize> = result
+        .metadata
+        .exports
+        .iter()
+        .map(|e| e.start_line)
+        .collect();
+    let mut sorted = lines.clone();
+    sorted.sort();
+    assert_eq!(lines, sorted);
 }

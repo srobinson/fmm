@@ -23,6 +23,11 @@ tree-sitter-java = "0.23"
 tree-sitter-cpp = "0.23"
 tree-sitter-c-sharp = "0.23"
 tree-sitter-ruby = "0.23"
+tree-sitter-php = "0.23"
+tree-sitter-c = "0.23"
+tree-sitter-zig = "1.1"
+tree-sitter-lua = "0.2"
+tree-sitter-scala = "0.24"
 streaming-iterator = "0.1"
 
 # CLI

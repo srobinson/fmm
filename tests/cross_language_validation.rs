@@ -11,14 +11,19 @@
 //!
 //! Using inline snippets (not git clones) so tests are hermetic and CI-friendly.
 
+use fmm::parser::builtin::c::CParser;
 use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
 use fmm::parser::builtin::go::GoParser;
 use fmm::parser::builtin::java::JavaParser;
+use fmm::parser::builtin::lua::LuaParser;
+use fmm::parser::builtin::php::PhpParser;
 use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::ruby::RubyParser;
 use fmm::parser::builtin::rust::RustParser;
+use fmm::parser::builtin::scala::ScalaParser;
 use fmm::parser::builtin::typescript::TypeScriptParser;
+use fmm::parser::builtin::zig::ZigParser;
 use fmm::parser::Parser;
 
 // =============================================================================
@@ -1269,4 +1274,807 @@ end
     let mixin_names: Vec<&str> = mixins.iter().map(|v| v.as_str().unwrap()).collect();
     assert!(mixin_names.contains(&"Loggable"));
     assert!(mixin_names.contains(&"Configurable"));
+}
+
+// =============================================================================
+// PHP validation — Laravel-style patterns
+// =============================================================================
+
+/// Laravel controller pattern with dependency injection and middleware
+#[test]
+fn php_real_repo_laravel_controller() {
+    let source = r#"<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Post;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+
+class PostController
+{
+    public function index(): JsonResponse
+    {
+        $posts = Post::all();
+        return response()->json($posts);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'body' => 'required|string',
+        ]);
+        $post = Post::create($validated);
+        return response()->json($post, 201);
+    }
+
+    public function show(Post $post): JsonResponse
+    {
+        return response()->json($post);
+    }
+
+    private function authorize(Request $request): bool
+    {
+        return $request->user()->can('manage-posts');
+    }
+}
+"#;
+    let mut parser = PhpParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    // Class exported
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"PostController".to_string()));
+    // Public methods exported
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"index".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"store".to_string()));
+    assert!(result.metadata.export_names().contains(&"show".to_string()));
+    // Private method NOT exported
+    assert!(!result
+        .metadata
+        .export_names()
+        .contains(&"authorize".to_string()));
+
+    // Namespace imports
+    assert!(result.metadata.imports.contains(&"App".to_string()));
+    assert!(result.metadata.imports.contains(&"Illuminate".to_string()));
+
+    // Namespace custom field
+    let fields = result.custom_fields.unwrap();
+    let namespaces = fields.get("namespaces").unwrap().as_array().unwrap();
+    let ns: Vec<&str> = namespaces.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(ns.iter().any(|n| n.contains("Controllers")));
+}
+
+/// Composer package pattern with interfaces and traits
+#[test]
+fn php_real_repo_composer_package() {
+    let source = r#"<?php
+
+namespace League\Container;
+
+use League\Container\Definition\DefinitionInterface;
+
+interface ContainerInterface
+{
+    public function get(string $id): mixed;
+    public function has(string $id): bool;
+}
+
+trait ContainerAwareTrait
+{
+    protected ?ContainerInterface $container = null;
+
+    public function setContainer(ContainerInterface $container): self
+    {
+        $this->container = $container;
+        return $this;
+    }
+
+    public function getContainer(): ContainerInterface
+    {
+        return $this->container;
+    }
+}
+
+class Container implements ContainerInterface
+{
+    use ContainerAwareTrait;
+
+    public function get(string $id): mixed
+    {
+        return $this->resolve($id);
+    }
+
+    public function has(string $id): bool
+    {
+        return isset($this->definitions[$id]);
+    }
+
+    public function add(string $id, mixed $concrete = null): DefinitionInterface
+    {
+        return $this->definitions[$id] = new Definition($id, $concrete);
+    }
+
+    private function resolve(string $id): mixed
+    {
+        return $this->definitions[$id]->resolve();
+    }
+}
+"#;
+    let mut parser = PhpParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    // Types exported
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"ContainerInterface".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"ContainerAwareTrait".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Container".to_string()));
+
+    // Public methods
+    assert!(result.metadata.export_names().contains(&"get".to_string()));
+    assert!(result.metadata.export_names().contains(&"has".to_string()));
+    assert!(result.metadata.export_names().contains(&"add".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"setContainer".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"getContainer".to_string()));
+
+    // Private NOT exported
+    assert!(!result
+        .metadata
+        .export_names()
+        .contains(&"resolve".to_string()));
+
+    // Trait use inside class
+    let fields = result.custom_fields.unwrap();
+    let traits_used = fields.get("traits_used").unwrap().as_array().unwrap();
+    let tn: Vec<&str> = traits_used.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(tn.contains(&"ContainerAwareTrait"));
+}
+
+// =============================================================================
+// C validation — Linux kernel style pattern
+// =============================================================================
+
+/// Linux kernel-style module with init/exit functions, static helpers, and macros.
+/// Pattern: public API functions + static internals + struct definitions.
+#[test]
+fn c_real_repo_linux_kernel_style_module() {
+    let source = r#"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "module.h"
+
+#define MODULE_NAME "mydriver"
+#define MODULE_VERSION 2
+
+struct device_info {
+    int id;
+    char name[64];
+    int status;
+};
+
+enum device_state {
+    DEV_INIT = 0,
+    DEV_RUNNING = 1,
+    DEV_STOPPED = 2
+};
+
+static int debug_level = 0;
+
+static void log_debug(const char *msg) {
+    if (debug_level > 0) {
+        fprintf(stderr, "[%s] %s\n", MODULE_NAME, msg);
+    }
+}
+
+int device_init(struct device_info *dev, const char *name) {
+    if (dev == NULL || name == NULL) return -1;
+    dev->id = 0;
+    strncpy(dev->name, name, sizeof(dev->name) - 1);
+    dev->status = DEV_INIT;
+    log_debug("Device initialized");
+    return 0;
+}
+
+int device_start(struct device_info *dev) {
+    if (dev == NULL) return -1;
+    dev->status = DEV_RUNNING;
+    return 0;
+}
+
+void device_cleanup(struct device_info *dev) {
+    if (dev != NULL) {
+        dev->status = DEV_STOPPED;
+        log_debug("Device cleaned up");
+    }
+}
+"#;
+
+    let mut parser = CParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+
+    // Public functions exported
+    assert!(names.contains(&"device_init".to_string()));
+    assert!(names.contains(&"device_start".to_string()));
+    assert!(names.contains(&"device_cleanup".to_string()));
+
+    // Static function NOT exported
+    assert!(!names.contains(&"log_debug".to_string()));
+
+    // Types exported
+    assert!(names.contains(&"device_info".to_string()));
+    assert!(names.contains(&"device_state".to_string()));
+
+    // Macros
+    assert!(names.contains(&"MODULE_NAME".to_string()));
+    assert!(names.contains(&"MODULE_VERSION".to_string()));
+
+    // System includes
+    assert!(result.metadata.imports.contains(&"stdio.h".to_string()));
+    assert!(result.metadata.imports.contains(&"stdlib.h".to_string()));
+
+    // Local dependency
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"module.h".to_string()));
+}
+
+// =============================================================================
+// C validation — embedded systems pattern
+// =============================================================================
+
+/// Embedded systems style with hardware register typedefs and ISR patterns.
+#[test]
+fn c_real_repo_embedded_systems_pattern() {
+    let source = r#"
+#include <stdint.h>
+#include <stdbool.h>
+#include "hal.h"
+#include "gpio.h"
+
+#define GPIO_BASE_ADDR 0x40020000
+#define GPIO_PIN_MASK(n) (1U << (n))
+#define MAX_PINS 16
+
+typedef uint32_t reg32_t;
+typedef void (*isr_handler_t)(void);
+
+struct gpio_config {
+    reg32_t mode;
+    reg32_t speed;
+    reg32_t pull;
+};
+
+static isr_handler_t handlers[MAX_PINS];
+
+static void default_handler(void) {
+    /* NOP */
+}
+
+void gpio_init(struct gpio_config *cfg) {
+    for (int i = 0; i < MAX_PINS; i++) {
+        handlers[i] = default_handler;
+    }
+}
+
+bool gpio_read_pin(int pin) {
+    if (pin < 0 || pin >= MAX_PINS) return false;
+    return true;
+}
+
+void gpio_set_handler(int pin, isr_handler_t handler) {
+    if (pin >= 0 && pin < MAX_PINS && handler != NULL) {
+        handlers[pin] = handler;
+    }
+}
+"#;
+
+    let mut parser = CParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+
+    // Public functions
+    assert!(names.contains(&"gpio_init".to_string()));
+    assert!(names.contains(&"gpio_read_pin".to_string()));
+    assert!(names.contains(&"gpio_set_handler".to_string()));
+
+    // Static NOT exported
+    assert!(!names.contains(&"default_handler".to_string()));
+
+    // Typedefs
+    assert!(names.contains(&"reg32_t".to_string()));
+    assert!(names.contains(&"isr_handler_t".to_string()));
+
+    // Struct
+    assert!(names.contains(&"gpio_config".to_string()));
+
+    // Macros
+    assert!(names.contains(&"GPIO_BASE_ADDR".to_string()));
+    assert!(names.contains(&"GPIO_PIN_MASK".to_string()));
+    assert!(names.contains(&"MAX_PINS".to_string()));
+
+    // Custom fields
+    let fields = result.custom_fields.unwrap();
+    let macros = fields.get("macros").unwrap().as_array().unwrap();
+    assert_eq!(macros.len(), 3);
+    let typedefs = fields.get("typedefs").unwrap().as_array().unwrap();
+    assert_eq!(typedefs.len(), 2);
+}
+
+// =============================================================================
+// Zig validation — allocator pattern (idiomatic Zig memory management)
+// =============================================================================
+
+/// Zig allocator wrapper pattern — common in Zig libraries for custom memory allocation.
+/// Inspired by patterns from std.mem.Allocator usage in the Zig standard library.
+#[test]
+fn zig_real_allocator_pattern() {
+    let source = r#"const std = @import("std");
+const Allocator = std.mem.Allocator;
+const log = @import("./log.zig");
+
+pub const ArenaAllocator = struct {
+    child_allocator: Allocator,
+    buffer: []u8,
+    end_index: usize,
+
+    pub fn init(child_allocator: Allocator) ArenaAllocator {
+        return .{
+            .child_allocator = child_allocator,
+            .buffer = &.{},
+            .end_index = 0,
+        };
+    }
+
+    pub fn deinit(self: *ArenaAllocator) void {
+        _ = self;
+    }
+
+    pub fn allocator(self: *ArenaAllocator) Allocator {
+        _ = self;
+        return undefined;
+    }
+
+    fn alloc(ctx: *anyopaque, len: usize, ptr_align: u8, ret_addr: usize) ?[*]u8 {
+        _ = ctx;
+        _ = len;
+        _ = ptr_align;
+        _ = ret_addr;
+        return null;
+    }
+};
+
+pub const FixedBufferAllocator = struct {
+    buffer: []u8,
+    end_index: usize,
+
+    pub fn init(buf: []u8) FixedBufferAllocator {
+        return .{ .buffer = buf, .end_index = 0 };
+    }
+};
+
+pub fn createAllocator(backing: Allocator) ArenaAllocator {
+    return ArenaAllocator.init(backing);
+}
+
+test "arena allocator init" {
+    var arena = ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+}
+"#;
+
+    let mut parser = ZigParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Pub structs
+    assert!(names.contains(&"ArenaAllocator".to_string()));
+    assert!(names.contains(&"FixedBufferAllocator".to_string()));
+
+    // Pub function
+    assert!(names.contains(&"createAllocator".to_string()));
+
+    // Total top-level exports: 3
+    assert_eq!(names.len(), 3);
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"std".to_string()));
+
+    // Dependencies
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"./log.zig".to_string()));
+
+    // Custom fields
+    let fields = result.custom_fields.unwrap();
+    assert_eq!(fields.get("test_blocks").unwrap().as_u64().unwrap(), 1);
+}
+
+// =============================================================================
+// Zig validation — build.zig pattern (Zig build system configuration)
+// =============================================================================
+
+/// Zig build configuration pattern — typical build.zig structure.
+/// Inspired by real Zig project build files.
+#[test]
+fn zig_real_build_zig_pattern() {
+    let source = r#"const std = @import("std");
+const builtin = @import("builtin");
+
+pub const Package = struct {
+    name: []const u8,
+    version: []const u8,
+    dependencies: []const Dependency,
+
+    pub const Dependency = struct {
+        name: []const u8,
+        url: []const u8,
+    };
+};
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    const lib = b.addStaticLibrary(.{
+        .name = "mylib",
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    b.installArtifact(lib);
+
+    const main_tests = b.addTest(.{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const run_main_tests = b.addRunArtifact(main_tests);
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&run_main_tests.step);
+}
+
+pub const version = "0.1.0";
+pub const min_zig_version = "0.13.0";
+
+comptime {
+    const expected_zig = "0.13.0";
+    _ = expected_zig;
+}
+"#;
+
+    let mut parser = ZigParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Pub struct
+    assert!(names.contains(&"Package".to_string()));
+
+    // Pub function (the build function)
+    assert!(names.contains(&"build".to_string()));
+
+    // Pub const values
+    assert!(names.contains(&"version".to_string()));
+    assert!(names.contains(&"min_zig_version".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"std".to_string()));
+    assert!(result.metadata.imports.contains(&"builtin".to_string()));
+
+    // No dependencies (no relative imports)
+    assert!(result.metadata.dependencies.is_empty());
+
+    // Custom fields: comptime but no tests
+    let fields = result.custom_fields.unwrap();
+    assert_eq!(fields.get("comptime_blocks").unwrap().as_u64().unwrap(), 1);
+    assert!(!fields.contains_key("test_blocks"));
+}
+
+// =============================================================================
+// Lua validation — Neovim plugin pattern
+// =============================================================================
+
+/// Neovim plugin pattern — typical Lua plugin module for Neovim.
+/// Inspired by common Neovim plugin structure (telescope, nvim-cmp, etc.).
+#[test]
+fn lua_real_neovim_plugin_pattern() {
+    let source = r#"local M = {}
+
+local api = require("vim.api")
+local fn = require("vim.fn")
+local config = require("./config")
+
+function M.setup(opts)
+    opts = opts or {}
+    M.config = vim.tbl_deep_extend("force", M.defaults, opts)
+end
+
+function M.run(args)
+    if not M.config then
+        error("Plugin not configured. Call setup() first.")
+    end
+    return M.config
+end
+
+function M.get_status()
+    return { active = true, version = "1.0" }
+end
+
+local function validate_opts(opts)
+    return type(opts) == "table"
+end
+
+local function apply_highlights()
+    api.nvim_set_hl(0, "MyPluginHL", { fg = "white" })
+end
+
+return M
+"#;
+
+    let mut parser = LuaParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Module methods
+    assert!(names.contains(&"setup".to_string()));
+    assert!(names.contains(&"run".to_string()));
+    assert!(names.contains(&"get_status".to_string()));
+
+    // Local functions excluded
+    assert!(!names.contains(&"validate_opts".to_string()));
+    assert!(!names.contains(&"apply_highlights".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"vim.api".to_string()));
+    assert!(result.metadata.imports.contains(&"vim.fn".to_string()));
+
+    // Dependencies
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"./config".to_string()));
+}
+
+// =============================================================================
+// Lua validation — Love2D game pattern
+// =============================================================================
+
+/// Love2D game pattern — typical Love2D game module with global callbacks.
+/// Inspired by Love2D game structure.
+#[test]
+fn lua_real_love2d_game_pattern() {
+    let source = r#"local physics = require("love.physics")
+local graphics = require("love.graphics")
+
+local world
+local player = { x = 0, y = 0, speed = 200 }
+
+function love_load()
+    world = physics.newWorld(0, 9.81 * 64, true)
+end
+
+function love_update(dt)
+    world:update(dt)
+    player.x = player.x + player.speed * dt
+end
+
+function love_draw()
+    graphics.print("Hello World", 400, 300)
+    graphics.circle("fill", player.x, player.y, 20)
+end
+
+local function reset_player()
+    player.x = 0
+    player.y = 0
+end
+
+local function check_bounds(x, y)
+    return x >= 0 and x <= 800 and y >= 0 and y <= 600
+end
+"#;
+
+    let mut parser = LuaParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Global functions (Love2D callbacks)
+    assert!(names.contains(&"love_load".to_string()));
+    assert!(names.contains(&"love_update".to_string()));
+    assert!(names.contains(&"love_draw".to_string()));
+
+    // Local functions excluded
+    assert!(!names.contains(&"reset_player".to_string()));
+    assert!(!names.contains(&"check_bounds".to_string()));
+
+    // Imports
+    assert!(result
+        .metadata
+        .imports
+        .contains(&"love.physics".to_string()));
+    assert!(result
+        .metadata
+        .imports
+        .contains(&"love.graphics".to_string()));
+
+    // No dependencies
+    assert!(result.metadata.dependencies.is_empty());
+}
+
+// =============================================================================
+// Scala validation — Akka actor pattern
+// =============================================================================
+
+/// Akka actor pattern — typed actors with message handling.
+/// Inspired by Akka actor patterns.
+#[test]
+fn scala_real_akka_actor_pattern() {
+    let source = r#"package com.example.actors
+
+import akka.actor.Actor
+import akka.actor.Props
+import scala.collection.mutable
+
+case class ProcessMessage(data: String)
+case class ResultMessage(result: String)
+
+trait MessageHandler {
+  def handle(msg: Any): Unit
+}
+
+class DataActor extends Actor with MessageHandler {
+  private val buffer = mutable.ListBuffer.empty[String]
+
+  override def receive: Receive = {
+    case ProcessMessage(data) => sender() ! ResultMessage(data.toUpperCase)
+    case _ => ()
+  }
+
+  override def handle(msg: Any): Unit = ()
+  private def cleanup(): Unit = buffer.clear()
+}
+
+object DataActor {
+  def props: Props = Props(new DataActor)
+  val MAX_BUFFER: Int = 1000
+}
+"#;
+
+    let mut parser = ScalaParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Case classes (messages)
+    assert!(names.contains(&"ProcessMessage".to_string()));
+    assert!(names.contains(&"ResultMessage".to_string()));
+
+    // Trait
+    assert!(names.contains(&"MessageHandler".to_string()));
+
+    // Class
+    assert!(names.contains(&"DataActor".to_string()));
+
+    // Object
+    assert!(names.contains(&"DataActor".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"akka".to_string()));
+    assert!(result.metadata.imports.contains(&"scala".to_string()));
+
+    // Custom fields: case_classes
+    let fields = result.custom_fields.unwrap();
+    let cc = fields.get("case_classes").unwrap().as_array().unwrap();
+    assert_eq!(cc.len(), 2);
+}
+
+// =============================================================================
+// Scala validation — Spark job pattern
+// =============================================================================
+
+/// Spark job pattern — typical Spark data processing pipeline.
+/// Inspired by Apache Spark job structures.
+#[test]
+fn scala_real_spark_job_pattern() {
+    let source = r#"package com.example.spark
+
+import org.apache.spark.SparkConf
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.DataFrame
+
+case class JobConfig(
+  appName: String,
+  master: String,
+  inputPath: String,
+  outputPath: String
+)
+
+object SparkJob {
+  def main(args: Array[String]): Unit = {
+    val config = JobConfig("MyJob", "local[*]", args(0), args(1))
+    val spark = createSession(config)
+    val df = loadData(spark, config.inputPath)
+    val result = transformData(df)
+    saveData(result, config.outputPath)
+    spark.stop()
+  }
+
+  def createSession(config: JobConfig): SparkSession = {
+    SparkSession.builder()
+      .appName(config.appName)
+      .master(config.master)
+      .getOrCreate()
+  }
+
+  private def loadData(spark: SparkSession, path: String): DataFrame = {
+    spark.read.parquet(path)
+  }
+
+  private def saveData(df: DataFrame, path: String): Unit = {
+    df.write.parquet(path)
+  }
+}
+
+def transformData(df: DataFrame): DataFrame = df
+
+implicit val defaultConfig: JobConfig =
+  JobConfig("default", "local", "/input", "/output")
+"#;
+
+    let mut parser = ScalaParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Case class
+    assert!(names.contains(&"JobConfig".to_string()));
+
+    // Object
+    assert!(names.contains(&"SparkJob".to_string()));
+
+    // Top-level function
+    assert!(names.contains(&"transformData".to_string()));
+
+    // Implicit val
+    assert!(names.contains(&"defaultConfig".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"org".to_string()));
+
+    // Custom fields
+    let fields = result.custom_fields.unwrap();
+    assert!(fields.contains_key("case_classes"));
+    assert_eq!(fields.get("implicits").unwrap().as_u64().unwrap(), 1);
 }
