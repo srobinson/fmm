@@ -1,3 +1,4 @@
+use fmm::parser::builtin::c::CParser;
 use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
 use fmm::parser::builtin::go::GoParser;
@@ -555,4 +556,64 @@ fn php_enum_with_methods() {
         .metadata
         .export_names()
         .contains(&"label".to_string()));
+}
+
+// =============================================================================
+// C edge cases
+// =============================================================================
+
+#[test]
+fn c_empty_file() {
+    let mut parser = CParser::new().unwrap();
+    let result = parser.parse("").unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert!(result.metadata.imports.is_empty());
+    assert!(result.metadata.dependencies.is_empty());
+    assert_eq!(result.metadata.loc, 0);
+}
+
+#[test]
+fn c_syntax_errors() {
+    let mut parser = CParser::new().unwrap();
+    let source = "int {{{{ invalid syntax !@#$";
+    let result = parser.parse(source);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn c_no_exports() {
+    let mut parser = CParser::new().unwrap();
+    let source = "static int helper() { return 0; }\nstatic void internal() {}\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+}
+
+#[test]
+fn c_comments_only() {
+    let mut parser = CParser::new().unwrap();
+    let source = "/* Block comment */\n// Line comment\n/* Another block */\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert_eq!(result.metadata.loc, 3);
+}
+
+#[test]
+fn c_crlf_line_endings() {
+    let mut parser = CParser::new().unwrap();
+    let source = "#include <stdio.h>\r\nint main() { return 0; }\r\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.imports.contains(&"stdio.h".to_string()));
+    assert!(result.metadata.export_names().contains(&"main".to_string()));
+}
+
+#[test]
+fn c_header_only_macros() {
+    let mut parser = CParser::new().unwrap();
+    let source =
+        "#ifndef GUARD_H\n#define GUARD_H\n#define MAX 100\n#define VERSION \"1.0\"\n#endif\n";
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+    assert!(names.contains(&"GUARD_H".to_string()));
+    assert!(names.contains(&"MAX".to_string()));
+    assert!(names.contains(&"VERSION".to_string()));
 }

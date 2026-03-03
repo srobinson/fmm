@@ -1,3 +1,4 @@
+use fmm::parser::builtin::c::CParser;
 use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
 use fmm::parser::builtin::go::GoParser;
@@ -497,4 +498,91 @@ fn validate_php_fixture() {
     assert!(trait_names.contains(&"Loggable"));
 
     assert!(result.metadata.loc > 40);
+}
+
+#[test]
+fn validate_c_fixture() {
+    let source = include_str!("../fixtures/sample.c");
+
+    let mut parser = CParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Macros
+    assert!(names.contains(&"MAX_BUFFER_SIZE".to_string()));
+    assert!(names.contains(&"MIN".to_string()));
+    assert!(names.contains(&"API_VERSION".to_string()));
+
+    // Typedefs
+    assert!(names.contains(&"Callback".to_string()));
+    assert!(names.contains(&"HashValue".to_string()));
+
+    // Structs and enums
+    assert!(names.contains(&"Status".to_string()));
+    assert!(names.contains(&"Config".to_string()));
+    assert!(names.contains(&"Result".to_string()));
+
+    // Non-static functions (including pointer-returning ones)
+    assert!(names.contains(&"config_init".to_string()));
+    assert!(names.contains(&"process_data".to_string()));
+    assert!(names.contains(&"config_free".to_string()));
+    assert!(names.contains(&"transform".to_string()));
+    assert!(names.contains(&"get_buffer".to_string()));
+    assert!(names.contains(&"compute_hash".to_string()));
+
+    // Static functions should NOT be exported
+    assert!(!names.contains(&"validate_input".to_string()));
+    assert!(!names.contains(&"log_message".to_string()));
+
+    // System includes → imports
+    assert!(result.metadata.imports.contains(&"stdio.h".to_string()));
+    assert!(result.metadata.imports.contains(&"stdlib.h".to_string()));
+    assert!(result.metadata.imports.contains(&"string.h".to_string()));
+
+    // Local includes → dependencies
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"config.h".to_string()));
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"utils/helpers.h".to_string()));
+
+    // Custom fields: macros
+    let fields = result.custom_fields.expect("should have custom fields");
+    let macros = fields
+        .get("macros")
+        .expect("should have macros")
+        .as_array()
+        .unwrap();
+    let macro_names: Vec<&str> = macros.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(macro_names.contains(&"MAX_BUFFER_SIZE"));
+    assert!(macro_names.contains(&"MIN"));
+    assert!(macro_names.contains(&"API_VERSION"));
+
+    // Custom fields: typedefs
+    let typedefs = fields
+        .get("typedefs")
+        .expect("should have typedefs")
+        .as_array()
+        .unwrap();
+    let typedef_names: Vec<&str> = typedefs.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(typedef_names.contains(&"Callback"));
+    assert!(typedef_names.contains(&"HashValue"));
+
+    // LOC
+    assert!(result.metadata.loc > 40);
+
+    // Exports should be sorted by line number
+    let lines: Vec<usize> = result
+        .metadata
+        .exports
+        .iter()
+        .map(|e| e.start_line)
+        .collect();
+    let mut sorted = lines.clone();
+    sorted.sort();
+    assert_eq!(lines, sorted);
 }

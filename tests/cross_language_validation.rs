@@ -11,6 +11,7 @@
 //!
 //! Using inline snippets (not git clones) so tests are hermetic and CI-friendly.
 
+use fmm::parser::builtin::c::CParser;
 use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
 use fmm::parser::builtin::go::GoParser;
@@ -1448,4 +1449,177 @@ class Container implements ContainerInterface
     let traits_used = fields.get("traits_used").unwrap().as_array().unwrap();
     let tn: Vec<&str> = traits_used.iter().map(|v| v.as_str().unwrap()).collect();
     assert!(tn.contains(&"ContainerAwareTrait"));
+}
+
+// =============================================================================
+// C validation — Linux kernel style pattern
+// =============================================================================
+
+/// Linux kernel-style module with init/exit functions, static helpers, and macros.
+/// Pattern: public API functions + static internals + struct definitions.
+#[test]
+fn c_real_repo_linux_kernel_style_module() {
+    let source = r#"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "module.h"
+
+#define MODULE_NAME "mydriver"
+#define MODULE_VERSION 2
+
+struct device_info {
+    int id;
+    char name[64];
+    int status;
+};
+
+enum device_state {
+    DEV_INIT = 0,
+    DEV_RUNNING = 1,
+    DEV_STOPPED = 2
+};
+
+static int debug_level = 0;
+
+static void log_debug(const char *msg) {
+    if (debug_level > 0) {
+        fprintf(stderr, "[%s] %s\n", MODULE_NAME, msg);
+    }
+}
+
+int device_init(struct device_info *dev, const char *name) {
+    if (dev == NULL || name == NULL) return -1;
+    dev->id = 0;
+    strncpy(dev->name, name, sizeof(dev->name) - 1);
+    dev->status = DEV_INIT;
+    log_debug("Device initialized");
+    return 0;
+}
+
+int device_start(struct device_info *dev) {
+    if (dev == NULL) return -1;
+    dev->status = DEV_RUNNING;
+    return 0;
+}
+
+void device_cleanup(struct device_info *dev) {
+    if (dev != NULL) {
+        dev->status = DEV_STOPPED;
+        log_debug("Device cleaned up");
+    }
+}
+"#;
+
+    let mut parser = CParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+
+    // Public functions exported
+    assert!(names.contains(&"device_init".to_string()));
+    assert!(names.contains(&"device_start".to_string()));
+    assert!(names.contains(&"device_cleanup".to_string()));
+
+    // Static function NOT exported
+    assert!(!names.contains(&"log_debug".to_string()));
+
+    // Types exported
+    assert!(names.contains(&"device_info".to_string()));
+    assert!(names.contains(&"device_state".to_string()));
+
+    // Macros
+    assert!(names.contains(&"MODULE_NAME".to_string()));
+    assert!(names.contains(&"MODULE_VERSION".to_string()));
+
+    // System includes
+    assert!(result.metadata.imports.contains(&"stdio.h".to_string()));
+    assert!(result.metadata.imports.contains(&"stdlib.h".to_string()));
+
+    // Local dependency
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"module.h".to_string()));
+}
+
+// =============================================================================
+// C validation — embedded systems pattern
+// =============================================================================
+
+/// Embedded systems style with hardware register typedefs and ISR patterns.
+#[test]
+fn c_real_repo_embedded_systems_pattern() {
+    let source = r#"
+#include <stdint.h>
+#include <stdbool.h>
+#include "hal.h"
+#include "gpio.h"
+
+#define GPIO_BASE_ADDR 0x40020000
+#define GPIO_PIN_MASK(n) (1U << (n))
+#define MAX_PINS 16
+
+typedef uint32_t reg32_t;
+typedef void (*isr_handler_t)(void);
+
+struct gpio_config {
+    reg32_t mode;
+    reg32_t speed;
+    reg32_t pull;
+};
+
+static isr_handler_t handlers[MAX_PINS];
+
+static void default_handler(void) {
+    /* NOP */
+}
+
+void gpio_init(struct gpio_config *cfg) {
+    for (int i = 0; i < MAX_PINS; i++) {
+        handlers[i] = default_handler;
+    }
+}
+
+bool gpio_read_pin(int pin) {
+    if (pin < 0 || pin >= MAX_PINS) return false;
+    return true;
+}
+
+void gpio_set_handler(int pin, isr_handler_t handler) {
+    if (pin >= 0 && pin < MAX_PINS && handler != NULL) {
+        handlers[pin] = handler;
+    }
+}
+"#;
+
+    let mut parser = CParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+
+    // Public functions
+    assert!(names.contains(&"gpio_init".to_string()));
+    assert!(names.contains(&"gpio_read_pin".to_string()));
+    assert!(names.contains(&"gpio_set_handler".to_string()));
+
+    // Static NOT exported
+    assert!(!names.contains(&"default_handler".to_string()));
+
+    // Typedefs
+    assert!(names.contains(&"reg32_t".to_string()));
+    assert!(names.contains(&"isr_handler_t".to_string()));
+
+    // Struct
+    assert!(names.contains(&"gpio_config".to_string()));
+
+    // Macros
+    assert!(names.contains(&"GPIO_BASE_ADDR".to_string()));
+    assert!(names.contains(&"GPIO_PIN_MASK".to_string()));
+    assert!(names.contains(&"MAX_PINS".to_string()));
+
+    // Custom fields
+    let fields = result.custom_fields.unwrap();
+    let macros = fields.get("macros").unwrap().as_array().unwrap();
+    assert_eq!(macros.len(), 3);
+    let typedefs = fields.get("typedefs").unwrap().as_array().unwrap();
+    assert_eq!(typedefs.len(), 2);
 }

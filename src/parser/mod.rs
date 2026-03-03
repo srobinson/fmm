@@ -140,6 +140,10 @@ impl ParserRegistry {
         // PHP
         self.register(&["php"], || Ok(Box::new(builtin::php::PhpParser::new()?)));
         self.register_language_id(&["php"], "php");
+
+        // C
+        self.register(&["c", "h"], || Ok(Box::new(builtin::c::CParser::new()?)));
+        self.register_language_id(&["c", "h"], "c");
     }
 
     fn register_language_id(&mut self, extensions: &[&str], language_id: &'static str) {
@@ -203,6 +207,8 @@ mod tests {
         assert!(registry.has_parser("cs"));
         assert!(registry.has_parser("rb"));
         assert!(registry.has_parser("php"));
+        assert!(registry.has_parser("c"));
+        assert!(registry.has_parser("h"));
     }
 
     #[test]
@@ -217,13 +223,15 @@ mod tests {
         assert_eq!(registry.language_id_for("cs"), Some("csharp"));
         assert_eq!(registry.language_id_for("rb"), Some("ruby"));
         assert_eq!(registry.language_id_for("php"), Some("php"));
+        assert_eq!(registry.language_id_for("c"), Some("c"));
+        assert_eq!(registry.language_id_for("h"), Some("c"));
         assert_eq!(registry.language_id_for("zig"), None);
     }
 
     #[test]
     fn registry_returns_error_for_unknown_extension() {
         let registry = ParserRegistry::with_builtins();
-        assert!(registry.get_parser("zig").is_err());
+        assert!(registry.get_parser("unknown_ext").is_err());
     }
 
     #[test]
