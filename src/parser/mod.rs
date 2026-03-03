@@ -136,6 +136,10 @@ impl ParserRegistry {
         // Ruby
         self.register(&["rb"], || Ok(Box::new(builtin::ruby::RubyParser::new()?)));
         self.register_language_id(&["rb"], "ruby");
+
+        // PHP
+        self.register(&["php"], || Ok(Box::new(builtin::php::PhpParser::new()?)));
+        self.register_language_id(&["php"], "php");
     }
 
     fn register_language_id(&mut self, extensions: &[&str], language_id: &'static str) {
@@ -198,6 +202,7 @@ mod tests {
         assert!(registry.has_parser("hpp"));
         assert!(registry.has_parser("cs"));
         assert!(registry.has_parser("rb"));
+        assert!(registry.has_parser("php"));
     }
 
     #[test]
@@ -211,6 +216,7 @@ mod tests {
         assert_eq!(registry.language_id_for("cpp"), Some("cpp"));
         assert_eq!(registry.language_id_for("cs"), Some("csharp"));
         assert_eq!(registry.language_id_for("rb"), Some("ruby"));
+        assert_eq!(registry.language_id_for("php"), Some("php"));
         assert_eq!(registry.language_id_for("zig"), None);
     }
 

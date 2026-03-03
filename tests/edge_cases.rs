@@ -2,6 +2,7 @@ use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
 use fmm::parser::builtin::go::GoParser;
 use fmm::parser::builtin::java::JavaParser;
+use fmm::parser::builtin::php::PhpParser;
 use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::ruby::RubyParser;
 use fmm::parser::builtin::rust::RustParser;
@@ -486,4 +487,72 @@ fn typescript_default_identifier_deduplicates_with_named() {
     let source = "export { Component };\nexport default Component;";
     let result = parser.parse(source).unwrap();
     assert_eq!(result.metadata.export_names(), vec!["Component"]);
+}
+
+// =============================================================================
+// PHP edge cases
+// =============================================================================
+
+#[test]
+fn php_empty_file() {
+    let mut parser = PhpParser::new().unwrap();
+    let result = parser.parse("").unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert!(result.metadata.imports.is_empty());
+    assert!(result.metadata.dependencies.is_empty());
+    assert_eq!(result.metadata.loc, 0);
+}
+
+#[test]
+fn php_syntax_errors() {
+    let mut parser = PhpParser::new().unwrap();
+    let source = "<?php\nclass {{{{ invalid syntax !@#$";
+    let result = parser.parse(source);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn php_no_exports() {
+    let mut parser = PhpParser::new().unwrap();
+    // PHP file with only private/protected members
+    let source =
+        "<?php\nclass Foo {\n    private function bar() {}\n    protected function baz() {}\n}\n";
+    let result = parser.parse(source).unwrap();
+    // Class itself is still exported, but private/protected methods are not
+    assert!(result.metadata.export_names().contains(&"Foo".to_string()));
+    assert!(!result.metadata.export_names().contains(&"bar".to_string()));
+    assert!(!result.metadata.export_names().contains(&"baz".to_string()));
+}
+
+#[test]
+fn php_comments_only() {
+    let mut parser = PhpParser::new().unwrap();
+    let source = "<?php\n// Just a comment\n/* Block comment */\n/** Docblock */\n";
+    let result = parser.parse(source).unwrap();
+    // No classes/functions/constants
+    assert!(result.metadata.exports.is_empty());
+}
+
+#[test]
+fn php_crlf_line_endings() {
+    let mut parser = PhpParser::new().unwrap();
+    let source = "<?php\r\nclass Foo {}\r\nfunction bar() {}\r\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.export_names().contains(&"Foo".to_string()));
+    assert!(result.metadata.export_names().contains(&"bar".to_string()));
+}
+
+#[test]
+fn php_enum_with_methods() {
+    let mut parser = PhpParser::new().unwrap();
+    let source = "<?php\nenum Color {\n    case Red;\n    case Blue;\n    public function label(): string { return $this->name; }\n}\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Color".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"label".to_string()));
 }

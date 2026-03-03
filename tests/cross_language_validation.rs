@@ -15,6 +15,7 @@ use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
 use fmm::parser::builtin::go::GoParser;
 use fmm::parser::builtin::java::JavaParser;
+use fmm::parser::builtin::php::PhpParser;
 use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::ruby::RubyParser;
 use fmm::parser::builtin::rust::RustParser;
@@ -1269,4 +1270,182 @@ end
     let mixin_names: Vec<&str> = mixins.iter().map(|v| v.as_str().unwrap()).collect();
     assert!(mixin_names.contains(&"Loggable"));
     assert!(mixin_names.contains(&"Configurable"));
+}
+
+// =============================================================================
+// PHP validation — Laravel-style patterns
+// =============================================================================
+
+/// Laravel controller pattern with dependency injection and middleware
+#[test]
+fn php_real_repo_laravel_controller() {
+    let source = r#"<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Post;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+
+class PostController
+{
+    public function index(): JsonResponse
+    {
+        $posts = Post::all();
+        return response()->json($posts);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'body' => 'required|string',
+        ]);
+        $post = Post::create($validated);
+        return response()->json($post, 201);
+    }
+
+    public function show(Post $post): JsonResponse
+    {
+        return response()->json($post);
+    }
+
+    private function authorize(Request $request): bool
+    {
+        return $request->user()->can('manage-posts');
+    }
+}
+"#;
+    let mut parser = PhpParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    // Class exported
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"PostController".to_string()));
+    // Public methods exported
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"index".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"store".to_string()));
+    assert!(result.metadata.export_names().contains(&"show".to_string()));
+    // Private method NOT exported
+    assert!(!result
+        .metadata
+        .export_names()
+        .contains(&"authorize".to_string()));
+
+    // Namespace imports
+    assert!(result.metadata.imports.contains(&"App".to_string()));
+    assert!(result.metadata.imports.contains(&"Illuminate".to_string()));
+
+    // Namespace custom field
+    let fields = result.custom_fields.unwrap();
+    let namespaces = fields.get("namespaces").unwrap().as_array().unwrap();
+    let ns: Vec<&str> = namespaces.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(ns.iter().any(|n| n.contains("Controllers")));
+}
+
+/// Composer package pattern with interfaces and traits
+#[test]
+fn php_real_repo_composer_package() {
+    let source = r#"<?php
+
+namespace League\Container;
+
+use League\Container\Definition\DefinitionInterface;
+
+interface ContainerInterface
+{
+    public function get(string $id): mixed;
+    public function has(string $id): bool;
+}
+
+trait ContainerAwareTrait
+{
+    protected ?ContainerInterface $container = null;
+
+    public function setContainer(ContainerInterface $container): self
+    {
+        $this->container = $container;
+        return $this;
+    }
+
+    public function getContainer(): ContainerInterface
+    {
+        return $this->container;
+    }
+}
+
+class Container implements ContainerInterface
+{
+    use ContainerAwareTrait;
+
+    public function get(string $id): mixed
+    {
+        return $this->resolve($id);
+    }
+
+    public function has(string $id): bool
+    {
+        return isset($this->definitions[$id]);
+    }
+
+    public function add(string $id, mixed $concrete = null): DefinitionInterface
+    {
+        return $this->definitions[$id] = new Definition($id, $concrete);
+    }
+
+    private function resolve(string $id): mixed
+    {
+        return $this->definitions[$id]->resolve();
+    }
+}
+"#;
+    let mut parser = PhpParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    // Types exported
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"ContainerInterface".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"ContainerAwareTrait".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Container".to_string()));
+
+    // Public methods
+    assert!(result.metadata.export_names().contains(&"get".to_string()));
+    assert!(result.metadata.export_names().contains(&"has".to_string()));
+    assert!(result.metadata.export_names().contains(&"add".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"setContainer".to_string()));
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"getContainer".to_string()));
+
+    // Private NOT exported
+    assert!(!result
+        .metadata
+        .export_names()
+        .contains(&"resolve".to_string()));
+
+    // Trait use inside class
+    let fields = result.custom_fields.unwrap();
+    let traits_used = fields.get("traits_used").unwrap().as_array().unwrap();
+    let tn: Vec<&str> = traits_used.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(tn.contains(&"ContainerAwareTrait"));
 }

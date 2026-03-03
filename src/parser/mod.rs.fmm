@@ -1,5 +1,5 @@
 ---
-file: src/parser/mod.rs
+file: mod.rs
 fmm: v0.3
 exports:
   builtin: [1, 1]
@@ -12,12 +12,12 @@ exports:
   ParserRegistry: [61, 64]
   with_builtins: [75, 79]
   register: [82, 94]
-  language_id_for: [148, 150]
-  get_parser: [153, 159]
-  has_parser: [163, 165]
-  extensions: [169, 173]
+  language_id_for: [152, 154]
+  get_parser: [157, 163]
+  has_parser: [167, 169]
+  extensions: [173, 177]
 imports: [anyhow, serde]
-loc: 277
+loc: 283
 modified: 2026-03-03
 rust:
   derives: [Clone, Debug, Deserialize, Eq, PartialEq, Serialize]
