@@ -246,38 +246,41 @@ pub enum Commands {
     /// Set up config, Claude skill, and MCP server
     #[command(
         long_about = "Set up fmm in the current project.\n\n\
-            Creates .fmmrc.json config, installs the Claude Code skill for sidecar-aware \
-            navigation, and configures the MCP server in .mcp.json. Run with no flags for \
-            the full interactive setup, or use flags to install individual components.",
+            Creates .fmmrc.json config and configures the MCP server in .claude/fmm.local.json. \
+            The Claude Code skill is opt-in via --skill (avoid creating a project-level \
+            .claude/ directory which overrides global plugin config). \
+            Run with no flags for the standard setup, or use flags to install individual components.",
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm init</bold>                 <dim># Full interactive setup</dim>
-  <dim>$</dim> <bold>fmm init --all</bold>            <dim># Non-interactive — install everything</dim>
+  <dim>$</dim> <bold>fmm init</bold>                 <dim># Config + MCP + generate sidecars</dim>
+  <dim>$</dim> <bold>fmm init --skill</bold>          <dim># Also install Claude Code skill</dim>
   <dim>$</dim> <bold>fmm init --mcp</bold>            <dim># MCP server config only</dim>"#),
         after_long_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm init</bold>                           <dim># Full interactive setup</dim>
-  <dim>$</dim> <bold>fmm init --all</bold>                      <dim># Non-interactive — install everything</dim>
-  <dim>$</dim> <bold>fmm init --skill</bold>                    <dim># Claude Code navigation skill only</dim>
+  <dim>$</dim> <bold>fmm init</bold>                           <dim># Config + MCP + generate sidecars</dim>
+  <dim>$</dim> <bold>fmm init --skill</bold>                    <dim># Also install Claude Code skill (.claude/)</dim>
+  <dim>$</dim> <bold>fmm init --all</bold>                      <dim># Everything including skill</dim>
   <dim>$</dim> <bold>fmm init --mcp</bold>                      <dim># MCP server config only</dim>
   <dim>$</dim> <bold>fmm init --all --no-generate</bold>        <dim># Config files only, skip sidecar gen</dim>
 
 <bold><underline>What gets created</underline></bold>
-  <bold>.fmmrc.json</bold>                        Project configuration
-  <bold>.claude/skills/fmm-navigate/SKILL.md</bold>  Claude Code navigation skill
-  <bold>.mcp.json</bold>                          MCP server configuration
+  <bold>.fmmrc.json</bold>                           Project configuration
+  <bold>.claude/fmm.local.json</bold>                 MCP server config (gitignored, local scope)
+  <bold>.claude/skills/fmm-navigate/SKILL.md</bold>   Claude Code skill (opt-in via --skill)
 
 <bold><underline>Notes</underline></bold>
   Safe to re-run — existing files are not overwritten.
-  The Claude skill teaches Claude to read sidecars before source files.
+  MCP config uses .claude/fmm.local.json — gitignored, per-user, no merge conflicts.
+  The --skill flag creates .claude/skills/ which may override global plugin skills.
+  If using the helioy plugin globally, skip --skill to inherit skills from the plugin.
   The MCP config enables 7 tools for O(1) symbol lookup and navigation."#),
     )]
     Init {
-        /// Install Claude Code skill only (.claude/skills/fmm-navigate.md)
+        /// Install Claude Code skill (.claude/skills/fmm-navigate.md) — opt-in, creates project .claude/ dir
         #[arg(long)]
         skill: bool,
 
-        /// Install MCP server config only (.mcp.json)
+        /// Install MCP server config only (.claude/fmm.local.json)
         #[arg(long)]
         mcp: bool,
 
@@ -407,10 +410,10 @@ pub enum Commands {
   <bold>fmm_search</bold>           Multi-criteria AND queries
 
 <bold><underline>Setup</underline></bold>
-  <dim>$</dim> <bold>fmm init --mcp</bold>                      <dim># Add to .mcp.json</dim>
+  <dim>$</dim> <bold>fmm init --mcp</bold>                      <dim># Add to .claude/fmm.local.json</dim>
 
-  <dim>Or manually add to .mcp.json:</dim>
-  <dim>{ "mcpServers": { "fmm": { "command": "npx", "args": ["frontmatter-matters", "mcp"] } } }</dim>
+  <dim>Or manually add to .claude/fmm.local.json:</dim>
+  <dim>{ "mcpServers": { "fmm": { "command": "fmm", "args": ["mcp"] } } }</dim>
 
 <bold><underline>Notes</underline></bold>
   Communicates over stdio using the MCP JSON-RPC protocol.

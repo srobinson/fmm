@@ -1,5 +1,5 @@
 ---
-file: cli_integration.rs
+file: tests/cli_integration.rs
 fmm: v0.3
 imports: [tempfile]
 loc: 300

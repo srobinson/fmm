@@ -9,7 +9,7 @@ use super::collect_files;
 use super::resolve_root;
 use super::sidecar;
 
-const SKILL_CONTENT: &str = include_str!("../../.claude/skills/fmm-navigate/SKILL.md");
+const SKILL_CONTENT: &str = include_str!("../../templates/SKILL.md");
 
 pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> {
     println!(
@@ -24,8 +24,8 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
     let full_setup = !specific || all;
 
     let install_config = full_setup;
-    let install_skill = skill || full_setup;
-    let install_mcp = mcp || full_setup;
+    let install_skill = skill || all;
+    let install_mcp = mcp || all;
 
     if install_config {
         init_config()?;
@@ -110,7 +110,7 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
         println!("  Skill:    .claude/skills/fmm-navigate/SKILL.md");
     }
     if install_mcp {
-        println!("  MCP:      .mcp.json");
+        println!("  MCP:      .claude/fmm.local.json");
     }
 
     if no_generate || specific {
@@ -175,9 +175,21 @@ pub fn init_skill() -> Result<()> {
 }
 
 pub fn init_mcp_config() -> Result<()> {
-    let mcp_path = Path::new(".mcp.json");
+    let claude_dir = Path::new(".claude");
+    let config_path = claude_dir.join("fmm.local.json");
 
-    let mcp_config = serde_json::json!({
+    // Ensure .claude/ dir exists
+    std::fs::create_dir_all(claude_dir).context("Failed to create .claude/ directory")?;
+
+    if config_path.exists() {
+        println!(
+            "{} .claude/fmm.local.json already exists (skipping)",
+            "!".yellow()
+        );
+        return Ok(());
+    }
+
+    let config = serde_json::json!({
         "mcpServers": {
             "fmm": {
                 "command": "fmm",
@@ -186,45 +198,12 @@ pub fn init_mcp_config() -> Result<()> {
         }
     });
 
-    if mcp_path.exists() {
-        let existing =
-            std::fs::read_to_string(mcp_path).context("Failed to read existing .mcp.json")?;
-        if let Ok(mut existing_json) = serde_json::from_str::<serde_json::Value>(&existing) {
-            if let Some(servers) = existing_json.get("mcpServers").and_then(|s| s.as_object()) {
-                if servers.contains_key("fmm") {
-                    println!(
-                        "{} .mcp.json already has fmm server configured (skipping)",
-                        "!".yellow()
-                    );
-                    return Ok(());
-                }
-            }
-            if let Some(obj) = existing_json.as_object_mut() {
-                let servers = obj
-                    .entry("mcpServers")
-                    .or_insert_with(|| serde_json::json!({}));
-                if let Some(servers_obj) = servers.as_object_mut() {
-                    servers_obj.insert(
-                        "fmm".to_string(),
-                        serde_json::json!({
-                            "command": "fmm",
-                            "args": ["mcp"]
-                        }),
-                    );
-                }
-            }
-            let json = serde_json::to_string_pretty(&existing_json)?;
-            std::fs::write(mcp_path, format!("{}\n", json)).context("Failed to write .mcp.json")?;
-            println!("{} Added fmm server to existing .mcp.json", "✓".green());
-            return Ok(());
-        }
-    }
-
-    let json = serde_json::to_string_pretty(&mcp_config)?;
-    std::fs::write(mcp_path, format!("{}\n", json)).context("Failed to write .mcp.json")?;
+    let json = serde_json::to_string_pretty(&config)?;
+    std::fs::write(&config_path, format!("{}\n", json))
+        .context("Failed to write .claude/fmm.local.json")?;
 
     println!(
-        "{} Created .mcp.json with fmm server configuration",
+        "{} Created .claude/fmm.local.json with MCP server configuration",
         "✓".green()
     );
     Ok(())
