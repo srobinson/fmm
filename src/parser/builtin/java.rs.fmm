@@ -1,0 +1,12 @@
+---
+file: src/parser/builtin/java.rs
+fmm: v0.3
+exports:
+  JavaParser: [9, 17]
+  new: [20, 67]
+imports: [anyhow, streaming_iterator, tree_sitter]
+dependencies: [crate, super]
+loc: 324
+modified: 2026-03-03
+rust:
+  lifetimes: ['''static']

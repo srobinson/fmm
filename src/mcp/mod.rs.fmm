@@ -1,0 +1,17 @@
+---
+file: src/mcp/mod.rs
+fmm: v0.3
+exports:
+  JsonRpcError: [74, 79]
+  McpServer: [89, 92]
+  call_tool: [100, 917]
+  new: [100, 917]
+  run: [100, 917]
+  with_root: [100, 917]
+imports: [anyhow, serde, serde_json]
+dependencies: [crate]
+loc: 1041
+modified: 2026-03-03
+rust:
+  derives: [Debug, Deserialize, Serialize]
+  trait_impls: [Default for McpServer]

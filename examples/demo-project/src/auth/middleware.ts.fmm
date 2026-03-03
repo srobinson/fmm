@@ -1,7 +1,10 @@
 ---
-file: src/auth/middleware.ts
-exports: [AuthenticatedRequest, requireAuth]
+file: examples/demo-project/src/auth/middleware.ts
+fmm: v0.3
+exports:
+  AuthenticatedRequest: [5, 8]
+  requireAuth: [10, 26]
 imports: [express]
-dependencies: [./session, ../config]
-loc: 27
----
+dependencies: [../config, ./session]
+loc: 26
+modified: 2026-03-03

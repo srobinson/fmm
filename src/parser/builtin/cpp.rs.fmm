@@ -1,0 +1,13 @@
+---
+file: src/parser/builtin/cpp.rs
+fmm: v0.3
+exports:
+  CppParser: [8, 18]
+  new: [20, 150]
+imports: [anyhow, streaming_iterator, tree_sitter]
+dependencies: [crate, super]
+loc: 317
+modified: 2026-03-03
+rust:
+  lifetimes: ['''static']
+  trait_impls: [Parser for CppParser]

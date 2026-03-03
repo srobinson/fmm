@@ -1,0 +1,13 @@
+---
+file: src/lib.rs
+fmm: v0.3
+exports:
+  cli: [1, 1]
+  config: [2, 2]
+  extractor: [3, 3]
+  formatter: [4, 4]
+  manifest: [5, 5]
+  mcp: [6, 6]
+  parser: [7, 7]
+loc: 7
+modified: 2026-03-03

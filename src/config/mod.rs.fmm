@@ -1,0 +1,14 @@
+---
+file: src/config/mod.rs
+fmm: v0.3
+exports:
+  Config: [7, 11]
+  is_supported_language: [21, 40]
+  load: [21, 40]
+  load_from_dir: [21, 40]
+imports: [anyhow, serde]
+loc: 178
+modified: 2026-03-03
+rust:
+  derives: [Clone, Debug, Deserialize, Serialize]
+  trait_impls: [Default for Config]

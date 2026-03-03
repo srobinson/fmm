@@ -1,7 +1,11 @@
 ---
-file: src/api/errors.ts
-exports: [AppError, notFound, unauthorized, errorHandler]
+file: examples/demo-project/src/api/errors.ts
+fmm: v0.3
+exports:
+  AppError: [3, 12]
+  errorHandler: [22, 28]
+  notFound: [14, 16]
+  unauthorized: [18, 20]
 imports: [express]
-dependencies: []
-loc: 29
----
+loc: 28
+modified: 2026-03-03

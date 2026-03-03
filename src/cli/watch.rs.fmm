@@ -1,0 +1,9 @@
+---
+file: watch.rs
+fmm: v0.3
+exports:
+  watch: [16, 80]
+imports: [anyhow, colored, notify, notify_debouncer_full]
+dependencies: [crate, super]
+loc: 413
+modified: 2026-03-03

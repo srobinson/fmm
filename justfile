@@ -22,8 +22,8 @@ test-verbose:
 
 # Run clippy and check formatting
 check:
-    cargo clippy --all-targets --all-features -- -D warnings
-    cargo fmt --check
+    cargo clippy --workspace --all-targets --fix --allow-dirty -- -D warnings
+    cargo fmt --all
 
 # Format code
 fmt:

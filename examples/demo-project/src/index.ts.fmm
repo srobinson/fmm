@@ -1,7 +1,7 @@
 ---
-file: src/index.ts
-exports: []
+file: examples/demo-project/src/index.ts
+fmm: v0.3
 imports: [express]
-dependencies: [./config, ./db/client, ./api/routes, ./api/errors]
+dependencies: [./api/errors, ./api/routes, ./config, ./db/client]
 loc: 21
----
+modified: 2026-03-03

@@ -5,12 +5,12 @@ use rayon::prelude::*;
 use crate::config::Config;
 use crate::extractor::{sidecar_path_for, FileProcessor};
 
-use super::{collect_files, resolve_root};
+use super::{collect_files_multi, resolve_root_multi};
 
-pub fn generate(path: &str, dry_run: bool) -> Result<()> {
+pub fn generate(paths: &[String], dry_run: bool) -> Result<()> {
     let config = Config::load().unwrap_or_default();
-    let files = collect_files(path, &config)?;
-    let root = resolve_root(path)?;
+    let files = collect_files_multi(paths, &config)?;
+    let root = resolve_root_multi(paths)?;
 
     if files.is_empty() {
         println!("{} No supported source files found", "!".yellow());
@@ -86,10 +86,10 @@ pub fn generate(path: &str, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn validate(path: &str) -> Result<()> {
+pub fn validate(paths: &[String]) -> Result<()> {
     let config = Config::load().unwrap_or_default();
-    let files = collect_files(path, &config)?;
-    let root = resolve_root(path)?;
+    let files = collect_files_multi(paths, &config)?;
+    let root = resolve_root_multi(paths)?;
 
     if files.is_empty() {
         println!("{} No supported source files found", "!".yellow());
@@ -141,10 +141,10 @@ pub fn validate(path: &str) -> Result<()> {
     }
 }
 
-pub fn clean(path: &str, dry_run: bool) -> Result<()> {
+pub fn clean(paths: &[String], dry_run: bool) -> Result<()> {
     let config = Config::load().unwrap_or_default();
-    let files = collect_files(path, &config)?;
-    let root = resolve_root(path)?;
+    let files = collect_files_multi(paths, &config)?;
+    let root = resolve_root_multi(paths)?;
 
     let processor = FileProcessor::new(&root);
     let results: Vec<_> = files

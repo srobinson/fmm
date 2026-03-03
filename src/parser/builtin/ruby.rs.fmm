@@ -1,0 +1,13 @@
+---
+file: src/parser/builtin/ruby.rs
+fmm: v0.3
+exports:
+  RubyParser: [8, 15]
+  new: [17, 157]
+imports: [anyhow, streaming_iterator, tree_sitter]
+dependencies: [crate, super]
+loc: 326
+modified: 2026-03-03
+rust:
+  lifetimes: ['''static']
+  trait_impls: [Parser for RubyParser]

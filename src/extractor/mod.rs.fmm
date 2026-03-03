@@ -1,0 +1,15 @@
+---
+file: src/extractor/mod.rs
+fmm: v0.3
+exports:
+  FileProcessor: [17, 20]
+  clean: [29, 137]
+  extract_metadata: [29, 137]
+  new: [29, 137]
+  process: [29, 137]
+  sidecar_path_for: [23, 27]
+  validate: [29, 137]
+imports: [anyhow]
+dependencies: [crate]
+loc: 175
+modified: 2026-03-03

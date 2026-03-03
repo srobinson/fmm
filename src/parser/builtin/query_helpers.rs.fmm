@@ -1,0 +1,12 @@
+---
+file: src/parser/builtin/query_helpers.rs
+fmm: v0.3
+exports:
+  collect_matches: [7, 25]
+  collect_matches_with_lines: [65, 91]
+  collect_named_matches: [29, 52]
+  top_level_ancestor: [54, 63]
+imports: [streaming_iterator, tree_sitter]
+dependencies: [crate]
+loc: 211
+modified: 2026-03-03

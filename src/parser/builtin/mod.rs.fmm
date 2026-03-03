@@ -1,0 +1,15 @@
+---
+file: src/parser/builtin/mod.rs
+fmm: v0.3
+exports:
+  cpp: [1, 1]
+  csharp: [2, 2]
+  go: [3, 3]
+  java: [4, 4]
+  python: [5, 5]
+  query_helpers: [6, 6]
+  ruby: [7, 7]
+  rust: [8, 8]
+  typescript: [9, 9]
+loc: 9
+modified: 2026-03-03

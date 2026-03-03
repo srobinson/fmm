@@ -59,7 +59,7 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
             );
 
             println!("{}", "Generating sidecars...".green().bold());
-            sidecar::generate(".", false)?;
+            sidecar::generate(&[".".to_string()], false)?;
 
             // Show one sample sidecar
             let root = resolve_root(".")?;

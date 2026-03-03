@@ -1,0 +1,11 @@
+---
+file: init.rs
+fmm: v0.3
+exports:
+  init: [14, 129]
+  init_mcp_config: [177, 231]
+  init_skill: [149, 175]
+imports: [anyhow, colored]
+dependencies: [crate, super]
+loc: 231
+modified: 2026-03-03

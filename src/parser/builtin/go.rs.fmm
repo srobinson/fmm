@@ -1,0 +1,13 @@
+---
+file: src/parser/builtin/go.rs
+fmm: v0.3
+exports:
+  GoParser: [8, 15]
+  new: [17, 132]
+imports: [anyhow, streaming_iterator, tree_sitter]
+dependencies: [crate, super]
+loc: 284
+modified: 2026-03-03
+rust:
+  lifetimes: ['''static']
+  trait_impls: [Parser for GoParser]

@@ -22,7 +22,7 @@ pub fn watch(path: &str, debounce_ms: u64) -> Result<()> {
 
     // Initial generate pass
     println!("{}", "Running initial generate pass...".green().bold());
-    super::generate(path, false)?;
+    super::generate(&[path.to_string()], false)?;
 
     let file_count = collect_files(path, &config)?.len();
     println!("\nWatching {} files in {} ...\n", file_count, path);

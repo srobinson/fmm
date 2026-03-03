@@ -1,0 +1,25 @@
+---
+file: src/manifest/mod.rs
+fmm: v0.3
+exports:
+  ExportLines: [30, 33]
+  ExportLocation: [70, 73]
+  FileEntry: [37, 45]
+  Manifest: [79, 88]
+  add_file: [90, 276]
+  file_count: [90, 276]
+  file_paths: [90, 276]
+  get_file: [90, 276]
+  has_file: [90, 276]
+  load_from_sidecars: [90, 276]
+  new: [90, 276]
+  remove_file: [90, 276]
+  touch: [90, 276]
+  validate_file: [90, 276]
+imports: [anyhow, chrono, ignore, serde]
+dependencies: [crate]
+loc: 604
+modified: 2026-03-03
+rust:
+  derives: [Clone, Debug, Deserialize, Eq, PartialEq, Serialize]
+  trait_impls: [Default for Manifest]

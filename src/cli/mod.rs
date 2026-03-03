@@ -121,12 +121,14 @@ pub enum Commands {
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm generate</bold>             <dim># All files in current directory</dim>
   <dim>$</dim> <bold>fmm generate src/</bold>         <dim># Specific directory only</dim>
+  <dim>$</dim> <bold>fmm generate src/ lib/</bold>    <dim># Multiple directories</dim>
   <dim>$</dim> <bold>fmm generate -n</bold>           <dim># Dry run — preview without writing</dim>"#),
         after_long_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm generate</bold>                       <dim># All files in current directory</dim>
   <dim>$</dim> <bold>fmm generate src/</bold>                   <dim># Specific directory only</dim>
-  <dim>$</dim> <bold>fmm generate src/auth.ts</bold>            <dim># Single file</dim>
+  <dim>$</dim> <bold>fmm generate src/ lib/</bold>              <dim># Multiple directories</dim>
+  <dim>$</dim> <bold>fmm generate src/auth.ts src/db.ts</bold>  <dim># Multiple files</dim>
   <dim>$</dim> <bold>fmm generate -n</bold>                     <dim># Dry run — preview without writing</dim>
   <dim>$</dim> <bold>fmm generate && fmm validate</bold>        <dim># Generate then verify</dim>
 
@@ -137,9 +139,9 @@ pub enum Commands {
   Supports: TypeScript, JavaScript, Python, Rust, Go, Java, C++, C#, Ruby."#),
     )]
     Generate {
-        /// Path to file or directory
+        /// Paths to files or directories (defaults to current directory)
         #[arg(default_value = ".")]
-        path: String,
+        paths: Vec<String>,
 
         /// Show what would be created/updated without writing files
         #[arg(short = 'n', long)]
@@ -175,9 +177,9 @@ pub enum Commands {
   Run 'fmm generate' to create missing or update stale sidecars."#),
     )]
     Validate {
-        /// Path to file or directory
+        /// Paths to files or directories (defaults to current directory)
         #[arg(default_value = ".")]
-        path: String,
+        paths: Vec<String>,
     },
 
     /// Remove all .fmm sidecar files
@@ -199,9 +201,9 @@ pub enum Commands {
   Safe to re-run: 'fmm generate' recreates everything from source."#),
     )]
     Clean {
-        /// Path to file or directory
+        /// Paths to files or directories (defaults to current directory)
         #[arg(default_value = ".")]
-        path: String,
+        paths: Vec<String>,
 
         /// Show what would be removed without deleting files
         #[arg(short = 'n', long)]
@@ -490,6 +492,40 @@ fn collect_files(path: &str, config: &Config) -> Result<Vec<PathBuf>> {
         .collect();
 
     Ok(files)
+}
+
+fn collect_files_multi(paths: &[String], config: &Config) -> Result<Vec<PathBuf>> {
+    let mut all_files = Vec::new();
+    for path in paths {
+        all_files.extend(collect_files(path, config)?);
+    }
+    all_files.sort();
+    all_files.dedup();
+    Ok(all_files)
+}
+
+/// Resolve root from multiple paths: common ancestor if all exist, else CWD.
+fn resolve_root_multi(paths: &[String]) -> Result<PathBuf> {
+    if paths.len() == 1 {
+        return resolve_root(&paths[0]);
+    }
+
+    let resolved: Vec<PathBuf> = paths.iter().filter_map(|p| resolve_root(p).ok()).collect();
+
+    if resolved.is_empty() {
+        return std::env::current_dir().context("Failed to get current directory");
+    }
+
+    // Find common ancestor
+    let mut ancestor = resolved[0].clone();
+    for path in &resolved[1..] {
+        while !path.starts_with(&ancestor) {
+            if !ancestor.pop() {
+                return std::env::current_dir().context("Failed to get current directory");
+            }
+        }
+    }
+    Ok(ancestor)
 }
 
 #[cfg(test)]

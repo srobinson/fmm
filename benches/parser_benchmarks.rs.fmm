@@ -1,0 +1,6 @@
+---
+file: benches/parser_benchmarks.rs
+fmm: v0.3
+imports: [criterion, fmm]
+loc: 308
+modified: 2026-03-03

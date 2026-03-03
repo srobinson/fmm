@@ -1,0 +1,25 @@
+---
+file: src/parser/mod.rs
+fmm: v0.3
+exports:
+  ExportEntry: [9, 13]
+  Metadata: [26, 31]
+  ParseResult: [42, 45]
+  Parser: [47, 56]
+  ParserRegistry: [61, 64]
+  builtin: [1, 1]
+  export_names: [33, 38]
+  extensions: [66, 174]
+  get_parser: [66, 174]
+  has_parser: [66, 174]
+  language_id_for: [66, 174]
+  new: [15, 23]
+  register: [66, 174]
+  with_builtins: [66, 174]
+imports: [anyhow, serde]
+loc: 277
+modified: 2026-03-03
+rust:
+  derives: [Clone, Debug, Deserialize, Eq, PartialEq, Serialize]
+  lifetimes: ['''static']
+  trait_impls: [Default for ParserRegistry]

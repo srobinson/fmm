@@ -67,17 +67,17 @@ fn run() -> anyhow::Result<()> {
     };
 
     match command {
-        Commands::Generate { path, dry_run } => {
+        Commands::Generate { paths, dry_run } => {
             println!("{}", "Generating sidecars...".green().bold());
-            cli::generate(&path, dry_run)?;
+            cli::generate(&paths, dry_run)?;
         }
-        Commands::Validate { path } => {
+        Commands::Validate { paths } => {
             println!("{}", "Validating sidecars...".green().bold());
-            cli::validate(&path)?;
+            cli::validate(&paths)?;
         }
-        Commands::Clean { path, dry_run } => {
+        Commands::Clean { paths, dry_run } => {
             println!("{}", "Cleaning sidecars...".green().bold());
-            cli::clean(&path, dry_run)?;
+            cli::clean(&paths, dry_run)?;
         }
         Commands::Watch { path, debounce } => {
             cli::watch(&path, debounce)?;

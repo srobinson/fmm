@@ -1,0 +1,12 @@
+---
+file: src/cli/search.rs
+fmm: v0.3
+exports:
+  search: [51, 85]
+imports: [anyhow, colored]
+dependencies: [crate]
+loc: 695
+modified: 2026-03-03
+rust:
+  derives: ['serde::Serialize']
+  lifetimes: ['''a']

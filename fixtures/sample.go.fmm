@@ -1,0 +1,16 @@
+---
+file: fixtures/sample.go
+fmm: v0.3
+exports:
+  Config: [26, 30]
+  Handler: [37, 41]
+  MaxRetries: [13, 13]
+  NewHandler: [44, 51]
+  Process: [61, 64]
+  Status: [18, 18]
+  StatusActive: [20, 23]
+  StatusInactive: [20, 23]
+imports: [encoding/json, fmt, net/http]
+dependencies: [github.com/gin-gonic/gin, github.com/redis/go-redis/v9]
+loc: 68
+modified: 2026-03-03
