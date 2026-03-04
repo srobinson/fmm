@@ -4,10 +4,10 @@ fmm: v0.3
 exports:
   CppParser: [8, 18]
   new: [21, 79]
-imports: [anyhow, streaming_iterator, tree_sitter]
+imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: [crate, super]
-loc: 317
-modified: 2026-03-03
+loc: 351
+modified: 2026-03-04
 rust:
   lifetimes: ['''static']
   trait_impls: [Parser for CppParser]

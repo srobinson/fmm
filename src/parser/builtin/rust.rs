@@ -130,7 +130,7 @@ impl RustParser {
 
         let roots = self.extract_use_roots(source_bytes, root_node);
         for root in roots {
-            if !Self::is_local_or_std(&root) && seen.insert(root.clone()) {
+            if !Self::is_local_path(&root) && seen.insert(root.clone()) {
                 imports.push(root);
             }
         }
@@ -143,7 +143,7 @@ impl RustParser {
                     if c.kind() == "identifier" {
                         if let Ok(name) = c.utf8_text(source_bytes) {
                             let name = name.to_string();
-                            if !Self::is_local_or_std(&name) && seen.insert(name.clone()) {
+                            if !Self::is_local_path(&name) && seen.insert(name.clone()) {
                                 imports.push(name);
                             }
                         }
@@ -157,8 +157,8 @@ impl RustParser {
         imports
     }
 
-    fn is_local_or_std(name: &str) -> bool {
-        matches!(name, "self" | "crate" | "super" | "std" | "core" | "alloc")
+    fn is_local_path(name: &str) -> bool {
+        matches!(name, "self" | "crate" | "super")
     }
 
     fn extract_dependencies(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
@@ -493,7 +493,7 @@ mod tests {
         let source =
             "use std::collections::HashMap;\nuse anyhow::Result;\nuse crate::config::Config;";
         let result = parser.parse(source).unwrap();
-        assert!(!result.metadata.imports.contains(&"std".to_string()));
+        assert!(result.metadata.imports.contains(&"std".to_string()));
         assert!(result.metadata.imports.contains(&"anyhow".to_string()));
         assert!(!result.metadata.imports.contains(&"crate".to_string()));
     }
@@ -508,13 +508,13 @@ mod tests {
     }
 
     #[test]
-    fn parse_rust_filters_std_core_alloc() {
+    fn parse_rust_includes_std_core_alloc() {
         let mut parser = RustParser::new().unwrap();
         let source = "use std::io;\nuse core::fmt;\nuse alloc::vec::Vec;\nuse tokio::runtime;";
         let result = parser.parse(source).unwrap();
-        assert!(!result.metadata.imports.contains(&"std".to_string()));
-        assert!(!result.metadata.imports.contains(&"core".to_string()));
-        assert!(!result.metadata.imports.contains(&"alloc".to_string()));
+        assert!(result.metadata.imports.contains(&"std".to_string()));
+        assert!(result.metadata.imports.contains(&"core".to_string()));
+        assert!(result.metadata.imports.contains(&"alloc".to_string()));
         assert!(result.metadata.imports.contains(&"tokio".to_string()));
     }
 

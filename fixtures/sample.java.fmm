@@ -3,9 +3,9 @@ file: fixtures/sample.java
 fmm: v0.3
 exports:
   DataProcessor: [8, 39]
-  process: [8, 39]
-  transform: [8, 39]
-  toString: [8, 39]
+  process: [16, 20]
+  transform: [22, 27]
+  toString: [35, 38]
   Repository: [41, 45]
   Status: [47, 52]
   ProcessConfig: [54, 57]

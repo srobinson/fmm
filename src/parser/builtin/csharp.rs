@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
-use super::query_helpers::{collect_matches, top_level_ancestor};
+use super::query_helpers::collect_matches;
 
 pub struct CSharpParser {
     parser: TSParser,
@@ -44,8 +44,11 @@ impl CSharpParser {
         let method_query = Query::new(&language, "(method_declaration name: (identifier) @name)")
             .map_err(|e| anyhow::anyhow!("Failed to compile method query: {}", e))?;
 
-        let using_query = Query::new(&language, "(using_directive (identifier) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile using query: {}", e))?;
+        let using_query = Query::new(
+            &language,
+            "[(using_directive (identifier) @name) (using_directive (qualified_name) @name)]",
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to compile using query: {}", e))?;
 
         let namespace_query = Query::new(&language, "(namespace_declaration name: (_) @name)")
             .map_err(|e| anyhow::anyhow!("Failed to compile namespace query: {}", e))?;
@@ -96,11 +99,10 @@ impl CSharpParser {
                         if let Ok(text) = capture.node.utf8_text(source_bytes) {
                             let name = text.to_string();
                             if seen.insert(name.clone()) {
-                                let decl = top_level_ancestor(capture.node);
                                 exports.push(ExportEntry::new(
                                     name,
-                                    decl.start_position().row + 1,
-                                    decl.end_position().row + 1,
+                                    parent.start_position().row + 1,
+                                    parent.end_position().row + 1,
                                 ));
                             }
                         }
@@ -138,7 +140,17 @@ impl CSharpParser {
     }
 
     fn extract_imports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        collect_matches(&self.using_query, root_node, source.as_bytes())
+        let raw = collect_matches(&self.using_query, root_node, source.as_bytes());
+        let mut seen = HashSet::new();
+        let mut imports = Vec::new();
+        for full_path in &raw {
+            let root_ns = full_path.split('.').next().unwrap_or(full_path).to_string();
+            if seen.insert(root_ns.clone()) {
+                imports.push(root_ns);
+            }
+        }
+        imports.sort();
+        imports
     }
 
     fn extract_namespaces(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
@@ -233,6 +245,7 @@ namespace MyApp {
 }
 "#;
         let result = parser.parse(source).unwrap();
+        let exports = &result.metadata.exports;
         assert!(result
             .metadata
             .export_names()
@@ -249,6 +262,11 @@ namespace MyApp {
             .metadata
             .export_names()
             .contains(&"InternalHelper".to_string()));
+
+        // Exports should use declaration line ranges, NOT namespace range [2, 9]
+        let user_service = exports.iter().find(|e| e.name == "UserService").unwrap();
+        assert_eq!(user_service.start_line, 3); // "public class UserService {"
+        assert_eq!(user_service.end_line, 6); // closing "}"
     }
 
     #[test]
@@ -278,7 +296,8 @@ public class App {}
 "#;
         let result = parser.parse(source).unwrap();
         assert!(result.metadata.imports.contains(&"System".to_string()));
-        // Note: using with dotted names - we capture what tree-sitter gives us
+        // Qualified names now captured and extracted to root namespace
+        assert!(result.metadata.imports.contains(&"Microsoft".to_string()));
     }
 
     #[test]

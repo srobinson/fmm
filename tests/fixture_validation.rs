@@ -23,13 +23,13 @@ fn validate_python_fixture() {
     let mut parser = PythonParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
-    // Expected exports from __all__: fetch_data, transform, DataProcessor, ProcessConfig, MAX_RETRIES
+    // Expected exports from __all__, sorted by definition site line number
     let expected_exports = vec![
+        "MAX_RETRIES",
+        "ProcessConfig",
+        "DataProcessor",
         "fetch_data",
         "transform",
-        "DataProcessor",
-        "ProcessConfig",
-        "MAX_RETRIES",
     ];
     assert_eq!(result.metadata.export_names(), expected_exports);
 
@@ -78,11 +78,11 @@ fn validate_rust_fixture() {
     let expected_exports = vec!["Config", "Status", "Pipeline", "Error", "process"];
     assert_eq!(result.metadata.export_names(), expected_exports);
 
-    // Expected imports: anyhow, serde, tokio (external crates, not std)
+    // Expected imports: anyhow, serde, std, tokio (all crates including stdlib)
     assert!(result.metadata.imports.contains(&"anyhow".to_string()));
     assert!(result.metadata.imports.contains(&"serde".to_string()));
+    assert!(result.metadata.imports.contains(&"std".to_string()));
     assert!(result.metadata.imports.contains(&"tokio".to_string()));
-    assert!(!result.metadata.imports.contains(&"std".to_string()));
 
     // Expected dependencies: crate, super
     assert!(result.metadata.dependencies.contains(&"crate".to_string()));
@@ -268,31 +268,27 @@ fn validate_cpp_fixture() {
     let mut parser = CppParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
-    // Classes, structs, enums, functions, templates
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Engine".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Config".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Point".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Status".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Pipeline".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"process".to_string()));
+    // Classes, structs, enums, functions, templates with correct declaration line ranges
+    let exports = &result.metadata.exports;
+    let find = |name: &str| exports.iter().find(|e| e.name == name).unwrap();
+
+    let point = find("Point");
+    assert_eq!((point.start_line, point.end_line), (10, 12));
+
+    let status = find("Status");
+    assert_eq!((status.start_line, status.end_line), (14, 18));
+
+    let config = find("Config");
+    assert_eq!((config.start_line, config.end_line), (20, 28));
+
+    let engine = find("Engine");
+    assert_eq!((engine.start_line, engine.end_line), (30, 39));
+
+    let pipeline = find("Pipeline");
+    assert_eq!((pipeline.start_line, pipeline.end_line), (41, 54)); // template_declaration
+
+    let process = find("process");
+    assert_eq!((process.start_line, process.end_line), (60, 64));
 
     // System includes
     assert!(result.metadata.imports.contains(&"vector".to_string()));
@@ -321,6 +317,12 @@ fn validate_cpp_fixture() {
     assert!(ns_names.contains(&"engine"));
     assert!(ns_names.contains(&"utils"));
 
+    // Exports should be sorted by line number
+    let lines: Vec<usize> = exports.iter().map(|e| e.start_line).collect();
+    let mut sorted = lines.clone();
+    sorted.sort();
+    assert_eq!(lines, sorted);
+
     assert!(result.metadata.loc > 50);
 }
 
@@ -331,33 +333,36 @@ fn validate_csharp_fixture() {
     let mut parser = CSharpParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
-    // Public types only
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"DataService".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"IRepository".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Status".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"ProcessConfig".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Transform".to_string()));
+    // Public types with correct declaration line ranges (not namespace line ranges)
+    let exports = &result.metadata.exports;
+    let find = |name: &str| exports.iter().find(|e| e.name == name).unwrap();
+
+    let ds = find("DataService");
+    assert_eq!((ds.start_line, ds.end_line), (8, 29)); // includes [Serializable] attribute
+
+    let transform = find("Transform");
+    assert_eq!((transform.start_line, transform.end_line), (18, 22)); // includes [Required] attribute
+
+    let repo = find("IRepository");
+    assert_eq!((repo.start_line, repo.end_line), (31, 36));
+
+    let status = find("Status");
+    assert_eq!((status.start_line, status.end_line), (38, 44)); // includes [Obsolete] attribute
+
+    let config = find("ProcessConfig");
+    assert_eq!((config.start_line, config.end_line), (49, 54));
 
     // Internal class should NOT be exported
     assert!(!result
         .metadata
         .export_names()
         .contains(&"InternalHelper".to_string()));
+
+    // Exports should be sorted by line number
+    let lines: Vec<usize> = exports.iter().map(|e| e.start_line).collect();
+    let mut sorted = lines.clone();
+    sorted.sort();
+    assert_eq!(lines, sorted);
 
     // Using statements
     assert!(result.metadata.imports.contains(&"System".to_string()));
