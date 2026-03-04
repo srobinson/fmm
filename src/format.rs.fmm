@@ -6,12 +6,12 @@ exports:
   format_file_outline: [27, 53]
   format_lookup_export: [56, 74]
   format_dependency_graph: [77, 101]
-  format_read_symbol: [104, 118]
-  format_list_exports_pattern: [125, 148]
-  format_list_exports_file: [151, 157]
-  format_list_exports_all: [160, 176]
-  format_bare_search: [184, 234]
-  format_filter_search: [237, 264]
+  format_read_symbol: [104, 113]
+  format_list_exports_pattern: [120, 143]
+  format_list_exports_file: [146, 152]
+  format_list_exports_all: [155, 171]
+  format_bare_search: [179, 251]
+  format_filter_search: [254, 277]
 dependencies: [crate]
-loc: 303
+loc: 321
 modified: 2026-03-04

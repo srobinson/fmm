@@ -8,10 +8,10 @@ exports:
   with_root: [107, 110]
   call_tool: [117, 120]
   run: [152, 195]
-  dep_matches: [618, 654]
+  dep_matches: [617, 653]
 imports: [anyhow, serde, serde_json, std]
 dependencies: [crate]
-loc: 737
+loc: 736
 modified: 2026-03-04
 rust:
   derives: [Debug, Deserialize, Serialize]

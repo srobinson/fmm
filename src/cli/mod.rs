@@ -122,7 +122,8 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm generate</bold>             <dim># All files in current directory</dim>
   <dim>$</dim> <bold>fmm generate src/</bold>         <dim># Specific directory only</dim>
   <dim>$</dim> <bold>fmm generate src/ lib/</bold>    <dim># Multiple directories</dim>
-  <dim>$</dim> <bold>fmm generate -n</bold>           <dim># Dry run — preview without writing</dim>"#),
+  <dim>$</dim> <bold>fmm generate -n</bold>           <dim># Dry run — preview without writing</dim>
+  <dim>$</dim> <bold>fmm generate --force</bold>       <dim># Regenerate all, even if unchanged</dim>"#),
         after_long_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm generate</bold>                       <dim># All files in current directory</dim>
@@ -130,6 +131,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm generate src/ lib/</bold>              <dim># Multiple directories</dim>
   <dim>$</dim> <bold>fmm generate src/auth.ts src/db.ts</bold>  <dim># Multiple files</dim>
   <dim>$</dim> <bold>fmm generate -n</bold>                     <dim># Dry run — preview without writing</dim>
+  <dim>$</dim> <bold>fmm generate --force</bold>                <dim># Regenerate all, even if unchanged</dim>
   <dim>$</dim> <bold>fmm generate && fmm validate</bold>        <dim># Generate then verify</dim>
 
 <bold><underline>Notes</underline></bold>
@@ -146,6 +148,10 @@ pub enum Commands {
         /// Show what would be created/updated without writing files
         #[arg(short = 'n', long)]
         dry_run: bool,
+
+        /// Regenerate all sidecars, bypassing content comparison
+        #[arg(short, long)]
+        force: bool,
     },
 
     /// Check sidecars are up to date (CI-friendly, exit 1 if stale)
@@ -445,8 +451,11 @@ pub enum Commands {
 }
 
 /// Resolve the root directory from the target path.
-/// If a directory, use it directly. If a file, use its parent.
-/// Falls back to CWD if the path doesn't exist.
+/// If a directory, use it directly. If a file, walk up from its parent
+/// looking for project root markers (.git, .fmmrc.json) so that relative
+/// paths in sidecar output are consistent regardless of whether `fmm generate`
+/// targets a single file or the whole repo.
+/// Falls back to the file's parent directory, then CWD.
 fn resolve_root(path: &str) -> Result<PathBuf> {
     let target = Path::new(path)
         .canonicalize()
@@ -455,11 +464,25 @@ fn resolve_root(path: &str) -> Result<PathBuf> {
         Ok(target)
     } else if target.is_file() {
         match target.parent() {
-            Some(p) => Ok(p.to_path_buf()),
+            Some(parent) => Ok(find_project_root(parent).unwrap_or_else(|| parent.to_path_buf())),
             None => std::env::current_dir().context("Failed to get current directory"),
         }
     } else {
         std::env::current_dir().context("Failed to get current directory")
+    }
+}
+
+/// Walk up from `start` looking for project root markers.
+/// Returns the first directory containing `.git` or `.fmmrc.json`.
+fn find_project_root(start: &Path) -> Option<PathBuf> {
+    let mut current = start.to_path_buf();
+    loop {
+        if current.join(".git").exists() || current.join(".fmmrc.json").exists() {
+            return Some(current);
+        }
+        if !current.pop() {
+            return None;
+        }
     }
 }
 
@@ -553,14 +576,34 @@ mod tests {
     }
 
     #[test]
-    fn resolve_root_with_file_returns_parent() {
+    fn resolve_root_with_file_finds_project_root() {
         let tmp = TempDir::new().unwrap();
-        let file_path = tmp.path().join("example.ts");
+        let src = tmp.path().join("src").join("deep");
+        std::fs::create_dir_all(&src).unwrap();
+        // Place a .git marker at the tmp root
+        std::fs::create_dir(tmp.path().join(".git")).unwrap();
+        let file_path = src.join("example.ts");
         std::fs::write(&file_path, "export const x = 1;").unwrap();
 
         let result = resolve_root(file_path.to_str().unwrap()).unwrap();
         assert_eq!(result, tmp.path().canonicalize().unwrap());
         assert!(result.is_dir());
+    }
+
+    #[test]
+    fn resolve_root_with_file_falls_back_to_parent_without_markers() {
+        let tmp = TempDir::new().unwrap();
+        // No .git or .fmmrc.json in any ancestor within tmp
+        let file_path = tmp.path().join("example.ts");
+        std::fs::write(&file_path, "export const x = 1;").unwrap();
+
+        let result = resolve_root(file_path.to_str().unwrap()).unwrap();
+        // Without project markers, walks up and may find a .git above tmp,
+        // or falls back to the file's parent
+        assert!(result.is_dir());
+        // The file's parent should be an ancestor of (or equal to) the result
+        let parent = file_path.parent().unwrap().canonicalize().unwrap();
+        assert!(parent.starts_with(&result) || result == parent);
     }
 
     #[test]

@@ -22,7 +22,7 @@ pub fn watch(path: &str, debounce_ms: u64) -> Result<()> {
 
     // Initial generate pass
     println!("{}", "Running initial generate pass...".green().bold());
-    super::generate(&[path.to_string()], false)?;
+    super::generate(&[path.to_string()], false, false)?;
 
     let file_count = collect_files(path, &config)?.len();
     println!("\nWatching {} files in {} ...\n", file_count, path);
@@ -118,7 +118,7 @@ fn handle_event(
             if !path.exists() {
                 return;
             }
-            match processor.process(path, false) {
+            match processor.process(path, false, false) {
                 Ok(Some(msg)) => {
                     let verb = if msg.contains("Updated") {
                         "Updated"
@@ -245,7 +245,7 @@ mod tests {
         let updates = AtomicUsize::new(0);
 
         // Create initial sidecar
-        processor.process(&source, false).unwrap();
+        processor.process(&source, false, false).unwrap();
 
         // Modify source
         fs::write(
@@ -277,7 +277,7 @@ mod tests {
         let updates = AtomicUsize::new(0);
 
         // Create initial sidecar
-        processor.process(&source, false).unwrap();
+        processor.process(&source, false, false).unwrap();
 
         // Same content — should not increment updates
         handle_event(
@@ -301,7 +301,7 @@ mod tests {
         let updates = AtomicUsize::new(0);
 
         // Create sidecar
-        processor.process(&source, false).unwrap();
+        processor.process(&source, false, false).unwrap();
         let sidecar = sidecar_path_for(&source);
         assert!(sidecar.exists());
 

@@ -1,0 +1,14 @@
+---
+file: fixtures/python/heuristic.py
+fmm: v0.3
+exports:
+  Agent: [7, 11]
+  Router: [14, 16]
+  handle_request: [19, 21]
+  cached_lookup: [24, 27]
+  MAX_CONNECTIONS: [30, 30]
+imports: [dataclasses, os]
+loc: 40
+modified: 2026-03-04
+python:
+  decorators: [dataclass, staticmethod]

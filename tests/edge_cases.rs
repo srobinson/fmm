@@ -266,6 +266,59 @@ fn rust_comments_only() {
     assert_eq!(result.metadata.loc, 3);
 }
 
+// --- Decorated definitions (Python-specific) ---
+
+#[test]
+fn python_decorated_all_private() {
+    let mut parser = PythonParser::new().unwrap();
+    let source = "@dataclass\nclass _Internal:\n    x: int\n\n@staticmethod\ndef _helper():\n    pass\n";
+    let result = parser.parse(source).unwrap();
+    assert!(
+        result.metadata.exports.is_empty(),
+        "private decorated items should not be exported"
+    );
+}
+
+#[test]
+fn python_decorated_crlf_line_endings() {
+    let mut parser = PythonParser::new().unwrap();
+    let source = "@dataclass\r\nclass Agent:\r\n    name: str\r\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"Agent".to_string()));
+    let agent = result.metadata.exports.iter().find(|e| e.name == "Agent").unwrap();
+    assert_eq!(agent.start_line, 1, "range should start at decorator");
+}
+
+#[test]
+fn python_stacked_decorators() {
+    let mut parser = PythonParser::new().unwrap();
+    let source = "@decorator_a\n@decorator_b\n@decorator_c\ndef stacked():\n    pass\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result
+        .metadata
+        .export_names()
+        .contains(&"stacked".to_string()));
+    let entry = result.metadata.exports.iter().find(|e| e.name == "stacked").unwrap();
+    assert_eq!(entry.start_line, 1, "range should include first decorator");
+    assert_eq!(entry.end_line, 5);
+}
+
+#[test]
+fn python_decorated_mixed_with_bare() {
+    let mut parser = PythonParser::new().unwrap();
+    let source = "def bare():\n    pass\n\n@app.route(\"/\")\ndef decorated():\n    pass\n\nclass Plain:\n    pass\n\n@dataclass\nclass Fancy:\n    x: int\n";
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+    assert_eq!(names.len(), 4);
+    assert!(names.contains(&"bare".to_string()));
+    assert!(names.contains(&"decorated".to_string()));
+    assert!(names.contains(&"Plain".to_string()));
+    assert!(names.contains(&"Fancy".to_string()));
+}
+
 // =============================================================================
 // Go edge cases
 // =============================================================================

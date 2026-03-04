@@ -3,10 +3,10 @@ file: src/parser/builtin/python.rs
 fmm: v0.3
 exports:
   PythonParser: [8, 19]
-  new: [22, 84]
+  new: [22, 86]
 imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: [crate, super]
-loc: 470
+loc: 553
 modified: 2026-03-04
 rust:
   lifetimes: ['''static']

@@ -10,11 +10,11 @@ exports:
   SearchFilters: [51, 57]
   bare_search: [64, 132]
   filter_search: [135, 222]
-  find_export_matches: [225, 255]
-  dependency_graph: [258, 279]
+  find_export_matches: [225, 252]
+  dependency_graph: [255, 272]
 imports: [std]
 dependencies: [crate]
-loc: 319
+loc: 312
 modified: 2026-03-04
 rust:
   lifetimes: ['''a']

@@ -34,7 +34,7 @@ impl FileProcessor {
         }
     }
 
-    pub fn process(&self, path: &Path, dry_run: bool) -> Result<Option<String>> {
+    pub fn process(&self, path: &Path, dry_run: bool, force: bool) -> Result<Option<String>> {
         let content = fs::read_to_string(path)?;
         let result = self.parse_content(path, &content)?;
         let new_yaml =
@@ -43,7 +43,7 @@ impl FileProcessor {
         let sidecar = sidecar_path_for(path);
         let is_update = sidecar.exists();
 
-        if is_update {
+        if is_update && !force {
             let old = fs::read_to_string(&sidecar)?;
             if content_without_modified(&old) == content_without_modified(&new_yaml) {
                 return Ok(None);
@@ -128,8 +128,9 @@ impl FileProcessor {
 
         let language_id = self.registry.language_id_for(extension);
 
+        let version = format!("v0.3+{}", env!("CARGO_PKG_VERSION"));
         let frontmatter = Frontmatter::new(relative_path.display().to_string(), metadata.clone())
-            .with_version("v0.3")
+            .with_version(&version)
             .with_custom_fields(language_id, custom_fields);
 
         Ok(format!("{}\n", frontmatter.render()))

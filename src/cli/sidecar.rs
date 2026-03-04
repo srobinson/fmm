@@ -7,7 +7,7 @@ use crate::extractor::{sidecar_path_for, FileProcessor};
 
 use super::{collect_files_multi, resolve_root_multi};
 
-pub fn generate(paths: &[String], dry_run: bool) -> Result<()> {
+pub fn generate(paths: &[String], dry_run: bool, force: bool) -> Result<()> {
     let config = Config::load().unwrap_or_default();
     let files = collect_files_multi(paths, &config)?;
     let root = resolve_root_multi(paths)?;
@@ -36,7 +36,7 @@ pub fn generate(paths: &[String], dry_run: bool) -> Result<()> {
     let processor = FileProcessor::new(&root);
     let results: Vec<_> = files
         .par_iter()
-        .filter_map(|file| match processor.process(file, dry_run) {
+        .filter_map(|file| match processor.process(file, dry_run, force) {
             Ok(Some(msg)) => Some((file.to_path_buf(), msg)),
             Ok(None) => None,
             Err(e) => {

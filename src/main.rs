@@ -67,9 +67,13 @@ fn run() -> anyhow::Result<()> {
     };
 
     match command {
-        Commands::Generate { paths, dry_run } => {
+        Commands::Generate {
+            paths,
+            dry_run,
+            force,
+        } => {
             println!("{}", "Generating sidecars...".green().bold());
-            cli::generate(&paths, dry_run)?;
+            cli::generate(&paths, dry_run, force)?;
         }
         Commands::Validate { paths } => {
             println!("{}", "Validating sidecars...".green().bold());

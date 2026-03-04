@@ -1,0 +1,14 @@
+---
+file: fixtures/python/decorated.py
+fmm: v0.3
+exports:
+  SimpleDecorated: [7, 10]
+  DecoratedWithArgs: [13, 17]
+  multi_decorated: [20, 24]
+  bare_function: [27, 29]
+  BareClass: [32, 34]
+imports: [dataclasses, functools]
+loc: 40
+modified: 2026-03-04
+python:
+  decorators: [dataclass, lru_cache, staticmethod]

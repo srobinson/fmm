@@ -28,12 +28,14 @@ impl PythonParser {
 
         let func_query = Query::new(
             &language,
-            "(module (function_definition name: (identifier) @name))",
+            "[(module (function_definition name: (identifier) @name))
+              (module (decorated_definition (function_definition name: (identifier) @name)))]",
         )
         .map_err(|e| anyhow::anyhow!("Failed to compile func query: {}", e))?;
         let class_query = Query::new(
             &language,
-            "(module (class_definition name: (identifier) @name))",
+            "[(module (class_definition name: (identifier) @name))
+              (module (decorated_definition (class_definition name: (identifier) @name)))]",
         )
         .map_err(|e| anyhow::anyhow!("Failed to compile class query: {}", e))?;
         let assign_query = Query::new(
@@ -446,6 +448,87 @@ class _InternalClass:
         assert!(result.metadata.imports.contains(&"pandas".to_string()));
         assert!(result.metadata.imports.contains(&"numpy".to_string()));
         assert!(result.metadata.imports.contains(&"os".to_string()));
+    }
+
+    #[test]
+    fn parse_python_decorated_class() {
+        let mut parser = PythonParser::new().unwrap();
+        let source = "from dataclasses import dataclass\n\n@dataclass\nclass Agent:\n    name: str\n";
+        let result = parser.parse(source).unwrap();
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"Agent".to_string()));
+    }
+
+    #[test]
+    fn parse_python_decorated_class_with_args() {
+        let mut parser = PythonParser::new().unwrap();
+        let source = "@dataclass(frozen=True)\nclass Config:\n    debug: bool = False\n";
+        let result = parser.parse(source).unwrap();
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"Config".to_string()));
+    }
+
+    #[test]
+    fn parse_python_decorated_function() {
+        let mut parser = PythonParser::new().unwrap();
+        let source = "from flask import Flask\napp = Flask(__name__)\n\n@app.route(\"/\")\ndef handler():\n    return \"ok\"\n";
+        let result = parser.parse(source).unwrap();
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"handler".to_string()));
+    }
+
+    #[test]
+    fn parse_python_decorated_class_line_range() {
+        let mut parser = PythonParser::new().unwrap();
+        let source = "@dataclass\nclass Agent:\n    name: str\n    role: str\n";
+        let result = parser.parse(source).unwrap();
+        let agent = result
+            .metadata
+            .exports
+            .iter()
+            .find(|e| e.name == "Agent")
+            .expect("Agent should be exported");
+        // Range should start at the decorator line (1), not the class line (2)
+        assert_eq!(agent.start_line, 1);
+        assert_eq!(agent.end_line, 4);
+    }
+
+    #[test]
+    fn parse_python_dunder_all_with_decorated_class() {
+        let mut parser = PythonParser::new().unwrap();
+        let source = r#"
+from dataclasses import dataclass
+
+__all__ = ["DecoratedModel", "bare_func"]
+
+@dataclass
+class DecoratedModel:
+    id: int
+    name: str
+
+def bare_func():
+    pass
+"#;
+        let result = parser.parse(source).unwrap();
+        assert_eq!(
+            result.metadata.export_names(),
+            vec!["DecoratedModel", "bare_func"]
+        );
+        // DecoratedModel should resolve to the decorated_definition site, not __all__ line
+        let model = result
+            .metadata
+            .exports
+            .iter()
+            .find(|e| e.name == "DecoratedModel")
+            .unwrap();
+        assert_eq!(model.start_line, 6); // @dataclass line
+        assert_eq!(model.end_line, 9);
     }
 
     #[test]

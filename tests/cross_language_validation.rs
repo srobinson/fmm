@@ -236,6 +236,122 @@ def process(data: Any) -> List:
         .contains(&"API_VERSION".to_string()));
 }
 
+/// FastAPI/Pydantic pattern — decorated classes and functions as primary API surface
+/// Source: inspired by real FastAPI applications
+#[test]
+fn python_real_repo_fastapi_decorated_exports() {
+    let source = r#"
+from dataclasses import dataclass, field
+from pydantic import BaseModel, Field
+from fastapi import FastAPI, Depends
+
+app = FastAPI()
+
+@dataclass
+class AppConfig:
+    host: str = "0.0.0.0"
+    port: int = 8000
+    debug: bool = False
+
+class RequestBody(BaseModel):
+    name: str
+    value: float = Field(gt=0)
+
+@dataclass(frozen=True)
+class CacheKey:
+    endpoint: str
+    params: str
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+
+@app.post("/process")
+def process_item(body: RequestBody):
+    return {"received": body.name}
+
+def _internal_validator(data):
+    return data is not None
+"#;
+    let mut parser = PythonParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+    // Decorated classes
+    assert!(names.contains(&"AppConfig".to_string()), "decorated @dataclass class missing");
+    assert!(names.contains(&"CacheKey".to_string()), "decorated @dataclass(frozen=True) class missing");
+    // Bare class
+    assert!(names.contains(&"RequestBody".to_string()), "bare class missing");
+    // Decorated functions
+    assert!(names.contains(&"health_check".to_string()), "decorated @app.get function missing");
+    assert!(names.contains(&"process_item".to_string()), "decorated @app.post function missing");
+    // Private excluded
+    assert!(!names.contains(&"_internal_validator".to_string()));
+
+    // Line ranges: AppConfig should start at @dataclass, not class keyword
+    let config = result.metadata.exports.iter().find(|e| e.name == "AppConfig").unwrap();
+    assert_eq!(config.start_line, 8, "AppConfig range should start at @dataclass");
+    assert_eq!(config.end_line, 12);
+
+    // CacheKey: @dataclass(frozen=True) decorator
+    let cache_key = result.metadata.exports.iter().find(|e| e.name == "CacheKey").unwrap();
+    assert_eq!(cache_key.start_line, 18, "CacheKey range should start at @dataclass(frozen=True)");
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"dataclasses".to_string()));
+    assert!(result.metadata.imports.contains(&"pydantic".to_string()));
+    assert!(result.metadata.imports.contains(&"fastapi".to_string()));
+}
+
+/// Pydantic settings + SQLAlchemy pattern with __all__ controlling decorated exports
+#[test]
+fn python_real_repo_dunder_all_with_decorated_models() {
+    let source = r#"
+from dataclasses import dataclass
+from pydantic_settings import BaseSettings
+
+__all__ = ["Settings", "DatabaseConfig", "create_engine"]
+
+@dataclass
+class DatabaseConfig:
+    host: str = "localhost"
+    port: int = 5432
+    name: str = "app"
+
+class Settings(BaseSettings):
+    db: DatabaseConfig = DatabaseConfig()
+    secret_key: str = "changeme"
+
+def create_engine(config: DatabaseConfig):
+    return f"postgresql://{config.host}:{config.port}/{config.name}"
+
+@dataclass
+class _MigrationState:
+    version: int = 0
+
+def _run_migrations():
+    pass
+"#;
+    let mut parser = PythonParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    // Only __all__ items exported
+    let names = result.metadata.export_names();
+    assert_eq!(names.len(), 3);
+    assert!(names.contains(&"Settings".to_string()));
+    assert!(names.contains(&"DatabaseConfig".to_string()));
+    assert!(names.contains(&"create_engine".to_string()));
+
+    // DatabaseConfig resolves to decorated definition site
+    let db_config = result.metadata.exports.iter().find(|e| e.name == "DatabaseConfig").unwrap();
+    assert_eq!(db_config.start_line, 7, "DatabaseConfig should resolve to @dataclass line");
+    assert_eq!(db_config.end_line, 11);
+
+    // Unlisted items not exported
+    assert!(!names.contains(&"_MigrationState".to_string()));
+    assert!(!names.contains(&"_run_migrations".to_string()));
+}
+
 // =============================================================================
 // Rust validation — snippets inspired by bat/ripgrep patterns
 // =============================================================================
