@@ -23,13 +23,13 @@ fn validate_python_fixture() {
     let mut parser = PythonParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
-    // Expected exports from __all__: fetch_data, transform, DataProcessor, ProcessConfig, MAX_RETRIES
+    // Expected exports from __all__, sorted by definition site line number
     let expected_exports = vec![
+        "MAX_RETRIES",
+        "ProcessConfig",
+        "DataProcessor",
         "fetch_data",
         "transform",
-        "DataProcessor",
-        "ProcessConfig",
-        "MAX_RETRIES",
     ];
     assert_eq!(result.metadata.export_names(), expected_exports);
 

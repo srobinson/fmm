@@ -1,15 +1,15 @@
 ---
-file: fixtures/sample.py
+file: sample.py
 fmm: v0.3
 exports:
-  fetch_data: [9, 9]
-  transform: [9, 9]
-  DataProcessor: [9, 9]
-  ProcessConfig: [9, 9]
-  MAX_RETRIES: [9, 9]
+  MAX_RETRIES: [11, 11]
+  ProcessConfig: [15, 19]
+  DataProcessor: [22, 34]
+  fetch_data: [37, 40]
+  transform: [43, 45]
 imports: [pandas, pathlib, requests]
 dependencies: [..models, .utils]
 loc: 50
-modified: 2026-03-03
+modified: 2026-03-04
 python:
   decorators: [property, staticmethod]

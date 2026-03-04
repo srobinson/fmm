@@ -122,7 +122,38 @@ impl PythonParser {
         exports
     }
 
-    /// Extract names from `__all__ = [...]` if present.
+    /// Build a map of top-level definition names to their line ranges.
+    fn build_definition_map(
+        &self,
+        source: &str,
+        root_node: tree_sitter::Node,
+    ) -> HashMap<String, (usize, usize)> {
+        let source_bytes = source.as_bytes();
+        let mut defs = HashMap::new();
+
+        let mut collect_defs = |query: &Query| {
+            let mut cursor = QueryCursor::new();
+            let mut iter = cursor.matches(query, root_node, source_bytes);
+            while let Some(m) = iter.next() {
+                for capture in m.captures {
+                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                        let decl = top_level_ancestor(capture.node);
+                        defs.insert(
+                            text.to_string(),
+                            (decl.start_position().row + 1, decl.end_position().row + 1),
+                        );
+                    }
+                }
+            }
+        };
+
+        collect_defs(&self.func_query);
+        collect_defs(&self.class_query);
+        collect_defs(&self.assign_query);
+        defs
+    }
+
+    /// Extract names from `__all__ = [...]` if present, resolving to definition sites.
     fn extract_dunder_all(
         &self,
         source: &str,
@@ -146,6 +177,9 @@ impl PythonParser {
                 continue;
             }
 
+            // Build definition map to resolve names to their actual definition sites
+            let def_map = self.build_definition_map(source, root_node);
+
             let all_node = top_level_ancestor(name_capture.node);
             let all_start = all_node.start_position().row + 1;
             let all_end = all_node.end_position().row + 1;
@@ -159,7 +193,9 @@ impl PythonParser {
                     if let Ok(text) = child.utf8_text(source_bytes) {
                         let name = text.trim_matches('\'').trim_matches('"').to_string();
                         if !name.is_empty() && seen.insert(name.clone()) {
-                            exports.push(ExportEntry::new(name, all_start, all_end));
+                            let (start, end) =
+                                def_map.get(&name).copied().unwrap_or((all_start, all_end));
+                            exports.push(ExportEntry::new(name, start, end));
                         }
                     }
                 }
@@ -392,6 +428,14 @@ class _InternalClass:
             result.metadata.export_names(),
             vec!["public_func", "PublicClass"]
         );
+        // Verify exports resolve to definition sites, not __all__ line
+        let exports = &result.metadata.exports;
+        let func_export = exports.iter().find(|e| e.name == "public_func").unwrap();
+        assert_eq!(func_export.start_line, 4);
+        assert_eq!(func_export.end_line, 5);
+        let class_export = exports.iter().find(|e| e.name == "PublicClass").unwrap();
+        assert_eq!(class_export.start_line, 10);
+        assert_eq!(class_export.end_line, 11);
     }
 
     #[test]
