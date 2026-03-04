@@ -4,17 +4,17 @@
 
 [![CI](https://github.com/srobinson/fmm/actions/workflows/ci.yml/badge.svg)](https://github.com/srobinson/fmm/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Languages](https://img.shields.io/badge/languages-9-informational.svg)](#supported-languages)
+[![Languages](https://img.shields.io/badge/languages-17-informational.svg)](#supported-languages)
 
 ```bash
 npx frontmatter-matters init
 ```
 
-|  | Without fmm | With fmm |
-|--|------------|----------|
-| **How LLM navigates** | grep → read entire file → summarize, repeat | Read sidecar metadata → open only needed files |
-| **Tokens for 500 files** | ~50,000 | ~2,000 |
-| **Reduction** | — | **88-97%** |
+|                          | Without fmm                                 | With fmm                                       |
+| ------------------------ | ------------------------------------------- | ---------------------------------------------- |
+| **How LLM navigates**    | grep → read entire file → summarize, repeat | Read sidecar metadata → open only needed files |
+| **Tokens for 500 files** | ~50,000                                     | ~2,000                                         |
+| **Reduction**            | —                                           | **88-97%**                                     |
 
 ## What it does
 
@@ -66,16 +66,16 @@ That's it. Your AI coding assistant now navigates via metadata instead of brute-
 
 ## Commands
 
-| Command | Purpose |
-|---------|---------|
-| `fmm init` | Set up config, Claude skill, and MCP server |
+| Command               | Purpose                                                       |
+| --------------------- | ------------------------------------------------------------- |
+| `fmm init`            | Set up config, Claude skill, and MCP server                   |
 | `fmm generate [path]` | Create and update .fmm sidecars (exports, imports, deps, LOC) |
-| `fmm watch [path]` | Watch source files and regenerate sidecars on change |
-| `fmm validate [path]` | Check sidecars are current (CI-friendly, exit 1 if stale) |
-| `fmm search` | Query the index (O(1) export lookup, dependency graphs) |
-| `fmm mcp` | Start MCP server (7 tools for LLM navigation) |
-| `fmm status` | Show config and workspace stats |
-| `fmm clean [path]` | Remove all .fmm sidecars |
+| `fmm watch [path]`    | Watch source files and regenerate sidecars on change          |
+| `fmm validate [path]` | Check sidecars are current (CI-friendly, exit 1 if stale)     |
+| `fmm search`          | Query the index (O(1) export lookup, dependency graphs)       |
+| `fmm mcp`             | Start MCP server (7 tools for LLM navigation)                 |
+| `fmm status`          | Show config and workspace stats                               |
+| `fmm clean [path]`    | Remove all .fmm sidecars                                      |
 
 Run `fmm --help` for workflows and examples, or `fmm <command> --help` for detailed per-command help.
 
@@ -94,37 +94,37 @@ fmm includes a built-in MCP server with 7 tools. Configure via `fmm init --mcp` 
 }
 ```
 
-| Tool | Purpose |
-|------|---------|
-| `fmm_lookup_export` | Find which file defines a symbol — O(1) |
-| `fmm_read_symbol` | Extract exact source by symbol name (line ranges) |
-| `fmm_dependency_graph` | Upstream deps + downstream dependents |
-| `fmm_file_outline` | Table of contents with line ranges |
-| `fmm_list_exports` | Search exports by pattern (fuzzy) |
-| `fmm_file_info` | Structural profile without reading source |
-| `fmm_search` | Multi-criteria AND queries |
+| Tool                   | Purpose                                           |
+| ---------------------- | ------------------------------------------------- |
+| `fmm_lookup_export`    | Find which file defines a symbol — O(1)           |
+| `fmm_read_symbol`      | Extract exact source by symbol name (line ranges) |
+| `fmm_dependency_graph` | Upstream deps + downstream dependents             |
+| `fmm_file_outline`     | Table of contents with line ranges                |
+| `fmm_list_exports`     | Search exports by pattern (fuzzy)                 |
+| `fmm_file_info`        | Structural profile without reading source         |
+| `fmm_search`           | Multi-criteria AND queries                        |
 
 ## How it works
 
 ```
-                        ┌─────────────────────────────────────────────────────┐
-                        │                    fmm pipeline                     │
-                        │                                                     │
-  Source Files          │   ┌──────────┐    ┌───────────┐    ┌────────────┐  │    LLM / MCP Client
-  ─────────────────────►│   │  Parser   │───►│ Extractor │───►│  Sidecar   │  │◄──────────────────
-  .ts .py .rs .go       │   │(tree-sit) │    │           │    │  Writer    │  │   fmm_lookup_export
-  .java .cpp .cs .rb    │   └──────────┘    └───────────┘    └─────┬──────┘  │   fmm_read_symbol
-                        │                                          │         │   fmm_dependency_graph
-                        │                                    ┌─────▼──────┐  │   fmm_file_outline
-                        │                                    │  .fmm      │  │   fmm_search
-                        │                                    │  sidecars   │  │
-                        │                                    └─────┬──────┘  │
-                        │                                          │         │
-                        │                                    ┌─────▼──────┐  │
-                        │                                    │ In-memory  │  │
-                        │                                    │   Index    │──┼──► Query Results
-                        │                                    └────────────┘  │
-                        └─────────────────────────────────────────────────────┘
+                        ┌──────────────────────────────────────────────────────┐
+                        │                     fmm pipeline                     │
+                        │                                                      │
+  Source Files          │   ┌───────-───┐    ┌───────────┐    ┌────────────┐   │    LLM / MCP Client
+  ─────────────────────►│   │  Parser   │───►│ Extractor │───►│  Sidecar   │   │◄──────────────────
+  .ts .py .rs .go .c    │   │(tree-sit) │    │           │    │  Writer    │   │   fmm_lookup_export
+  .java .cpp .cs .rb    │   └────────-──┘    └───────────┘    └─────┬──────┘   │   fmm_read_symbol
+  .php .swift .kt .ex   │                                          │           │   fmm_file_info
+  .dart .lua .zig .sc   │                                     ┌─────▼──────┐   │   fmm_dependency_graph
+                        │                                     │   .fmm     │   │   fmm_file_outline
+                        │                                     │  sidecars  │   │   fmm_list_exports
+                        │                                     └─────┬──────┘   │   fmm_search
+                        │                                           │          │
+                        │                                     ┌─────▼──────┐   │
+                        │                                     │  In-memory │   │
+                        │                                     │   Index    │───┼──► Query Results
+                        │                                     └────────────┘   │
+                        └──────────────────────────────────────────────────────┘
 ```
 
 1. **Parse** — tree-sitter parses source into AST
@@ -134,19 +134,28 @@ fmm includes a built-in MCP server with 7 tools. Configure via `fmm init --mcp` 
 
 ## Supported Languages
 
-TypeScript · JavaScript · Python · Rust · Go · Java · C++ · C# · Ruby
+TypeScript · JavaScript · Python · Rust · Go · Java · C · C++ · C# · Ruby · PHP · Swift · Kotlin · Dart · Elixir · Lua · Scala · Zig
 
-| Language | Extensions | Custom Fields |
-|----------|-----------|---------------|
-| TypeScript | `.ts`, `.tsx` | — |
-| JavaScript | `.js`, `.jsx` | — |
-| Python | `.py` | `decorators` |
-| Rust | `.rs` | `derives`, `unsafe_blocks`, `trait_impls`, `lifetimes`, `async_functions` |
-| Go | `.go` | — |
-| Java | `.java` | `annotations` |
-| C++ | `.cpp`, `.hpp`, `.cc`, `.hh`, `.cxx`, `.hxx` | `namespaces` |
-| C# | `.cs` | `namespaces`, `attributes` |
-| Ruby | `.rb` | `mixins` |
+| Language   | Extensions                                   | Custom Fields                                                             |
+| ---------- | -------------------------------------------- | ------------------------------------------------------------------------- |
+| TypeScript | `.ts`, `.tsx`                                | —                                                                         |
+| JavaScript | `.js`, `.jsx`                                | —                                                                         |
+| Python     | `.py`                                        | `decorators`                                                              |
+| Rust       | `.rs`                                        | `derives`, `unsafe_blocks`, `trait_impls`, `lifetimes`, `async_functions` |
+| Go         | `.go`                                        | —                                                                         |
+| Java       | `.java`                                      | `annotations`                                                             |
+| C          | `.c`, `.h`                                   | `macros`, `typedefs`                                                      |
+| C++        | `.cpp`, `.hpp`, `.cc`, `.hh`, `.cxx`, `.hxx` | `namespaces`                                                              |
+| C#         | `.cs`                                        | `namespaces`, `attributes`                                                |
+| Ruby       | `.rb`                                        | `mixins`                                                                  |
+| PHP        | `.php`                                       | `namespaces`, `traits_used`                                               |
+| Swift      | `.swift`                                     | `protocols`, `extensions`                                                 |
+| Kotlin     | `.kt`, `.kts`                                | `data_classes`, `sealed_classes`, `companion_objects`                     |
+| Dart       | `.dart`                                      | `mixins`, `extensions`                                                    |
+| Elixir     | `.ex`, `.exs`                                | `macros`, `protocols`, `behaviours`                                       |
+| Lua        | `.lua`                                       | —                                                                         |
+| Scala      | `.scala`, `.sc`                              | `case_classes`, `implicits`, `annotations`                                |
+| Zig        | `.zig`                                       | `comptime_blocks`, `test_blocks`                                          |
 
 All languages extract: **exports**, **imports**, **dependencies**, **LOC**.
 
