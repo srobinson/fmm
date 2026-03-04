@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
-use super::query_helpers::{collect_matches, collect_matches_with_lines, top_level_ancestor};
+use super::query_helpers::{collect_matches, collect_matches_with_lines};
 
 pub struct JavaParser {
     parser: TSParser,
@@ -97,11 +97,10 @@ impl JavaParser {
                         if let Ok(text) = method_node.utf8_text(source_bytes) {
                             let name = text.to_string();
                             if seen.insert(name.clone()) {
-                                let decl = top_level_ancestor(capture.node);
                                 exports.push(ExportEntry::new(
                                     name,
-                                    decl.start_position().row + 1,
-                                    decl.end_position().row + 1,
+                                    method_decl.start_position().row + 1,
+                                    method_decl.end_position().row + 1,
                                 ));
                             }
                         }
