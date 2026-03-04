@@ -97,12 +97,30 @@ impl ScalaParser {
         root_node: tree_sitter::Node,
     ) -> (Vec<ExportEntry>, Vec<String>, usize) {
         let source_bytes = source.as_bytes();
-        let mut seen = HashSet::new();
+        let source_lines: Vec<&str> = source.lines().collect();
         let mut exports = Vec::new();
         let mut case_classes = Vec::new();
         let mut implicit_count = 0;
-        let mut cursor = root_node.walk();
 
+        // Collect start positions of ALL top-level definitions for end-line clamping
+        let mut all_def_starts = Vec::new();
+        let mut first_cursor = root_node.walk();
+        for child in root_node.children(&mut first_cursor) {
+            if matches!(
+                child.kind(),
+                "class_definition"
+                    | "trait_definition"
+                    | "object_definition"
+                    | "function_definition"
+                    | "val_definition"
+                    | "var_definition"
+            ) {
+                all_def_starts.push(child.start_position().row + 1);
+            }
+        }
+        all_def_starts.sort();
+
+        let mut cursor = root_node.walk();
         for child in root_node.children(&mut cursor) {
             match child.kind() {
                 "class_definition" => {
@@ -114,39 +132,33 @@ impl ScalaParser {
                             if Self::has_implicit(&child, source_bytes) {
                                 implicit_count += 1;
                             }
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    child.start_position().row + 1,
-                                    child.end_position().row + 1,
-                                ));
-                            }
+                            exports.push(ExportEntry::new(
+                                name,
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            ));
                         }
                     }
                 }
                 "trait_definition" => {
                     if !Self::is_private_or_protected(&child, source_bytes) {
                         if let Some(name) = Self::extract_name(&child, source_bytes) {
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    child.start_position().row + 1,
-                                    child.end_position().row + 1,
-                                ));
-                            }
+                            exports.push(ExportEntry::new(
+                                name,
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            ));
                         }
                     }
                 }
                 "object_definition" => {
                     if !Self::is_private_or_protected(&child, source_bytes) {
                         if let Some(name) = Self::extract_name(&child, source_bytes) {
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    child.start_position().row + 1,
-                                    child.end_position().row + 1,
-                                ));
-                            }
+                            exports.push(ExportEntry::new(
+                                name,
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            ));
                         }
                     }
                 }
@@ -156,13 +168,11 @@ impl ScalaParser {
                             implicit_count += 1;
                         }
                         if let Some(name) = Self::extract_name(&child, source_bytes) {
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    child.start_position().row + 1,
-                                    child.end_position().row + 1,
-                                ));
-                            }
+                            exports.push(ExportEntry::new(
+                                name,
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            ));
                         }
                     }
                 }
@@ -172,13 +182,11 @@ impl ScalaParser {
                             implicit_count += 1;
                         }
                         if let Some(name) = Self::extract_name(&child, source_bytes) {
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    child.start_position().row + 1,
-                                    child.end_position().row + 1,
-                                ));
-                            }
+                            exports.push(ExportEntry::new(
+                                name,
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            ));
                         }
                     }
                 }
@@ -186,9 +194,41 @@ impl ScalaParser {
             }
         }
 
+        // Clamp end lines: don't bleed into next definition's range
+        for export in &mut exports {
+            if let Some(&next_start) = all_def_starts.iter().find(|&&s| s > export.start_line) {
+                if export.end_line >= next_start {
+                    export.end_line = next_start - 1;
+                }
+            }
+            // Trim trailing blank lines
+            while export.end_line > export.start_line {
+                let line_idx = export.end_line - 1;
+                if line_idx < source_lines.len() && source_lines[line_idx].trim().is_empty() {
+                    export.end_line -= 1;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // Merge companion objects: same name → extend range to cover both
+        let mut merged: Vec<ExportEntry> = Vec::new();
+        let mut name_index: HashMap<String, usize> = HashMap::new();
+        for export in exports {
+            if let Some(&idx) = name_index.get(&export.name) {
+                let existing = &mut merged[idx];
+                existing.start_line = existing.start_line.min(export.start_line);
+                existing.end_line = existing.end_line.max(export.end_line);
+            } else {
+                name_index.insert(export.name.clone(), merged.len());
+                merged.push(export);
+            }
+        }
+
         case_classes.sort();
-        exports.sort_by_key(|e| e.start_line);
-        (exports, case_classes, implicit_count)
+        merged.sort_by_key(|e| e.start_line);
+        (merged, case_classes, implicit_count)
     }
 
     /// Extract imports from import_declaration nodes.
