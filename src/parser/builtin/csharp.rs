@@ -44,8 +44,11 @@ impl CSharpParser {
         let method_query = Query::new(&language, "(method_declaration name: (identifier) @name)")
             .map_err(|e| anyhow::anyhow!("Failed to compile method query: {}", e))?;
 
-        let using_query = Query::new(&language, "(using_directive (identifier) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile using query: {}", e))?;
+        let using_query = Query::new(
+            &language,
+            "[(using_directive (identifier) @name) (using_directive (qualified_name) @name)]",
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to compile using query: {}", e))?;
 
         let namespace_query = Query::new(&language, "(namespace_declaration name: (_) @name)")
             .map_err(|e| anyhow::anyhow!("Failed to compile namespace query: {}", e))?;
@@ -138,7 +141,17 @@ impl CSharpParser {
     }
 
     fn extract_imports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
-        collect_matches(&self.using_query, root_node, source.as_bytes())
+        let raw = collect_matches(&self.using_query, root_node, source.as_bytes());
+        let mut seen = HashSet::new();
+        let mut imports = Vec::new();
+        for full_path in &raw {
+            let root_ns = full_path.split('.').next().unwrap_or(full_path).to_string();
+            if seen.insert(root_ns.clone()) {
+                imports.push(root_ns);
+            }
+        }
+        imports.sort();
+        imports
     }
 
     fn extract_namespaces(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
@@ -278,7 +291,8 @@ public class App {}
 "#;
         let result = parser.parse(source).unwrap();
         assert!(result.metadata.imports.contains(&"System".to_string()));
-        // Note: using with dotted names - we capture what tree-sitter gives us
+        // Qualified names now captured and extracted to root namespace
+        assert!(result.metadata.imports.contains(&"Microsoft".to_string()));
     }
 
     #[test]
