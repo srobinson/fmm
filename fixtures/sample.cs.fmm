@@ -1,5 +1,5 @@
 ---
-file: sample.cs
+file: fixtures/sample.cs
 fmm: v0.3
 exports:
   DataService: [6, 45]

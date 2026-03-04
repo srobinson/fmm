@@ -78,11 +78,11 @@ fn validate_rust_fixture() {
     let expected_exports = vec!["Config", "Status", "Pipeline", "Error", "process"];
     assert_eq!(result.metadata.export_names(), expected_exports);
 
-    // Expected imports: anyhow, serde, tokio (external crates, not std)
+    // Expected imports: anyhow, serde, std, tokio (all crates including stdlib)
     assert!(result.metadata.imports.contains(&"anyhow".to_string()));
     assert!(result.metadata.imports.contains(&"serde".to_string()));
+    assert!(result.metadata.imports.contains(&"std".to_string()));
     assert!(result.metadata.imports.contains(&"tokio".to_string()));
-    assert!(!result.metadata.imports.contains(&"std".to_string()));
 
     // Expected dependencies: crate, super
     assert!(result.metadata.dependencies.contains(&"crate".to_string()));

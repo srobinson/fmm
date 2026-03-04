@@ -1,5 +1,5 @@
 ---
-file: sample.scala
+file: fixtures/sample.scala
 fmm: v0.3
 exports:
   Config: [10, 14]

@@ -1,5 +1,5 @@
 ---
-file: sample.swift
+file: fixtures/sample.swift
 fmm: v0.3
 exports:
   NetworkManager: [11, 27]

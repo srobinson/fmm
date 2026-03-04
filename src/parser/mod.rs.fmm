@@ -16,7 +16,7 @@ exports:
   get_parser: [199, 205]
   has_parser: [209, 211]
   extensions: [215, 219]
-imports: [anyhow, serde]
+imports: [anyhow, serde, std]
 loc: 348
 modified: 2026-03-04
 rust:

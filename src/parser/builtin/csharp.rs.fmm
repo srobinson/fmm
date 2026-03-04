@@ -3,11 +3,10 @@ file: src/parser/builtin/csharp.rs
 fmm: v0.3
 exports:
   CSharpParser: [9, 19]
-  new: [22, 67]
-imports: [anyhow, streaming_iterator, tree_sitter]
+  new: [22, 70]
+imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: [crate, super]
-loc: 325
-modified: 2026-03-03
+loc: 339
+modified: 2026-03-04
 rust:
   lifetimes: ['''static']
-  trait_impls: [Parser for CSharpParser]

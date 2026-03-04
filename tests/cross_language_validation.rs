@@ -304,10 +304,9 @@ pub fn load_config(path: &PathBuf) -> Result<Config> {
         .contains(&"load_config".to_string()));
     assert_eq!(result.metadata.export_names().len(), 3);
 
-    // Imports: anyhow, serde (not std)
+    // Imports: anyhow, serde, std
     assert!(result.metadata.imports.contains(&"anyhow".to_string()));
     assert!(result.metadata.imports.contains(&"serde".to_string()));
-    assert!(!result.metadata.imports.contains(&"std".to_string()));
 
     // Custom fields
     let fields = result.custom_fields.expect("should have custom fields");
@@ -402,10 +401,9 @@ pub async fn search_file(path: &str, config: &SearchConfig) -> Result<Vec<Match>
         .export_names()
         .contains(&"search_file".to_string()));
 
-    // Imports (external crates only)
+    // Imports (all crates including stdlib)
     assert!(result.metadata.imports.contains(&"anyhow".to_string()));
     assert!(result.metadata.imports.contains(&"tokio".to_string()));
-    assert!(!result.metadata.imports.contains(&"std".to_string()));
 
     // Dependencies (crate, super)
     assert!(result.metadata.dependencies.contains(&"crate".to_string()));

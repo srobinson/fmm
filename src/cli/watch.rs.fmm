@@ -3,7 +3,7 @@ file: src/cli/watch.rs
 fmm: v0.3
 exports:
   watch: [16, 80]
-imports: [anyhow, colored, notify, notify_debouncer_full]
+imports: [anyhow, colored, notify, notify_debouncer_full, std]
 dependencies: [crate, super]
 loc: 413
-modified: 2026-03-03
+modified: 2026-03-04

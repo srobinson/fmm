@@ -1,5 +1,5 @@
 ---
-file: sample.py
+file: fixtures/sample.py
 fmm: v0.3
 exports:
   MAX_RETRIES: [11, 11]
