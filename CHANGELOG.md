@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.10](https://github.com/srobinson/fmm/compare/v0.1.9...v0.1.10) (2026-03-04)
+
+
+### Bug Fixes
+
+* guard fromJSON against empty release-please pr output ([2a0c8d8](https://github.com/srobinson/fmm/commit/2a0c8d83a89c700608e29b3e547960bf33347ac3))
+
 ## [0.1.9](https://github.com/srobinson/fmm/compare/v0.1.8...v0.1.9) (2026-03-04)
 
 
