@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
-use super::query_helpers::{collect_matches, top_level_ancestor};
+use super::query_helpers::collect_matches;
 
 pub struct CSharpParser {
     parser: TSParser,
@@ -99,11 +99,10 @@ impl CSharpParser {
                         if let Ok(text) = capture.node.utf8_text(source_bytes) {
                             let name = text.to_string();
                             if seen.insert(name.clone()) {
-                                let decl = top_level_ancestor(capture.node);
                                 exports.push(ExportEntry::new(
                                     name,
-                                    decl.start_position().row + 1,
-                                    decl.end_position().row + 1,
+                                    parent.start_position().row + 1,
+                                    parent.end_position().row + 1,
                                 ));
                             }
                         }
@@ -246,6 +245,7 @@ namespace MyApp {
 }
 "#;
         let result = parser.parse(source).unwrap();
+        let exports = &result.metadata.exports;
         assert!(result
             .metadata
             .export_names()
@@ -262,6 +262,11 @@ namespace MyApp {
             .metadata
             .export_names()
             .contains(&"InternalHelper".to_string()));
+
+        // Exports should use declaration line ranges, NOT namespace range [2, 9]
+        let user_service = exports.iter().find(|e| e.name == "UserService").unwrap();
+        assert_eq!(user_service.start_line, 3); // "public class UserService {"
+        assert_eq!(user_service.end_line, 6); // closing "}"
     }
 
     #[test]

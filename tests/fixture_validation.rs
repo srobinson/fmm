@@ -331,33 +331,36 @@ fn validate_csharp_fixture() {
     let mut parser = CSharpParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
-    // Public types only
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"DataService".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"IRepository".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Status".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"ProcessConfig".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Transform".to_string()));
+    // Public types with correct declaration line ranges (not namespace line ranges)
+    let exports = &result.metadata.exports;
+    let find = |name: &str| exports.iter().find(|e| e.name == name).unwrap();
+
+    let ds = find("DataService");
+    assert_eq!((ds.start_line, ds.end_line), (8, 29)); // includes [Serializable] attribute
+
+    let transform = find("Transform");
+    assert_eq!((transform.start_line, transform.end_line), (18, 22)); // includes [Required] attribute
+
+    let repo = find("IRepository");
+    assert_eq!((repo.start_line, repo.end_line), (31, 36));
+
+    let status = find("Status");
+    assert_eq!((status.start_line, status.end_line), (38, 44)); // includes [Obsolete] attribute
+
+    let config = find("ProcessConfig");
+    assert_eq!((config.start_line, config.end_line), (49, 54));
 
     // Internal class should NOT be exported
     assert!(!result
         .metadata
         .export_names()
         .contains(&"InternalHelper".to_string()));
+
+    // Exports should be sorted by line number
+    let lines: Vec<usize> = exports.iter().map(|e| e.start_line).collect();
+    let mut sorted = lines.clone();
+    sorted.sort();
+    assert_eq!(lines, sorted);
 
     // Using statements
     assert!(result.metadata.imports.contains(&"System".to_string()));
