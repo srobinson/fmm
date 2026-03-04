@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.11](https://github.com/srobinson/fmm/compare/v0.1.10...v0.1.11) (2026-03-04)
+
+
+### Features
+
+* unify MCP output to sidecar YAML and index Rust binary crates ([4b4d6af](https://github.com/srobinson/fmm/commit/4b4d6afebb581013acac4af0975301e6be0bdd93))
+
 ## [0.1.10](https://github.com/srobinson/fmm/compare/v0.1.9...v0.1.10) (2026-03-04)
 
 
