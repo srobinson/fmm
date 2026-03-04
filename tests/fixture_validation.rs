@@ -268,31 +268,27 @@ fn validate_cpp_fixture() {
     let mut parser = CppParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
-    // Classes, structs, enums, functions, templates
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Engine".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Config".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Point".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Status".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Pipeline".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"process".to_string()));
+    // Classes, structs, enums, functions, templates with correct declaration line ranges
+    let exports = &result.metadata.exports;
+    let find = |name: &str| exports.iter().find(|e| e.name == name).unwrap();
+
+    let point = find("Point");
+    assert_eq!((point.start_line, point.end_line), (10, 12));
+
+    let status = find("Status");
+    assert_eq!((status.start_line, status.end_line), (14, 18));
+
+    let config = find("Config");
+    assert_eq!((config.start_line, config.end_line), (20, 28));
+
+    let engine = find("Engine");
+    assert_eq!((engine.start_line, engine.end_line), (30, 39));
+
+    let pipeline = find("Pipeline");
+    assert_eq!((pipeline.start_line, pipeline.end_line), (41, 54)); // template_declaration
+
+    let process = find("process");
+    assert_eq!((process.start_line, process.end_line), (60, 64));
 
     // System includes
     assert!(result.metadata.imports.contains(&"vector".to_string()));
@@ -320,6 +316,12 @@ fn validate_cpp_fixture() {
     let ns_names: Vec<&str> = namespaces.iter().map(|v| v.as_str().unwrap()).collect();
     assert!(ns_names.contains(&"engine"));
     assert!(ns_names.contains(&"utils"));
+
+    // Exports should be sorted by line number
+    let lines: Vec<usize> = exports.iter().map(|e| e.start_line).collect();
+    let mut sorted = lines.clone();
+    sorted.sort();
+    assert_eq!(lines, sorted);
 
     assert!(result.metadata.loc > 50);
 }

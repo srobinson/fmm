@@ -6,7 +6,7 @@ exports:
   new: [21, 79]
 imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: [crate, super]
-loc: 317
+loc: 351
 modified: 2026-03-04
 rust:
   lifetimes: ['''static']

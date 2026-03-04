@@ -1,4 +1,4 @@
-use super::query_helpers::{collect_matches, collect_matches_with_lines};
+use super::query_helpers::collect_matches;
 use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -78,6 +78,21 @@ impl CppParser {
         })
     }
 
+    /// Walk up from a captured node to find the declaration-level ancestor.
+    /// Stops at the node whose parent is the root (translation_unit) or a
+    /// declaration_list (inside a namespace). This prevents walking up into
+    /// the enclosing namespace_definition.
+    fn declaration_ancestor(node: tree_sitter::Node) -> tree_sitter::Node {
+        let mut current = node;
+        while let Some(parent) = current.parent() {
+            if parent.parent().is_none() || parent.kind() == "declaration_list" {
+                return current;
+            }
+            current = parent;
+        }
+        current
+    }
+
     fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<ExportEntry> {
         let source_bytes = source.as_bytes();
         let queries = [
@@ -91,9 +106,21 @@ impl CppParser {
         let mut seen = HashSet::new();
         let mut exports = Vec::new();
         for query in queries {
-            for entry in collect_matches_with_lines(query, root_node, source_bytes) {
-                if seen.insert(entry.name.clone()) {
-                    exports.push(entry);
+            let mut cursor = QueryCursor::new();
+            let mut iter = cursor.matches(query, root_node, source_bytes);
+            while let Some(m) = iter.next() {
+                for capture in m.captures {
+                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                        let name = text.to_string();
+                        if seen.insert(name.clone()) {
+                            let decl = Self::declaration_ancestor(capture.node);
+                            exports.push(ExportEntry::new(
+                                name,
+                                decl.start_position().row + 1,
+                                decl.end_position().row + 1,
+                            ));
+                        }
+                    }
                 }
             }
         }
@@ -289,6 +316,13 @@ namespace utils {
         let names: Vec<&str> = namespaces.iter().map(|v| v.as_str().unwrap()).collect();
         assert!(names.contains(&"engine"));
         assert!(names.contains(&"utils"));
+
+        // Exports should use declaration line ranges, NOT namespace range
+        let exports = &result.metadata.exports;
+        let core = exports.iter().find(|e| e.name == "Core").unwrap();
+        assert_eq!(core.start_line, 3); // "class Core {};"
+        let helper = exports.iter().find(|e| e.name == "helper").unwrap();
+        assert_eq!(helper.start_line, 7); // "void helper() {}"
     }
 
     #[test]
