@@ -6,22 +6,14 @@ exports:
   Status: [17, 17]
   Processor: [20, 23]
   Repository: [26, 30]
-<<<<<<< HEAD
   DataService: [33, 44]
-=======
-  DataService: [33, 38]
->>>>>>> 8250716 (docs: update README for 17 language parsers)
   Pipeline: [47, 52]
   Result: [55, 55]
   Success: [56, 56]
   Failure: [57, 57]
   transform: [69, 69]
   MAX_RETRIES: [72, 72]
-<<<<<<< HEAD
   stringToConfig: [75, 76]
-=======
-  stringToConfig: [75, 78]
->>>>>>> 8250716 (docs: update README for 17 language parsers)
   LegacyProcessor: [78, 81]
   globalState: [83, 84]
 imports: [akka, com, scala]

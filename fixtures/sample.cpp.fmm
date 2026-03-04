@@ -2,21 +2,12 @@
 file: fixtures/sample.cpp
 fmm: v0.3
 exports:
-<<<<<<< HEAD
   Point: [10, 12]
   Status: [14, 18]
   Config: [20, 28]
   Engine: [30, 39]
   Pipeline: [41, 54]
   process: [60, 64]
-=======
-  Config: [8, 56]
-  Engine: [8, 56]
-  Pipeline: [8, 56]
-  Point: [8, 56]
-  Status: [8, 56]
-  process: [58, 66]
->>>>>>> 8250716 (docs: update README for 17 language parsers)
 imports: [algorithm, memory, string, vector]
 dependencies: [config.h, utils/helpers.h]
 loc: 66

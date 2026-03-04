@@ -2,19 +2,11 @@
 file: fixtures/sample.cs
 fmm: v0.3
 exports:
-<<<<<<< HEAD
   DataService: [8, 29]
   Transform: [18, 22]
   IRepository: [31, 36]
   Status: [38, 44]
   ProcessConfig: [49, 54]
-=======
-  DataService: [6, 45]
-  IRepository: [6, 45]
-  Status: [6, 45]
-  Transform: [6, 45]
-  ProcessConfig: [47, 60]
->>>>>>> 8250716 (docs: update README for 17 language parsers)
 imports: [System]
 loc: 60
 modified: 2026-03-04

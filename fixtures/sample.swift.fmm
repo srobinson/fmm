@@ -16,10 +16,7 @@ exports:
   JSONDictionary: [120, 120]
   CompletionHandler: [121, 121]
   trimmed: [126, 128]
-<<<<<<< HEAD
   isBlank: [130, 132]
-=======
->>>>>>> 8250716 (docs: update README for 17 language parsers)
   uniqueElements: [142, 150]
 imports: [Foundation, MyTestModule, UIKit]
 loc: 151
