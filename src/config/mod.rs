@@ -42,8 +42,8 @@ impl Config {
 fn default_languages() -> HashSet<String> {
     [
         "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "cpp", "hpp", "cc", "hh", "cxx", "hxx",
-        "cs", "rb", "php", "c", "h", "zig", "lua", "scala", "sc", "swift", "kt", "kts",
-        "dart", "ex", "exs",
+        "cs", "rb", "php", "c", "h", "zig", "lua", "scala", "sc", "swift", "kt", "kts", "dart",
+        "ex", "exs",
     ]
     .iter()
     .map(|s| s.to_string())

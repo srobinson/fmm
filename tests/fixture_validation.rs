@@ -1062,11 +1062,20 @@ fn validate_dart_fixture() {
     assert!(result.metadata.imports.contains(&"flutter".to_string()));
     assert!(result.metadata.imports.contains(&"http".to_string()));
     assert!(result.metadata.imports.contains(&"dart:async".to_string()));
-    assert!(result.metadata.imports.contains(&"dart:convert".to_string()));
+    assert!(result
+        .metadata
+        .imports
+        .contains(&"dart:convert".to_string()));
 
     // Dependencies (relative paths)
-    assert!(result.metadata.dependencies.contains(&"./relative_file.dart".to_string()));
-    assert!(result.metadata.dependencies.contains(&"../utils/helpers.dart".to_string()));
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"./relative_file.dart".to_string()));
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"../utils/helpers.dart".to_string()));
 
     // Custom fields
     let fields = result.custom_fields.expect("should have custom fields");
@@ -1077,7 +1086,12 @@ fn validate_dart_fixture() {
     assert!(result.metadata.loc >= 100);
 
     // Exports sorted by line number
-    let lines: Vec<usize> = result.metadata.exports.iter().map(|e| e.start_line).collect();
+    let lines: Vec<usize> = result
+        .metadata
+        .exports
+        .iter()
+        .map(|e| e.start_line)
+        .collect();
     let mut sorted = lines.clone();
     sorted.sort();
     assert_eq!(lines, sorted);
@@ -1140,7 +1154,12 @@ fn validate_elixir_fixture() {
     assert!(result.metadata.loc >= 73);
 
     // Exports sorted by line number
-    let lines: Vec<usize> = result.metadata.exports.iter().map(|e| e.start_line).collect();
+    let lines: Vec<usize> = result
+        .metadata
+        .exports
+        .iter()
+        .map(|e| e.start_line)
+        .collect();
     let mut sorted = lines.clone();
     sorted.sort();
     assert_eq!(lines, sorted);

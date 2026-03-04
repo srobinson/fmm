@@ -253,7 +253,6 @@ impl SwiftParser {
     fn extract_custom_fields(
         &self,
         root_node: tree_sitter::Node,
-        source_bytes: &[u8],
     ) -> Option<HashMap<String, serde_json::Value>> {
         let mut protocol_count: u64 = 0;
         let mut extension_count: u64 = 0;
@@ -272,9 +271,6 @@ impl SwiftParser {
                 _ => {}
             }
         }
-
-        // Suppress unused variable warning
-        let _ = source_bytes;
 
         let mut fields = HashMap::new();
         if protocol_count > 0 {
@@ -306,10 +302,9 @@ impl Parser for SwiftParser {
             .ok_or_else(|| anyhow::anyhow!("Failed to parse Swift source"))?;
 
         let root_node = tree.root_node();
-        let source_bytes = source.as_bytes();
         let exports = self.extract_exports(source, root_node);
         let (imports, dependencies) = self.extract_imports(source, root_node);
-        let custom_fields = self.extract_custom_fields(root_node, source_bytes);
+        let custom_fields = self.extract_custom_fields(root_node);
         let loc = source.lines().count();
 
         Ok(ParseResult {

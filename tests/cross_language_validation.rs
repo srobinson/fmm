@@ -2456,7 +2456,10 @@ void _initializeClient() {}
     assert!(names.contains(&"JsonMap".to_string()));
     assert!(!names.contains(&"_initializeClient".to_string()));
 
-    assert!(result.metadata.imports.contains(&"dart:convert".to_string()));
+    assert!(result
+        .metadata
+        .imports
+        .contains(&"dart:convert".to_string()));
     assert!(result.metadata.imports.contains(&"http".to_string()));
 }
 

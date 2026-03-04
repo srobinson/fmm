@@ -153,8 +153,7 @@ impl DartParser {
                     // Look ahead for the declaration list
                     for sibling in children.iter().skip(i + 1).take(3) {
                         match sibling.kind() {
-                            "static_final_declaration_list"
-                            | "initialized_identifier_list" => {
+                            "static_final_declaration_list" | "initialized_identifier_list" => {
                                 var_name = Self::get_var_name_from_decl(sibling, source_bytes);
                                 end_line = sibling.end_position().row + 1;
                                 break;
@@ -226,11 +225,15 @@ impl DartParser {
     }
 
     /// Extract path from an import statement text like "import 'package:flutter/material.dart';"
+    /// Handles both single and double quotes.
     fn extract_import_path(text: &str) -> Option<String> {
-        // Find the string between quotes
-        let start = text.find('\'')?;
+        // Find the first quote (single or double)
+        let (start, quote) = text
+            .find('\'')
+            .map(|i| (i, '\''))
+            .or_else(|| text.find('"').map(|i| (i, '"')))?;
         let rest = &text[start + 1..];
-        let end = rest.find('\'')?;
+        let end = rest.find(quote)?;
         Some(rest[..end].to_string())
     }
 
@@ -362,14 +365,25 @@ mod tests {
         let source = "import 'package:flutter/material.dart';\nimport 'dart:async';\nimport './local.dart';\n";
         let result = parser.parse(source).unwrap();
         assert!(result.metadata.imports.contains(&"flutter".to_string()));
-        assert!(result
-            .metadata
-            .imports
-            .contains(&"dart:async".to_string()));
+        assert!(result.metadata.imports.contains(&"dart:async".to_string()));
         assert!(result
             .metadata
             .dependencies
             .contains(&"./local.dart".to_string()));
+    }
+
+    #[test]
+    fn parse_double_quoted_imports() {
+        let mut parser = DartParser::new().unwrap();
+        let source =
+            "import \"package:provider/provider.dart\";\nimport \"dart:io\";\nimport \"./utils.dart\";\n";
+        let result = parser.parse(source).unwrap();
+        assert!(result.metadata.imports.contains(&"provider".to_string()));
+        assert!(result.metadata.imports.contains(&"dart:io".to_string()));
+        assert!(result
+            .metadata
+            .dependencies
+            .contains(&"./utils.dart".to_string()));
     }
 
     #[test]

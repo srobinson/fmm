@@ -1,0 +1,13 @@
+---
+file: swift.rs
+fmm: v0.3
+exports:
+  SwiftParser: [6, 8]
+  new: [11, 18]
+imports: [anyhow, tree_sitter]
+dependencies: [crate]
+loc: 453
+modified: 2026-03-04
+rust:
+  lifetimes: ['''static']
+  trait_impls: [Parser for SwiftParser]

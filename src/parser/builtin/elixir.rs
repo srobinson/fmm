@@ -52,10 +52,7 @@ impl ElixirParser {
                         for bin_child in arg.children(&mut bin_cursor) {
                             if bin_child.kind() == "call" {
                                 let target = bin_child.child_by_field_name("target")?;
-                                return target
-                                    .utf8_text(source_bytes)
-                                    .ok()
-                                    .map(|s| s.to_string());
+                                return target.utf8_text(source_bytes).ok().map(|s| s.to_string());
                             }
                         }
                     }
@@ -195,8 +192,7 @@ impl ElixirParser {
                             }
                         }
                         "use" | "import" | "alias" | "require" => {
-                            if let Some(module) =
-                                Self::get_import_module_name(&child, source_bytes)
+                            if let Some(module) = Self::get_import_module_name(&child, source_bytes)
                             {
                                 let root = module.split('.').next().unwrap_or(&module);
                                 import_set.insert(root.to_string());
@@ -348,8 +344,7 @@ mod tests {
     #[test]
     fn parse_defmacro() {
         let mut parser = ElixirParser::new().unwrap();
-        let source =
-            "defmodule M do\n  defmacro my_macro() do\n    quote do: :ok\n  end\nend\n";
+        let source = "defmodule M do\n  defmacro my_macro() do\n    quote do: :ok\n  end\nend\n";
         let result = parser.parse(source).unwrap();
         let names = result.metadata.export_names();
         assert!(names.contains(&"my_macro".to_string()));
@@ -381,8 +376,7 @@ mod tests {
     #[test]
     fn exports_sorted_by_line() {
         let mut parser = ElixirParser::new().unwrap();
-        let source =
-            "defmodule Z do\n  def zebra(), do: :ok\n  def alpha(), do: :ok\nend\n";
+        let source = "defmodule Z do\n  def zebra(), do: :ok\n  def alpha(), do: :ok\nend\n";
         let result = parser.parse(source).unwrap();
         let lines: Vec<usize> = result
             .metadata

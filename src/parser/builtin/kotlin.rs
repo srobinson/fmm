@@ -69,8 +69,7 @@ impl KotlinParser {
     }
 
     /// Count companion objects inside class bodies (recursive walk).
-    fn count_companion_objects(node: tree_sitter::Node, source_bytes: &[u8]) -> u64 {
-        let _ = source_bytes;
+    fn count_companion_objects(node: tree_sitter::Node) -> u64 {
         let mut count: u64 = 0;
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -79,7 +78,7 @@ impl KotlinParser {
             }
             // Recurse into class bodies
             if child.kind() == "class_body" {
-                count += Self::count_companion_objects(child, source_bytes);
+                count += Self::count_companion_objects(child);
             }
         }
         count
@@ -224,8 +223,7 @@ impl KotlinParser {
                 let mut inner = child.walk();
                 for inner_child in child.children(&mut inner) {
                     if inner_child.kind() == "class_body" {
-                        companion_objects +=
-                            Self::count_companion_objects(inner_child, source_bytes);
+                        companion_objects += Self::count_companion_objects(inner_child);
                     }
                 }
             }
