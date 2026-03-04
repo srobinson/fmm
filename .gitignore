@@ -5,14 +5,16 @@
 Cargo.lock
 **/*.rs.bk
 *.pdb
+
+# Python
 __pycache__/
+.mypy_cache/
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
-__pycache__/
 
 # OS
 .DS_Store
@@ -20,15 +22,6 @@ Thumbs.db
 
 # Testing
 /tmp
-
-# mdBook build output
-docs/book/
-
-# Generated man pages
-docs/man/
-
-# Nested fmm manifests (keep root .fmm/ but ignore in subdirs)
-*/**/.fmm/
 
 # Nancy task runtime (keep structure, ignore runtime files)
 .nancy/tasks/*/logs/
