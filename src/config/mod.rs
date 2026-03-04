@@ -1,13 +1,13 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Languages to process
     #[serde(default = "default_languages")]
-    pub languages: HashSet<String>,
+    pub languages: BTreeSet<String>,
 }
 
 impl Default for Config {
@@ -39,7 +39,7 @@ impl Config {
     }
 }
 
-fn default_languages() -> HashSet<String> {
+fn default_languages() -> BTreeSet<String> {
     [
         "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "cpp", "hpp", "cc", "hh", "cxx", "hxx",
         "cs", "rb", "php", "c", "h", "zig", "lua", "scala", "sc", "swift", "kt", "kts", "dart",
