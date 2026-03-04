@@ -1,0 +1,13 @@
+---
+file: elixir.rs
+fmm: v0.3
+exports:
+  ElixirParser: [6, 8]
+  new: [11, 18]
+imports: [anyhow, tree_sitter]
+dependencies: [crate]
+loc: 391
+modified: 2026-03-04
+rust:
+  lifetimes: ['''a', '''static']
+  trait_impls: [Parser for ElixirParser]

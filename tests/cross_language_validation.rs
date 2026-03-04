@@ -14,14 +14,18 @@
 use fmm::parser::builtin::c::CParser;
 use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
+use fmm::parser::builtin::dart::DartParser;
+use fmm::parser::builtin::elixir::ElixirParser;
 use fmm::parser::builtin::go::GoParser;
 use fmm::parser::builtin::java::JavaParser;
+use fmm::parser::builtin::kotlin::KotlinParser;
 use fmm::parser::builtin::lua::LuaParser;
 use fmm::parser::builtin::php::PhpParser;
 use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::ruby::RubyParser;
 use fmm::parser::builtin::rust::RustParser;
 use fmm::parser::builtin::scala::ScalaParser;
+use fmm::parser::builtin::swift::SwiftParser;
 use fmm::parser::builtin::typescript::TypeScriptParser;
 use fmm::parser::builtin::zig::ZigParser;
 use fmm::parser::Parser;
@@ -2077,4 +2081,483 @@ implicit val defaultConfig: JobConfig =
     let fields = result.custom_fields.unwrap();
     assert!(fields.contains_key("case_classes"));
     assert_eq!(fields.get("implicits").unwrap().as_u64().unwrap(), 1);
+}
+
+// =============================================================================
+// Swift validation — iOS app pattern
+// =============================================================================
+
+/// iOS app pattern — typical UIKit-based view controller with networking.
+#[test]
+fn swift_real_ios_app_pattern() {
+    let source = r#"import UIKit
+import Foundation
+
+public protocol DataSourceDelegate: AnyObject {
+    func dataDidUpdate()
+}
+
+open class TableViewController: UIViewController {
+    open func viewDidLoad() {
+        super.viewDidLoad()
+    }
+
+    open func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return 0
+    }
+
+    private func setupConstraints() {}
+}
+
+public struct CellModel {
+    public let title: String
+    public let subtitle: String
+}
+
+public enum Section: Int {
+    case header = 0
+    case content
+    case footer
+}
+"#;
+
+    let mut parser = SwiftParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Protocol
+    assert!(names.contains(&"DataSourceDelegate".to_string()));
+
+    // Open class
+    assert!(names.contains(&"TableViewController".to_string()));
+
+    // Struct
+    assert!(names.contains(&"CellModel".to_string()));
+
+    // Enum
+    assert!(names.contains(&"Section".to_string()));
+
+    // Private methods NOT exported
+    assert!(!names.contains(&"setupConstraints".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"UIKit".to_string()));
+    assert!(result.metadata.imports.contains(&"Foundation".to_string()));
+
+    // Custom fields
+    let fields = result.custom_fields.unwrap();
+    assert_eq!(fields.get("protocols").unwrap().as_u64().unwrap(), 1);
+}
+
+// =============================================================================
+// Swift validation — SwiftUI pattern
+// =============================================================================
+
+/// SwiftUI pattern — protocol-oriented with extensions.
+#[test]
+fn swift_real_swiftui_pattern() {
+    let source = r#"import SwiftUI
+
+public protocol Theme {
+    var primaryColor: Color { get }
+    var font: Font { get }
+}
+
+public struct AppTheme: Theme {
+    public var primaryColor: Color
+    public var font: Font
+}
+
+public extension View {
+    func themed(with theme: Theme) -> some View {
+        return self
+    }
+}
+
+public typealias ViewBuilder = () -> AnyView
+
+public let defaultTheme = AppTheme(primaryColor: .blue, font: .body)
+"#;
+
+    let mut parser = SwiftParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Protocol
+    assert!(names.contains(&"Theme".to_string()));
+
+    // Struct
+    assert!(names.contains(&"AppTheme".to_string()));
+
+    // Extension method
+    assert!(names.contains(&"themed".to_string()));
+
+    // Typealias
+    assert!(names.contains(&"ViewBuilder".to_string()));
+
+    // Public let
+    assert!(names.contains(&"defaultTheme".to_string()));
+
+    // Import
+    assert!(result.metadata.imports.contains(&"SwiftUI".to_string()));
+
+    // Custom fields
+    let fields = result.custom_fields.unwrap();
+    assert_eq!(fields.get("protocols").unwrap().as_u64().unwrap(), 1);
+    assert_eq!(fields.get("extensions").unwrap().as_u64().unwrap(), 1);
+}
+
+// =============================================================================
+// Kotlin validation — Android ViewModel pattern
+// =============================================================================
+
+/// Android ViewModel pattern — typical MVVM architecture.
+#[test]
+fn kotlin_real_android_viewmodel_pattern() {
+    let source = r#"package com.example.ui
+
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+
+data class UiState(
+    val isLoading: Boolean = false,
+    val items: List<String> = emptyList(),
+    val error: String? = null
+)
+
+sealed class UiEvent {
+    object Refresh : UiEvent()
+    data class ItemClicked(val id: String) : UiEvent()
+}
+
+interface ViewModelContract {
+    val state: StateFlow<UiState>
+    fun onEvent(event: UiEvent)
+}
+
+class MainViewModel : ViewModelContract {
+    override val state: StateFlow<UiState> = MutableStateFlow(UiState())
+
+    override fun onEvent(event: UiEvent) {}
+
+    private fun loadItems() {}
+}
+
+object ViewModelFactory {
+    fun create(): MainViewModel = MainViewModel()
+}
+"#;
+
+    let mut parser = KotlinParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Data class
+    assert!(names.contains(&"UiState".to_string()));
+
+    // Sealed class
+    assert!(names.contains(&"UiEvent".to_string()));
+
+    // Interface
+    assert!(names.contains(&"ViewModelContract".to_string()));
+
+    // Class
+    assert!(names.contains(&"MainViewModel".to_string()));
+
+    // Object
+    assert!(names.contains(&"ViewModelFactory".to_string()));
+
+    // Private not exported
+    assert!(!names.contains(&"loadItems".to_string()));
+
+    // Imports (package roots)
+    assert!(result
+        .metadata
+        .imports
+        .contains(&"kotlinx.coroutines".to_string()));
+
+    // Custom fields
+    let fields = result.custom_fields.unwrap();
+    assert_eq!(fields.get("data_classes").unwrap().as_u64().unwrap(), 1);
+    assert_eq!(fields.get("sealed_classes").unwrap().as_u64().unwrap(), 1);
+}
+
+// =============================================================================
+// Kotlin validation — Ktor server pattern
+// =============================================================================
+
+/// Ktor server pattern — HTTP API setup.
+#[test]
+fn kotlin_real_ktor_server_pattern() {
+    let source = r#"package com.example.api
+
+import io.ktor.server.application.Application
+import io.ktor.server.routing.routing
+
+data class ApiResponse<T>(val data: T?, val message: String)
+
+interface UserService {
+    fun findById(id: String): Any?
+    fun save(user: Any): Boolean
+}
+
+class UserServiceImpl : UserService {
+    override fun findById(id: String): Any? = null
+    override fun save(user: Any): Boolean = true
+}
+
+fun configureRouting(app: Application) {}
+
+val API_VERSION = "v1"
+
+typealias Handler = (Any) -> ApiResponse<Any>
+"#;
+
+    let mut parser = KotlinParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    assert!(names.contains(&"ApiResponse".to_string()));
+    assert!(names.contains(&"UserService".to_string()));
+    assert!(names.contains(&"UserServiceImpl".to_string()));
+    assert!(names.contains(&"configureRouting".to_string()));
+    assert!(names.contains(&"API_VERSION".to_string()));
+    assert!(names.contains(&"Handler".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"io.ktor".to_string()));
+
+    // Custom fields
+    let fields = result.custom_fields.unwrap();
+    assert_eq!(fields.get("data_classes").unwrap().as_u64().unwrap(), 1);
+}
+
+// ──────────────────────────────────────────────
+// Dart cross-language validation
+// ──────────────────────────────────────────────
+
+#[test]
+fn dart_real_flutter_widget_pattern() {
+    // Pattern: Flutter widget with state management
+    let source = r#"
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+class CounterApp extends StatelessWidget {
+  Widget build(BuildContext context) {
+    return MaterialApp(home: CounterPage());
+  }
+}
+
+class CounterPage extends StatefulWidget {
+  State<CounterPage> createState() => _CounterPageState();
+}
+
+class _CounterPageState extends State<CounterPage> {
+  int _counter = 0;
+
+  void _increment() {
+    setState(() { _counter++; });
+  }
+
+  Widget build(BuildContext context) {
+    return Scaffold();
+  }
+}
+
+class CounterModel extends ChangeNotifier {
+  int _count = 0;
+  int get count => _count;
+
+  void increment() {
+    _count++;
+    notifyListeners();
+  }
+}
+
+enum AppRoute { home, settings, profile }
+
+typedef WidgetCallback = void Function(BuildContext);
+"#;
+
+    let mut parser = DartParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+
+    // Public widgets
+    assert!(names.contains(&"CounterApp".to_string()));
+    assert!(names.contains(&"CounterPage".to_string()));
+    assert!(names.contains(&"CounterModel".to_string()));
+    assert!(names.contains(&"AppRoute".to_string()));
+    assert!(names.contains(&"WidgetCallback".to_string()));
+
+    // Private state class excluded
+    assert!(!names.contains(&"_CounterPageState".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"flutter".to_string()));
+    assert!(result.metadata.imports.contains(&"provider".to_string()));
+}
+
+#[test]
+fn dart_real_data_layer_pattern() {
+    // Pattern: Repository / service layer
+    let source = r#"
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
+abstract class Repository<T> {
+  Future<T?> findById(String id);
+  Future<List<T>> findAll();
+  Future<void> save(T entity);
+}
+
+class UserRepository extends Repository<Map<String, dynamic>> {
+  final String baseUrl;
+
+  UserRepository({required this.baseUrl});
+
+  Future<Map<String, dynamic>?> findById(String id) async {
+    return null;
+  }
+
+  Future<List<Map<String, dynamic>>> findAll() async {
+    return [];
+  }
+
+  Future<void> save(Map<String, dynamic> entity) async {}
+}
+
+class ApiClient {
+  static const String _baseUrl = 'https://api.example.com';
+
+  Future<Map<String, dynamic>> get(String path) async {
+    return {};
+  }
+}
+
+typedef JsonMap = Map<String, dynamic>;
+
+void _initializeClient() {}
+"#;
+
+    let mut parser = DartParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+
+    assert!(names.contains(&"Repository".to_string()));
+    assert!(names.contains(&"UserRepository".to_string()));
+    assert!(names.contains(&"ApiClient".to_string()));
+    assert!(names.contains(&"JsonMap".to_string()));
+    assert!(!names.contains(&"_initializeClient".to_string()));
+
+    assert!(result
+        .metadata
+        .imports
+        .contains(&"dart:convert".to_string()));
+    assert!(result.metadata.imports.contains(&"http".to_string()));
+}
+
+// ──────────────────────────────────────────────
+// Elixir cross-language validation
+// ──────────────────────────────────────────────
+
+#[test]
+fn elixir_real_genserver_pattern() {
+    // Pattern: GenServer with public API and private callbacks
+    let source = r#"
+defmodule MyApp.Cache do
+  use GenServer
+
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  def get(key) do
+    GenServer.call(__MODULE__, {:get, key})
+  end
+
+  def put(key, value) do
+    GenServer.cast(__MODULE__, {:put, key, value})
+  end
+
+  defp init(opts) do
+    {:ok, %{}}
+  end
+
+  defp handle_call({:get, key}, _from, state) do
+    {:reply, Map.get(state, key), state}
+  end
+
+  defp handle_cast({:put, key, value}, state) do
+    {:noreply, Map.put(state, key, value)}
+  end
+end
+"#;
+
+    let mut parser = ElixirParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+
+    // Module and public API
+    assert!(names.contains(&"MyApp.Cache".to_string()));
+    assert!(names.contains(&"start_link".to_string()));
+    assert!(names.contains(&"get".to_string()));
+    assert!(names.contains(&"put".to_string()));
+
+    // Private callbacks excluded
+    assert!(!names.contains(&"init".to_string()));
+    assert!(!names.contains(&"handle_call".to_string()));
+    assert!(!names.contains(&"handle_cast".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"GenServer".to_string()));
+}
+
+#[test]
+fn elixir_real_phoenix_context_pattern() {
+    // Pattern: Phoenix context module with Ecto queries
+    let source = r#"
+defmodule MyApp.Accounts do
+  import Ecto.Query
+  alias MyApp.Repo
+  alias MyApp.Accounts.User
+
+  def list_users do
+    Repo.all(User)
+  end
+
+  def get_user!(id) do
+    Repo.get!(User, id)
+  end
+
+  def create_user(attrs) do
+    %User{}
+    |> User.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  defp base_query do
+    from(u in User, order_by: u.inserted_at)
+  end
+end
+"#;
+
+    let mut parser = ElixirParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+
+    assert!(names.contains(&"MyApp.Accounts".to_string()));
+    assert!(names.contains(&"list_users".to_string()));
+    assert!(names.contains(&"get_user!".to_string()));
+    assert!(names.contains(&"create_user".to_string()));
+    assert!(!names.contains(&"base_query".to_string()));
+
+    assert!(result.metadata.imports.contains(&"Ecto".to_string()));
+    assert!(result.metadata.imports.contains(&"MyApp".to_string()));
 }

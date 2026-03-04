@@ -1,8 +1,11 @@
 pub mod c;
 pub mod cpp;
 pub mod csharp;
+pub mod dart;
+pub mod elixir;
 pub mod go;
 pub mod java;
+pub mod kotlin;
 pub mod lua;
 pub mod php;
 pub mod python;
@@ -10,5 +13,6 @@ pub mod query_helpers;
 pub mod ruby;
 pub mod rust;
 pub mod scala;
+pub mod swift;
 pub mod typescript;
 pub mod zig;

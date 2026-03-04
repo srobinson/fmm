@@ -12,13 +12,13 @@ exports:
   ParserRegistry: [61, 64]
   with_builtins: [75, 79]
   register: [82, 94]
-  language_id_for: [170, 172]
-  get_parser: [175, 181]
-  has_parser: [185, 187]
-  extensions: [191, 195]
+  language_id_for: [194, 196]
+  get_parser: [199, 205]
+  has_parser: [209, 211]
+  extensions: [215, 219]
 imports: [anyhow, serde]
-loc: 312
-modified: 2026-03-03
+loc: 348
+modified: 2026-03-04
 rust:
   derives: [Clone, Debug, Deserialize, Eq, PartialEq, Serialize]
   lifetimes: ['''static']

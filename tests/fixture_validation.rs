@@ -1,14 +1,18 @@
 use fmm::parser::builtin::c::CParser;
 use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
+use fmm::parser::builtin::dart::DartParser;
+use fmm::parser::builtin::elixir::ElixirParser;
 use fmm::parser::builtin::go::GoParser;
 use fmm::parser::builtin::java::JavaParser;
+use fmm::parser::builtin::kotlin::KotlinParser;
 use fmm::parser::builtin::lua::LuaParser;
 use fmm::parser::builtin::php::PhpParser;
 use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::ruby::RubyParser;
 use fmm::parser::builtin::rust::RustParser;
 use fmm::parser::builtin::scala::ScalaParser;
+use fmm::parser::builtin::swift::SwiftParser;
 use fmm::parser::builtin::zig::ZigParser;
 use fmm::parser::Parser;
 
@@ -802,6 +806,354 @@ fn validate_scala_fixture() {
     assert!(result.metadata.loc > 40);
 
     // Exports should be sorted by line number
+    let lines: Vec<usize> = result
+        .metadata
+        .exports
+        .iter()
+        .map(|e| e.start_line)
+        .collect();
+    let mut sorted = lines.clone();
+    sorted.sort();
+    assert_eq!(lines, sorted);
+}
+
+// =============================================================================
+// Swift fixture validation
+// =============================================================================
+
+#[test]
+fn validate_swift_fixture() {
+    let source = include_str!("../fixtures/sample.swift");
+
+    let mut parser = SwiftParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Public classes
+    assert!(names.contains(&"NetworkManager".to_string()));
+    assert!(names.contains(&"BaseViewController".to_string()));
+
+    // Public structs
+    assert!(names.contains(&"Point".to_string()));
+    assert!(names.contains(&"APIConfig".to_string()));
+
+    // Public enums
+    assert!(names.contains(&"Direction".to_string()));
+    assert!(names.contains(&"NetworkError".to_string()));
+
+    // Protocols
+    assert!(names.contains(&"Drawable".to_string()));
+    assert!(names.contains(&"Cacheable".to_string()));
+
+    // Top-level public function
+    assert!(names.contains(&"createManager".to_string()));
+
+    // Public let/var
+    assert!(names.contains(&"MAX_RETRIES".to_string()));
+    assert!(names.contains(&"isDebugMode".to_string()));
+
+    // Public typealias
+    assert!(names.contains(&"JSONDictionary".to_string()));
+    assert!(names.contains(&"CompletionHandler".to_string()));
+
+    // Public extension methods
+    assert!(names.contains(&"trimmed".to_string()));
+    assert!(names.contains(&"uniqueElements".to_string()));
+
+    // Internal/private/fileprivate/default should NOT be exported
+    assert!(!names.contains(&"InternalConfig".to_string()));
+    assert!(!names.contains(&"helperFunction".to_string()));
+    assert!(!names.contains(&"secretFunction".to_string()));
+    assert!(!names.contains(&"DefaultAccessStruct".to_string()));
+    assert!(!names.contains(&"defaultAccessFunc".to_string()));
+    assert!(!names.contains(&"internalRetry".to_string()));
+    assert!(!names.contains(&"defaultAccessMethod".to_string()));
+
+    // Non-public extension methods should NOT be exported
+    assert!(!names.contains(&"doubled".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"Foundation".to_string()));
+    assert!(result.metadata.imports.contains(&"UIKit".to_string()));
+    assert!(result
+        .metadata
+        .imports
+        .contains(&"MyTestModule".to_string()));
+
+    // Dependencies (Swift has none)
+    assert!(result.metadata.dependencies.is_empty());
+
+    // Custom fields
+    let fields = result.custom_fields.expect("should have custom fields");
+    assert_eq!(
+        fields.get("protocols").unwrap().as_u64().unwrap(),
+        2,
+        "should have 2 protocol declarations"
+    );
+    assert_eq!(
+        fields.get("extensions").unwrap().as_u64().unwrap(),
+        3,
+        "should have 3 extension declarations"
+    );
+
+    // LOC
+    assert!(result.metadata.loc > 100);
+
+    // Exports should be sorted by line number
+    let lines: Vec<usize> = result
+        .metadata
+        .exports
+        .iter()
+        .map(|e| e.start_line)
+        .collect();
+    let mut sorted = lines.clone();
+    sorted.sort();
+    assert_eq!(lines, sorted);
+}
+
+// =============================================================================
+// Kotlin fixture validation
+// =============================================================================
+
+#[test]
+fn validate_kotlin_fixture() {
+    let source = include_str!("../fixtures/sample.kt");
+
+    let mut parser = KotlinParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Classes (default public)
+    assert!(names.contains(&"NetworkManager".to_string()));
+    assert!(names.contains(&"BaseRepository".to_string()));
+    assert!(names.contains(&"ServiceLocator".to_string()));
+
+    // Data classes
+    assert!(names.contains(&"UserProfile".to_string()));
+    assert!(names.contains(&"APIResponse".to_string()));
+
+    // Sealed class
+    assert!(names.contains(&"Result".to_string()));
+
+    // Interfaces
+    assert!(names.contains(&"Repository".to_string()));
+    assert!(names.contains(&"Cacheable".to_string()));
+
+    // Objects
+    assert!(names.contains(&"AppConfig".to_string()));
+    assert!(names.contains(&"DatabaseManager".to_string()));
+
+    // Enum classes
+    assert!(names.contains(&"Direction".to_string()));
+    assert!(names.contains(&"HttpStatus".to_string()));
+
+    // Top-level functions
+    assert!(names.contains(&"createManager".to_string()));
+    assert!(names.contains(&"processData".to_string()));
+    assert!(names.contains(&"oldMethod".to_string()));
+    assert!(names.contains(&"asyncOperation".to_string()));
+
+    // Top-level val/var
+    assert!(names.contains(&"MAX_RETRIES".to_string()));
+    assert!(names.contains(&"isDebugMode".to_string()));
+    assert!(names.contains(&"VERSION".to_string()));
+
+    // Typealias
+    assert!(names.contains(&"StringMap".to_string()));
+    assert!(names.contains(&"Callback".to_string()));
+
+    // Private/internal should NOT be exported
+    assert!(!names.contains(&"InternalHelper".to_string()));
+    assert!(!names.contains(&"ModuleInternal".to_string()));
+    assert!(!names.contains(&"hiddenFunction".to_string()));
+    assert!(!names.contains(&"moduleFunction".to_string()));
+
+    // Imports (package roots — first two segments)
+    assert!(result
+        .metadata
+        .imports
+        .contains(&"kotlin.collections".to_string()));
+    assert!(result.metadata.imports.contains(&"java.util".to_string()));
+    assert!(result.metadata.imports.contains(&"org.example".to_string()));
+
+    // Dependencies (empty for Kotlin)
+    assert!(result.metadata.dependencies.is_empty());
+
+    // Custom fields
+    let fields = result.custom_fields.expect("should have custom fields");
+    assert_eq!(
+        fields.get("data_classes").unwrap().as_u64().unwrap(),
+        2,
+        "should have 2 data class declarations"
+    );
+    assert_eq!(
+        fields.get("sealed_classes").unwrap().as_u64().unwrap(),
+        1,
+        "should have 1 sealed class declaration"
+    );
+    assert_eq!(
+        fields.get("companion_objects").unwrap().as_u64().unwrap(),
+        1,
+        "should have 1 companion object"
+    );
+
+    // LOC
+    assert!(result.metadata.loc > 80);
+
+    // Exports should be sorted by line number
+    let lines: Vec<usize> = result
+        .metadata
+        .exports
+        .iter()
+        .map(|e| e.start_line)
+        .collect();
+    let mut sorted = lines.clone();
+    sorted.sort();
+    assert_eq!(lines, sorted);
+}
+
+#[test]
+fn validate_dart_fixture() {
+    let source = include_str!("../fixtures/sample.dart");
+    let mut parser = DartParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Public classes
+    assert!(names.contains(&"NetworkManager".to_string()));
+    assert!(names.contains(&"BaseWidget".to_string()));
+    assert!(names.contains(&"UserProfile".to_string()));
+    // Private class excluded
+    assert!(!names.contains(&"_InternalHelper".to_string()));
+
+    // Mixins
+    assert!(names.contains(&"Loggable".to_string()));
+    assert!(names.contains(&"Cacheable".to_string()));
+
+    // Enums
+    assert!(names.contains(&"Direction".to_string()));
+    assert!(names.contains(&"HttpStatus".to_string()));
+
+    // Extensions
+    assert!(names.contains(&"StringExtension".to_string()));
+    assert!(names.contains(&"IntExtension".to_string()));
+
+    // Typedefs
+    assert!(names.contains(&"Callback".to_string()));
+    assert!(names.contains(&"JsonMap".to_string()));
+    assert!(!names.contains(&"_PrivateCallback".to_string()));
+
+    // Public functions
+    assert!(names.contains(&"globalFunction".to_string()));
+    assert!(names.contains(&"processData".to_string()));
+    assert!(names.contains(&"asyncOperation".to_string()));
+    assert!(!names.contains(&"_privateFunction".to_string()));
+
+    // Top-level variables
+    assert!(names.contains(&"appVersion".to_string()));
+    assert!(names.contains(&"maxRetries".to_string()));
+    assert!(names.contains(&"isDebugMode".to_string()));
+    assert!(!names.contains(&"_privateVar".to_string()));
+
+    // Imports (package names)
+    assert!(result.metadata.imports.contains(&"flutter".to_string()));
+    assert!(result.metadata.imports.contains(&"http".to_string()));
+    assert!(result.metadata.imports.contains(&"dart:async".to_string()));
+    assert!(result
+        .metadata
+        .imports
+        .contains(&"dart:convert".to_string()));
+
+    // Dependencies (relative paths)
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"./relative_file.dart".to_string()));
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"../utils/helpers.dart".to_string()));
+
+    // Custom fields
+    let fields = result.custom_fields.expect("should have custom fields");
+    assert_eq!(fields.get("mixins").unwrap().as_u64().unwrap(), 2);
+    assert_eq!(fields.get("extensions").unwrap().as_u64().unwrap(), 2);
+
+    // LOC
+    assert!(result.metadata.loc >= 100);
+
+    // Exports sorted by line number
+    let lines: Vec<usize> = result
+        .metadata
+        .exports
+        .iter()
+        .map(|e| e.start_line)
+        .collect();
+    let mut sorted = lines.clone();
+    sorted.sort();
+    assert_eq!(lines, sorted);
+}
+
+#[test]
+fn validate_elixir_fixture() {
+    let source = include_str!("../fixtures/sample.ex");
+    let mut parser = ElixirParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Modules
+    assert!(names.contains(&"MyApp.Router".to_string()));
+    assert!(names.contains(&"MyApp.Helpers".to_string()));
+    assert!(names.contains(&"MyApp.Config".to_string()));
+
+    // Public functions
+    assert!(names.contains(&"handle".to_string()));
+    assert!(names.contains(&"helper_function".to_string()));
+    assert!(names.contains(&"another_helper".to_string()));
+    assert!(names.contains(&"get".to_string()));
+    assert!(names.contains(&"set".to_string()));
+
+    // Private functions excluded
+    assert!(!names.contains(&"private_handler".to_string()));
+    assert!(!names.contains(&"internal_work".to_string()));
+
+    // Public macros
+    assert!(names.contains(&"route".to_string()));
+    assert!(!names.contains(&"private_macro".to_string()));
+
+    // Public guards
+    assert!(names.contains(&"is_valid".to_string()));
+    assert!(!names.contains(&"is_internal".to_string()));
+
+    // Delegates
+    assert!(names.contains(&"format".to_string()));
+
+    // Protocols
+    assert!(names.contains(&"Printable".to_string()));
+    assert!(names.contains(&"print".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"Plug".to_string()));
+    assert!(result.metadata.imports.contains(&"Logger".to_string()));
+    assert!(result.metadata.imports.contains(&"MyApp".to_string()));
+    assert!(result.metadata.imports.contains(&"EEx".to_string()));
+    assert!(result.metadata.imports.contains(&"GenServer".to_string()));
+    assert!(result.metadata.imports.contains(&"Enum".to_string()));
+
+    // Custom fields
+    let fields = result.custom_fields.expect("should have custom fields");
+    assert_eq!(fields.get("macros").unwrap().as_u64().unwrap(), 1);
+    assert_eq!(fields.get("protocols").unwrap().as_u64().unwrap(), 1);
+    assert_eq!(fields.get("behaviours").unwrap().as_u64().unwrap(), 1);
+
+    // LOC
+    assert!(result.metadata.loc >= 73);
+
+    // Exports sorted by line number
     let lines: Vec<usize> = result
         .metadata
         .exports
