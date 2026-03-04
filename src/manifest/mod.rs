@@ -102,7 +102,15 @@ impl Manifest {
     pub fn load_from_sidecars(root: &Path) -> Result<Self> {
         let mut manifest = Self::new();
 
-        let walker = WalkBuilder::new(root).standard_filters(true).build();
+        // Sidecars are gitignored (users shouldn't commit them), but we still
+        // need to find them. Overrides take precedence over .gitignore rules
+        // while keeping node_modules/target/etc filtered out.
+        let mut overrides = ignore::overrides::OverrideBuilder::new(root);
+        overrides.add("*.fmm").expect("valid glob pattern");
+        let walker = WalkBuilder::new(root)
+            .standard_filters(true)
+            .overrides(overrides.build().expect("valid overrides"))
+            .build();
 
         for entry in walker.filter_map(|e| e.ok()) {
             let path = entry.path();
