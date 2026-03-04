@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/srobinson/fmm/compare/v0.1.6...v0.1.7) (2026-03-04)
+
+
+### Bug Fixes
+
+* parser correctness issues and deterministic config ordering ([#43](https://github.com/srobinson/fmm/issues/43)) ([97d6370](https://github.com/srobinson/fmm/commit/97d63700f88114356d0bfb642f5c27d62458ea2a))
+
 ## [0.1.6](https://github.com/srobinson/fmm/compare/v0.1.5...v0.1.6) (2026-03-04)
 
 
