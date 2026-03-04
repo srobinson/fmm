@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/srobinson/fmm/compare/v0.1.7...v0.1.8) (2026-03-04)
+
+
+### Bug Fixes
+
+* resolve conflict markers in fixture sidecars ([fba0703](https://github.com/srobinson/fmm/commit/fba07033709be3bbe025dd14e66019673781d0c4))
+
 ## [0.1.7](https://github.com/srobinson/fmm/compare/v0.1.6...v0.1.7) (2026-03-04)
 
 
