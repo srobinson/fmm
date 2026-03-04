@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.6](https://github.com/srobinson/fmm/compare/v0.1.5...v0.1.6) (2026-03-04)
+
+
+### Features
+
+* add language parsers for PHP, C, Zig, Lua, Scala ([#40](https://github.com/srobinson/fmm/issues/40)) ([fc13ad8](https://github.com/srobinson/fmm/commit/fc13ad849a0e678774047c8667a4ff119e78da4c))
+* add language parsers for Swift, Kotlin, Dart, Elixir ([#42](https://github.com/srobinson/fmm/issues/42)) ([30b29e4](https://github.com/srobinson/fmm/commit/30b29e4a9a07659770c4e672125fbd152b2f8207))
+
 ## [0.1.5](https://github.com/srobinson/fmm/compare/v0.1.4...v0.1.5) (2026-03-03)
 
 
