@@ -3,21 +3,21 @@ file: src/parser/mod.rs
 fmm: v0.3
 exports:
   builtin: [1, 1]
-  ExportEntry: [9, 13]
-  new: [16, 22]
-  Metadata: [26, 31]
-  export_names: [35, 37]
-  ParseResult: [42, 45]
-  Parser: [47, 56]
-  ParserRegistry: [61, 64]
-  with_builtins: [75, 79]
-  register: [82, 94]
-  language_id_for: [194, 196]
-  get_parser: [199, 205]
-  has_parser: [209, 211]
-  extensions: [215, 219]
+  ExportEntry: [10, 14]
+  new: [17, 23]
+  Metadata: [27, 32]
+  export_names: [36, 38]
+  ParseResult: [43, 46]
+  Parser: [48, 63]
+  ParserRegistry: [68, 71]
+  with_builtins: [82, 86]
+  register: [89, 101]
+  language_id_for: [201, 203]
+  get_parser: [206, 212]
+  has_parser: [216, 218]
+  extensions: [222, 226]
 imports: [anyhow, serde, std]
-loc: 348
+loc: 355
 modified: 2026-03-04
 rust:
   derives: [Clone, Debug, Deserialize, Eq, PartialEq, Serialize]

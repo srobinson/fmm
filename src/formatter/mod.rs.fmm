@@ -7,6 +7,7 @@ exports:
   with_version: [27, 30]
   with_custom_fields: [33, 44]
   render: [46, 113]
+  yaml_escape: [118, 127]
 imports: [chrono, std]
 dependencies: [crate]
 loc: 395

@@ -428,41 +428,26 @@ impl McpServer {
         let args: LookupExportArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
-        match manifest.export_locations.get(&args.name) {
-            Some(location) => {
-                let entry = manifest.files.get(&location.file);
-                let mut result = json!({
-                    "symbol": args.name,
-                    "file": location.file,
-                    "exports": entry.map(|e| &e.exports),
-                    "imports": entry.map(|e| &e.imports),
-                    "dependencies": entry.map(|e| &e.dependencies),
-                    "loc": entry.map(|e| e.loc),
-                });
-                if let Some(ref lines) = location.lines {
-                    result["lines"] = json!([lines.start, lines.end]);
-                }
-                serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
-            }
-            None => {
-                // Fallback to export_index for backward compat
-                match manifest.export_index.get(&args.name) {
-                    Some(file_path) => {
-                        let entry = manifest.files.get(file_path);
-                        let result = json!({
-                            "symbol": args.name,
-                            "file": file_path,
-                            "exports": entry.map(|e| &e.exports),
-                            "imports": entry.map(|e| &e.imports),
-                            "dependencies": entry.map(|e| &e.dependencies),
-                            "loc": entry.map(|e| e.loc),
-                        });
-                        serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
-                    }
-                    None => Err(format!("Export '{}' not found", args.name)),
-                }
-            }
-        }
+        // Try export_locations first, then export_index for backward compat
+        let (file, symbol_lines) = if let Some(loc) = manifest.export_locations.get(&args.name) {
+            (loc.file.clone(), loc.lines.clone())
+        } else if let Some(file_path) = manifest.export_index.get(&args.name) {
+            (file_path.clone(), None)
+        } else {
+            return Err(format!("Export '{}' not found", args.name));
+        };
+
+        let entry = manifest
+            .files
+            .get(&file)
+            .ok_or_else(|| format!("File '{}' not found in manifest", file))?;
+
+        Ok(crate::format::format_lookup_export(
+            &args.name,
+            &file,
+            symbol_lines.as_ref(),
+            entry,
+        ))
     }
 
     fn tool_list_exports(&self, args: &Value) -> Result<String, String> {
@@ -472,69 +457,37 @@ impl McpServer {
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
         if let Some(ref file_path) = args.file {
-            // List exports from a specific file, with line ranges if available
-            match manifest.files.get(file_path) {
-                Some(entry) => {
-                    let exports_with_lines: Vec<Value> = entry
-                        .exports
-                        .iter()
-                        .enumerate()
-                        .map(|(i, name)| {
-                            let mut obj = json!({"name": name});
-                            if let Some(ref el) = entry.export_lines {
-                                if let Some(lines) = el.get(i) {
-                                    obj["lines"] = json!([lines.start, lines.end]);
-                                }
-                            }
-                            obj
-                        })
-                        .collect();
-                    let result = json!({
-                        "file": file_path,
-                        "exports": exports_with_lines,
-                    });
-                    serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
-                }
-                None => Err(format!("File '{}' not found in manifest", file_path)),
-            }
+            let entry = manifest
+                .files
+                .get(file_path)
+                .ok_or_else(|| format!("File '{}' not found in manifest", file_path))?;
+            Ok(crate::format::format_list_exports_file(file_path, entry))
         } else if let Some(ref pat) = args.pattern {
-            // Search export index by pattern
             let pat_lower = pat.to_lowercase();
-            let mut matches: Vec<(&String, &String)> = manifest
+            let mut matches: Vec<(String, String, Option<[usize; 2]>)> = manifest
                 .export_index
                 .iter()
                 .filter(|(name, _)| name.to_lowercase().contains(&pat_lower))
-                .collect();
-            matches.sort_by_key(|(name, _)| name.to_lowercase());
-
-            let result: Vec<Value> = matches
-                .iter()
                 .map(|(name, path)| {
-                    let mut obj = json!({"export": name, "file": path});
-                    if let Some(loc) = manifest.export_locations.get(*name) {
-                        if let Some(ref lines) = loc.lines {
-                            obj["lines"] = json!([lines.start, lines.end]);
-                        }
-                    }
-                    obj
+                    let lines = manifest
+                        .export_locations
+                        .get(name)
+                        .and_then(|loc| loc.lines.as_ref())
+                        .map(|l| [l.start, l.end]);
+                    (name.clone(), path.clone(), lines)
                 })
                 .collect();
-            serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+            matches.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+            Ok(crate::format::format_list_exports_pattern(&matches))
         } else {
-            // List all exports (grouped by file)
-            let mut by_file: Vec<(&String, Vec<&String>)> = Vec::new();
-            for (file_path, entry) in &manifest.files {
-                if !entry.exports.is_empty() {
-                    by_file.push((file_path, entry.exports.iter().collect()));
-                }
-            }
-            by_file.sort_by_key(|(path, _)| path.to_lowercase());
-
-            let result: Vec<Value> = by_file
+            let mut by_file: Vec<(&str, &crate::manifest::FileEntry)> = manifest
+                .files
                 .iter()
-                .map(|(path, exports)| json!({"file": path, "exports": exports}))
+                .filter(|(_, entry)| !entry.exports.is_empty())
+                .map(|(path, entry)| (path.as_str(), entry))
                 .collect();
-            serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+            by_file.sort_by_key(|(path, _)| path.to_lowercase());
+            Ok(crate::format::format_list_exports_all(&by_file))
         }
     }
 
@@ -544,19 +497,12 @@ impl McpServer {
         let args: FileInfoArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
-        match manifest.files.get(&args.file) {
-            Some(entry) => {
-                let result = json!({
-                    "file": args.file,
-                    "exports": entry.exports,
-                    "imports": entry.imports,
-                    "dependencies": entry.dependencies,
-                    "loc": entry.loc,
-                });
-                serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
-            }
-            None => Err(format!("File '{}' not found in manifest", args.file)),
-        }
+        let entry = manifest
+            .files
+            .get(&args.file)
+            .ok_or_else(|| format!("File '{}' not found in manifest", args.file))?;
+
+        Ok(crate::format::format_file_info(&args.file, entry))
     }
 
     fn tool_dependency_graph(&self, args: &Value) -> Result<String, String> {
@@ -570,30 +516,14 @@ impl McpServer {
             .get(&args.file)
             .ok_or_else(|| format!("File '{}' not found in manifest", args.file))?;
 
-        // Upstream: files this file depends on (its dependencies)
-        let upstream: Vec<&str> = entry.dependencies.iter().map(|s| s.as_str()).collect();
+        let (upstream, downstream) = crate::search::dependency_graph(manifest, &args.file, entry);
 
-        // Downstream: files that depend on this file
-        let mut downstream: Vec<&String> = manifest
-            .files
-            .iter()
-            .filter(|(path, _)| path.as_str() != args.file)
-            .filter(|(path, e)| {
-                e.dependencies
-                    .iter()
-                    .any(|d| dep_matches(d, &args.file, path))
-            })
-            .map(|(path, _)| path)
-            .collect();
-        downstream.sort();
-
-        let result = json!({
-            "file": args.file,
-            "upstream": upstream,
-            "downstream": downstream,
-            "imports": entry.imports,
-        });
-        serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+        Ok(crate::format::format_dependency_graph(
+            &args.file,
+            entry,
+            &upstream,
+            &downstream,
+        ))
     }
 
     fn tool_read_symbol(&self, args: &Value) -> Result<String, String> {
@@ -619,7 +549,7 @@ impl McpServer {
             .map_err(|e| format!("Cannot read '{}': {}", location.file, e))?;
 
         let source_lines: Vec<&str> = content.lines().collect();
-        let start = lines.start.saturating_sub(1); // 1-indexed → 0-indexed
+        let start = lines.start.saturating_sub(1);
         let end = lines.end.min(source_lines.len());
 
         if start >= source_lines.len() {
@@ -634,13 +564,12 @@ impl McpServer {
 
         let symbol_source = source_lines[start..end].join("\n");
 
-        let result = json!({
-            "symbol": args.name,
-            "file": location.file,
-            "lines": [lines.start, lines.end],
-            "source": symbol_source,
-        });
-        serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+        Ok(crate::format::format_read_symbol(
+            &args.name,
+            &location.file,
+            lines,
+            &symbol_source,
+        ))
     }
 
     fn tool_file_outline(&self, args: &Value) -> Result<String, String> {
@@ -654,32 +583,7 @@ impl McpServer {
             .get(&args.file)
             .ok_or_else(|| format!("File '{}' not found in manifest", args.file))?;
 
-        let symbols: Vec<Value> = entry
-            .exports
-            .iter()
-            .enumerate()
-            .map(|(i, name)| {
-                let mut obj = json!({"name": name});
-                if let Some(ref el) = entry.export_lines {
-                    if let Some(lines) = el.get(i) {
-                        obj["lines"] = json!([lines.start, lines.end]);
-                        if lines.end >= lines.start {
-                            obj["size"] = json!(lines.end - lines.start + 1);
-                        }
-                    }
-                }
-                obj
-            })
-            .collect();
-
-        let result = json!({
-            "file": args.file,
-            "loc": entry.loc,
-            "imports": entry.imports,
-            "dependencies": entry.dependencies,
-            "symbols": symbols,
-        });
-        serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+        Ok(crate::format::format_file_outline(&args.file, entry))
     }
 
     fn tool_search(&self, args: &Value) -> Result<String, String> {
@@ -688,238 +592,29 @@ impl McpServer {
         let args: SearchArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
-        // Universal term search: search across exports, files, and imports
+        // Universal term search
         if let Some(ref term) = args.term {
-            return self.term_search(manifest, term);
+            let result = crate::search::bare_search(manifest, term);
+            return Ok(crate::format::format_bare_search(&result, false));
         }
 
-        let mut results: Vec<(&String, &crate::manifest::FileEntry)> = Vec::new();
-
-        let has_export = args.export.is_some();
-        let has_imports = args.imports.is_some();
-        let has_depends_on = args.depends_on.is_some();
-
-        // Search by export — exact first, then fuzzy fallback
-        if let Some(ref export) = args.export {
-            if let Some(file_path) = manifest.export_index.get(export.as_str()) {
-                if let Some(entry) = manifest.files.get(file_path) {
-                    results.push((file_path, entry));
-                }
-            } else {
-                // Fuzzy fallback: case-insensitive substring
-                let export_lower = export.to_lowercase();
-                for (name, file_path) in &manifest.export_index {
-                    if name.to_lowercase().contains(&export_lower) {
-                        if let Some(entry) = manifest.files.get(file_path) {
-                            if !results.iter().any(|(f, _)| *f == file_path) {
-                                results.push((file_path, entry));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Search by imports
-        if let Some(ref import_name) = args.imports {
-            for (file_path, entry) in &manifest.files {
-                if entry
-                    .imports
-                    .iter()
-                    .any(|i| i.contains(import_name.as_str()))
-                    && !results.iter().any(|(f, _)| *f == file_path)
-                {
-                    results.push((file_path, entry));
-                }
-            }
-        }
-
-        // Search by depends_on
-        if let Some(ref dep_path) = args.depends_on {
-            for (file_path, entry) in &manifest.files {
-                if entry
-                    .dependencies
-                    .iter()
-                    .any(|d| d.contains(dep_path.as_str()))
-                    && !results.iter().any(|(f, _)| *f == file_path)
-                {
-                    results.push((file_path, entry));
-                }
-            }
-        }
-
-        if args.min_loc.is_some() || args.max_loc.is_some() {
-            if results.is_empty() && !has_export && !has_imports && !has_depends_on {
-                for (file_path, entry) in &manifest.files {
-                    results.push((file_path, entry));
-                }
-            }
-
-            results.retain(|(_, entry)| {
-                let passes_min = args.min_loc.is_none_or(|min| entry.loc >= min);
-                let passes_max = args.max_loc.is_none_or(|max| entry.loc <= max);
-                passes_min && passes_max
-            });
-        }
-
-        // If no filters, return all
-        if !has_export
-            && !has_imports
-            && !has_depends_on
-            && args.min_loc.is_none()
-            && args.max_loc.is_none()
-        {
-            for (file_path, entry) in &manifest.files {
-                results.push((file_path, entry));
-            }
-        }
-
-        let output: Vec<Value> = results
-            .iter()
-            .map(|(path, entry)| self.file_result_with_lines(manifest, path, entry))
-            .collect();
-
-        serde_json::to_string_pretty(&output).map_err(|e| e.to_string())
-    }
-
-    /// Universal term search: searches exports, file paths, and imports.
-    /// Returns grouped JSON with exact exports ranked before fuzzy.
-    fn term_search(
-        &self,
-        manifest: &crate::manifest::Manifest,
-        term: &str,
-    ) -> Result<String, String> {
-        let term_lower = term.to_lowercase();
-
-        // 1. Exact export match (O(1) via export_locations, fallback to export_index)
-        let mut exact_exports: Vec<Value> = Vec::new();
-        if let Some(loc) = manifest.export_locations.get(term) {
-            let mut obj = json!({"name": term, "file": loc.file});
-            if let Some(ref lines) = loc.lines {
-                obj["lines"] = json!([lines.start, lines.end]);
-            }
-            exact_exports.push(obj);
-        } else if let Some(file_path) = manifest.export_index.get(term) {
-            exact_exports.push(json!({"name": term, "file": file_path}));
-        }
-
-        // 2. Fuzzy export matches (case-insensitive substring, excluding exact)
-        let mut fuzzy_exports: Vec<Value> = Vec::new();
-        for (name, file_path) in &manifest.export_index {
-            if name == term {
-                continue; // Already in exact
-            }
-            if name.to_lowercase().contains(&term_lower) {
-                let mut obj = json!({"name": name, "file": file_path});
-                if let Some(loc) = manifest.export_locations.get(name.as_str()) {
-                    if let Some(ref lines) = loc.lines {
-                        obj["lines"] = json!([lines.start, lines.end]);
-                    }
-                }
-                fuzzy_exports.push(obj);
-            }
-        }
-        fuzzy_exports.sort_by(|a, b| {
-            a["name"]
-                .as_str()
-                .unwrap_or("")
-                .cmp(b["name"].as_str().unwrap_or(""))
-        });
-
-        let mut all_exports = exact_exports;
-        all_exports.append(&mut fuzzy_exports);
-
-        // 3. File path matches (case-insensitive substring)
-        let mut file_matches: Vec<Value> = Vec::new();
-        for (file_path, entry) in &manifest.files {
-            if file_path.to_lowercase().contains(&term_lower) {
-                file_matches.push(self.file_result_with_lines(manifest, file_path, entry));
-            }
-        }
-        file_matches.sort_by(|a, b| {
-            a["file"]
-                .as_str()
-                .unwrap_or("")
-                .cmp(b["file"].as_str().unwrap_or(""))
-        });
-
-        // 4. Import matches (package names matching term)
-        let mut import_matches: Vec<Value> = Vec::new();
-        let mut seen_packages: std::collections::HashSet<String> = std::collections::HashSet::new();
-        for entry in manifest.files.values() {
-            for imp in &entry.imports {
-                if imp.to_lowercase().contains(&term_lower) && seen_packages.insert(imp.clone()) {
-                    let files_using: Vec<&String> = manifest
-                        .files
-                        .iter()
-                        .filter(|(_, e)| e.imports.contains(imp))
-                        .map(|(p, _)| p)
-                        .collect();
-                    import_matches.push(json!({"package": imp, "files": files_using}));
-                }
-            }
-        }
-        import_matches.sort_by(|a, b| {
-            a["package"]
-                .as_str()
-                .unwrap_or("")
-                .cmp(b["package"].as_str().unwrap_or(""))
-        });
-
-        let result = json!({
-            "exports": all_exports,
-            "files": file_matches,
-            "imports": import_matches,
-        });
-
-        serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
-    }
-
-    /// Build a file result object with export line ranges included.
-    fn file_result_with_lines(
-        &self,
-        manifest: &crate::manifest::Manifest,
-        path: &str,
-        entry: &crate::manifest::FileEntry,
-    ) -> Value {
-        let exports_with_lines: Vec<Value> = entry
-            .exports
-            .iter()
-            .enumerate()
-            .map(|(i, name)| {
-                // Try export_lines on the entry first, then export_locations
-                if let Some(ref el) = entry.export_lines {
-                    if let Some(lines) = el.get(i) {
-                        if lines.start > 0 {
-                            return json!({"name": name, "lines": [lines.start, lines.end]});
-                        }
-                    }
-                }
-                if let Some(loc) = manifest.export_locations.get(name.as_str()) {
-                    if let Some(ref lines) = loc.lines {
-                        if lines.start > 0 {
-                            return json!({"name": name, "lines": [lines.start, lines.end]});
-                        }
-                    }
-                }
-                json!(name)
-            })
-            .collect();
-
-        json!({
-            "file": path,
-            "exports": exports_with_lines,
-            "imports": entry.imports,
-            "dependencies": entry.dependencies,
-            "loc": entry.loc,
-        })
+        // Structured filter search
+        let filters = crate::search::SearchFilters {
+            export: args.export,
+            imports: args.imports,
+            depends_on: args.depends_on,
+            min_loc: args.min_loc,
+            max_loc: args.max_loc,
+        };
+        let results = crate::search::filter_search(manifest, &filters);
+        Ok(crate::format::format_filter_search(&results, false))
     }
 }
 
 /// Check if a dependency path from `dependent_file` resolves to `target_file`.
 /// Dependencies are stored as relative paths like "../utils/crypto.utils.js"
 /// and need to be resolved against the dependent file's directory.
-fn dep_matches(dep: &str, target_file: &str, dependent_file: &str) -> bool {
+pub fn dep_matches(dep: &str, target_file: &str, dependent_file: &str) -> bool {
     // Resolve the dependency path relative to the dependent file's directory
     let dep_dir = dependent_file
         .rsplit_once('/')

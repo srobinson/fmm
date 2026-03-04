@@ -107,7 +107,7 @@ impl FileProcessor {
             .context("Invalid file extension")?;
 
         let mut parser = self.registry.get_parser(extension)?;
-        parser.parse(content)
+        parser.parse_file(content, path)
     }
 
     fn format_sidecar(

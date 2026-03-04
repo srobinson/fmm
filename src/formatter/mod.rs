@@ -115,7 +115,7 @@ impl Frontmatter {
 
 /// Quote a string if it contains YAML-special characters that would break parsing.
 /// Returns the original string unmodified when safe, or wraps it in single quotes.
-fn yaml_escape(s: &str) -> String {
+pub fn yaml_escape(s: &str) -> String {
     const SPECIAL: &[char] = &[
         ':', '#', '[', ']', '{', '}', ',', '&', '*', '!', '|', '>', '\'', '"', '%', '@', '`',
     ];

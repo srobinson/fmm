@@ -1,12 +1,14 @@
 use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
 pub struct RustParser {
     parser: TSParser,
     export_queries: Vec<Query>,
+    all_item_queries: Vec<Query>,
     unsafe_query: Query,
     trait_impl_queries: Vec<Query>,
     lifetime_query: Query,
@@ -39,6 +41,24 @@ impl RustParser {
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(|e| anyhow::anyhow!("Failed to compile export query: {}", e))?;
 
+        // Queries that match all items regardless of visibility (for binary crates)
+        let all_item_query_strs = [
+            "(function_item name: (identifier) @name)",
+            "(struct_item name: (type_identifier) @name)",
+            "(enum_item name: (type_identifier) @name)",
+            "(trait_item name: (type_identifier) @name)",
+            "(type_item name: (type_identifier) @name)",
+            "(const_item name: (identifier) @name)",
+            "(static_item name: (identifier) @name)",
+            "(mod_item name: (identifier) @name)",
+        ];
+
+        let all_item_queries: Vec<Query> = all_item_query_strs
+            .iter()
+            .map(|q| Query::new(&language, q))
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("Failed to compile all-item query: {}", e))?;
+
         let unsafe_query = Query::new(&language, "(unsafe_block) @block")
             .map_err(|e| anyhow::anyhow!("Failed to compile unsafe query: {}", e))?;
 
@@ -70,6 +90,7 @@ impl RustParser {
         Ok(Self {
             parser,
             export_queries,
+            all_item_queries,
             unsafe_query,
             trait_impl_queries,
             lifetime_query,
@@ -78,31 +99,47 @@ impl RustParser {
         })
     }
 
-    fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<ExportEntry> {
+    fn extract_exports(
+        &self,
+        source: &str,
+        root_node: tree_sitter::Node,
+        binary_crate: bool,
+    ) -> Vec<ExportEntry> {
         let mut seen = HashSet::new();
         let mut exports = Vec::new();
         let source_bytes = source.as_bytes();
 
-        for query in &self.export_queries {
+        let queries = if binary_crate {
+            &self.all_item_queries
+        } else {
+            &self.export_queries
+        };
+
+        for query in queries {
             let capture_names = query.capture_names();
             let mut cursor = QueryCursor::new();
             let mut iter = cursor.matches(query, root_node, source_bytes);
             while let Some(m) = iter.next() {
-                let vis_capture = m.captures.iter().find(|c| {
-                    let idx = c.index as usize;
-                    idx < capture_names.len() && capture_names[idx] == "vis"
-                });
+                if !binary_crate {
+                    let vis_capture = m.captures.iter().find(|c| {
+                        let idx = c.index as usize;
+                        idx < capture_names.len() && capture_names[idx] == "vis"
+                    });
+                    if let Some(vis) = vis_capture {
+                        if let Ok(vis_text) = vis.node.utf8_text(source_bytes) {
+                            if vis_text != "pub" {
+                                continue;
+                            }
+                        }
+                    }
+                }
+
                 let name_capture = m.captures.iter().find(|c| {
                     let idx = c.index as usize;
                     idx < capture_names.len() && capture_names[idx] == "name"
                 });
 
-                if let (Some(vis), Some(name)) = (vis_capture, name_capture) {
-                    if let Ok(vis_text) = vis.node.utf8_text(source_bytes) {
-                        if vis_text != "pub" {
-                            continue;
-                        }
-                    }
+                if let Some(name) = name_capture {
                     if let Ok(text) = name.node.utf8_text(source_bytes) {
                         let name_str = text.to_string();
                         if seen.insert(name_str.clone()) {
@@ -356,8 +393,8 @@ impl RustParser {
     }
 }
 
-impl Parser for RustParser {
-    fn parse(&mut self, source: &str) -> Result<ParseResult> {
+impl RustParser {
+    fn parse_inner(&mut self, source: &str, binary_crate: bool) -> Result<ParseResult> {
         let tree = self
             .parser
             .parse(source, None)
@@ -365,7 +402,7 @@ impl Parser for RustParser {
 
         let root_node = tree.root_node();
 
-        let exports = self.extract_exports(source, root_node);
+        let exports = self.extract_exports(source, root_node, binary_crate);
         let imports = self.extract_imports(source, root_node);
         let dependencies = self.extract_dependencies(source, root_node);
         let loc = source.lines().count();
@@ -440,6 +477,26 @@ impl Parser for RustParser {
             },
             custom_fields,
         })
+    }
+}
+
+/// Check if a file path is a Rust binary entry point (main.rs or under a bin/ directory).
+fn is_binary_entry_point(path: &Path) -> bool {
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if file_name == "main.rs" {
+        return true;
+    }
+    // src/bin/*.rs files are binary entry points
+    path.components().any(|c| c.as_os_str() == "bin")
+}
+
+impl Parser for RustParser {
+    fn parse(&mut self, source: &str) -> Result<ParseResult> {
+        self.parse_inner(source, false)
+    }
+
+    fn parse_file(&mut self, source: &str, file_path: &Path) -> Result<ParseResult> {
+        self.parse_inner(source, is_binary_entry_point(file_path))
     }
 
     fn language_id(&self) -> &'static str {
@@ -663,6 +720,61 @@ impl Foo {
         // Verify sorted by line number
         assert!(exports[0].start_line <= exports[1].start_line);
         assert!(exports[1].start_line <= exports[2].start_line);
+    }
+
+    #[test]
+    fn binary_main_exports_all_functions() {
+        let mut parser = RustParser::new().unwrap();
+        let source = r#"
+fn main() {
+    run();
+}
+
+fn run() {}
+
+fn helper() -> i32 { 42 }
+
+struct Config {
+    name: String,
+}
+
+enum Mode { Fast, Slow }
+
+const VERSION: &str = "1.0";
+"#;
+        let result = parser.parse_file(source, Path::new("src/main.rs")).unwrap();
+        let names = result.metadata.export_names();
+        assert!(names.contains(&"main".to_string()));
+        assert!(names.contains(&"run".to_string()));
+        assert!(names.contains(&"helper".to_string()));
+        assert!(names.contains(&"Config".to_string()));
+        assert!(names.contains(&"Mode".to_string()));
+        assert!(names.contains(&"VERSION".to_string()));
+    }
+
+    #[test]
+    fn binary_bin_dir_exports_all_functions() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "fn main() {}\nfn setup() {}";
+        let result = parser
+            .parse_file(source, Path::new("src/bin/tool.rs"))
+            .unwrap();
+        let names = result.metadata.export_names();
+        assert!(names.contains(&"main".to_string()));
+        assert!(names.contains(&"setup".to_string()));
+    }
+
+    #[test]
+    fn lib_still_requires_pub() {
+        let mut parser = RustParser::new().unwrap();
+        let source =
+            "pub fn visible() {}\nfn private() {}\npub struct Exported {}\nstruct Hidden {}";
+        let result = parser.parse_file(source, Path::new("src/lib.rs")).unwrap();
+        let names = result.metadata.export_names();
+        assert!(names.contains(&"visible".to_string()));
+        assert!(names.contains(&"Exported".to_string()));
+        assert!(!names.contains(&"private".to_string()));
+        assert!(!names.contains(&"Hidden".to_string()));
     }
 
     #[test]

@@ -1,7 +1,9 @@
 pub mod cli;
 pub mod config;
 pub mod extractor;
+pub mod format;
 pub mod formatter;
 pub mod manifest;
 pub mod mcp;
 pub mod parser;
+pub mod search;

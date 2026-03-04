@@ -3,6 +3,7 @@ pub mod builtin;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::Path;
 
 /// A single exported symbol with its source location (1-indexed lines).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,6 +48,12 @@ pub struct ParseResult {
 pub trait Parser: Send + Sync {
     /// Parse source in a single tree-sitter pass, returning metadata and custom fields together.
     fn parse(&mut self, source: &str) -> Result<ParseResult>;
+
+    /// Parse with file path context. Override for language-specific behavior
+    /// based on file location (e.g., Rust binary crate detection).
+    fn parse_file(&mut self, source: &str, _file_path: &Path) -> Result<ParseResult> {
+        self.parse(source)
+    }
 
     /// The language identifier used in frontmatter sections (e.g., "rust", "python").
     fn language_id(&self) -> &'static str;
