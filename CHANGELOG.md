@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.9](https://github.com/srobinson/fmm/compare/v0.1.8...v0.1.9) (2026-03-04)
+
+
+### Bug Fixes
+
+* automated release pipeline and sidecar discovery ([d6952fe](https://github.com/srobinson/fmm/commit/d6952fe6183b798887041814849d0b63682e7c99))
+* extract PR number from release-please JSON output ([e953b99](https://github.com/srobinson/fmm/commit/e953b9917abb345760f92d9ed9f38570c4db0328))
+
 ## [0.1.8](https://github.com/srobinson/fmm/compare/v0.1.7...v0.1.8) (2026-03-04)
 
 
