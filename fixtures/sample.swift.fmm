@@ -1,5 +1,5 @@
 ---
-file: fixtures/sample.swift
+file: sample.swift
 fmm: v0.3
 exports:
   NetworkManager: [11, 27]
@@ -16,6 +16,7 @@ exports:
   JSONDictionary: [120, 120]
   CompletionHandler: [121, 121]
   trimmed: [126, 128]
+  isBlank: [130, 132]
   uniqueElements: [142, 150]
 imports: [Foundation, MyTestModule, UIKit]
 loc: 151

@@ -93,8 +93,8 @@ impl SwiftParser {
         None
     }
 
-    /// Extract methods from an extension's class_body.
-    fn extract_extension_methods(
+    /// Extract methods and properties from an extension's class_body.
+    fn extract_extension_members(
         node: &tree_sitter::Node,
         source_bytes: &[u8],
         seen: &mut HashSet<String>,
@@ -105,16 +105,30 @@ impl SwiftParser {
             if child.kind() == "class_body" {
                 let mut body_cursor = child.walk();
                 for body_child in child.children(&mut body_cursor) {
-                    if body_child.kind() == "function_declaration" {
-                        if let Some(name) = Self::get_func_name(&body_child, source_bytes) {
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    body_child.start_position().row + 1,
-                                    body_child.end_position().row + 1,
-                                ));
+                    match body_child.kind() {
+                        "function_declaration" => {
+                            if let Some(name) = Self::get_func_name(&body_child, source_bytes) {
+                                if seen.insert(name.clone()) {
+                                    exports.push(ExportEntry::new(
+                                        name,
+                                        body_child.start_position().row + 1,
+                                        body_child.end_position().row + 1,
+                                    ));
+                                }
                             }
                         }
+                        "property_declaration" => {
+                            if let Some(name) = Self::get_property_name(&body_child, source_bytes) {
+                                if seen.insert(name.clone()) {
+                                    exports.push(ExportEntry::new(
+                                        name,
+                                        body_child.start_position().row + 1,
+                                        body_child.end_position().row + 1,
+                                    ));
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -137,7 +151,7 @@ impl SwiftParser {
                         Some("extension") => {
                             // Public extensions: export their methods
                             if is_public {
-                                Self::extract_extension_methods(
+                                Self::extract_extension_members(
                                     &child,
                                     source_bytes,
                                     &mut seen,
