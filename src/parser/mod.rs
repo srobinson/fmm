@@ -170,6 +170,18 @@ impl ParserRegistry {
             Ok(Box::new(builtin::kotlin::KotlinParser::new()?))
         });
         self.register_language_id(&["kt", "kts"], "kotlin");
+
+        // Dart
+        self.register(&["dart"], || {
+            Ok(Box::new(builtin::dart::DartParser::new()?))
+        });
+        self.register_language_id(&["dart"], "dart");
+
+        // Elixir
+        self.register(&["ex", "exs"], || {
+            Ok(Box::new(builtin::elixir::ElixirParser::new()?))
+        });
+        self.register_language_id(&["ex", "exs"], "elixir");
     }
 
     fn register_language_id(&mut self, extensions: &[&str], language_id: &'static str) {
@@ -242,6 +254,9 @@ mod tests {
         assert!(registry.has_parser("swift"));
         assert!(registry.has_parser("kt"));
         assert!(registry.has_parser("kts"));
+        assert!(registry.has_parser("dart"));
+        assert!(registry.has_parser("ex"));
+        assert!(registry.has_parser("exs"));
     }
 
     #[test]
@@ -265,6 +280,9 @@ mod tests {
         assert_eq!(registry.language_id_for("swift"), Some("swift"));
         assert_eq!(registry.language_id_for("kt"), Some("kotlin"));
         assert_eq!(registry.language_id_for("kts"), Some("kotlin"));
+        assert_eq!(registry.language_id_for("dart"), Some("dart"));
+        assert_eq!(registry.language_id_for("ex"), Some("elixir"));
+        assert_eq!(registry.language_id_for("exs"), Some("elixir"));
     }
 
     #[test]

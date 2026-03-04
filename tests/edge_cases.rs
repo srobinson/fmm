@@ -1,6 +1,8 @@
 use fmm::parser::builtin::c::CParser;
 use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
+use fmm::parser::builtin::dart::DartParser;
+use fmm::parser::builtin::elixir::ElixirParser;
 use fmm::parser::builtin::go::GoParser;
 use fmm::parser::builtin::java::JavaParser;
 use fmm::parser::builtin::kotlin::KotlinParser;
@@ -941,4 +943,125 @@ fn kotlin_default_public_vs_private() {
     assert!(!names.contains(&"alsoHidden".to_string()));
     assert!(!names.contains(&"Secret".to_string()));
     assert_eq!(names.len(), 2);
+}
+
+// ──────────────────────────────────────────────
+// Dart edge cases
+// ──────────────────────────────────────────────
+
+#[test]
+fn dart_empty_file() {
+    let mut parser = DartParser::new().unwrap();
+    let result = parser.parse("").unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert!(result.metadata.imports.is_empty());
+    assert!(result.metadata.dependencies.is_empty());
+    assert_eq!(result.metadata.loc, 0);
+}
+
+#[test]
+fn dart_syntax_errors() {
+    let mut parser = DartParser::new().unwrap();
+    let source = "class {{{{ invalid !@#$";
+    let result = parser.parse(source);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn dart_no_exports() {
+    let mut parser = DartParser::new().unwrap();
+    let source = "void _helper() {}\nclass _Internal {}\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+}
+
+#[test]
+fn dart_crlf_line_endings() {
+    let mut parser = DartParser::new().unwrap();
+    let source = "import 'dart:io';\r\nvoid hello() {}\r\nclass MyClass {}\r\n";
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+    assert!(names.contains(&"hello".to_string()));
+    assert!(names.contains(&"MyClass".to_string()));
+}
+
+#[test]
+fn dart_underscore_privacy() {
+    let mut parser = DartParser::new().unwrap();
+    let source = "class Public {}\nclass _Private {}\nvoid visible() {}\nvoid _hidden() {}\ntypedef Pub = void Function();\ntypedef _Priv = void Function();\n";
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+    assert!(names.contains(&"Public".to_string()));
+    assert!(names.contains(&"visible".to_string()));
+    assert!(names.contains(&"Pub".to_string()));
+    assert!(!names.contains(&"_Private".to_string()));
+    assert!(!names.contains(&"_hidden".to_string()));
+    assert!(!names.contains(&"_Priv".to_string()));
+    assert_eq!(names.len(), 3);
+}
+
+#[test]
+fn dart_whitespace_only() {
+    let mut parser = DartParser::new().unwrap();
+    let result = parser.parse("   \n\n  \n").unwrap();
+    assert!(result.metadata.exports.is_empty());
+}
+
+// ──────────────────────────────────────────────
+// Elixir edge cases
+// ──────────────────────────────────────────────
+
+#[test]
+fn elixir_empty_file() {
+    let mut parser = ElixirParser::new().unwrap();
+    let result = parser.parse("").unwrap();
+    assert!(result.metadata.exports.is_empty());
+    assert!(result.metadata.imports.is_empty());
+    assert!(result.metadata.dependencies.is_empty());
+    assert_eq!(result.metadata.loc, 0);
+}
+
+#[test]
+fn elixir_syntax_errors() {
+    let mut parser = ElixirParser::new().unwrap();
+    let source = "def {{{{ invalid !@#$";
+    let result = parser.parse(source);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn elixir_no_exports() {
+    let mut parser = ElixirParser::new().unwrap();
+    let source = "# just a comment\n1 + 2\n";
+    let result = parser.parse(source).unwrap();
+    assert!(result.metadata.exports.is_empty());
+}
+
+#[test]
+fn elixir_crlf_line_endings() {
+    let mut parser = ElixirParser::new().unwrap();
+    let source = "defmodule M do\r\n  def hello() do\r\n    :ok\r\n  end\r\nend\r\n";
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+    assert!(names.contains(&"M".to_string()));
+    assert!(names.contains(&"hello".to_string()));
+}
+
+#[test]
+fn elixir_private_excluded() {
+    let mut parser = ElixirParser::new().unwrap();
+    let source = "defmodule M do\n  def public(), do: :ok\n  defp private(), do: :ok\n  defmacro pub_macro(), do: :ok\n  defmacrop priv_macro(), do: :ok\nend\n";
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+    assert!(names.contains(&"public".to_string()));
+    assert!(names.contains(&"pub_macro".to_string()));
+    assert!(!names.contains(&"private".to_string()));
+    assert!(!names.contains(&"priv_macro".to_string()));
+}
+
+#[test]
+fn elixir_whitespace_only() {
+    let mut parser = ElixirParser::new().unwrap();
+    let result = parser.parse("   \n\n  \n").unwrap();
+    assert!(result.metadata.exports.is_empty());
 }

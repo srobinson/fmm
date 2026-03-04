@@ -14,6 +14,8 @@
 use fmm::parser::builtin::c::CParser;
 use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
+use fmm::parser::builtin::dart::DartParser;
+use fmm::parser::builtin::elixir::ElixirParser;
 use fmm::parser::builtin::go::GoParser;
 use fmm::parser::builtin::java::JavaParser;
 use fmm::parser::builtin::kotlin::KotlinParser;
@@ -2333,4 +2335,226 @@ typealias Handler = (Any) -> ApiResponse<Any>
     // Custom fields
     let fields = result.custom_fields.unwrap();
     assert_eq!(fields.get("data_classes").unwrap().as_u64().unwrap(), 1);
+}
+
+// ──────────────────────────────────────────────
+// Dart cross-language validation
+// ──────────────────────────────────────────────
+
+#[test]
+fn dart_real_flutter_widget_pattern() {
+    // Pattern: Flutter widget with state management
+    let source = r#"
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+class CounterApp extends StatelessWidget {
+  Widget build(BuildContext context) {
+    return MaterialApp(home: CounterPage());
+  }
+}
+
+class CounterPage extends StatefulWidget {
+  State<CounterPage> createState() => _CounterPageState();
+}
+
+class _CounterPageState extends State<CounterPage> {
+  int _counter = 0;
+
+  void _increment() {
+    setState(() { _counter++; });
+  }
+
+  Widget build(BuildContext context) {
+    return Scaffold();
+  }
+}
+
+class CounterModel extends ChangeNotifier {
+  int _count = 0;
+  int get count => _count;
+
+  void increment() {
+    _count++;
+    notifyListeners();
+  }
+}
+
+enum AppRoute { home, settings, profile }
+
+typedef WidgetCallback = void Function(BuildContext);
+"#;
+
+    let mut parser = DartParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+
+    // Public widgets
+    assert!(names.contains(&"CounterApp".to_string()));
+    assert!(names.contains(&"CounterPage".to_string()));
+    assert!(names.contains(&"CounterModel".to_string()));
+    assert!(names.contains(&"AppRoute".to_string()));
+    assert!(names.contains(&"WidgetCallback".to_string()));
+
+    // Private state class excluded
+    assert!(!names.contains(&"_CounterPageState".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"flutter".to_string()));
+    assert!(result.metadata.imports.contains(&"provider".to_string()));
+}
+
+#[test]
+fn dart_real_data_layer_pattern() {
+    // Pattern: Repository / service layer
+    let source = r#"
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
+abstract class Repository<T> {
+  Future<T?> findById(String id);
+  Future<List<T>> findAll();
+  Future<void> save(T entity);
+}
+
+class UserRepository extends Repository<Map<String, dynamic>> {
+  final String baseUrl;
+
+  UserRepository({required this.baseUrl});
+
+  Future<Map<String, dynamic>?> findById(String id) async {
+    return null;
+  }
+
+  Future<List<Map<String, dynamic>>> findAll() async {
+    return [];
+  }
+
+  Future<void> save(Map<String, dynamic> entity) async {}
+}
+
+class ApiClient {
+  static const String _baseUrl = 'https://api.example.com';
+
+  Future<Map<String, dynamic>> get(String path) async {
+    return {};
+  }
+}
+
+typedef JsonMap = Map<String, dynamic>;
+
+void _initializeClient() {}
+"#;
+
+    let mut parser = DartParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+
+    assert!(names.contains(&"Repository".to_string()));
+    assert!(names.contains(&"UserRepository".to_string()));
+    assert!(names.contains(&"ApiClient".to_string()));
+    assert!(names.contains(&"JsonMap".to_string()));
+    assert!(!names.contains(&"_initializeClient".to_string()));
+
+    assert!(result.metadata.imports.contains(&"dart:convert".to_string()));
+    assert!(result.metadata.imports.contains(&"http".to_string()));
+}
+
+// ──────────────────────────────────────────────
+// Elixir cross-language validation
+// ──────────────────────────────────────────────
+
+#[test]
+fn elixir_real_genserver_pattern() {
+    // Pattern: GenServer with public API and private callbacks
+    let source = r#"
+defmodule MyApp.Cache do
+  use GenServer
+
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  def get(key) do
+    GenServer.call(__MODULE__, {:get, key})
+  end
+
+  def put(key, value) do
+    GenServer.cast(__MODULE__, {:put, key, value})
+  end
+
+  defp init(opts) do
+    {:ok, %{}}
+  end
+
+  defp handle_call({:get, key}, _from, state) do
+    {:reply, Map.get(state, key), state}
+  end
+
+  defp handle_cast({:put, key, value}, state) do
+    {:noreply, Map.put(state, key, value)}
+  end
+end
+"#;
+
+    let mut parser = ElixirParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+
+    // Module and public API
+    assert!(names.contains(&"MyApp.Cache".to_string()));
+    assert!(names.contains(&"start_link".to_string()));
+    assert!(names.contains(&"get".to_string()));
+    assert!(names.contains(&"put".to_string()));
+
+    // Private callbacks excluded
+    assert!(!names.contains(&"init".to_string()));
+    assert!(!names.contains(&"handle_call".to_string()));
+    assert!(!names.contains(&"handle_cast".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"GenServer".to_string()));
+}
+
+#[test]
+fn elixir_real_phoenix_context_pattern() {
+    // Pattern: Phoenix context module with Ecto queries
+    let source = r#"
+defmodule MyApp.Accounts do
+  import Ecto.Query
+  alias MyApp.Repo
+  alias MyApp.Accounts.User
+
+  def list_users do
+    Repo.all(User)
+  end
+
+  def get_user!(id) do
+    Repo.get!(User, id)
+  end
+
+  def create_user(attrs) do
+    %User{}
+    |> User.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  defp base_query do
+    from(u in User, order_by: u.inserted_at)
+  end
+end
+"#;
+
+    let mut parser = ElixirParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+    let names = result.metadata.export_names();
+
+    assert!(names.contains(&"MyApp.Accounts".to_string()));
+    assert!(names.contains(&"list_users".to_string()));
+    assert!(names.contains(&"get_user!".to_string()));
+    assert!(names.contains(&"create_user".to_string()));
+    assert!(!names.contains(&"base_query".to_string()));
+
+    assert!(result.metadata.imports.contains(&"Ecto".to_string()));
+    assert!(result.metadata.imports.contains(&"MyApp".to_string()));
 }

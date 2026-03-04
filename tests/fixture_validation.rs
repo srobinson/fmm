@@ -1,6 +1,8 @@
 use fmm::parser::builtin::c::CParser;
 use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
+use fmm::parser::builtin::dart::DartParser;
+use fmm::parser::builtin::elixir::ElixirParser;
 use fmm::parser::builtin::go::GoParser;
 use fmm::parser::builtin::java::JavaParser;
 use fmm::parser::builtin::kotlin::KotlinParser;
@@ -1007,6 +1009,138 @@ fn validate_kotlin_fixture() {
         .iter()
         .map(|e| e.start_line)
         .collect();
+    let mut sorted = lines.clone();
+    sorted.sort();
+    assert_eq!(lines, sorted);
+}
+
+#[test]
+fn validate_dart_fixture() {
+    let source = include_str!("../fixtures/sample.dart");
+    let mut parser = DartParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Public classes
+    assert!(names.contains(&"NetworkManager".to_string()));
+    assert!(names.contains(&"BaseWidget".to_string()));
+    assert!(names.contains(&"UserProfile".to_string()));
+    // Private class excluded
+    assert!(!names.contains(&"_InternalHelper".to_string()));
+
+    // Mixins
+    assert!(names.contains(&"Loggable".to_string()));
+    assert!(names.contains(&"Cacheable".to_string()));
+
+    // Enums
+    assert!(names.contains(&"Direction".to_string()));
+    assert!(names.contains(&"HttpStatus".to_string()));
+
+    // Extensions
+    assert!(names.contains(&"StringExtension".to_string()));
+    assert!(names.contains(&"IntExtension".to_string()));
+
+    // Typedefs
+    assert!(names.contains(&"Callback".to_string()));
+    assert!(names.contains(&"JsonMap".to_string()));
+    assert!(!names.contains(&"_PrivateCallback".to_string()));
+
+    // Public functions
+    assert!(names.contains(&"globalFunction".to_string()));
+    assert!(names.contains(&"processData".to_string()));
+    assert!(names.contains(&"asyncOperation".to_string()));
+    assert!(!names.contains(&"_privateFunction".to_string()));
+
+    // Top-level variables
+    assert!(names.contains(&"appVersion".to_string()));
+    assert!(names.contains(&"maxRetries".to_string()));
+    assert!(names.contains(&"isDebugMode".to_string()));
+    assert!(!names.contains(&"_privateVar".to_string()));
+
+    // Imports (package names)
+    assert!(result.metadata.imports.contains(&"flutter".to_string()));
+    assert!(result.metadata.imports.contains(&"http".to_string()));
+    assert!(result.metadata.imports.contains(&"dart:async".to_string()));
+    assert!(result.metadata.imports.contains(&"dart:convert".to_string()));
+
+    // Dependencies (relative paths)
+    assert!(result.metadata.dependencies.contains(&"./relative_file.dart".to_string()));
+    assert!(result.metadata.dependencies.contains(&"../utils/helpers.dart".to_string()));
+
+    // Custom fields
+    let fields = result.custom_fields.expect("should have custom fields");
+    assert_eq!(fields.get("mixins").unwrap().as_u64().unwrap(), 2);
+    assert_eq!(fields.get("extensions").unwrap().as_u64().unwrap(), 2);
+
+    // LOC
+    assert!(result.metadata.loc >= 100);
+
+    // Exports sorted by line number
+    let lines: Vec<usize> = result.metadata.exports.iter().map(|e| e.start_line).collect();
+    let mut sorted = lines.clone();
+    sorted.sort();
+    assert_eq!(lines, sorted);
+}
+
+#[test]
+fn validate_elixir_fixture() {
+    let source = include_str!("../fixtures/sample.ex");
+    let mut parser = ElixirParser::new().unwrap();
+    let result = parser.parse(source).unwrap();
+
+    let names = result.metadata.export_names();
+
+    // Modules
+    assert!(names.contains(&"MyApp.Router".to_string()));
+    assert!(names.contains(&"MyApp.Helpers".to_string()));
+    assert!(names.contains(&"MyApp.Config".to_string()));
+
+    // Public functions
+    assert!(names.contains(&"handle".to_string()));
+    assert!(names.contains(&"helper_function".to_string()));
+    assert!(names.contains(&"another_helper".to_string()));
+    assert!(names.contains(&"get".to_string()));
+    assert!(names.contains(&"set".to_string()));
+
+    // Private functions excluded
+    assert!(!names.contains(&"private_handler".to_string()));
+    assert!(!names.contains(&"internal_work".to_string()));
+
+    // Public macros
+    assert!(names.contains(&"route".to_string()));
+    assert!(!names.contains(&"private_macro".to_string()));
+
+    // Public guards
+    assert!(names.contains(&"is_valid".to_string()));
+    assert!(!names.contains(&"is_internal".to_string()));
+
+    // Delegates
+    assert!(names.contains(&"format".to_string()));
+
+    // Protocols
+    assert!(names.contains(&"Printable".to_string()));
+    assert!(names.contains(&"print".to_string()));
+
+    // Imports
+    assert!(result.metadata.imports.contains(&"Plug".to_string()));
+    assert!(result.metadata.imports.contains(&"Logger".to_string()));
+    assert!(result.metadata.imports.contains(&"MyApp".to_string()));
+    assert!(result.metadata.imports.contains(&"EEx".to_string()));
+    assert!(result.metadata.imports.contains(&"GenServer".to_string()));
+    assert!(result.metadata.imports.contains(&"Enum".to_string()));
+
+    // Custom fields
+    let fields = result.custom_fields.expect("should have custom fields");
+    assert_eq!(fields.get("macros").unwrap().as_u64().unwrap(), 1);
+    assert_eq!(fields.get("protocols").unwrap().as_u64().unwrap(), 1);
+    assert_eq!(fields.get("behaviours").unwrap().as_u64().unwrap(), 1);
+
+    // LOC
+    assert!(result.metadata.loc >= 73);
+
+    // Exports sorted by line number
+    let lines: Vec<usize> = result.metadata.exports.iter().map(|e| e.start_line).collect();
     let mut sorted = lines.clone();
     sorted.sort();
     assert_eq!(lines, sorted);

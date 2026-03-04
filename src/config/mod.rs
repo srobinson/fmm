@@ -43,6 +43,7 @@ fn default_languages() -> HashSet<String> {
     [
         "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "cpp", "hpp", "cc", "hh", "cxx", "hxx",
         "cs", "rb", "php", "c", "h", "zig", "lua", "scala", "sc", "swift", "kt", "kts",
+        "dart", "ex", "exs",
     ]
     .iter()
     .map(|s| s.to_string())
@@ -61,17 +62,18 @@ mod tests {
         for ext in [
             "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "cpp", "hpp", "cc", "hh", "cxx",
             "hxx", "cs", "rb", "php", "c", "h", "zig", "lua", "scala", "sc", "swift", "kt", "kts",
+            "dart", "ex", "exs",
         ] {
             assert!(config.languages.contains(ext), "missing extension: {ext}");
         }
-        assert_eq!(config.languages.len(), 26);
+        assert_eq!(config.languages.len(), 29);
     }
 
     #[test]
     fn returns_default_when_no_config_file() {
         let tmp = TempDir::new().unwrap();
         let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.languages.len(), 26);
+        assert_eq!(config.languages.len(), 29);
     }
 
     #[test]
@@ -165,6 +167,9 @@ mod tests {
         assert!(config.is_supported_language("swift"));
         assert!(config.is_supported_language("kt"));
         assert!(config.is_supported_language("kts"));
+        assert!(config.is_supported_language("dart"));
+        assert!(config.is_supported_language("ex"));
+        assert!(config.is_supported_language("exs"));
         assert!(!config.is_supported_language(""));
     }
 
@@ -174,7 +179,7 @@ mod tests {
         fs::write(tmp.path().join(".fmmrc.json"), "{}").unwrap();
 
         let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.languages.len(), 26);
+        assert_eq!(config.languages.len(), 29);
     }
 
     #[test]
