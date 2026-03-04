@@ -1,0 +1,32 @@
+---
+file: fixtures/sample.kt
+fmm: v0.3
+exports:
+  NetworkManager: [15, 21]
+  BaseRepository: [23, 25]
+  UserProfile: [29, 33]
+  APIResponse: [35, 38]
+  Result: [42, 46]
+  Repository: [50, 53]
+  Cacheable: [55, 57]
+  AppConfig: [61, 64]
+  DatabaseManager: [66, 68]
+  Direction: [72, 74]
+  HttpStatus: [76, 80]
+  createManager: [97, 97]
+  processData: [99, 99]
+  MAX_RETRIES: [101, 101]
+  isDebugMode: [102, 102]
+  VERSION: [103, 103]
+  StringMap: [105, 105]
+  Callback: [106, 106]
+  ServiceLocator: [110, 117]
+  oldMethod: [122, 122]
+  asyncOperation: [124, 124]
+imports: [java.util, kotlin.collections, org.example]
+loc: 124
+modified: 2026-03-04
+kotlin:
+  companion_objects: 1
+  data_classes: 2
+  sealed_classes: 1

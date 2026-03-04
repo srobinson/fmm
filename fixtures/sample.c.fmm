@@ -1,0 +1,25 @@
+---
+file: fixtures/sample.c
+fmm: v0.3
+exports:
+  MAX_BUFFER_SIZE: [13, 14]
+  MIN: [14, 15]
+  API_VERSION: [15, 16]
+  Callback: [18, 18]
+  HashValue: [19, 19]
+  Status: [22, 26]
+  Config: [29, 34]
+  Result: [37, 41]
+  config_init: [55, 63]
+  process_data: [66, 72]
+  config_free: [75, 80]
+  transform: [83, 87]
+  get_buffer: [90, 93]
+  compute_hash: [96, 102]
+imports: [stdio.h, stdlib.h, string.h]
+dependencies: [config.h, utils/helpers.h]
+loc: 102
+modified: 2026-03-04
+c:
+  macros: [API_VERSION, MAX_BUFFER_SIZE, MIN]
+  typedefs: [Callback, HashValue]

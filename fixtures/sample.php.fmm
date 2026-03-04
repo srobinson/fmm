@@ -1,0 +1,32 @@
+---
+file: fixtures/sample.php
+fmm: v0.3
+exports:
+  MAX_RETRIES: [13, 13]
+  API_VERSION: [14, 14]
+  Repository: [16, 21]
+  find: [18, 18]
+  save: [19, 19]
+  delete: [20, 20]
+  Cacheable: [23, 34]
+  cacheKey: [25, 28]
+  clearCache: [30, 33]
+  Loggable: [36, 42]
+  logAction: [38, 41]
+  UserController: [44, 82]
+  index: [49, 52]
+  show: [54, 57]
+  store: [59, 63]
+  create: [65, 68]
+  Status: [84, 89]
+  ProcessConfig: [91, 101]
+  isValid: [97, 100]
+  transform: [103, 106]
+  processQueue: [108, 114]
+imports: [App, Illuminate]
+dependencies: [./helpers.php, vendor/autoload.php]
+loc: 114
+modified: 2026-03-04
+php:
+  namespaces: [App\Controllers]
+  traits_used: [Cacheable, Loggable]

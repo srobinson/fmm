@@ -1,5 +1,5 @@
 ---
-file: dart.rs
+file: src/parser/builtin/dart.rs
 fmm: v0.3
 exports:
   DartParser: [6, 8]

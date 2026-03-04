@@ -1,5 +1,5 @@
 ---
-file: swift.rs
+file: src/parser/builtin/swift.rs
 fmm: v0.3
 exports:
   SwiftParser: [6, 8]

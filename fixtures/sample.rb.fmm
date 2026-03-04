@@ -1,0 +1,14 @@
+---
+file: fixtures/sample.rb
+fmm: v0.3
+exports:
+  Cacheable: [6, 14]
+  DataProcessor: [16, 46]
+  ProcessConfig: [48, 56]
+  transform: [58, 60]
+imports: [json, net/http]
+dependencies: [config, lib/helpers]
+loc: 64
+modified: 2026-03-04
+ruby:
+  mixins: [Comparable, Enumerable]

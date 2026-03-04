@@ -1,15 +1,33 @@
 {
   "languages": [
-    "ts",
-    "tsx",
-    "js",
-    "jsx",
+    "hpp",
+    "lua",
     "py",
+    "h",
+    "swift",
+    "ex",
+    "exs",
+    "hh",
+    "cc",
+    "rb",
+    "c",
+    "dart",
+    "cxx",
+    "ts",
+    "sc",
+    "kts",
+    "zig",
+    "tsx",
+    "cpp",
+    "kt",
+    "js",
+    "java",
+    "go",
     "rs",
-    "go"
-  ],
-  "format": "yaml",
-  "include_loc": true,
-  "include_complexity": false,
-  "max_file_size": 1024
+    "jsx",
+    "scala",
+    "cs",
+    "hxx",
+    "php"
+  ]
 }

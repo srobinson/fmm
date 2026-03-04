@@ -1,5 +1,5 @@
 ---
-file: elixir.rs
+file: src/parser/builtin/elixir.rs
 fmm: v0.3
 exports:
   ElixirParser: [6, 8]

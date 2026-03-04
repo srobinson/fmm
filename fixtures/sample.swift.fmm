@@ -1,0 +1,25 @@
+---
+file: fixtures/sample.swift
+fmm: v0.3
+exports:
+  NetworkManager: [11, 27]
+  BaseViewController: [29, 37]
+  Point: [41, 49]
+  APIConfig: [51, 54]
+  Direction: [58, 69]
+  NetworkError: [71, 75]
+  Drawable: [79, 82]
+  Cacheable: [84, 87]
+  createManager: [113, 115]
+  MAX_RETRIES: [117, 117]
+  isDebugMode: [118, 118]
+  JSONDictionary: [120, 120]
+  CompletionHandler: [121, 121]
+  trimmed: [126, 128]
+  uniqueElements: [142, 150]
+imports: [Foundation, MyTestModule, UIKit]
+loc: 151
+modified: 2026-03-04
+swift:
+  extensions: 3
+  protocols: 2
