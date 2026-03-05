@@ -94,13 +94,42 @@ impl KotlinParser {
             match child.kind() {
                 "class_declaration" => {
                     if !Self::is_private_or_internal(&child, source_bytes) {
-                        if let Some(name) = Self::get_identifier(&child, source_bytes) {
-                            if seen.insert(name.clone()) {
+                        if let Some(class_name) = Self::get_identifier(&child, source_bytes) {
+                            if seen.insert(class_name.clone()) {
                                 exports.push(ExportEntry::new(
-                                    name,
+                                    class_name.clone(),
                                     child.start_position().row + 1,
                                     child.end_position().row + 1,
                                 ));
+                            }
+                            // ALP-771: extract public methods from the class body
+                            let mut class_cursor = child.walk();
+                            for class_child in child.children(&mut class_cursor) {
+                                if class_child.kind() == "class_body" {
+                                    let mut body_cursor = class_child.walk();
+                                    for body_child in class_child.children(&mut body_cursor) {
+                                        if body_child.kind() == "function_declaration"
+                                            && !Self::is_private_or_internal(
+                                                &body_child,
+                                                source_bytes,
+                                            )
+                                        {
+                                            if let Some(method_name) =
+                                                Self::get_identifier(&body_child, source_bytes)
+                                            {
+                                                let key = format!("{}.{}", class_name, method_name);
+                                                if seen.insert(key) {
+                                                    exports.push(ExportEntry::method(
+                                                        method_name,
+                                                        body_child.start_position().row + 1,
+                                                        body_child.end_position().row + 1,
+                                                        class_name.clone(),
+                                                    ));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -396,6 +425,74 @@ mod tests {
         let result = parser.parse(source).unwrap();
         let names = result.metadata.export_names();
         assert_eq!(names, vec!["Color"]);
+    }
+
+    // ALP-771: Kotlin method extraction tests
+
+    fn get_method<'a>(
+        exports: &'a [ExportEntry],
+        class: &str,
+        method: &str,
+    ) -> Option<&'a ExportEntry> {
+        exports
+            .iter()
+            .find(|e| e.parent_class.as_deref() == Some(class) && e.name == method)
+    }
+
+    #[test]
+    fn kotlin_class_methods_extracted_with_parent_class() {
+        let mut parser = KotlinParser::new().unwrap();
+        let source = "class Greeter {\n    fun greet(): String = \"hello\"\n    fun farewell(): String = \"bye\"\n}\n";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            get_method(&result.metadata.exports, "Greeter", "greet").is_some(),
+            "Greeter.greet should be indexed"
+        );
+        assert!(
+            get_method(&result.metadata.exports, "Greeter", "farewell").is_some(),
+            "Greeter.farewell should be indexed"
+        );
+    }
+
+    #[test]
+    fn kotlin_private_class_method_excluded() {
+        let mut parser = KotlinParser::new().unwrap();
+        let source = "class Foo {\n    fun public_method() {}\n    private fun secret() {}\n}\n";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            get_method(&result.metadata.exports, "Foo", "public_method").is_some(),
+            "public_method should be indexed"
+        );
+        assert!(
+            get_method(&result.metadata.exports, "Foo", "secret").is_none(),
+            "private secret() should NOT be indexed"
+        );
+    }
+
+    #[test]
+    fn kotlin_method_not_in_flat_export_names() {
+        let mut parser = KotlinParser::new().unwrap();
+        let source = "class Foo {\n    fun bar() {}\n}\n";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            !result.metadata.export_names().contains(&"bar".to_string()),
+            "bar should NOT appear in flat export_names()"
+        );
+        assert!(
+            result.metadata.export_names().contains(&"Foo".to_string()),
+            "Foo class should still be in export_names()"
+        );
+    }
+
+    #[test]
+    fn kotlin_private_class_methods_not_extracted() {
+        let mut parser = KotlinParser::new().unwrap();
+        let source = "private class Hidden {\n    fun method() {}\n}\n";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            get_method(&result.metadata.exports, "Hidden", "method").is_none(),
+            "method of private class should NOT be indexed"
+        );
     }
 
     #[test]
