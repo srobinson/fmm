@@ -422,13 +422,13 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_glossary".to_string(),
-                description: "Symbol-level impact analysis. Given a symbol name or pattern, returns all definitions and exactly which files import each one. Use before renaming a function or changing a signature to get a precise blast radius — more surgical than fmm_dependency_graph which only gives file-level downstream.".to_string(),
+                description: "Symbol-level impact analysis. Given a symbol name or pattern, returns all definitions and exactly which files import each one. Two modes controlled by the pattern: bare name (e.g. 'loadInstance') returns file-level used_by — all files that import the symbol's file; dotted name (e.g. 'Injector.loadInstance') adds call-site precision — a second tree-sitter pass filters to files that actually call that method. Use before renaming or changing a signature to get a precise blast radius — more surgical than fmm_dependency_graph which only gives file-level downstream.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
                         "pattern": {
                             "type": "string",
-                            "description": "Required. Case-insensitive substring filter on export name. E.g. 'run_dispatch' finds exact match; 'config' finds Config, loadConfig, AppConfig."
+                            "description": "Required. Case-insensitive substring filter on export name. Bare name (e.g. 'loadInstance') → file-level used_by. Dotted name (e.g. 'Injector.loadInstance') → call-site precision, filtered to actual callers."
                         },
                         "limit": {
                             "type": "integer",
