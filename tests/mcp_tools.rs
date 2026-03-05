@@ -290,6 +290,41 @@ fn list_exports_all() {
     assert!(text.contains("exports:"));
 }
 
+#[test]
+fn list_exports_directory_filter_pattern() {
+    let (_tmp, server) = setup_mcp_server();
+    // Scoped to src/auth/ — should only return session.ts and types.ts exports
+    let text = call_tool_text(
+        &server,
+        "fmm_list_exports",
+        json!({"pattern": "session", "directory": "src/auth/"}),
+    );
+    assert!(
+        text.contains("createSession"),
+        "createSession should appear; got: {text}"
+    );
+    // Pool is outside src/auth/ — should not appear
+    assert!(
+        !text.contains("Pool"),
+        "Pool (from src/db/) should not appear with directory=src/auth/; got: {text}"
+    );
+}
+
+#[test]
+fn list_exports_directory_filter_all() {
+    let (_tmp, server) = setup_mcp_server();
+    // Scoped to src/db/ — only pool.ts should appear
+    let text = call_tool_text(&server, "fmm_list_exports", json!({"directory": "src/db/"}));
+    assert!(
+        text.contains("Pool"),
+        "Pool should appear under src/db/; got: {text}"
+    );
+    assert!(
+        !text.contains("createSession"),
+        "createSession (from src/auth/) should not appear; got: {text}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // fmm_dependency_graph
 // ---------------------------------------------------------------------------

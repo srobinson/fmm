@@ -28,6 +28,7 @@ struct LookupExportArgs {
 struct ListExportsArgs {
     pattern: Option<String>,
     file: Option<String>,
+    directory: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -280,7 +281,7 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_list_exports".to_string(),
-                description: "Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Use 'file' to list a specific file's exports.".to_string(),
+                description: "Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Use 'directory' to scope results to a path prefix (e.g. 'packages/core/'). Use 'file' to list a specific file's exports.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -291,6 +292,10 @@ impl McpServer {
                         "file": {
                             "type": "string",
                             "description": "File path — returns all exports from this specific file"
+                        },
+                        "directory": {
+                            "type": "string",
+                            "description": "Path prefix to scope results (e.g. 'packages/core/'). Only exports from files under this directory are returned."
                         }
                     }
                 }),
@@ -529,6 +534,8 @@ impl McpServer {
         let args: ListExportsArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
+        let dir = args.directory.as_deref();
+
         if let Some(ref file_path) = args.file {
             let entry = manifest
                 .files
@@ -540,7 +547,14 @@ impl McpServer {
             let mut matches: Vec<(String, String, Option<[usize; 2]>)> = manifest
                 .export_index
                 .iter()
-                .filter(|(name, _)| name.to_lowercase().contains(&pat_lower))
+                .filter(|(name, path)| {
+                    if let Some(d) = dir {
+                        if !path.starts_with(d) {
+                            return false;
+                        }
+                    }
+                    name.to_lowercase().contains(&pat_lower)
+                })
                 .map(|(name, path)| {
                     let lines = manifest
                         .export_locations
@@ -556,7 +570,14 @@ impl McpServer {
             let mut by_file: Vec<(&str, &crate::manifest::FileEntry)> = manifest
                 .files
                 .iter()
-                .filter(|(_, entry)| !entry.exports.is_empty())
+                .filter(|(path, entry)| {
+                    if let Some(d) = dir {
+                        if !path.starts_with(d) {
+                            return false;
+                        }
+                    }
+                    !entry.exports.is_empty()
+                })
                 .map(|(path, entry)| (path.as_str(), entry))
                 .collect();
             by_file.sort_by_key(|(path, _)| path.to_lowercase());

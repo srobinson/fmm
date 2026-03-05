@@ -401,6 +401,10 @@ pub enum Commands {
         #[arg(short = 'd', long = "depends-on")]
         depends_on: Option<String>,
 
+        /// Scope --export results to a directory prefix (e.g. packages/)
+        #[arg(long = "dir")]
+        dir: Option<String>,
+
         /// Output as JSON
         #[arg(short = 'j', long = "json")]
         json: bool,

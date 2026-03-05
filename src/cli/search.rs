@@ -52,6 +52,7 @@ pub fn search(
     imports: Option<String>,
     loc: Option<String>,
     depends_on: Option<String>,
+    directory: Option<String>,
     json_output: bool,
 ) -> Result<()> {
     let root = std::env::current_dir()?;
@@ -74,9 +75,17 @@ pub fn search(
     if let Some(ref search_term) = term {
         bare_search(&manifest, search_term, json_output)?;
     } else if has_flags {
-        flag_search(&manifest, export, imports, loc, depends_on, json_output)?;
+        flag_search(
+            &manifest,
+            export,
+            imports,
+            loc,
+            depends_on,
+            directory,
+            json_output,
+        )?;
     } else {
-        flag_search(&manifest, None, None, None, None, json_output)?;
+        flag_search(&manifest, None, None, None, None, None, json_output)?;
     }
 
     Ok(())
@@ -136,13 +145,18 @@ fn flag_search(
     imports: Option<String>,
     loc: Option<String>,
     depends_on: Option<String>,
+    directory: Option<String>,
     json_output: bool,
 ) -> Result<()> {
     // For non-JSON export-only searches, use the column-aligned format
     if !json_output {
         if let Some(ref export_name) = export {
             if imports.is_none() && depends_on.is_none() && loc.is_none() {
-                let matches = crate::search::find_export_matches(manifest, export_name);
+                let dir = directory.as_deref();
+                let matches: Vec<_> = crate::search::find_export_matches(manifest, export_name)
+                    .into_iter()
+                    .filter(|h| dir.is_none_or(|d| h.file.starts_with(d)))
+                    .collect();
                 if matches.is_empty() {
                     println!("{} No matching exports", "!".yellow());
                     println!(
