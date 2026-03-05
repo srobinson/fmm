@@ -1,6 +1,6 @@
 ---
 file: src/cli/navigate.rs
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   lookup: [82, 127]
   read_symbol: [131, 230]

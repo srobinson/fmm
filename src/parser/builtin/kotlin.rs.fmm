@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/kotlin.rs
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   KotlinParser: [6, 8]
 methods:

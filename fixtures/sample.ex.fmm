@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.ex
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   MyApp.Router: [1, 34]
   handle: [9, 11]

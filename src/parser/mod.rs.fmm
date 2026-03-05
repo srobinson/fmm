@@ -1,6 +1,6 @@
 ---
 file: src/parser/mod.rs
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   builtin: [1, 1]
   ExportEntry: [10, 18]

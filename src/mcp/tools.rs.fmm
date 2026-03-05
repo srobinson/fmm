@@ -1,6 +1,6 @@
 ---
 file: src/mcp/tools.rs
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 imports: [serde_json]
 dependencies: [../args, 'crate::manifest']
 loc: 561
