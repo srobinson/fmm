@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.14](https://github.com/srobinson/fmm/compare/v0.1.13...v0.1.14) (2026-03-05)
+
+
+### Features
+
+* TypeScript parser hardening ([#54](https://github.com/srobinson/fmm/issues/54)) ([26ef912](https://github.com/srobinson/fmm/commit/26ef91282959bd504e88c9b9dfd2bf80dda257a3))
+
 ## [0.1.13](https://github.com/srobinson/fmm/compare/v0.1.12...v0.1.13) (2026-03-05)
 
 
