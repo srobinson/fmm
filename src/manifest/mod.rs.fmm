@@ -1,6 +1,6 @@
 ---
 file: src/manifest/mod.rs
-fmm: v0.3+0.1.15
+fmm: v0.3+0.1.17
 exports:
   ExportLines: [33, 36]
   FileEntry: [40, 52]
@@ -9,9 +9,9 @@ exports:
   GlossaryMode: [503, 511]
   GlossaryEntry: [515, 518]
   GlossarySource: [523, 527]
-  dep_matches: [649, 716]
-  python_dep_matches: [749, 762]
-  dotted_dep_matches: [770, 783]
+  dep_matches: [683, 750]
+  python_dep_matches: [783, 796]
+  dotted_dep_matches: [804, 817]
 methods:
   Manifest.new: [126, 136]
   Manifest.load_from_sidecars: [139, 238]
@@ -23,11 +23,11 @@ methods:
   Manifest.validate_file: [385, 400]
   Manifest.file_count: [402, 404]
   Manifest.file_paths: [406, 408]
-  Manifest.build_glossary: [572, 619]
-  Manifest.find_dependents: [623, 643]
+  Manifest.build_glossary: [572, 653]
+  Manifest.find_dependents: [657, 677]
 imports: [anyhow, chrono, ignore, serde, std]
 dependencies: ['crate::parser']
-loc: 1590
+loc: 1734
 modified: 2026-03-05
 rust:
   derives: [Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize]

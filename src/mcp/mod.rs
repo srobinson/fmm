@@ -511,11 +511,14 @@ impl McpServer {
         let args: LookupExportArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
-        // Try export_locations first, then export_index for backward compat
+        // Try export_locations first, then export_index for backward compat,
+        // then method_index for dotted names like "ClassName.method".
         let (file, symbol_lines) = if let Some(loc) = manifest.export_locations.get(&args.name) {
             (loc.file.clone(), loc.lines.clone())
         } else if let Some(file_path) = manifest.export_index.get(&args.name) {
             (file_path.clone(), None)
+        } else if let Some(loc) = manifest.method_index.get(&args.name) {
+            (loc.file.clone(), loc.lines.clone())
         } else {
             return Err(format!("Export '{}' not found", args.name));
         };
@@ -569,6 +572,20 @@ impl McpServer {
                     (name.clone(), path.clone(), lines)
                 })
                 .collect();
+            // Also include method_index matches (dotted names like "ClassName.method").
+            for (dotted_name, loc) in &manifest.method_index {
+                let lower = dotted_name.to_lowercase();
+                if !lower.contains(&pat_lower) {
+                    continue;
+                }
+                if let Some(d) = dir {
+                    if !loc.file.starts_with(d) {
+                        continue;
+                    }
+                }
+                let lines = loc.lines.as_ref().map(|l| [l.start, l.end]);
+                matches.push((dotted_name.clone(), loc.file.clone(), lines));
+            }
             matches.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
             Ok(crate::format::format_list_exports_pattern(&matches))
         } else {
@@ -1420,6 +1437,238 @@ mod tests {
             !text_oob.contains("showing:"),
             "showing line must not appear for out-of-bounds offset; got: {}",
             text_oob
+        );
+    }
+
+    // --- ALP-778: fmm_lookup_export dotted name fallback ---
+
+    #[test]
+    fn lookup_export_dotted_name_resolves_via_method_index() {
+        use crate::manifest::Manifest;
+        use crate::parser::{ExportEntry, Metadata};
+
+        let mut manifest = Manifest::new();
+        manifest.add_file(
+            "src/factory.ts",
+            Metadata {
+                exports: vec![
+                    ExportEntry::new("NestFactoryStatic".to_string(), 1, 200),
+                    ExportEntry::method(
+                        "createApplicationContext".to_string(),
+                        166,
+                        195,
+                        "NestFactoryStatic".to_string(),
+                    ),
+                ],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 200,
+            },
+        );
+
+        let server = McpServer {
+            manifest: Some(manifest),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+
+        // Dotted lookup resolves via method_index
+        let result = server
+            .call_tool(
+                "fmm_lookup_export",
+                serde_json::json!({"name": "NestFactoryStatic.createApplicationContext"}),
+            )
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(
+            !text.starts_with("ERROR:"),
+            "expected success, got: {}",
+            text
+        );
+        assert!(
+            text.contains("src/factory.ts"),
+            "should contain file, got: {}",
+            text
+        );
+        assert!(
+            text.contains("166"),
+            "should contain start line, got: {}",
+            text
+        );
+        assert!(
+            text.contains("195"),
+            "should contain end line, got: {}",
+            text
+        );
+    }
+
+    #[test]
+    fn lookup_export_flat_name_still_works_after_method_index_added() {
+        use crate::manifest::Manifest;
+        use crate::parser::{ExportEntry, Metadata};
+
+        let mut manifest = Manifest::new();
+        manifest.add_file(
+            "src/factory.ts",
+            Metadata {
+                exports: vec![ExportEntry::new("NestFactoryStatic".to_string(), 1, 200)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 200,
+            },
+        );
+
+        let server = McpServer {
+            manifest: Some(manifest),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+
+        let result = server
+            .call_tool(
+                "fmm_lookup_export",
+                serde_json::json!({"name": "NestFactoryStatic"}),
+            )
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(
+            !text.starts_with("ERROR:"),
+            "flat lookup should succeed, got: {}",
+            text
+        );
+        assert!(text.contains("src/factory.ts"), "got: {}", text);
+    }
+
+    #[test]
+    fn lookup_export_unknown_dotted_name_returns_error() {
+        use crate::manifest::Manifest;
+        let server = McpServer {
+            manifest: Some(Manifest::new()),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+        let result = server
+            .call_tool(
+                "fmm_lookup_export",
+                serde_json::json!({"name": "MyClass.ghostMethod"}),
+            )
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap_or("");
+        assert!(text.starts_with("ERROR:"), "expected ERROR:, got: {}", text);
+    }
+
+    // --- ALP-779: fmm_list_exports pattern includes method matches ---
+
+    #[test]
+    fn list_exports_pattern_includes_method_index_matches() {
+        use crate::manifest::Manifest;
+        use crate::parser::{ExportEntry, Metadata};
+
+        let mut manifest = Manifest::new();
+        manifest.add_file(
+            "src/factory.ts",
+            Metadata {
+                exports: vec![
+                    ExportEntry::new("NestFactoryStatic".to_string(), 1, 200),
+                    ExportEntry::method(
+                        "create".to_string(),
+                        79,
+                        113,
+                        "NestFactoryStatic".to_string(),
+                    ),
+                    ExportEntry::method(
+                        "createApplicationContext".to_string(),
+                        166,
+                        195,
+                        "NestFactoryStatic".to_string(),
+                    ),
+                ],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 200,
+            },
+        );
+
+        let server = McpServer {
+            manifest: Some(manifest),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+
+        let result = server
+            .call_tool("fmm_list_exports", serde_json::json!({"pattern": "create"}))
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(
+            !text.starts_with("ERROR:"),
+            "expected success, got: {}",
+            text
+        );
+        assert!(
+            text.contains("NestFactoryStatic.create"),
+            "should contain dotted method match, got: {}",
+            text
+        );
+        assert!(
+            text.contains("NestFactoryStatic.createApplicationContext"),
+            "should contain second dotted method, got: {}",
+            text
+        );
+    }
+
+    #[test]
+    fn list_exports_pattern_directory_filter_applies_to_methods() {
+        use crate::manifest::Manifest;
+        use crate::parser::{ExportEntry, Metadata};
+
+        let mut manifest = Manifest::new();
+        manifest.add_file(
+            "src/factory.ts",
+            Metadata {
+                exports: vec![ExportEntry::method(
+                    "create".to_string(),
+                    79,
+                    113,
+                    "MyFactory".to_string(),
+                )],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 113,
+            },
+        );
+        manifest.add_file(
+            "lib/other.ts",
+            Metadata {
+                exports: vec![ExportEntry::method(
+                    "create".to_string(),
+                    1,
+                    5,
+                    "OtherFactory".to_string(),
+                )],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 5,
+            },
+        );
+
+        let server = McpServer {
+            manifest: Some(manifest),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+
+        // Directory filter: only src/ methods should appear
+        let result = server
+            .call_tool(
+                "fmm_list_exports",
+                serde_json::json!({"pattern": "create", "directory": "src/"}),
+            )
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(
+            text.contains("MyFactory.create"),
+            "should contain src method, got: {}",
+            text
+        );
+        assert!(
+            !text.contains("OtherFactory.create"),
+            "should not contain lib method, got: {}",
+            text
         );
     }
 }

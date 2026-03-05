@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.dart
-fmm: v0.3+0.1.15
+fmm: v0.3+0.1.17
 exports:
   NetworkManager: [14, 20]
   BaseWidget: [22, 24]

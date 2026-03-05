@@ -1,6 +1,6 @@
 ---
 file: src/cli/search.rs
-fmm: v0.3+0.1.15
+fmm: v0.3+0.1.17
 exports:
   search: [49, 92]
 imports: [anyhow, colored]

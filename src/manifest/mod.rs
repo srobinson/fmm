@@ -614,6 +614,40 @@ impl Manifest {
                 }
             })
             .collect();
+        // Second pass: method_index entries (dotted names like "ClassName.method").
+        // Pattern matches on the full dotted name, so both "create" and
+        // "NestFactoryStatic.create" substring queries will hit the same entry.
+        for (dotted_name, loc) in &self.method_index {
+            let lower = dotted_name.to_lowercase();
+            if !lower.contains(&pat_lower) {
+                continue;
+            }
+            // For Source/Tests modes, skip methods defined in test files.
+            if matches!(mode, GlossaryMode::Source | GlossaryMode::Tests) && is_test_file(&loc.file)
+            {
+                continue;
+            }
+            let all_used_by = self.find_dependents(&loc.file);
+            let used_by = match mode {
+                GlossaryMode::Source => all_used_by
+                    .into_iter()
+                    .filter(|f| !is_test_file(f))
+                    .collect(),
+                GlossaryMode::Tests => all_used_by
+                    .into_iter()
+                    .filter(|f| is_test_file(f))
+                    .collect(),
+                GlossaryMode::All => all_used_by,
+            };
+            entries.push(GlossaryEntry {
+                name: dotted_name.clone(),
+                sources: vec![GlossarySource {
+                    file: loc.file.clone(),
+                    lines: loc.lines.clone(),
+                    used_by,
+                }],
+            });
+        }
         entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
         entries
     }
@@ -1586,5 +1620,115 @@ modified: 2026-01-30"#;
             "internal/format/format.go",
             "cmd/main.go"
         ));
+    }
+
+    // --- ALP-780: build_glossary includes method_index matches ---
+
+    fn method_entry(class: &str, method: &str, start: usize, end: usize) -> ExportEntry {
+        ExportEntry::method(method.to_string(), start, end, class.to_string())
+    }
+
+    #[test]
+    fn build_glossary_includes_method_definitions() {
+        let mut manifest = Manifest::new();
+        manifest.add_file(
+            "src/factory.ts",
+            Metadata {
+                exports: vec![
+                    entry("NestFactoryStatic", 1, 381),
+                    method_entry("NestFactoryStatic", "createApplicationContext", 166, 195),
+                ],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 381,
+            },
+        );
+
+        // Pattern matches on the method name alone (substring of dotted name)
+        let entries = manifest.build_glossary("createApplicationContext", GlossaryMode::Source);
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(
+            names.contains(&"NestFactoryStatic.createApplicationContext"),
+            "should find method via substring pattern, got: {:?}",
+            names
+        );
+
+        // Pattern matches the full dotted name
+        let entries2 = manifest.build_glossary(
+            "NestFactoryStatic.createApplicationContext",
+            GlossaryMode::All,
+        );
+        let names2: Vec<&str> = entries2.iter().map(|e| e.name.as_str()).collect();
+        assert!(
+            names2.contains(&"NestFactoryStatic.createApplicationContext"),
+            "should find method via full dotted name, got: {:?}",
+            names2
+        );
+    }
+
+    #[test]
+    fn build_glossary_method_tests_mode_returns_test_dependents() {
+        let mut manifest = Manifest::new();
+        manifest.add_file(
+            "src/factory.ts",
+            Metadata {
+                exports: vec![
+                    entry("NestFactoryStatic", 1, 200),
+                    method_entry("NestFactoryStatic", "create", 79, 113),
+                ],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 200,
+            },
+        );
+        // Test file that depends on the class file
+        manifest.add_file(
+            "tests/factory.spec.ts",
+            Metadata {
+                exports: vec![],
+                imports: vec![],
+                dependencies: vec!["../src/factory".to_string()],
+                loc: 10,
+            },
+        );
+
+        let entries = manifest.build_glossary("create", GlossaryMode::Tests);
+        let method_entry_found = entries
+            .iter()
+            .find(|e| e.name == "NestFactoryStatic.create");
+        assert!(
+            method_entry_found.is_some(),
+            "method should appear in tests mode"
+        );
+        let used_by = &method_entry_found.unwrap().sources[0].used_by;
+        assert!(
+            used_by.iter().any(|f| f == "tests/factory.spec.ts"),
+            "test file should appear in used_by for tests mode, got: {:?}",
+            used_by
+        );
+    }
+
+    #[test]
+    fn build_glossary_sorted_with_method_entries_mixed_in() {
+        let mut manifest = Manifest::new();
+        manifest.add_file(
+            "src/a.ts",
+            Metadata {
+                exports: vec![
+                    entry("create_a", 1, 5),
+                    method_entry("MyClass", "createB", 10, 20),
+                ],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 20,
+            },
+        );
+
+        let entries = manifest.build_glossary("create", GlossaryMode::All);
+        // Both export and method match; result must be sorted
+        assert!(entries.len() >= 2, "should have at least 2 matches");
+        assert!(entries
+            .windows(2)
+            .all(|w| w[0].name.to_lowercase() <= w[1].name.to_lowercase()));
     }
 }

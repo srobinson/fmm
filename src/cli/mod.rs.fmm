@@ -1,8 +1,16 @@
 ---
 file: src/cli/mod.rs
-fmm: v0.3+0.1.15
+fmm: v0.3+0.1.17
 exports:
   init: [11, 11]
+  glossary: [17, 17]
+  init_skill: [19, 19]
+  search: [20, 20]
+  clean: [21, 21]
+  generate: [21, 21]
+  validate: [21, 21]
+  status: [22, 22]
+  watch: [23, 23]
   Cli: [105, 116]
   Commands: [119, 492]
 imports: [anyhow, clap, clap_complete, color_print, glossary, ignore, init, search, sidecar, status, std, watch]

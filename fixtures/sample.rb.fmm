@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.rb
-fmm: v0.3+0.1.15
+fmm: v0.3+0.1.17
 exports:
   Cacheable: [6, 14]
   DataProcessor: [16, 46]
