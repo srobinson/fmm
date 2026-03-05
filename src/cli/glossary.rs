@@ -28,7 +28,24 @@ pub fn glossary(pattern: Option<String>, mode: &str, json_output: bool) -> Resul
         "all" => GlossaryMode::All,
         _ => GlossaryMode::Source,
     };
-    let entries = manifest.build_glossary(&pattern, mode);
+    let mut entries = manifest.build_glossary(&pattern, mode);
+
+    // ALP-785: For dotted method queries, refine used_by via call-site detection.
+    if let Some(dot_pos) = pattern.rfind('.') {
+        let method_name = &pattern[dot_pos + 1..];
+        if !method_name.is_empty() {
+            for entry in &mut entries {
+                for source in &mut entry.sources {
+                    let refined = crate::manifest::call_site_finder::find_call_sites(
+                        &root,
+                        method_name,
+                        &source.used_by,
+                    );
+                    source.used_by = refined;
+                }
+            }
+        }
+    }
 
     if json_output {
         let json = serde_json::to_string_pretty(&entries)?;

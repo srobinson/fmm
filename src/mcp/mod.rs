@@ -881,7 +881,26 @@ impl McpServer {
 
         let all_entries = manifest.build_glossary(pattern, mode);
         let total_matched = all_entries.len();
-        let entries: Vec<_> = all_entries.into_iter().take(limit).collect();
+        let mut entries: Vec<_> = all_entries.into_iter().take(limit).collect();
+
+        // ALP-785: For dotted method queries (e.g. "ClassName.method"), refine
+        // used_by via tree-sitter call-site detection (pass 2 of 2-pass architecture).
+        // Non-dotted queries skip this — file-level used_by is correct for class-level.
+        if let Some(dot_pos) = pattern.rfind('.') {
+            let method_name = &pattern[dot_pos + 1..];
+            if !method_name.is_empty() {
+                for entry in &mut entries {
+                    for source in &mut entry.sources {
+                        let refined = crate::manifest::call_site_finder::find_call_sites(
+                            &self.root,
+                            method_name,
+                            &source.used_by,
+                        );
+                        source.used_by = refined;
+                    }
+                }
+            }
+        }
 
         Ok(crate::format::format_glossary(
             &entries,
