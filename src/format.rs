@@ -171,6 +171,36 @@ pub fn format_list_exports_all(files: &[(&str, &FileEntry)]) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// List files formatter
+// ---------------------------------------------------------------------------
+
+/// Format list files result as compact YAML.
+/// Each entry shows: file path, loc, export count.
+pub fn format_list_files(directory: Option<&str>, files: &[(&str, usize, usize)]) -> String {
+    let mut lines = Vec::new();
+    lines.push("---".to_string());
+    if let Some(dir) = directory {
+        lines.push(format!("directory: {}", yaml_escape(dir)));
+    }
+    lines.push(format!("total: {}", files.len()));
+    if !files.is_empty() {
+        lines.push("files:".to_string());
+        // Column width for alignment
+        let path_width = files.iter().map(|(p, _, _)| p.len()).max().unwrap_or(0);
+        for (path, loc, exports) in files {
+            lines.push(format!(
+                "  - {:<pw$}  # loc: {}, exports: {}",
+                path,
+                loc,
+                exports,
+                pw = path_width,
+            ));
+        }
+    }
+    lines.join("\n")
+}
+
+// ---------------------------------------------------------------------------
 // Search formatters
 // ---------------------------------------------------------------------------
 

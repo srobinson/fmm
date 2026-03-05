@@ -60,6 +60,12 @@ struct FileOutlineArgs {
     file: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct ListFilesArgs {
+    directory: Option<String>,
+    pattern: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 struct JsonRpcResponse {
     jsonrpc: String,
@@ -361,6 +367,23 @@ impl McpServer {
                     }
                 }),
             },
+            Tool {
+                name: "fmm_list_files".to_string(),
+                description: "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC and export count sorted alphabetically.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "directory": {
+                            "type": "string",
+                            "description": "Directory prefix to filter files (e.g. 'src/cli/' or 'libs/agno/models'). Omit to list all indexed files."
+                        },
+                        "pattern": {
+                            "type": "string",
+                            "description": "Glob pattern to filter by filename within the directory (e.g. '*.py', '*.rs', 'test_*'). Supports * wildcard."
+                        }
+                    }
+                }),
+            },
         ];
 
         Ok(json!({ "tools": tools }))
@@ -394,6 +417,7 @@ impl McpServer {
             "fmm_search" => self.tool_search(&arguments),
             "fmm_read_symbol" => self.tool_read_symbol(&arguments),
             "fmm_file_outline" => self.tool_file_outline(&arguments),
+            "fmm_list_files" => self.tool_list_files(&arguments),
             // Legacy aliases
             "fmm_find_export" => self.tool_lookup_export(&arguments),
             "fmm_find_symbol" => self.tool_lookup_export(&arguments),
@@ -586,6 +610,40 @@ impl McpServer {
         Ok(crate::format::format_file_outline(&args.file, entry))
     }
 
+    fn tool_list_files(&self, args: &Value) -> Result<String, String> {
+        let manifest = self.require_manifest()?;
+
+        let args: ListFilesArgs =
+            serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
+
+        let dir = args.directory.as_deref();
+        let pat = args.pattern.as_deref();
+
+        let mut entries: Vec<(&str, usize, usize)> = manifest
+            .files
+            .iter()
+            .filter(|(path, _)| {
+                if let Some(d) = dir {
+                    if !path.starts_with(d) {
+                        return false;
+                    }
+                }
+                if let Some(p) = pat {
+                    let filename = path.rsplit('/').next().unwrap_or(path.as_str());
+                    if !glob_filename_matches(p, filename) {
+                        return false;
+                    }
+                }
+                true
+            })
+            .map(|(path, entry)| (path.as_str(), entry.loc, entry.exports.len()))
+            .collect();
+
+        entries.sort_by_key(|(path, _, _)| path.to_lowercase());
+
+        Ok(crate::format::format_list_files(dir, &entries))
+    }
+
     fn tool_search(&self, args: &Value) -> Result<String, String> {
         let manifest = self.require_manifest()?;
 
@@ -608,6 +666,32 @@ impl McpServer {
         };
         let results = crate::search::filter_search(manifest, &filters);
         Ok(crate::format::format_filter_search(&results, false))
+    }
+}
+
+/// Match a glob pattern against a filename (last path component).
+/// Supports `*` as a wildcard within the filename. Does not match path separators.
+/// Examples: `*.py`, `test_*`, `*_test.rs`, `*`
+fn glob_filename_matches(pattern: &str, filename: &str) -> bool {
+    if pattern == "*" {
+        return true;
+    }
+    if !pattern.contains('*') {
+        return filename == pattern;
+    }
+    // Split on the first `*` and check prefix + suffix
+    let (prefix, rest) = pattern.split_once('*').unwrap();
+    if !filename.starts_with(prefix) {
+        return false;
+    }
+    let after_prefix = &filename[prefix.len()..];
+    // Handle remaining pattern segments (multiple `*`)
+    if rest.contains('*') {
+        // Recursively match the remainder
+        glob_filename_matches(rest, after_prefix)
+    } else {
+        // Single `*` — remainder is a literal suffix
+        after_prefix.ends_with(rest) && after_prefix.len() >= rest.len()
     }
 }
 
@@ -732,5 +816,113 @@ mod tests {
     fn cap_response_passes_through_short_text() {
         let short = "hello world".to_string();
         assert_eq!(McpServer::cap_response(short.clone()), short);
+    }
+
+    #[test]
+    fn glob_filename_matches_star_ext() {
+        assert!(glob_filename_matches("*.py", "agent.py"));
+        assert!(glob_filename_matches("*.rs", "mod.rs"));
+        assert!(!glob_filename_matches("*.py", "agent.rs"));
+        assert!(!glob_filename_matches("*.py", "agent.pyc"));
+    }
+
+    #[test]
+    fn glob_filename_matches_prefix_star() {
+        assert!(glob_filename_matches("test_*", "test_agent.py"));
+        assert!(glob_filename_matches("test_*", "test_.py"));
+        assert!(!glob_filename_matches("test_*", "mytest_agent.py"));
+    }
+
+    #[test]
+    fn glob_filename_matches_literal() {
+        assert!(glob_filename_matches("mod.rs", "mod.rs"));
+        assert!(!glob_filename_matches("mod.rs", "mod.ts"));
+    }
+
+    #[test]
+    fn glob_filename_matches_star_wildcard() {
+        assert!(glob_filename_matches("*", "anything.py"));
+        assert!(glob_filename_matches("*", ""));
+    }
+
+    #[test]
+    fn list_files_tool_no_args() {
+        use crate::manifest::{ExportLines, FileEntry, Manifest};
+        use crate::parser::{ExportEntry, Metadata};
+
+        let mut manifest = Manifest::new();
+        manifest.add_file(
+            "src/a.rs",
+            Metadata {
+                exports: vec![ExportEntry::new("Foo".to_string(), 1, 10)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 50,
+            },
+        );
+        manifest.add_file(
+            "src/b.rs",
+            Metadata {
+                exports: vec![],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 20,
+            },
+        );
+
+        let server = McpServer {
+            manifest: Some(manifest),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+
+        let result = server
+            .call_tool("fmm_list_files", serde_json::json!({}))
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("total: 2"), "expected total: 2, got: {}", text);
+        assert!(text.contains("src/a.rs"));
+        assert!(text.contains("src/b.rs"));
+    }
+
+    #[test]
+    fn list_files_tool_with_directory() {
+        use crate::manifest::Manifest;
+        use crate::parser::{ExportEntry, Metadata};
+
+        let mut manifest = Manifest::new();
+        manifest.add_file(
+            "src/cli/mod.rs",
+            Metadata {
+                exports: vec![ExportEntry::new("Cli".to_string(), 1, 5)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 30,
+            },
+        );
+        manifest.add_file(
+            "src/mcp/mod.rs",
+            Metadata {
+                exports: vec![],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 100,
+            },
+        );
+
+        let server = McpServer {
+            manifest: Some(manifest),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+
+        let result = server
+            .call_tool(
+                "fmm_list_files",
+                serde_json::json!({"directory": "src/cli/"}),
+            )
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("total: 1"), "got: {}", text);
+        assert!(text.contains("src/cli/mod.rs"));
+        assert!(!text.contains("src/mcp/mod.rs"));
     }
 }
