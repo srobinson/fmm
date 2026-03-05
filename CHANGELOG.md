@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.23](https://github.com/srobinson/fmm/compare/v0.1.22...v0.1.23) (2026-03-05)
+
+
+### Bug Fixes
+
+* **manifest:** resolve two local_deps gaps in fmm_dependency_graph ([c79532a](https://github.com/srobinson/fmm/commit/c79532a4d7b1760c23d14e34ee4bb1b2973376ae))
+
 ## [0.1.22](https://github.com/srobinson/fmm/compare/v0.1.21...v0.1.22) (2026-03-05)
 
 
