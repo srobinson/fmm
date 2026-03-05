@@ -861,6 +861,13 @@ pub fn dep_matches(dep: &str, target_file: &str, dependent_file: &str) -> bool {
         return true;
     }
 
+    // Python packages: `./utils` should match `utils/__init__.py`
+    if let Some(package_stem) = target_stem.strip_suffix("/__init__") {
+        if resolved_stem == package_stem {
+            return true;
+        }
+    }
+
     // Fallback: crate:: paths (Rust internal modules)
     // e.g. "crate::config" matches "src/config.rs"
     if let Some(module_path_str) = dep.strip_prefix("crate::") {
@@ -941,6 +948,30 @@ mod tests {
     #[test]
     fn dep_matches_without_prefix() {
         assert!(dep_matches("types", "src/types.ts", "src/index.ts"));
+    }
+
+    #[test]
+    fn dep_matches_python_package() {
+        // `./utils` should resolve to `utils/__init__.py` (Python package)
+        assert!(dep_matches(
+            "./utils",
+            "src/utils/__init__.py",
+            "src/service.py"
+        ));
+        // `../models` should resolve to `models/__init__.py` one level up
+        assert!(dep_matches(
+            "../models",
+            "models/__init__.py",
+            "src/service.py"
+        ));
+        // Should still match plain module file
+        assert!(dep_matches("./utils", "src/utils.py", "src/service.py"));
+        // No false positive: different package
+        assert!(!dep_matches(
+            "./utils",
+            "src/auth/__init__.py",
+            "src/service.py"
+        ));
     }
 
     #[test]

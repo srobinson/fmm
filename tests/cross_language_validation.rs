@@ -562,8 +562,16 @@ pub async fn search_file(path: &str, config: &SearchConfig) -> Result<Vec<Match>
 
     // Dependencies: full paths, not bare root keywords
     let deps = &result.metadata.dependencies;
-    assert!(deps.contains(&"crate::config".to_string()), "expected crate::config in {:?}", deps);
-    assert!(deps.contains(&"../matcher".to_string()), "expected ../matcher in {:?}", deps);
+    assert!(
+        deps.contains(&"crate::config".to_string()),
+        "expected crate::config in {:?}",
+        deps
+    );
+    assert!(
+        deps.contains(&"../matcher".to_string()),
+        "expected ../matcher in {:?}",
+        deps
+    );
 
     // Custom fields
     let fields = result.custom_fields.expect("should have custom fields");

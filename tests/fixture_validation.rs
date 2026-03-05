@@ -188,8 +188,16 @@ fn validate_rust_fixture() {
 
     // Expected dependencies: full paths, not bare root keywords
     let deps = &result.metadata.dependencies;
-    assert!(deps.contains(&"crate::config".to_string()), "expected crate::config in {:?}", deps);
-    assert!(deps.contains(&"../utils".to_string()), "expected ../utils in {:?}", deps);
+    assert!(
+        deps.contains(&"crate::config".to_string()),
+        "expected crate::config in {:?}",
+        deps
+    );
+    assert!(
+        deps.contains(&"../utils".to_string()),
+        "expected ../utils in {:?}",
+        deps
+    );
 
     // LOC
     assert!(result.metadata.loc > 50);

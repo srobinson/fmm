@@ -509,7 +509,9 @@ fn setup_go_mcp_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     write_source_and_sidecar(
         &handler_dir.join("handler.go"),
         "package handler\n\nimport \"net/http\"\n\ntype Handler struct{}\n\nfunc NewHandler() *Handler {\n\treturn &Handler{}\n}\n\nfunc (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {}\n",
-        "file: internal/handler/handler.go\nfmm: v0.3\nexports:\n  Handler: [5, 5]\n  NewHandler: [7, 9]\nimports: [net/http]\ndependencies: []\nloc: 11\n",
+        // net/http in dependencies (not just imports) so dep resolution is exercised.
+        // It must not match any project file — this is the stdlib false-positive guard.
+        "file: internal/handler/handler.go\nfmm: v0.3\nexports:\n  Handler: [5, 5]\n  NewHandler: [7, 9]\nimports: [net/http]\ndependencies: [net/http]\nloc: 11\n",
     );
 
     let server = fmm::mcp::McpServer::with_root(tmp.path().to_path_buf());
@@ -569,9 +571,11 @@ fn go_stdlib_import_no_false_positive() {
         json!({"file": "internal/handler/handler.go"}),
     );
 
-    // handler.go imports "net/http" which is stdlib — must not match project files
+    // handler.go has net/http in dependencies — stdlib must not resolve to any project file.
+    // If it did, local_deps: would appear with a project file entry.
     assert!(
-        !text.contains("cmd/main.go") || text.contains("downstream:"),
-        "stdlib import caused false positive local dep"
+        !text.contains("local_deps:"),
+        "net/http stdlib import caused false positive local dep: {}",
+        text
     );
 }
