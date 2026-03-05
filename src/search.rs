@@ -6,7 +6,8 @@
 use std::collections::{BTreeMap, HashSet};
 
 use crate::manifest::{
-    dep_matches, dotted_dep_matches, python_dep_matches, ExportLocation, FileEntry, Manifest,
+    dep_matches, dotted_dep_matches, python_dep_matches, try_resolve_local_dep, ExportLocation,
+    FileEntry, Manifest,
 };
 
 // ---------------------------------------------------------------------------
@@ -349,18 +350,13 @@ pub fn dependency_graph<'a>(
     local.sort();
     external.sort();
 
+    // O(1) lookup using the pre-built reverse dependency index (built at manifest load time).
+    // The index maps each file to the sorted list of files that directly import it.
     let mut downstream: Vec<&String> = manifest
-        .files
-        .iter()
-        .filter(|(path, _)| path.as_str() != file)
-        .filter(|(path, e)| {
-            e.dependencies
-                .iter()
-                .any(|d| dep_targets_file(d, file, path, manifest))
-                || e.imports.iter().any(|i| dotted_dep_matches(i, file))
-        })
-        .map(|(path, _)| path)
-        .collect();
+        .reverse_deps
+        .get(file)
+        .map(|v| v.iter().collect())
+        .unwrap_or_default();
     downstream.sort();
 
     (local, external, downstream)
@@ -461,18 +457,12 @@ pub fn dependency_graph_transitive(
 
     let mut queue_down: VecDeque<(String, i32)> = VecDeque::new();
 
-    // Seed with files that directly depend on the start file
-    for (path, e) in &manifest.files {
-        if visited_down.contains(path.as_str()) {
-            continue;
-        }
-        let depends = e
-            .dependencies
-            .iter()
-            .any(|d| dep_targets_file(d, file, path, manifest))
-            || e.imports.iter().any(|i| dotted_dep_matches(i, file));
-        if depends {
-            queue_down.push_back((path.clone(), 1));
+    // Seed with files that directly depend on the start file (O(1) reverse index lookup)
+    if let Some(direct) = manifest.reverse_deps.get(file) {
+        for path in direct {
+            if !visited_down.contains(path.as_str()) {
+                queue_down.push_back((path.clone(), 1));
+            }
         }
     }
 
@@ -484,17 +474,12 @@ pub fn dependency_graph_transitive(
         downstream.push((current.clone(), d));
 
         if depth == -1 || d < depth {
-            for (path, e) in &manifest.files {
-                if visited_down.contains(path.as_str()) {
-                    continue;
-                }
-                let depends = e
-                    .dependencies
-                    .iter()
-                    .any(|d| dep_targets_file(d, &current, path, manifest))
-                    || e.imports.iter().any(|i| dotted_dep_matches(i, &current));
-                if depends {
-                    queue_down.push_back((path.clone(), d + 1));
+            // Expand next hop using reverse index (O(1) per hop instead of O(N))
+            if let Some(dependents) = manifest.reverse_deps.get(&current) {
+                for path in dependents {
+                    if !visited_down.contains(path.as_str()) {
+                        queue_down.push_back((path.clone(), d + 1));
+                    }
                 }
             }
         }
@@ -516,133 +501,6 @@ fn dep_targets_file(dep: &str, target: &str, source: &str, manifest: &Manifest) 
     } else {
         dep_matches(dep, target, source) || python_dep_matches(dep, target, source)
     }
-}
-
-/// Attempt to resolve a dependency string to a file path present in the manifest.
-///
-/// Handles both Python-style relative imports (`._run`, `..config`) and
-/// JS/TS-style relative paths (`./utils`, `../config`).
-fn try_resolve_local_dep(dep: &str, source_file: &str, manifest: &Manifest) -> Option<String> {
-    // Python-style relative imports: start with . but NOT ./ or ../
-    if dep.starts_with('.') && !dep.starts_with("./") && !dep.starts_with("../") {
-        let resolved_stem = resolve_python_relative_path(dep, source_file)?;
-        // Try .py extension first, then package __init__, then exact match
-        for candidate in [
-            format!("{}.py", resolved_stem),
-            format!("{}/__init__.py", resolved_stem),
-            resolved_stem.clone(),
-        ] {
-            if manifest.files.contains_key(&candidate) {
-                return Some(candidate);
-            }
-        }
-        return None;
-    }
-    // JS/TS-style or other relative paths: use dep_matches to find the manifest key
-    if dep.starts_with("./") || dep.starts_with("../") {
-        // First: direct file match (extension-agnostic stem comparison)
-        if let Some(found) = manifest
-            .files
-            .keys()
-            .find(|path| dep_matches(dep, path, source_file))
-        {
-            return Some(found.clone());
-        }
-        // Fallback: directory-style JS/TS imports — `./module` should match `module/index.ts`
-        // when no direct file `module.ts` exists. Direct match takes priority above.
-        let dep_dir = source_file.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
-        let mut parts: Vec<&str> = if dep_dir.is_empty() {
-            Vec::new()
-        } else {
-            dep_dir.split('/').collect()
-        };
-        let dep_clean = dep.strip_prefix("./").unwrap_or(dep);
-        for segment in dep_clean.split('/') {
-            match segment {
-                ".." => {
-                    parts.pop();
-                }
-                "." => {}
-                s => parts.push(s),
-            }
-        }
-        let resolved = parts.join("/");
-        for index_name in &["index.ts", "index.tsx", "index.js", "index.jsx"] {
-            let candidate = format!("{}/{}", resolved, index_name);
-            if manifest.files.contains_key(&candidate) {
-                return Some(candidate);
-            }
-        }
-        return None;
-    }
-    // Domain-qualified paths: Go module paths (github.com/...) and Rust crate:: paths.
-    // dep_matches has suffix-matching fallback for these. Plain external packages like
-    // "anyhow" or "fmt" (no "/" or "::") are left as external.
-    if dep.contains('/') || dep.contains("::") {
-        return manifest
-            .files
-            .keys()
-            .find(|path| dep_matches(dep, path, source_file))
-            .cloned();
-    }
-    // Dotted module path: Python absolute self-imports (e.g. `agno.models.message`).
-    // Replace dots with slashes and suffix-match against manifest file stems.
-    if dep.contains('.') {
-        let path_stem = dep.replace('.', "/");
-        // Direct candidates first (project root or exact match)
-        for candidate in [
-            format!("{}.py", path_stem),
-            format!("{}/__init__.py", path_stem),
-            path_stem.clone(),
-        ] {
-            if manifest.files.contains_key(&candidate) {
-                return Some(candidate);
-            }
-        }
-        // Suffix match for src/ style layouts: `agno/models/message` matches
-        // `src/agno/models/message.py` or `lib/agno/models/message/__init__.py`.
-        return manifest
-            .files
-            .keys()
-            .find(|path| {
-                let stem = path.rsplit_once('.').map(|(s, _)| s).unwrap_or(path);
-                let effective = stem.strip_suffix("/__init__").unwrap_or(stem);
-                effective == path_stem.as_str() || effective.ends_with(&format!("/{}", path_stem))
-            })
-            .cloned();
-    }
-    None
-}
-
-/// Resolve a Python relative import string (e.g. `._run`, `..utils`) to a
-/// path stem relative to the project root, based on `source_file`'s location.
-fn resolve_python_relative_path(dep: &str, source_file: &str) -> Option<String> {
-    debug_assert!(dep.starts_with('.') && !dep.starts_with("./"));
-    let dots = dep.chars().take_while(|&c| c == '.').count();
-    let module_name = &dep[dots..];
-
-    let source_dir = source_file.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
-    let mut parts: Vec<&str> = if source_dir.is_empty() {
-        vec![]
-    } else {
-        source_dir.split('/').collect()
-    };
-
-    // Single dot = current package; each additional dot = one level up
-    for _ in 1..dots {
-        parts.pop()?; // None if we'd go above the root
-    }
-
-    if module_name.is_empty() {
-        // `from . import X` — no module name, can't pinpoint a file
-        return None;
-    }
-
-    for part in module_name.split('.') {
-        parts.push(part);
-    }
-
-    Some(parts.join("/"))
 }
 
 // ---------------------------------------------------------------------------
@@ -716,6 +574,7 @@ mod tests {
                 },
             );
         }
+        m.rebuild_reverse_deps();
         m
     }
 
@@ -894,6 +753,7 @@ mod tests {
                 },
             );
         }
+        m.rebuild_reverse_deps();
         m
     }
 
@@ -1473,5 +1333,50 @@ mod tests {
             "session.ts should appear as downstream of module/index.ts, got: {:?}",
             downstream
         );
+    }
+
+    #[test]
+    fn reverse_index_large_manifest_correctness() {
+        // Build a 1,000-file manifest and verify the reverse index gives correct results.
+        // This guards against the O(N²) regression — if reverse_deps isn't built,
+        // downstream returns empty and the assertions fail.
+        let hub = "core/base.ts";
+        let mut files: Vec<(&str, Vec<&str>)> = vec![(hub, vec![])];
+        let paths: Vec<String> = (0..999).map(|i| format!("spoke/file_{}.ts", i)).collect();
+        for p in &paths {
+            files.push((p.as_str(), vec!["../core/base"]));
+        }
+
+        let m = manifest_with(files);
+        let entry = m.files[hub].clone();
+        let (local, _, downstream) = dependency_graph(&m, hub, &entry);
+
+        assert!(local.is_empty(), "hub has no upstream deps");
+        assert_eq!(
+            downstream.len(),
+            999,
+            "all 999 spoke files should appear downstream, got {}",
+            downstream.len()
+        );
+
+        // Spot check: first and last spoke appear in downstream
+        assert!(
+            downstream.contains(&&"spoke/file_0.ts".to_string()),
+            "spoke/file_0.ts should be downstream"
+        );
+        assert!(
+            downstream.contains(&&"spoke/file_998.ts".to_string()),
+            "spoke/file_998.ts should be downstream"
+        );
+
+        // Also verify a spoke's upstream contains the hub
+        let spoke_entry = m.files["spoke/file_0.ts"].clone();
+        let (spoke_local, _, spoke_down) = dependency_graph(&m, "spoke/file_0.ts", &spoke_entry);
+        assert!(
+            spoke_local.contains(&hub.to_string()),
+            "hub should be upstream of spoke, got: {:?}",
+            spoke_local
+        );
+        assert!(spoke_down.is_empty(), "spokes have no downstream");
     }
 }

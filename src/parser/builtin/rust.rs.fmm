@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/rust.rs
-fmm: v0.3+0.1.19
+fmm: v0.3+0.1.21
 exports:
   RustParser: [49, 60]
 methods:

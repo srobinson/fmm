@@ -1,8 +1,10 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use fmm::manifest::Manifest;
 use fmm::parser::builtin::python::PythonParser;
 use fmm::parser::builtin::rust::RustParser;
 use fmm::parser::builtin::typescript::TypeScriptParser;
-use fmm::parser::Parser;
+use fmm::parser::{ExportEntry, Metadata, Parser};
+use fmm::search::dependency_graph;
 use std::time::Duration;
 
 const TYPESCRIPT_SOURCE: &str = r#"
@@ -297,12 +299,72 @@ fn bench_batch_1000(c: &mut Criterion) {
     group.finish();
 }
 
+/// Build a synthetic manifest with `n` files in a hub-and-spoke pattern:
+///
+/// - `core/base.ts` is the hub (imported by all spoke files)
+/// - `spoke/file_{i}.ts` files each depend on `core/base.ts`
+///
+/// Measures downstream query performance on the hub file.
+fn make_large_manifest(n: usize) -> (Manifest, String) {
+    let hub = "core/base.ts".to_string();
+    let mut m = Manifest::new();
+
+    // Add the hub file (no dependencies)
+    m.add_file(
+        &hub,
+        Metadata {
+            exports: vec![ExportEntry::new("Base".to_string(), 1, 10)],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 10,
+        },
+    );
+
+    // Add spoke files that all import the hub
+    for i in 0..n {
+        let path = format!("spoke/file_{}.ts", i);
+        m.add_file(
+            &path,
+            Metadata {
+                exports: vec![ExportEntry::new(format!("Spoke{}", i), 1, 5)],
+                imports: vec![],
+                dependencies: vec!["../core/base".to_string()],
+                loc: 5,
+            },
+        );
+    }
+
+    m.rebuild_reverse_deps();
+    (m, hub)
+}
+
+fn bench_dependency_graph_large(c: &mut Criterion) {
+    let mut group = c.benchmark_group("dependency_graph_large");
+    group.sample_size(20);
+    group.measurement_time(Duration::from_secs(10));
+
+    // 1,662-file equivalent: 1 hub + 1,661 spokes
+    let (manifest, hub) = make_large_manifest(1661);
+    let entry = manifest.files[&hub].clone();
+
+    group.bench_function("downstream_1662_files", |b| {
+        b.iter(|| {
+            let (_, _, downstream) =
+                dependency_graph(black_box(&manifest), black_box(&hub), black_box(&entry));
+            downstream
+        });
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_parse_typescript,
     bench_parse_python,
     bench_parse_rust,
     bench_batch_100,
-    bench_batch_1000
+    bench_batch_1000,
+    bench_dependency_graph_large,
 );
 criterion_main!(benches);

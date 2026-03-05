@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/go.rs
-fmm: v0.3+0.1.19
+fmm: v0.3+0.1.21
 exports:
   GoParser: [9, 19]
 methods:
