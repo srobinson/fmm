@@ -102,11 +102,17 @@ impl ParserRegistry {
 
     /// Register all builtin parsers.
     fn register_builtin(&mut self) {
-        // TypeScript / JavaScript
-        self.register(&["ts", "tsx", "js", "jsx"], || {
+        // TypeScript / JavaScript (ALP-753: split TS and TSX into separate parsers)
+        self.register(&["ts", "js"], || {
             Ok(Box::new(builtin::typescript::TypeScriptParser::new()?))
         });
-        self.register_language_id(&["ts", "tsx", "js", "jsx"], "typescript");
+        self.register_language_id(&["ts", "js"], "typescript");
+
+        // TSX / JSX — uses LANGUAGE_TSX grammar for correct JSX angle-bracket parsing
+        self.register(&["tsx", "jsx"], || {
+            Ok(Box::new(builtin::typescript::TypeScriptParser::new_tsx()?))
+        });
+        self.register_language_id(&["tsx", "jsx"], "tsx");
 
         // Python
         self.register(&["py"], || {

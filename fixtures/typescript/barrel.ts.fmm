@@ -1,0 +1,10 @@
+---
+file: fixtures/typescript/barrel.ts
+fmm: v0.3+0.1.13
+exports:
+  UserService: [1, 1]
+  AuthService: [2, 2]
+  models: [4, 4]
+dependencies: [./auth.service, ./models, ./user.service, ./utils]
+loc: 4
+modified: 2026-03-05

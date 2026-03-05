@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
@@ -11,11 +11,28 @@ pub struct TypeScriptParser {
     parser: TSParser,
     export_queries: Vec<Query>,
     import_query: Query,
+    /// ALP-749/750: captures source string from `export { X } from '...'` and `export * from '...'`
+    reexport_source_query: Query,
+    /// ALP-754: `@Foo` style decorators
+    decorator_query: Query,
+    /// ALP-754: `@Foo()` call-expression style decorators
+    call_decorator_query: Query,
+    /// true when built for TSX/JSX (ALP-753)
+    is_tsx: bool,
 }
 
 impl TypeScriptParser {
+    /// Parser for `.ts` and `.js` files — uses `LANGUAGE_TYPESCRIPT`.
     pub fn new() -> Result<Self> {
-        let language: Language = tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into();
+        Self::build(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), false)
+    }
+
+    /// Parser for `.tsx` and `.jsx` files — uses `LANGUAGE_TSX` (ALP-753).
+    pub fn new_tsx() -> Result<Self> {
+        Self::build(tree_sitter_typescript::LANGUAGE_TSX.into(), true)
+    }
+
+    fn build(language: Language, is_tsx: bool) -> Result<Self> {
         let mut parser = TSParser::new();
         parser
             .set_language(&language)
@@ -26,11 +43,22 @@ impl TypeScriptParser {
             "(export_statement (lexical_declaration (variable_declarator name: (identifier) @name)))",
             "(export_statement (class_declaration name: (type_identifier) @name))",
             "(export_statement (interface_declaration name: (type_identifier) @name))",
-            "(export_statement (export_clause (export_specifier name: (identifier) @name)))",
+            // ALP-752: capture alias when present (export { foo as bar } → bar)
+            "(export_statement (export_clause (export_specifier alias: (identifier) @name)))",
+            // ALP-752: capture name only when no alias is present (export { foo } → foo)
+            "(export_statement (export_clause (export_specifier !alias name: (identifier) @name)))",
             // export type Foo = { ... }
             "(export_statement (type_alias_declaration name: (type_identifier) @name))",
             // export default SomeIdentifier
             "(export_statement value: (identifier) @name)",
+            // ALP-751: export enum Direction {} / export const enum Status {}
+            "(export_statement (enum_declaration name: (identifier) @name))",
+            // ALP-755: export * as ns from './mod'
+            "(export_statement (namespace_export (identifier) @name))",
+            // ALP-756: export namespace Foo {} (uses `internal_module` in tree-sitter-typescript)
+            "(export_statement (internal_module name: (identifier) @name))",
+            // ALP-756: export module Foo {} (uses `module` node)
+            "(export_statement (module name: (identifier) @name))",
         ];
 
         let export_queries: Vec<Query> = export_query_strs
@@ -42,10 +70,30 @@ impl TypeScriptParser {
         let import_query = Query::new(&language, r#"(import_statement source: (string) @source)"#)
             .map_err(|e| anyhow::anyhow!("Failed to compile import query: {}", e))?;
 
+        // ALP-749/750: captures `from '...'` on both `export { X } from` and `export * from`
+        let reexport_source_query =
+            Query::new(&language, r#"(export_statement source: (string) @source)"#)
+                .map_err(|e| anyhow::anyhow!("Failed to compile reexport_source query: {}", e))?;
+
+        // ALP-754: simple decorator `@Foo`
+        let decorator_query = Query::new(&language, "(decorator (identifier) @name)")
+            .map_err(|e| anyhow::anyhow!("Failed to compile decorator query: {}", e))?;
+
+        // ALP-754: call-expression decorator `@Foo(...)`
+        let call_decorator_query = Query::new(
+            &language,
+            "(decorator (call_expression function: (identifier) @name))",
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to compile call_decorator query: {}", e))?;
+
         Ok(Self {
             parser,
             export_queries,
             import_query,
+            reexport_source_query,
+            decorator_query,
+            call_decorator_query,
+            is_tsx,
         })
     }
 
@@ -93,10 +141,24 @@ impl TypeScriptParser {
         let source_bytes = source.as_bytes();
         let mut seen = HashSet::new();
 
+        // Regular import statements
         let mut cursor = QueryCursor::new();
         let mut iter = cursor.matches(&self.import_query, root_node, source_bytes);
-
         while let Some(m) = iter.next() {
+            for capture in m.captures {
+                if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                    let cleaned = text.trim_matches('\'').trim_matches('"').to_string();
+                    if cleaned.starts_with('.') || cleaned.starts_with('/') {
+                        seen.insert(cleaned);
+                    }
+                }
+            }
+        }
+
+        // ALP-749/750: re-export sources — `export { X } from './y'` and `export * from './y'`
+        let mut cursor2 = QueryCursor::new();
+        let mut iter2 = cursor2.matches(&self.reexport_source_query, root_node, source_bytes);
+        while let Some(m) = iter2.next() {
             for capture in m.captures {
                 if let Ok(text) = capture.node.utf8_text(source_bytes) {
                     let cleaned = text.trim_matches('\'').trim_matches('"').to_string();
@@ -110,6 +172,30 @@ impl TypeScriptParser {
         let mut dependencies: Vec<String> = seen.into_iter().collect();
         dependencies.sort();
         dependencies
+    }
+
+    /// ALP-754: extract unique decorator names from the file.
+    fn extract_decorators(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+        let source_bytes = source.as_bytes();
+        let mut seen = HashSet::new();
+        let mut decorators = Vec::new();
+
+        for query in [&self.decorator_query, &self.call_decorator_query] {
+            let mut cursor = QueryCursor::new();
+            let mut iter = cursor.matches(query, root_node, source_bytes);
+            while let Some(m) = iter.next() {
+                for capture in m.captures {
+                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                        if seen.insert(text.to_string()) {
+                            decorators.push(text.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        decorators.sort();
+        decorators
     }
 }
 
@@ -127,6 +213,23 @@ impl Parser for TypeScriptParser {
         let dependencies = self.extract_dependencies(source, root_node);
         let loc = source.lines().count();
 
+        let decorators = self.extract_decorators(source, root_node);
+        let custom_fields = if decorators.is_empty() {
+            None
+        } else {
+            let mut fields = HashMap::new();
+            fields.insert(
+                "decorators".to_string(),
+                serde_json::Value::Array(
+                    decorators
+                        .into_iter()
+                        .map(serde_json::Value::String)
+                        .collect(),
+                ),
+            );
+            Some(fields)
+        };
+
         Ok(ParseResult {
             metadata: Metadata {
                 exports,
@@ -134,16 +237,24 @@ impl Parser for TypeScriptParser {
                 dependencies,
                 loc,
             },
-            custom_fields: None,
+            custom_fields,
         })
     }
 
     fn language_id(&self) -> &'static str {
-        "typescript"
+        if self.is_tsx {
+            "tsx"
+        } else {
+            "typescript"
+        }
     }
 
     fn extensions(&self) -> &'static [&'static str] {
-        &["ts", "tsx", "js", "jsx"]
+        if self.is_tsx {
+            &["tsx", "jsx"]
+        } else {
+            &["ts", "js"]
+        }
     }
 }
 
@@ -153,6 +264,11 @@ mod tests {
 
     fn parse(source: &str) -> ParseResult {
         let mut parser = TypeScriptParser::new().unwrap();
+        parser.parse(source).unwrap()
+    }
+
+    fn parse_tsx(source: &str) -> ParseResult {
+        let mut parser = TypeScriptParser::new_tsx().unwrap();
         parser.parse(source).unwrap()
     }
 
@@ -231,6 +347,104 @@ export const middle = 1;
         );
     }
 
+    // --- ALP-751: Enum exports ---
+
+    #[test]
+    fn exports_enum() {
+        let result = parse("export enum Direction { Up, Down, Left, Right }");
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"Direction".to_string()));
+    }
+
+    #[test]
+    fn exports_const_enum() {
+        let result = parse("export const enum Status { Active, Inactive }");
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"Status".to_string()));
+    }
+
+    #[test]
+    fn exports_enum_line_range() {
+        let source = "// header\nexport enum Color {\n    Red,\n    Green,\n    Blue,\n}\n";
+        let result = parse(source);
+        let entry = result
+            .metadata
+            .exports
+            .iter()
+            .find(|e| e.name == "Color")
+            .unwrap();
+        assert_eq!(entry.start_line, 2);
+        assert_eq!(entry.end_line, 6);
+    }
+
+    // --- ALP-752: Renamed export specifiers ---
+
+    #[test]
+    fn exports_aliased_specifier_captures_alias() {
+        let result = parse("export { foo as bar } from './mod';");
+        assert!(result.metadata.export_names().contains(&"bar".to_string()));
+        assert!(!result.metadata.export_names().contains(&"foo".to_string()));
+    }
+
+    #[test]
+    fn exports_unaliased_specifier_unchanged() {
+        let result = parse("export { foo } from './mod';");
+        assert!(result.metadata.export_names().contains(&"foo".to_string()));
+    }
+
+    #[test]
+    fn exports_mixed_aliased_and_unaliased() {
+        let result = parse("export { a as b, c } from './mod';");
+        assert!(result.metadata.export_names().contains(&"b".to_string()));
+        assert!(result.metadata.export_names().contains(&"c".to_string()));
+        assert!(!result.metadata.export_names().contains(&"a".to_string()));
+    }
+
+    #[test]
+    fn exports_aliased_specifier_with_dep_capture() {
+        let result = parse("export { foo as bar } from './mod';");
+        assert!(result.metadata.dependencies.contains(&"./mod".to_string()));
+    }
+
+    // --- ALP-755: export * as namespace ---
+
+    #[test]
+    fn exports_namespace_star_reexport() {
+        let result = parse("export * as utils from './utils';");
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"utils".to_string()));
+        assert!(result
+            .metadata
+            .dependencies
+            .contains(&"./utils".to_string()));
+    }
+
+    // --- ALP-756: export namespace / module ---
+
+    #[test]
+    fn exports_namespace_declaration() {
+        let result = parse("export namespace Validation { export function isEmail(s: string): boolean { return true; } }");
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"Validation".to_string()));
+    }
+
+    #[test]
+    fn exports_module_declaration() {
+        let result = parse("export module Shapes { export class Circle {} }");
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"Shapes".to_string()));
+    }
+
     // --- Import extraction ---
 
     #[test]
@@ -288,6 +502,191 @@ import React from 'react';
         assert!(result.metadata.dependencies.is_empty());
     }
 
+    // --- ALP-749: Barrel re-export dependency capture ---
+
+    #[test]
+    fn barrel_reexport_file() {
+        let source = r#"
+export { UserService } from './user.service';
+export { AuthService } from './auth.service';
+export { Logger } from './logger';
+"#;
+        let result = parse(source);
+        assert_eq!(
+            result.metadata.export_names(),
+            vec!["UserService", "AuthService", "Logger"]
+        );
+        // ALP-749: re-export sources must appear in dependencies
+        assert!(result
+            .metadata
+            .dependencies
+            .contains(&"./user.service".to_string()));
+        assert!(result
+            .metadata
+            .dependencies
+            .contains(&"./auth.service".to_string()));
+        assert!(result
+            .metadata
+            .dependencies
+            .contains(&"./logger".to_string()));
+    }
+
+    #[test]
+    fn barrel_reexport_mixed_import_and_export_from() {
+        let source = r#"
+import { Pool } from './db/pool';
+export { UserService } from './user.service';
+export { AuthService } from './auth.service';
+"#;
+        let result = parse(source);
+        assert!(result
+            .metadata
+            .dependencies
+            .contains(&"./db/pool".to_string()));
+        assert!(result
+            .metadata
+            .dependencies
+            .contains(&"./user.service".to_string()));
+        assert!(result
+            .metadata
+            .dependencies
+            .contains(&"./auth.service".to_string()));
+    }
+
+    #[test]
+    fn reexport_external_package_not_in_dependencies() {
+        let result = parse("export { foo } from '@scope/pkg';");
+        assert!(!result
+            .metadata
+            .dependencies
+            .contains(&"@scope/pkg".to_string()));
+    }
+
+    // --- ALP-750: export * from star re-exports ---
+
+    #[test]
+    fn star_reexport_adds_dependency_not_export_name() {
+        let result = parse("export * from './utils';");
+        assert!(result
+            .metadata
+            .dependencies
+            .contains(&"./utils".to_string()));
+        assert!(!result.metadata.export_names().contains(&"*".to_string()));
+        assert!(result.metadata.exports.is_empty());
+    }
+
+    #[test]
+    fn star_reexport_external_not_in_dependencies() {
+        let result = parse("export * from 'some-package';");
+        assert!(result.metadata.dependencies.is_empty());
+    }
+
+    // --- ALP-753: TSX parser ---
+
+    #[test]
+    fn tsx_jsx_parsed_with_tsx_grammar() {
+        let source = r#"
+export function Button({ label }: { label: string }) {
+    return <button>{label}</button>;
+}
+"#;
+        let result = parse_tsx(source);
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"Button".to_string()));
+    }
+
+    #[test]
+    fn tsx_jsx_arrow_component() {
+        let source = r#"
+export const Card = ({ title }: { title: string }) => (
+    <div className="card">
+        <h2>{title}</h2>
+    </div>
+);
+"#;
+        let result = parse_tsx(source);
+        assert!(result.metadata.export_names().contains(&"Card".to_string()));
+    }
+
+    #[test]
+    fn ts_parser_language_id_and_extensions() {
+        let parser = TypeScriptParser::new().unwrap();
+        assert_eq!(parser.language_id(), "typescript");
+        assert_eq!(parser.extensions(), &["ts", "js"]);
+    }
+
+    #[test]
+    fn tsx_parser_language_id_and_extensions() {
+        let parser = TypeScriptParser::new_tsx().unwrap();
+        assert_eq!(parser.language_id(), "tsx");
+        assert_eq!(parser.extensions(), &["tsx", "jsx"]);
+    }
+
+    // --- ALP-754: Decorator extraction ---
+
+    #[test]
+    fn decorator_simple_captured() {
+        let source = r#"
+@Component
+export class AppComponent {}
+"#;
+        let result = parse(source);
+        let fields = result.custom_fields.expect("should have custom_fields");
+        let decorators: Vec<&str> = fields["decorators"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert!(decorators.contains(&"Component"));
+    }
+
+    #[test]
+    fn decorator_call_expression_captured() {
+        let source = r#"
+@Injectable()
+export class UserService {}
+"#;
+        let result = parse(source);
+        let fields = result.custom_fields.expect("should have custom_fields");
+        let decorators: Vec<&str> = fields["decorators"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert!(decorators.contains(&"Injectable"));
+    }
+
+    #[test]
+    fn decorator_multiple_unique() {
+        let source = r#"
+@Controller('/users')
+export class UserController {}
+
+@Injectable()
+export class AuthService {}
+"#;
+        let result = parse(source);
+        let fields = result.custom_fields.expect("should have custom_fields");
+        let decorators: Vec<&str> = fields["decorators"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert!(decorators.contains(&"Controller"));
+        assert!(decorators.contains(&"Injectable"));
+    }
+
+    #[test]
+    fn no_decorators_custom_fields_none() {
+        let result = parse("export class Plain {}");
+        assert!(result.custom_fields.is_none());
+    }
+
     // --- Edge cases ---
 
     #[test]
@@ -317,20 +716,6 @@ import React from 'react';
     fn loc_single_line_no_trailing_newline() {
         let result = parse("export const x = 1;");
         assert_eq!(result.metadata.loc, 1);
-    }
-
-    #[test]
-    fn tsx_jsx_in_export() {
-        let source = r#"
-export function Button() {
-    return <button>Click</button>;
-}
-"#;
-        // TypeScript parser handles TSX at syntax level; we just check it doesn't crash
-        let mut parser = TypeScriptParser::new().unwrap();
-        let result = parser.parse(source);
-        // tree-sitter-typescript may or may not parse JSX; the key is no panic
-        assert!(result.is_ok());
     }
 
     #[test]
@@ -383,31 +768,6 @@ export const DEFAULT_PORT = 5432;
             .dependencies
             .contains(&"./config".to_string()));
         assert!(result.metadata.loc > 20);
-    }
-
-    #[test]
-    fn language_id_and_extensions() {
-        let parser = TypeScriptParser::new().unwrap();
-        assert_eq!(parser.language_id(), "typescript");
-        assert_eq!(parser.extensions(), &["ts", "tsx", "js", "jsx"]);
-    }
-
-    #[test]
-    fn barrel_reexport_file() {
-        let source = r#"
-export { UserService } from './user.service';
-export { AuthService } from './auth.service';
-export { Logger } from './logger';
-"#;
-        let result = parse(source);
-        assert_eq!(
-            result.metadata.export_names(),
-            vec!["UserService", "AuthService", "Logger"]
-        );
-        // Re-exports via `export { X } from '...'` don't produce import_statements,
-        // so the current parser doesn't capture them as dependencies.
-        // This is a known limitation — dependencies only come from `import` statements.
-        assert!(result.metadata.dependencies.is_empty());
     }
 
     // --- Default export extraction ---

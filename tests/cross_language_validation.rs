@@ -741,11 +741,24 @@ export { validateConfig } from './config';
         .export_names()
         .contains(&"validateConfig".to_string()));
 
-    // Re-exports (export { X } from './Y') are not import statements,
-    // so they don't appear in dependencies. This is correct — fmm tracks
-    // imports (import_statement) separately from re-exports.
+    // ALP-749: re-export sources must appear in dependencies
     assert!(result.metadata.imports.is_empty());
-    assert!(result.metadata.dependencies.is_empty());
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"./context".to_string()));
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"./parser".to_string()));
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"./renderer".to_string()));
+    assert!(result
+        .metadata
+        .dependencies
+        .contains(&"./config".to_string()));
 }
 
 /// TypeScript with interfaces, classes, and async methods
