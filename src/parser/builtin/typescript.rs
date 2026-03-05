@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
@@ -6,6 +7,136 @@ use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
 use super::query_helpers::collect_matches_with_lines;
+
+/// Walk up from `file_path` looking for `tsconfig.json`. When found, extract
+/// `compilerOptions.paths` as a map of alias pattern → list of target templates.
+/// Follows `extends` one level deep to pick up a base config's `paths`.
+/// Returns an empty map when no tsconfig is found or no paths are configured.
+fn load_tsconfig_paths(file_path: &Path) -> HashMap<String, Vec<String>> {
+    let mut dir = file_path.parent();
+    while let Some(d) = dir {
+        let tsconfig = d.join("tsconfig.json");
+        if tsconfig.exists() {
+            return read_tsconfig_paths(&tsconfig);
+        }
+        dir = d.parent();
+    }
+    HashMap::new()
+}
+
+/// Read `compilerOptions.paths` from a tsconfig file. Follows `extends` one
+/// level deep so that a base config's paths are included.
+fn read_tsconfig_paths(tsconfig: &Path) -> HashMap<String, Vec<String>> {
+    let Ok(content) = std::fs::read_to_string(tsconfig) else {
+        return HashMap::new();
+    };
+    // tsconfig.json may contain comments — use serde_json with a best-effort
+    // approach by stripping single-line comments first.
+    let stripped = strip_json_comments(&content);
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(&stripped) else {
+        return HashMap::new();
+    };
+
+    let mut paths: HashMap<String, Vec<String>> = HashMap::new();
+
+    // Follow `extends` one level deep to pick up base config paths.
+    if let Some(extends) = json.get("extends").and_then(|v| v.as_str()) {
+        let base_path = tsconfig.parent().unwrap_or(Path::new(".")).join(extends);
+        let base = read_tsconfig_paths(&base_path);
+        paths.extend(base);
+    }
+
+    // Own paths override base.
+    if let Some(own_paths) = json
+        .get("compilerOptions")
+        .and_then(|o| o.get("paths"))
+        .and_then(|p| p.as_object())
+    {
+        for (alias, targets) in own_paths {
+            if let Some(target_arr) = targets.as_array() {
+                let target_strings: Vec<String> = target_arr
+                    .iter()
+                    .filter_map(|t| t.as_str().map(|s| s.to_string()))
+                    .collect();
+                if !target_strings.is_empty() {
+                    paths.insert(alias.clone(), target_strings);
+                }
+            }
+        }
+    }
+
+    paths
+}
+
+/// Strip single-line `//` comments from JSON-like content so that tsconfig
+/// files with comments can be parsed by serde_json.
+fn strip_json_comments(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut in_string = false;
+    let mut chars = input.chars().peekable();
+    while let Some(c) = chars.next() {
+        if in_string {
+            out.push(c);
+            if c == '\\' {
+                // Escaped character — include next char verbatim.
+                if let Some(next) = chars.next() {
+                    out.push(next);
+                }
+            } else if c == '"' {
+                in_string = false;
+            }
+        } else if c == '"' {
+            in_string = true;
+            out.push(c);
+        } else if c == '/' && chars.peek() == Some(&'/') {
+            // Single-line comment — skip to end of line.
+            for ch in chars.by_ref() {
+                if ch == '\n' {
+                    out.push('\n');
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Attempt to resolve a TypeScript path alias import to its physical path.
+///
+/// Given an import string like `@/utils/helper` and an aliases map like
+/// `{"@/*": ["src/*"]}`, returns `Some("src/utils/helper")`. Returns `None`
+/// when no alias matches.
+fn resolve_alias(import: &str, aliases: &HashMap<String, Vec<String>>) -> Option<String> {
+    for (pattern, targets) in aliases {
+        if let Some(resolved) = match_alias(import, pattern, targets) {
+            return Some(resolved);
+        }
+    }
+    None
+}
+
+/// Try a single alias pattern against the import. Patterns ending with `*`
+/// act as prefix matches; exact patterns must match the full import string.
+fn match_alias(import: &str, pattern: &str, targets: &[String]) -> Option<String> {
+    let target = targets.first()?; // Use first target mapping.
+    if let Some(prefix) = pattern.strip_suffix('*') {
+        // Wildcard: `@/*` matches `@/foo/bar`, captures `foo/bar`.
+        if let Some(rest) = import.strip_prefix(prefix) {
+            if let Some(target_prefix) = target.strip_suffix('*') {
+                return Some(format!("{}{}", target_prefix, rest));
+            }
+            // Target has no wildcard — map the whole import to the target.
+            return Some(target.clone());
+        }
+    } else if import == pattern {
+        // Exact match — map to first target (strip trailing `/*` if present).
+        let mapped = target.strip_suffix("/*").unwrap_or(target).to_string();
+        return Some(mapped);
+    }
+    None
+}
 
 pub struct TypeScriptParser {
     parser: TSParser,
@@ -124,7 +255,12 @@ impl TypeScriptParser {
         exports
     }
 
-    fn extract_imports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+    fn extract_imports(
+        &self,
+        source: &str,
+        root_node: tree_sitter::Node,
+        aliases: &HashMap<String, Vec<String>>,
+    ) -> Vec<String> {
         let source_bytes = source.as_bytes();
         let mut seen = HashSet::new();
 
@@ -135,7 +271,12 @@ impl TypeScriptParser {
             for capture in m.captures {
                 if let Ok(text) = capture.node.utf8_text(source_bytes) {
                     let cleaned = text.trim_matches('\'').trim_matches('"').to_string();
-                    if !cleaned.starts_with('.') && !cleaned.starts_with('/') {
+                    // Relative paths go to dependencies; alias matches go to dependencies.
+                    // Everything else (external packages) stays here as imports.
+                    if !cleaned.starts_with('.')
+                        && !cleaned.starts_with('/')
+                        && (aliases.is_empty() || resolve_alias(&cleaned, aliases).is_none())
+                    {
                         seen.insert(cleaned);
                     }
                 }
@@ -147,7 +288,12 @@ impl TypeScriptParser {
         imports
     }
 
-    fn extract_dependencies(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+    fn extract_dependencies(
+        &self,
+        source: &str,
+        root_node: tree_sitter::Node,
+        aliases: &HashMap<String, Vec<String>>,
+    ) -> Vec<String> {
         let source_bytes = source.as_bytes();
         let mut seen = HashSet::new();
 
@@ -160,6 +306,11 @@ impl TypeScriptParser {
                     let cleaned = text.trim_matches('\'').trim_matches('"').to_string();
                     if cleaned.starts_with('.') || cleaned.starts_with('/') {
                         seen.insert(cleaned);
+                    } else if !aliases.is_empty() {
+                        // ALP-794: path alias — resolve to physical path and treat as local dep.
+                        if let Some(resolved) = resolve_alias(&cleaned, aliases) {
+                            seen.insert(resolved);
+                        }
                     }
                 }
             }
@@ -174,6 +325,10 @@ impl TypeScriptParser {
                     let cleaned = text.trim_matches('\'').trim_matches('"').to_string();
                     if cleaned.starts_with('.') || cleaned.starts_with('/') {
                         seen.insert(cleaned);
+                    } else if !aliases.is_empty() {
+                        if let Some(resolved) = resolve_alias(&cleaned, aliases) {
+                            seen.insert(resolved);
+                        }
                     }
                 }
             }
@@ -314,6 +469,39 @@ impl TypeScriptParser {
 
 impl Parser for TypeScriptParser {
     fn parse(&mut self, source: &str) -> Result<ParseResult> {
+        self.parse_with_aliases(source, &HashMap::new())
+    }
+
+    /// ALP-794: override parse_file() to load tsconfig path aliases from the
+    /// file's directory tree and use them to classify alias imports as local deps.
+    fn parse_file(&mut self, source: &str, file_path: &Path) -> Result<ParseResult> {
+        let aliases = load_tsconfig_paths(file_path);
+        self.parse_with_aliases(source, &aliases)
+    }
+
+    fn language_id(&self) -> &'static str {
+        if self.is_tsx {
+            "tsx"
+        } else {
+            "typescript"
+        }
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        if self.is_tsx {
+            &["tsx", "jsx"]
+        } else {
+            &["ts", "js"]
+        }
+    }
+}
+
+impl TypeScriptParser {
+    fn parse_with_aliases(
+        &mut self,
+        source: &str,
+        aliases: &HashMap<String, Vec<String>>,
+    ) -> Result<ParseResult> {
         let tree = self
             .parser
             .parse(source, None)
@@ -322,8 +510,8 @@ impl Parser for TypeScriptParser {
         let root_node = tree.root_node();
 
         let mut exports = self.extract_exports(source, root_node);
-        let imports = self.extract_imports(source, root_node);
-        let dependencies = self.extract_dependencies(source, root_node);
+        let imports = self.extract_imports(source, root_node, aliases);
+        let dependencies = self.extract_dependencies(source, root_node, aliases);
         let loc = source.lines().count();
 
         // ALP-768: extract public methods from exported classes
@@ -362,22 +550,6 @@ impl Parser for TypeScriptParser {
             },
             custom_fields,
         })
-    }
-
-    fn language_id(&self) -> &'static str {
-        if self.is_tsx {
-            "tsx"
-        } else {
-            "typescript"
-        }
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        if self.is_tsx {
-            &["tsx", "jsx"]
-        } else {
-            &["ts", "js"]
-        }
     }
 }
 
@@ -1102,5 +1274,127 @@ export default Main;
 "#;
         let result = parse(source);
         assert_eq!(result.metadata.export_names(), vec!["helper", "Main"]);
+    }
+
+    // --- ALP-794: tsconfig path alias resolution ---
+
+    fn parse_with_aliases_helper(
+        source: &str,
+        aliases: HashMap<String, Vec<String>>,
+    ) -> ParseResult {
+        let mut parser = TypeScriptParser::new().unwrap();
+        parser.parse_with_aliases(source, &aliases).unwrap()
+    }
+
+    #[test]
+    fn alias_wildcard_classified_as_dependency() {
+        let mut aliases = HashMap::new();
+        aliases.insert("@/*".to_string(), vec!["src/*".to_string()]);
+        let source = r#"import { helper } from "@/utils/helper";"#;
+        let result = parse_with_aliases_helper(source, aliases);
+        assert!(
+            result
+                .metadata
+                .dependencies
+                .contains(&"src/utils/helper".to_string()),
+            "alias import should be a dependency, got: {:?}",
+            result.metadata.dependencies
+        );
+        assert!(
+            !result
+                .metadata
+                .imports
+                .contains(&"@/utils/helper".to_string()),
+            "alias import must not appear in imports, got: {:?}",
+            result.metadata.imports
+        );
+    }
+
+    #[test]
+    fn scoped_package_without_alias_stays_external() {
+        let mut aliases = HashMap::new();
+        aliases.insert("@/*".to_string(), vec!["src/*".to_string()]);
+        let source = r#"import { Injectable } from "@nestjs/common";"#;
+        let result = parse_with_aliases_helper(source, aliases);
+        assert!(
+            result
+                .metadata
+                .imports
+                .contains(&"@nestjs/common".to_string()),
+            "@nestjs/common must stay in imports, got: {:?}",
+            result.metadata.imports
+        );
+        assert!(
+            result.metadata.dependencies.is_empty(),
+            "no deps expected, got: {:?}",
+            result.metadata.dependencies
+        );
+    }
+
+    #[test]
+    fn no_aliases_falls_back_to_heuristic() {
+        // Without tsconfig aliases, @/ imports remain as external (existing behavior).
+        let source = r#"import { x } from "@/utils/helper";"#;
+        let result = parse(source);
+        assert!(
+            result
+                .metadata
+                .imports
+                .contains(&"@/utils/helper".to_string()),
+            "without aliases, @/ import should stay in imports, got: {:?}",
+            result.metadata.imports
+        );
+    }
+
+    #[test]
+    fn alias_tilde_pattern() {
+        let mut aliases = HashMap::new();
+        aliases.insert("~/*".to_string(), vec!["src/*".to_string()]);
+        let source = r#"import { config } from "~/config/app";"#;
+        let result = parse_with_aliases_helper(source, aliases);
+        assert!(
+            result
+                .metadata
+                .dependencies
+                .contains(&"src/config/app".to_string()),
+            "tilde alias should resolve to dependency, got: {:?}",
+            result.metadata.dependencies
+        );
+    }
+
+    #[test]
+    fn alias_exact_pattern() {
+        let mut aliases = HashMap::new();
+        aliases.insert("@app".to_string(), vec!["src/app".to_string()]);
+        let source = r#"import App from "@app";"#;
+        let result = parse_with_aliases_helper(source, aliases);
+        assert!(
+            result
+                .metadata
+                .dependencies
+                .contains(&"src/app".to_string()),
+            "exact alias should resolve, got: {:?}",
+            result.metadata.dependencies
+        );
+    }
+
+    #[test]
+    fn strip_json_comments_basic() {
+        let input = r#"{ // a comment
+  "key": "value" // inline comment
+}"#;
+        let stripped = strip_json_comments(input);
+        let parsed: serde_json::Value = serde_json::from_str(&stripped).unwrap();
+        assert_eq!(parsed["key"], "value");
+    }
+
+    #[test]
+    fn match_alias_wildcard() {
+        let targets = vec!["src/*".to_string()];
+        assert_eq!(
+            match_alias("@/utils/helper", "@/*", &targets),
+            Some("src/utils/helper".to_string())
+        );
+        assert_eq!(match_alias("@nestjs/common", "@/*", &targets), None);
     }
 }

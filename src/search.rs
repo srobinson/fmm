@@ -329,14 +329,22 @@ pub fn dependency_graph<'a>(
             external.push(dep.clone());
         }
     }
-    // Also resolve absolute imports (e.g. Python `from agno.models.message import X`).
-    // Dotted paths that resolve to manifest files become local deps; others are external.
+    // entry.imports are classified as external by the parser. Package paths containing '/'
+    // (npm scoped packages like `@nestjs/common/services/logger.service`, deep module paths)
+    // are always external — passing them through try_resolve_local_dep causes ghost local_deps
+    // via suffix matching (e.g. `logger.service` matches `transient-logger.service.ts`).
+    // Only dotted imports without '/' are tried as potential local files (Python absolute
+    // imports like `agno.models.message`).
     for imp in &entry.imports {
-        if let Some(resolved) = try_resolve_local_dep(imp, file, manifest) {
-            if !local.contains(&resolved) {
-                local.push(resolved);
+        if !imp.contains('/') {
+            if let Some(resolved) = try_resolve_local_dep(imp, file, manifest) {
+                if !local.contains(&resolved) {
+                    local.push(resolved);
+                }
+                continue;
             }
-        } else if !external.contains(imp) {
+        }
+        if !external.contains(imp) {
             external.push(imp.clone());
         }
     }
@@ -399,13 +407,15 @@ pub fn dependency_graph_transitive(
         }
     }
     for imp in &entry.imports {
-        if let Some(resolved) = try_resolve_local_dep(imp, file, manifest) {
-            if !visited_up.contains(&resolved) {
-                queue_up.push_back((resolved, 1));
+        if !imp.contains('/') {
+            if let Some(resolved) = try_resolve_local_dep(imp, file, manifest) {
+                if !visited_up.contains(&resolved) {
+                    queue_up.push_back((resolved, 1));
+                }
+                continue;
             }
-        } else {
-            external_set.insert(imp.clone());
         }
+        external_set.insert(imp.clone());
     }
 
     while let Some((current, d)) = queue_up.pop_front() {
@@ -427,13 +437,15 @@ pub fn dependency_graph_transitive(
                     }
                 }
                 for imp in &e.imports {
-                    if let Some(resolved) = try_resolve_local_dep(imp, &current, manifest) {
-                        if !visited_up.contains(&resolved) {
-                            queue_up.push_back((resolved, d + 1));
+                    if !imp.contains('/') {
+                        if let Some(resolved) = try_resolve_local_dep(imp, &current, manifest) {
+                            if !visited_up.contains(&resolved) {
+                                queue_up.push_back((resolved, d + 1));
+                            }
+                            continue;
                         }
-                    } else {
-                        external_set.insert(imp.clone());
                     }
+                    external_set.insert(imp.clone());
                 }
             }
         }
@@ -948,6 +960,44 @@ mod tests {
             local.contains(&"src/agno/models/message.py".to_string()),
             "src layout: should resolve agno.models.message → src/agno/models/message.py, got: {:?}",
             local
+        );
+    }
+
+    #[test]
+    fn dependency_graph_no_ghost_from_scoped_package_imports() {
+        // Regression: imports like `@nestjs/common/services/logger.service` were suffix-matched
+        // against local files (e.g. `logger.service` matched `transient-logger.service.ts`).
+        // Package paths containing '/' must never be resolved locally.
+        let manifest = manifest_with_imports(vec![
+            ("src/logger/transient-logger.service.ts", vec![], vec![]),
+            (
+                "src/nest-factory.ts",
+                vec![],
+                vec![
+                    "@nestjs/common",
+                    "@nestjs/common/services/logger.service",
+                    "rxjs",
+                ],
+            ),
+        ]);
+        let entry = manifest.files["src/nest-factory.ts"].clone();
+
+        let (local, external, _) = dependency_graph(&manifest, "src/nest-factory.ts", &entry);
+
+        assert!(
+            local.is_empty(),
+            "ghost entry: scoped package imports must not resolve to local files, got local: {:?}",
+            local
+        );
+        assert!(
+            external.contains(&"@nestjs/common".to_string()),
+            "external should contain @nestjs/common, got: {:?}",
+            external
+        );
+        assert!(
+            external.contains(&"@nestjs/common/services/logger.service".to_string()),
+            "external should contain deep package path, got: {:?}",
+            external
         );
     }
 

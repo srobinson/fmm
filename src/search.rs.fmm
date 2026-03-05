@@ -1,6 +1,6 @@
 ---
 file: src/search.rs
-fmm: v0.3+0.1.18
+fmm: v0.3+0.1.19
 exports:
   ExportHit: [17, 21]
   ImportHit: [24, 27]
@@ -13,11 +13,11 @@ exports:
   export_match_score: [149, 178]
   filter_search: [181, 278]
   find_export_matches: [281, 308]
-  dependency_graph: [315, 361]
-  dependency_graph_transitive: [375, 494]
+  dependency_graph: [315, 369]
+  dependency_graph_transitive: [383, 506]
 imports: [std]
 dependencies: ['crate::manifest']
-loc: 1113
+loc: 1163
 modified: 2026-03-05
 rust:
   lifetimes: ['''a']
