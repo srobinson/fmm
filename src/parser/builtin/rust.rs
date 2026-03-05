@@ -196,6 +196,14 @@ impl RustParser {
             }
         }
 
+        // Collect pub use re-exports (always, regardless of binary_crate)
+        let pub_use_exports = self.extract_pub_use_names(source, root_node);
+        for entry in pub_use_exports {
+            if seen.insert(entry.name.clone()) {
+                exports.push(entry);
+            }
+        }
+
         exports.sort_by_key(|e| e.start_line);
         exports.dedup_by(|a, b| a.name == b.name);
         exports
@@ -478,6 +486,107 @@ impl RustParser {
         derives.sort();
         derives.dedup();
         derives
+    }
+
+    /// Extract exported names from `pub use` declarations in the top-level source.
+    fn extract_pub_use_names(
+        &self,
+        source: &str,
+        root_node: tree_sitter::Node,
+    ) -> Vec<ExportEntry> {
+        let source_bytes = source.as_bytes();
+        let mut results = Vec::new();
+
+        let mut cursor = root_node.walk();
+        for child in root_node.children(&mut cursor) {
+            if child.kind() != "use_declaration" {
+                continue;
+            }
+
+            let mut is_pub = false;
+            let mut content_node: Option<tree_sitter::Node> = None;
+
+            let mut child_cursor = child.walk();
+            for sub in child.children(&mut child_cursor) {
+                match sub.kind() {
+                    "visibility_modifier" => {
+                        if let Ok(text) = sub.utf8_text(source_bytes) {
+                            if text == "pub" {
+                                is_pub = true;
+                            }
+                        }
+                    }
+                    "scoped_identifier" | "use_as_clause" | "scoped_use_list" | "identifier" => {
+                        content_node = Some(sub);
+                    }
+                    _ => {}
+                }
+            }
+
+            if !is_pub {
+                continue;
+            }
+
+            if let Some(node) = content_node {
+                let line = child.start_position().row + 1;
+                Self::collect_use_names(source_bytes, node, line, &mut results);
+            }
+        }
+
+        results
+    }
+
+    /// Recursively collect re-exported names from a use clause node.
+    fn collect_use_names(
+        source_bytes: &[u8],
+        node: tree_sitter::Node,
+        line: usize,
+        results: &mut Vec<ExportEntry>,
+    ) {
+        match node.kind() {
+            "scoped_identifier" => {
+                // `crate::path::Name` — the `name` field is the rightmost identifier
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    if let Ok(name) = name_node.utf8_text(source_bytes) {
+                        results.push(ExportEntry::new(name.to_string(), line, line));
+                    }
+                }
+            }
+            "use_as_clause" => {
+                // `crate::X as Alias` — use the alias field
+                if let Some(alias_node) = node.child_by_field_name("alias") {
+                    if let Ok(name) = alias_node.utf8_text(source_bytes) {
+                        results.push(ExportEntry::new(name.to_string(), line, line));
+                    }
+                }
+            }
+            "scoped_use_list" => {
+                // `crate::path::{A, B}` — recurse into the list field
+                if let Some(list_node) = node.child_by_field_name("list") {
+                    let mut cursor = list_node.walk();
+                    for item in list_node.children(&mut cursor) {
+                        Self::collect_use_names(source_bytes, item, line, results);
+                    }
+                }
+            }
+            "use_list" => {
+                // Bare `{A, B}` — recurse into items
+                let mut cursor = node.walk();
+                for item in node.children(&mut cursor) {
+                    Self::collect_use_names(source_bytes, item, line, results);
+                }
+            }
+            "identifier" => {
+                // Bare name, e.g. `pub use serde`
+                if let Ok(name) = node.utf8_text(source_bytes) {
+                    if !matches!(name, "self" | "crate" | "super") {
+                        results.push(ExportEntry::new(name.to_string(), line, line));
+                    }
+                }
+            }
+            // "use_wildcard", "{", "}", ",", ";", etc. — skip
+            _ => {}
+        }
     }
 }
 
@@ -915,5 +1024,120 @@ const VERSION: &str = "1.0";
                 assert!(!names.contains(&"'_"));
             }
         }
+    }
+
+    #[test]
+    fn pub_use_simple_path_indexes_rightmost_segment() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub use crate::runtime::Runtime;";
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"Runtime".to_string()),
+            "expected Runtime in {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn pub_use_alias_indexes_alias_name() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub use crate::runtime::Runtime as Rt;";
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"Rt".to_string()),
+            "expected Rt in {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"Runtime".to_string()),
+            "Runtime should not appear (aliased)"
+        );
+    }
+
+    #[test]
+    fn pub_use_grouped_indexes_each_name() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub use crate::task::{JoinHandle, LocalSet};";
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"JoinHandle".to_string()),
+            "expected JoinHandle in {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"LocalSet".to_string()),
+            "expected LocalSet in {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn pub_use_grouped_with_alias_indexes_alias() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub use crate::task::{JoinHandle as JH};";
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"JH".to_string()),
+            "expected JH in {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"JoinHandle".to_string()),
+            "JoinHandle should not appear (aliased)"
+        );
+    }
+
+    #[test]
+    fn pub_use_wildcard_skipped() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub use crate::prelude::*;";
+        let result = parser.parse(source).unwrap();
+        // No exports should be emitted for wildcard re-exports
+        assert!(
+            result.metadata.exports.is_empty(),
+            "wildcard pub use should emit no exports, got {:?}",
+            result.metadata.export_names()
+        );
+    }
+
+    #[test]
+    fn non_pub_use_not_indexed() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "use crate::runtime::Runtime;";
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            !names.contains(&"Runtime".to_string()),
+            "non-pub use should not be indexed"
+        );
+    }
+
+    #[test]
+    fn pub_use_external_crate_indexes_rightmost() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub use tokio_util::codec::Framed;";
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"Framed".to_string()),
+            "expected Framed in {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn pub_crate_use_not_indexed() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub(crate) use crate::runtime::Runtime;";
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            !names.contains(&"Runtime".to_string()),
+            "pub(crate) use should not be indexed as a public export"
+        );
     }
 }
