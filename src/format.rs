@@ -74,19 +74,26 @@ pub fn format_lookup_export(
 }
 
 /// Format dependency graph as YAML.
+/// `local` contains resolved intra-project file paths; `external` contains package names.
 pub fn format_dependency_graph(
     file: &str,
     entry: &FileEntry,
-    upstream: &[&str],
+    local: &[String],
+    external: &[String],
     downstream: &[&String],
 ) -> String {
     let mut lines = Vec::new();
     lines.push("---".to_string());
     lines.push(format!("file: {}", yaml_escape(file)));
 
-    if !upstream.is_empty() {
-        let items: Vec<String> = upstream.iter().map(|s| yaml_escape(s)).collect();
-        lines.push(format!("upstream: [{}]", items.join(", ")));
+    if !local.is_empty() {
+        let items: Vec<String> = local.iter().map(|s| yaml_escape(s)).collect();
+        lines.push(format!("local_deps: [{}]", items.join(", ")));
+    }
+
+    if !external.is_empty() {
+        let items: Vec<String> = external.iter().map(|s| yaml_escape(s)).collect();
+        lines.push(format!("external: [{}]", items.join(", ")));
     }
 
     if !downstream.is_empty() {

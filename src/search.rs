@@ -252,23 +252,123 @@ pub fn find_export_matches(manifest: &Manifest, name: &str) -> Vec<ExportHit> {
 }
 
 /// Compute upstream and downstream dependencies for a file.
+///
+/// Upstream is split into `local` (resolved to files in the manifest) and
+/// `external` (package names that could not be resolved). Python relative
+/// imports (`._run`, `..config`) are resolved to file paths where possible.
 pub fn dependency_graph<'a>(
     manifest: &'a Manifest,
     file: &str,
     entry: &'a FileEntry,
-) -> (Vec<&'a str>, Vec<&'a String>) {
-    let upstream: Vec<&str> = entry.dependencies.iter().map(|s| s.as_str()).collect();
+) -> (Vec<String>, Vec<String>, Vec<&'a String>) {
+    let mut local: Vec<String> = Vec::new();
+    let mut external: Vec<String> = Vec::new();
+
+    for dep in &entry.dependencies {
+        if let Some(resolved) = try_resolve_local_dep(dep, file, manifest) {
+            if !local.contains(&resolved) {
+                local.push(resolved);
+            }
+        } else if !external.contains(dep) {
+            external.push(dep.clone());
+        }
+    }
+    local.sort();
+    external.sort();
 
     let mut downstream: Vec<&String> = manifest
         .files
         .iter()
         .filter(|(path, _)| path.as_str() != file)
-        .filter(|(path, e)| e.dependencies.iter().any(|d| dep_matches(d, file, path)))
+        .filter(|(path, e)| {
+            e.dependencies
+                .iter()
+                .any(|d| dep_matches(d, file, path) || python_dep_matches(d, file, path))
+        })
         .map(|(path, _)| path)
         .collect();
     downstream.sort();
 
-    (upstream, downstream)
+    (local, external, downstream)
+}
+
+/// Attempt to resolve a dependency string to a file path present in the manifest.
+///
+/// Handles both Python-style relative imports (`._run`, `..config`) and
+/// JS/TS-style relative paths (`./utils`, `../config`).
+fn try_resolve_local_dep(dep: &str, source_file: &str, manifest: &Manifest) -> Option<String> {
+    // Python-style relative imports: start with . but NOT ./ or ../
+    if dep.starts_with('.') && !dep.starts_with("./") && !dep.starts_with("../") {
+        let resolved_stem = resolve_python_relative_path(dep, source_file)?;
+        // Try .py extension first, then package __init__, then exact match
+        for candidate in [
+            format!("{}.py", resolved_stem),
+            format!("{}/__init__.py", resolved_stem),
+            resolved_stem.clone(),
+        ] {
+            if manifest.files.contains_key(&candidate) {
+                return Some(candidate);
+            }
+        }
+        return None;
+    }
+    // JS/TS-style or other relative paths: use dep_matches to find the manifest key
+    if dep.starts_with("./") || dep.starts_with("../") {
+        return manifest
+            .files
+            .keys()
+            .find(|path| dep_matches(dep, path, source_file))
+            .cloned();
+    }
+    None
+}
+
+/// Resolve a Python relative import string (e.g. `._run`, `..utils`) to a
+/// path stem relative to the project root, based on `source_file`'s location.
+fn resolve_python_relative_path(dep: &str, source_file: &str) -> Option<String> {
+    debug_assert!(dep.starts_with('.') && !dep.starts_with("./"));
+    let dots = dep.chars().take_while(|&c| c == '.').count();
+    let module_name = &dep[dots..];
+
+    let source_dir = source_file.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
+    let mut parts: Vec<&str> = if source_dir.is_empty() {
+        vec![]
+    } else {
+        source_dir.split('/').collect()
+    };
+
+    // Single dot = current package; each additional dot = one level up
+    for _ in 1..dots {
+        parts.pop()?; // None if we'd go above the root
+    }
+
+    if module_name.is_empty() {
+        // `from . import X` — no module name, can't pinpoint a file
+        return None;
+    }
+
+    for part in module_name.split('.') {
+        parts.push(part);
+    }
+
+    Some(parts.join("/"))
+}
+
+/// Match a Python-style relative import (`._run`, `..utils`) against a target
+/// file path, given the dependent file's location. Used for downstream detection.
+pub fn python_dep_matches(dep: &str, target_file: &str, dependent_file: &str) -> bool {
+    if !dep.starts_with('.') || dep.starts_with("./") || dep.starts_with("../") {
+        return false;
+    }
+    if let Some(resolved) = resolve_python_relative_path(dep, dependent_file) {
+        let target_stem = target_file
+            .rsplit_once('.')
+            .map(|(s, _)| s)
+            .unwrap_or(target_file);
+        resolved == target_stem
+    } else {
+        false
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -308,5 +408,123 @@ fn file_entry_to_result(path: &str, entry: &FileEntry) -> FileSearchResult {
         imports: entry.imports.clone(),
         dependencies: entry.dependencies.clone(),
         loc: entry.loc,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::manifest::{FileEntry, Manifest};
+    use crate::parser::{ExportEntry, Metadata};
+
+    fn make_entry(deps: Vec<&str>, loc: usize) -> FileEntry {
+        FileEntry {
+            exports: vec![],
+            export_lines: None,
+            imports: vec![],
+            dependencies: deps.iter().map(|s| s.to_string()).collect(),
+            loc,
+        }
+    }
+
+    fn manifest_with(files: Vec<(&str, Vec<&str>)>) -> Manifest {
+        let mut m = Manifest::new();
+        for (path, deps) in files {
+            m.add_file(
+                path,
+                Metadata {
+                    exports: vec![ExportEntry::new(path.to_string(), 1, 1)],
+                    imports: vec![],
+                    dependencies: deps.iter().map(|s| s.to_string()).collect(),
+                    loc: 10,
+                },
+            );
+        }
+        m
+    }
+
+    #[test]
+    fn python_dep_matches_single_dot() {
+        // `from ._run import X` in `agno/agent/agent.py` should match `agno/agent/_run.py`
+        assert!(python_dep_matches("._run", "agno/agent/_run.py", "agno/agent/agent.py"));
+        assert!(!python_dep_matches("._run", "agno/agent/other.py", "agno/agent/agent.py"));
+    }
+
+    #[test]
+    fn python_dep_matches_double_dot() {
+        // `from ..config import X` in `agno/agent/agent.py` should match `agno/config.py`
+        assert!(python_dep_matches("..config", "agno/config.py", "agno/agent/agent.py"));
+        assert!(!python_dep_matches("..config", "agno/agent/config.py", "agno/agent/agent.py"));
+    }
+
+    #[test]
+    fn python_dep_matches_dot_only_returns_false() {
+        // `from . import X` — can't resolve to a specific file
+        assert!(!python_dep_matches(".", "agno/agent/_run.py", "agno/agent/agent.py"));
+    }
+
+    #[test]
+    fn python_dep_does_not_match_js_style() {
+        // Should not match JS/TS style paths — those are handled by dep_matches
+        assert!(!python_dep_matches("./utils", "src/utils.ts", "src/index.ts"));
+    }
+
+    #[test]
+    fn dependency_graph_resolves_python_deps() {
+        let mut manifest = manifest_with(vec![
+            ("agno/agent/_run.py", vec![]),
+            ("agno/agent/models.py", vec![]),
+            (
+                "agno/agent/agent.py",
+                vec!["._run", ".models", "pydantic", "typing"],
+            ),
+        ]);
+        // Reload from add_file — dependencies are stored as-is
+        let entry = manifest.files["agno/agent/agent.py"].clone();
+
+        let (local, external, downstream) =
+            dependency_graph(&manifest, "agno/agent/agent.py", &entry);
+
+        assert!(
+            local.contains(&"agno/agent/_run.py".to_string()),
+            "should resolve ._run, got: {:?}",
+            local
+        );
+        assert!(
+            local.contains(&"agno/agent/models.py".to_string()),
+            "should resolve .models, got: {:?}",
+            local
+        );
+        assert!(
+            external.contains(&"pydantic".to_string()),
+            "pydantic should stay external, got: {:?}",
+            external
+        );
+        assert!(
+            external.contains(&"typing".to_string()),
+            "typing should stay external, got: {:?}",
+            external
+        );
+        assert!(downstream.is_empty(), "no downstream expected");
+    }
+
+    #[test]
+    fn dependency_graph_downstream_detects_python_dependents() {
+        let manifest = manifest_with(vec![
+            ("agno/agent/_run.py", vec![]),
+            (
+                "agno/agent/agent.py",
+                vec!["._run"], // agent.py depends on _run.py via relative import
+            ),
+        ]);
+        let entry = manifest.files["agno/agent/_run.py"].clone();
+
+        let (_, _, downstream) = dependency_graph(&manifest, "agno/agent/_run.py", &entry);
+
+        assert!(
+            downstream.contains(&&"agno/agent/agent.py".to_string()),
+            "agent.py should appear as downstream of _run.py, got: {:?}",
+            downstream
+        );
     }
 }

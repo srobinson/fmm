@@ -299,7 +299,10 @@ fn dependency_graph_upstream_and_downstream() {
     );
 
     assert!(text.contains("file: src/auth/session.ts"));
-    assert!(text.contains("upstream: [./types, ../config]"));
+    // JS/TS relative deps are resolved to local file paths
+    assert!(text.contains("local_deps:"), "got: {}", text);
+    assert!(text.contains("src/auth/types.ts"), "got: {}", text);
+    assert!(text.contains("src/config.ts"), "got: {}", text);
     assert!(text.contains("imports: [jwt, redis]"));
 }
 

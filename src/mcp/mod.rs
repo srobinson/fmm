@@ -548,12 +548,14 @@ impl McpServer {
             )
         })?;
 
-        let (upstream, downstream) = crate::search::dependency_graph(manifest, &args.file, entry);
+        let (local, external, downstream) =
+            crate::search::dependency_graph(manifest, &args.file, entry);
 
         Ok(crate::format::format_dependency_graph(
             &args.file,
             entry,
-            &upstream,
+            &local,
+            &external,
             &downstream,
         ))
     }
@@ -1002,7 +1004,6 @@ mod tests {
     fn read_symbol_follows_reexport_to_concrete_definition() {
         use crate::manifest::Manifest;
         use crate::parser::{ExportEntry, Metadata};
-        use std::io::Write;
 
         // Create a temp dir with actual source files
         let dir = tempfile::tempdir().unwrap();
@@ -1011,7 +1012,11 @@ mod tests {
         std::fs::create_dir_all(agent_path.parent().unwrap()).unwrap();
 
         // __init__.py re-exports Agent
-        std::fs::write(&init_path, "from .agent.agent import Agent\n__all__ = ['Agent']\n").unwrap();
+        std::fs::write(
+            &init_path,
+            "from .agent.agent import Agent\n__all__ = ['Agent']\n",
+        )
+        .unwrap();
 
         // agent.py is the concrete definition with 5 lines
         let agent_src = "class Agent:\n    def __init__(self):\n        pass\n    def run(self):\n        pass\n";
@@ -1061,7 +1066,11 @@ mod tests {
             "should not use re-export site, got: {}",
             text
         );
-        assert!(text.contains("class Agent"), "should include class body, got: {}", text);
+        assert!(
+            text.contains("class Agent"),
+            "should include class body, got: {}",
+            text
+        );
     }
 
     #[test]
