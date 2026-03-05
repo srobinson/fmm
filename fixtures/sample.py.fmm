@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.py
-fmm: v0.3+0.1.15
+fmm: v0.3+0.1.17
 exports:
   MAX_RETRIES: [11, 11]
   ProcessConfig: [15, 19]

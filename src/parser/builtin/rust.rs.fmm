@@ -1,13 +1,13 @@
 ---
 file: src/parser/builtin/rust.rs
-fmm: v0.3+0.1.15
+fmm: v0.3+0.1.17
 exports:
   RustParser: [49, 60]
 methods:
   RustParser.new: [63, 150]
 imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: ['crate::parser']
-loc: 1493
+loc: 1710
 modified: 2026-03-05
 rust:
   lifetimes: ['''a', '''static']

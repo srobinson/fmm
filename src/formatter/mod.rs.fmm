@@ -1,6 +1,6 @@
 ---
 file: src/formatter/mod.rs
-fmm: v0.3+0.1.15
+fmm: v0.3+0.1.17
 exports:
   Frontmatter: [6, 13]
   yaml_escape: [145, 154]

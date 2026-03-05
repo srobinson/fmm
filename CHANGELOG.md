@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.17](https://github.com/srobinson/fmm/compare/v0.1.16...v0.1.17) (2026-03-05)
+
+
+### Features
+
+* public method indexing — dotted symbol navigation (ClassName.method) (ALP-764) ([#60](https://github.com/srobinson/fmm/issues/60)) ([3b4db1d](https://github.com/srobinson/fmm/commit/3b4db1d895e7bffc2be6000215c82df6bb1e44a9))
+
 ## [0.1.16](https://github.com/srobinson/fmm/compare/v0.1.15...v0.1.16) (2026-03-05)
 
 

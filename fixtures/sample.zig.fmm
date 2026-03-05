@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.zig
-fmm: v0.3+0.1.15
+fmm: v0.3+0.1.17
 exports:
   MAX_RETRIES: [9, 9]
   debug_enabled: [12, 12]
