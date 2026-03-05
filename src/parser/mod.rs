@@ -47,9 +47,14 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    /// Convenience: get export names as strings (for backward-compat in tests/comparisons).
+    /// Convenience: get top-level export names as strings.
+    /// Excludes method entries (those with `parent_class` set).
     pub fn export_names(&self) -> Vec<String> {
-        self.exports.iter().map(|e| e.name.clone()).collect()
+        self.exports
+            .iter()
+            .filter(|e| e.parent_class.is_none())
+            .map(|e| e.name.clone())
+            .collect()
     }
 }
 

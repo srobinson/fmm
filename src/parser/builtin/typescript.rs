@@ -17,6 +17,8 @@ pub struct TypeScriptParser {
     decorator_query: Query,
     /// ALP-754: `@Foo()` call-expression style decorators
     call_decorator_query: Query,
+    /// ALP-768: captures class declarations for public method extraction
+    class_query: Query,
     /// true when built for TSX/JSX (ALP-753)
     is_tsx: bool,
 }
@@ -86,6 +88,13 @@ impl TypeScriptParser {
         )
         .map_err(|e| anyhow::anyhow!("Failed to compile call_decorator query: {}", e))?;
 
+        // ALP-768: find class declarations for public method extraction
+        let class_query = Query::new(
+            &language,
+            "(class_declaration name: (type_identifier) @class_name) @class",
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to compile class query: {}", e))?;
+
         Ok(Self {
             parser,
             export_queries,
@@ -93,6 +102,7 @@ impl TypeScriptParser {
             reexport_source_query,
             decorator_query,
             call_decorator_query,
+            class_query,
             is_tsx,
         })
     }
@@ -174,6 +184,109 @@ impl TypeScriptParser {
         dependencies
     }
 
+    /// ALP-768: extract public methods from exported classes.
+    /// Returns `ExportEntry` items with `parent_class` set to the class name.
+    fn extract_class_methods(
+        &self,
+        source: &str,
+        root_node: tree_sitter::Node,
+        exported_class_names: &HashSet<String>,
+    ) -> Vec<ExportEntry> {
+        let source_bytes = source.as_bytes();
+        let mut entries = Vec::new();
+
+        let class_name_idx = self
+            .class_query
+            .capture_index_for_name("class_name")
+            .unwrap_or(0);
+        let class_idx = self
+            .class_query
+            .capture_index_for_name("class")
+            .unwrap_or(1);
+
+        let mut cursor = QueryCursor::new();
+        let mut iter = cursor.matches(&self.class_query, root_node, source_bytes);
+
+        while let Some(m) = iter.next() {
+            let mut class_node: Option<tree_sitter::Node> = None;
+            let mut class_name: Option<String> = None;
+
+            for cap in m.captures {
+                if cap.index == class_name_idx {
+                    if let Ok(text) = cap.node.utf8_text(source_bytes) {
+                        class_name = Some(text.to_string());
+                    }
+                } else if cap.index == class_idx {
+                    class_node = Some(cap.node);
+                }
+            }
+
+            let (class_node, class_name) = match (class_node, class_name) {
+                (Some(n), Some(name)) => (n, name),
+                _ => continue,
+            };
+
+            if !exported_class_names.contains(&class_name) {
+                continue;
+            }
+
+            let body = match class_node.child_by_field_name("body") {
+                Some(b) => b,
+                None => continue,
+            };
+
+            for i in 0..body.child_count() {
+                if let Some(child) = body.child(i) {
+                    if child.kind() == "method_definition" {
+                        if let Some(entry) =
+                            Self::extract_method_entry(&class_name, child, source_bytes)
+                        {
+                            entries.push(entry);
+                        }
+                    }
+                }
+            }
+        }
+
+        entries
+    }
+
+    /// Extract a single method_definition node as an ExportEntry.
+    /// Returns None for private or protected methods.
+    fn extract_method_entry(
+        class_name: &str,
+        method_node: tree_sitter::Node,
+        source_bytes: &[u8],
+    ) -> Option<ExportEntry> {
+        // Check accessibility_modifier — skip private and protected
+        for i in 0..method_node.child_count() {
+            if let Some(child) = method_node.child(i) {
+                if child.kind() == "accessibility_modifier" {
+                    let text = child.utf8_text(source_bytes).unwrap_or("");
+                    if text == "private" || text == "protected" {
+                        return None;
+                    }
+                }
+            }
+        }
+
+        // Get method name from the "name" field
+        let name_node = method_node.child_by_field_name("name")?;
+        let method_name = name_node.utf8_text(source_bytes).ok()?.to_string();
+
+        // Skip empty names, computed property names ([Symbol.iterator]), and private fields (#foo)
+        if method_name.is_empty() || method_name.starts_with('[') || method_name.starts_with('#') {
+            return None;
+        }
+
+        Some(ExportEntry::method(
+            method_name,
+            method_node.start_position().row + 1,
+            method_node.end_position().row + 1,
+            class_name.to_string(),
+        ))
+    }
+
     /// ALP-754: extract unique decorator names from the file.
     fn extract_decorators(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
         let source_bytes = source.as_bytes();
@@ -208,10 +321,20 @@ impl Parser for TypeScriptParser {
 
         let root_node = tree.root_node();
 
-        let exports = self.extract_exports(source, root_node);
+        let mut exports = self.extract_exports(source, root_node);
         let imports = self.extract_imports(source, root_node);
         let dependencies = self.extract_dependencies(source, root_node);
         let loc = source.lines().count();
+
+        // ALP-768: extract public methods from exported classes
+        let exported_classes: HashSet<String> = exports
+            .iter()
+            .filter(|e| e.parent_class.is_none())
+            .map(|e| e.name.clone())
+            .collect();
+        let methods = self.extract_class_methods(source, root_node, &exported_classes);
+        exports.extend(methods);
+        exports.sort_by_key(|e| e.start_line);
 
         let decorators = self.extract_decorators(source, root_node);
         let custom_fields = if decorators.is_empty() {
@@ -768,6 +891,91 @@ export const DEFAULT_PORT = 5432;
             .dependencies
             .contains(&"./config".to_string()));
         assert!(result.metadata.loc > 20);
+    }
+
+    // --- ALP-768: Public class method extraction ---
+
+    #[test]
+    fn class_public_method_indexed() {
+        let source = "export class Foo {\n  public bar(): void {}\n}\n";
+        let result = parse(source);
+        let method = result
+            .metadata
+            .exports
+            .iter()
+            .find(|e| e.name == "bar")
+            .unwrap();
+        assert_eq!(method.parent_class.as_deref(), Some("Foo"));
+        assert_eq!(method.start_line, 2);
+        // export_names() excludes methods
+        assert!(!result.metadata.export_names().contains(&"bar".to_string()));
+        assert!(result
+            .metadata
+            .export_names()
+            .contains(&"Foo".to_string()));
+    }
+
+    #[test]
+    fn class_private_method_not_indexed() {
+        let source = "export class Foo {\n  private baz(): void {}\n}\n";
+        let result = parse(source);
+        assert!(!result.metadata.exports.iter().any(|e| e.name == "baz"));
+    }
+
+    #[test]
+    fn class_protected_method_not_indexed() {
+        let source = "export class Foo {\n  protected qux(): void {}\n}\n";
+        let result = parse(source);
+        assert!(!result.metadata.exports.iter().any(|e| e.name == "qux"));
+    }
+
+    #[test]
+    fn class_constructor_indexed() {
+        let source = "export class Foo {\n  constructor(x: number) {}\n}\n";
+        let result = parse(source);
+        let ctor = result
+            .metadata
+            .exports
+            .iter()
+            .find(|e| e.name == "constructor");
+        assert!(ctor.is_some(), "constructor should be indexed");
+        assert_eq!(ctor.unwrap().parent_class.as_deref(), Some("Foo"));
+    }
+
+    #[test]
+    fn class_no_modifier_is_public() {
+        let source = "export class Foo {\n  doThing(): void {}\n}\n";
+        let result = parse(source);
+        assert!(result.metadata.exports.iter().any(|e| e.name == "doThing"));
+    }
+
+    #[test]
+    fn non_exported_class_methods_not_indexed() {
+        let source = "class Internal {\n  run(): void {}\n}\n";
+        let result = parse(source);
+        assert!(!result.metadata.exports.iter().any(|e| e.name == "run"));
+    }
+
+    #[test]
+    fn class_method_line_range_correct() {
+        let source =
+            "export class Svc {\n  create() {\n    return 1;\n  }\n  destroy() {}\n}\n";
+        let result = parse(source);
+        let create = result
+            .metadata
+            .exports
+            .iter()
+            .find(|e| e.name == "create")
+            .unwrap();
+        assert_eq!(create.start_line, 2);
+        assert_eq!(create.end_line, 4);
+        let destroy = result
+            .metadata
+            .exports
+            .iter()
+            .find(|e| e.name == "destroy")
+            .unwrap();
+        assert_eq!(destroy.start_line, 5);
     }
 
     // --- Default export extraction ---
