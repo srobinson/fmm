@@ -573,16 +573,31 @@ impl McpServer {
             .get(&args.name)
             .ok_or_else(|| format!("Export '{}' not found. Use fmm_list_exports or fmm_search to discover available symbols.", args.name))?;
 
-        let lines = location.lines.as_ref().ok_or_else(|| {
+        // If the winning location is a re-export hub (index file), try to find the
+        // concrete definition in a nearby non-index file that also exports this symbol.
+        let (resolved_file, resolved_lines) = if is_reexport_file(&location.file) {
+            if let Some((concrete_file, concrete_lines)) =
+                find_concrete_definition(manifest, &args.name, &location.file)
+            {
+                (concrete_file, Some(concrete_lines))
+            } else {
+                // No concrete definition found — fall back to the re-export site
+                (location.file.clone(), location.lines.clone())
+            }
+        } else {
+            (location.file.clone(), location.lines.clone())
+        };
+
+        let lines = resolved_lines.ok_or_else(|| {
             format!(
-                "No line range for '{}' — regenerate sidecars with 'fmm generate' for v0.3 format",
-                args.name
+                "No line range for '{}' in '{}' — regenerate sidecars with 'fmm generate' for v0.3 format",
+                args.name, resolved_file,
             )
         })?;
 
-        let source_path = self.root.join(&location.file);
+        let source_path = self.root.join(&resolved_file);
         let content = std::fs::read_to_string(&source_path)
-            .map_err(|e| format!("Cannot read '{}': {}", location.file, e))?;
+            .map_err(|e| format!("Cannot read '{}': {}", resolved_file, e))?;
 
         let source_lines: Vec<&str> = content.lines().collect();
         let start = lines.start.saturating_sub(1);
@@ -593,7 +608,7 @@ impl McpServer {
                 "Line range [{}, {}] out of bounds for '{}' ({} lines)",
                 lines.start,
                 lines.end,
-                location.file,
+                resolved_file,
                 source_lines.len()
             ));
         }
@@ -602,8 +617,8 @@ impl McpServer {
 
         Ok(crate::format::format_read_symbol(
             &args.name,
-            &location.file,
-            lines,
+            &resolved_file,
+            &lines,
             &symbol_source,
         ))
     }
@@ -679,6 +694,60 @@ impl McpServer {
         let results = crate::search::filter_search(manifest, &filters);
         Ok(crate::format::format_filter_search(&results, false))
     }
+}
+
+/// Return true if a file path is a conventional re-export hub (index/init file).
+/// These files aggregate symbols from sub-modules and are not the definition site.
+fn is_reexport_file(file_path: &str) -> bool {
+    let filename = file_path.rsplit('/').next().unwrap_or(file_path);
+    matches!(
+        filename,
+        "__init__.py" | "index.ts" | "index.tsx" | "index.js" | "index.jsx" | "mod.rs"
+    )
+}
+
+/// Given that `symbol` was found in a re-export hub, search the manifest for a
+/// non-index file that also exports the same symbol, preferring files whose
+/// directory path shares the most prefix with `reexport_file`.
+///
+/// Returns `(concrete_file_path, ExportLines)` or `None` if no candidate found.
+fn find_concrete_definition(
+    manifest: &crate::manifest::Manifest,
+    symbol: &str,
+    reexport_file: &str,
+) -> Option<(String, crate::manifest::ExportLines)> {
+    let reexport_dir = reexport_file.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
+
+    let mut candidates: Vec<(String, crate::manifest::ExportLines, usize)> = manifest
+        .files
+        .iter()
+        .filter(|(path, _)| {
+            let p = path.as_str();
+            p != reexport_file && !is_reexport_file(p)
+        })
+        .filter_map(|(path, entry)| {
+            // Find this symbol in the file's export list
+            let idx = entry.exports.iter().position(|e| e == symbol)?;
+            // Require line-range data — without it we cannot show source
+            let lines = entry
+                .export_lines
+                .as_ref()
+                .and_then(|el| el.get(idx))
+                .filter(|l| l.start > 0)?;
+            // Shared prefix length as proximity score
+            let file_dir = path.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
+            let shared = reexport_dir
+                .chars()
+                .zip(file_dir.chars())
+                .take_while(|(a, b)| a == b)
+                .count();
+            Some((path.clone(), lines.clone(), shared))
+        })
+        .collect();
+
+    // Sort by proximity descending so closest sibling wins
+    candidates.sort_by(|(_, _, a), (_, _, b)| b.cmp(a));
+    candidates.into_iter().map(|(f, l, _)| (f, l)).next()
 }
 
 /// Return an error if `path` looks like a directory (ends with `/` or resolves to a dir on disk).
@@ -860,8 +929,15 @@ mod tests {
             .call_tool("fmm_file_info", serde_json::json!({"file": "src/cli/"}))
             .unwrap();
         let text = result["content"][0]["text"].as_str().unwrap();
-        assert!(result["isError"].as_bool().unwrap_or(false), "expected isError");
-        assert!(text.contains("fmm_list_files"), "should suggest fmm_list_files, got: {}", text);
+        assert!(
+            result["isError"].as_bool().unwrap_or(false),
+            "expected isError"
+        );
+        assert!(
+            text.contains("fmm_list_files"),
+            "should suggest fmm_list_files, got: {}",
+            text
+        );
     }
 
     #[test]
@@ -877,9 +953,16 @@ mod tests {
                 serde_json::json!({"file": "src/mcp/"}),
             )
             .unwrap();
-        assert!(result["isError"].as_bool().unwrap_or(false), "expected isError");
+        assert!(
+            result["isError"].as_bool().unwrap_or(false),
+            "expected isError"
+        );
         let text = result["content"][0]["text"].as_str().unwrap();
-        assert!(text.contains("fmm_list_files"), "should suggest fmm_list_files, got: {}", text);
+        assert!(
+            text.contains("fmm_list_files"),
+            "should suggest fmm_list_files, got: {}",
+            text
+        );
     }
 
     #[test]
@@ -892,9 +975,93 @@ mod tests {
         let result = server
             .call_tool("fmm_read_symbol", serde_json::json!({"name": ""}))
             .unwrap();
-        assert!(result["isError"].as_bool().unwrap_or(false), "expected isError");
+        assert!(
+            result["isError"].as_bool().unwrap_or(false),
+            "expected isError"
+        );
         let text = result["content"][0]["text"].as_str().unwrap();
-        assert!(text.contains("fmm_list_exports"), "should suggest fmm_list_exports, got: {}", text);
+        assert!(
+            text.contains("fmm_list_exports"),
+            "should suggest fmm_list_exports, got: {}",
+            text
+        );
+    }
+
+    #[test]
+    fn is_reexport_file_detects_index_files() {
+        assert!(is_reexport_file("agno/__init__.py"));
+        assert!(is_reexport_file("src/index.ts"));
+        assert!(is_reexport_file("src/index.tsx"));
+        assert!(is_reexport_file("src/mod.rs"));
+        assert!(is_reexport_file("libs/foo/index.js"));
+        assert!(!is_reexport_file("agno/agent/agent.py"));
+        assert!(!is_reexport_file("src/auth.ts"));
+    }
+
+    #[test]
+    fn read_symbol_follows_reexport_to_concrete_definition() {
+        use crate::manifest::Manifest;
+        use crate::parser::{ExportEntry, Metadata};
+        use std::io::Write;
+
+        // Create a temp dir with actual source files
+        let dir = tempfile::tempdir().unwrap();
+        let init_path = dir.path().join("agno").join("__init__.py");
+        let agent_path = dir.path().join("agno").join("agent").join("agent.py");
+        std::fs::create_dir_all(agent_path.parent().unwrap()).unwrap();
+
+        // __init__.py re-exports Agent
+        std::fs::write(&init_path, "from .agent.agent import Agent\n__all__ = ['Agent']\n").unwrap();
+
+        // agent.py is the concrete definition with 5 lines
+        let agent_src = "class Agent:\n    def __init__(self):\n        pass\n    def run(self):\n        pass\n";
+        std::fs::write(&agent_path, agent_src).unwrap();
+
+        let mut manifest = Manifest::new();
+        // Index file re-exports Agent (no line range — typical for re-exports)
+        manifest.add_file(
+            "agno/__init__.py",
+            Metadata {
+                exports: vec![ExportEntry::new("Agent".to_string(), 1, 1)],
+                imports: vec!["agno.agent.agent".to_string()],
+                dependencies: vec![],
+                loc: 2,
+            },
+        );
+        // Concrete definition with proper line range
+        manifest.add_file(
+            "agno/agent/agent.py",
+            Metadata {
+                exports: vec![ExportEntry::new("Agent".to_string(), 1, 5)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 5,
+            },
+        );
+
+        // __init__.py wins the export_index (last writer wins), but we want agent.py
+        let server = McpServer {
+            manifest: Some(manifest),
+            root: dir.path().to_path_buf(),
+        };
+
+        let result = server
+            .call_tool("fmm_read_symbol", serde_json::json!({"name": "Agent"}))
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap();
+
+        // Should resolve to the concrete definition file, not __init__.py
+        assert!(
+            text.contains("agno/agent/agent.py"),
+            "should resolve to concrete definition, got: {}",
+            text
+        );
+        assert!(
+            !text.contains("__init__.py"),
+            "should not use re-export site, got: {}",
+            text
+        );
+        assert!(text.contains("class Agent"), "should include class body, got: {}", text);
     }
 
     #[test]
