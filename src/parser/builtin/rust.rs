@@ -310,6 +310,15 @@ impl RustParser {
                         }
                     }
                 }
+                "use_wildcard" => {
+                    // e.g. `use crate::parser::*` — strip trailing ::* to get dep path
+                    if let Ok(raw) = child.utf8_text(source_bytes) {
+                        let prefix = raw.strip_suffix("::*").unwrap_or(raw);
+                        if let Some(dep) = rust_use_path_to_dep(prefix) {
+                            results.push(dep);
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -334,7 +343,7 @@ impl RustParser {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             match child.kind() {
-                "scoped_identifier" | "scoped_use_list" => {
+                "scoped_identifier" | "scoped_use_list" | "use_wildcard" => {
                     return self.leftmost_path_leaf(source_bytes, child);
                 }
                 "identifier" => {
@@ -1252,6 +1261,52 @@ const VERSION: &str = "1.0";
         assert!(
             !names.contains(&"JoinHandle".to_string()),
             "JoinHandle should not appear (aliased)"
+        );
+    }
+
+    // ---- ALP-776: wildcard use as dependency ----
+
+    #[test]
+    fn wildcard_use_crate_module_recorded_as_dep() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "use crate::parser::*;";
+        let result = parser.parse(source).unwrap();
+        let deps = &result.metadata.dependencies;
+        assert!(
+            deps.contains(&"crate::parser".to_string()),
+            "expected crate::parser in deps {:?}",
+            deps
+        );
+    }
+
+    #[test]
+    fn wildcard_use_super_module_recorded_as_dep() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "use super::utils::*;";
+        let result = parser.parse(source).unwrap();
+        let deps = &result.metadata.dependencies;
+        assert!(
+            deps.contains(&"../utils".to_string()),
+            "expected ../utils in deps {:?}",
+            deps
+        );
+    }
+
+    #[test]
+    fn wildcard_use_external_crate_not_a_dep() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "use std::io::*;";
+        let result = parser.parse(source).unwrap();
+        let deps = &result.metadata.dependencies;
+        assert!(
+            deps.is_empty(),
+            "std wildcard should produce no local dep, got {:?}",
+            deps
+        );
+        // But it should appear in imports
+        assert!(
+            result.metadata.imports.contains(&"std".to_string()),
+            "std should be in imports"
         );
     }
 
