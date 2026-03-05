@@ -1,6 +1,6 @@
 ---
 file: src/search.rs
-fmm: v0.3
+fmm: v0.3+0.1.11
 exports:
   ExportHit: [16, 20]
   ImportHit: [23, 26]
@@ -14,10 +14,10 @@ exports:
   filter_search: [180, 267]
   find_export_matches: [270, 297]
   dependency_graph: [304, 338]
-  python_dep_matches: [404, 417]
+  python_dep_matches: [414, 427]
 imports: [std]
-dependencies: [crate]
-loc: 575
+dependencies: ['crate::manifest', 'crate::mcp::dep_matches']
+loc: 693
 modified: 2026-03-05
 rust:
   lifetimes: ['''a']

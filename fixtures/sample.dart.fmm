@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.dart
-fmm: v0.3
+fmm: v0.3+0.1.11
 exports:
   NetworkManager: [14, 20]
   BaseWidget: [22, 24]
@@ -22,7 +22,7 @@ exports:
 imports: ['dart:async', 'dart:convert', flutter, http]
 dependencies: [../utils/helpers.dart, ./relative_file.dart]
 loc: 100
-modified: 2026-03-04
+modified: 2026-03-05
 dart:
   extensions: 2
   mixins: 2

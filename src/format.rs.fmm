@@ -1,6 +1,6 @@
 ---
 file: src/format.rs
-fmm: v0.3
+fmm: v0.3+0.1.11
 exports:
   format_file_info: [15, 24]
   format_file_outline: [27, 53]
@@ -13,6 +13,6 @@ exports:
   format_list_files: [186, 208]
   format_bare_search: [217, 298]
   format_filter_search: [301, 324]
-dependencies: [crate]
+dependencies: ['crate::formatter::yaml_escape', 'crate::manifest', 'crate::search']
 loc: 368
 modified: 2026-03-05

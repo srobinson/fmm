@@ -193,8 +193,17 @@ impl McpServer {
             let response = self.handle_request(&request);
 
             if let Some(resp) = response {
-                writeln!(stdout, "{}", serde_json::to_string(&resp)?)?;
-                stdout.flush()?;
+                // WORKAROUND: handle BrokenPipe gracefully (cascade vector V4 from
+                // anthropics/claude-code#22264 — Claude Code may close the pipe when
+                // it cancels parallel tool calls).
+                let write_result = writeln!(stdout, "{}", serde_json::to_string(&resp)?)
+                    .and_then(|_| stdout.flush());
+                if let Err(e) = write_result {
+                    if e.kind() == std::io::ErrorKind::BrokenPipe {
+                        return Ok(());
+                    }
+                    return Err(e.into());
+                }
             }
         }
 
@@ -441,12 +450,16 @@ impl McpServer {
                     }]
                 }))
             }
+            // WORKAROUND: Claude Code cancels all sibling parallel MCP tool calls when
+            // any tool returns isError:true (Promise.all fail-fast, tracked at
+            // anthropics/claude-code#22264). Drop the flag; prefix with ERROR: so the
+            // LLM recognises failure from content alone. Revert when #22264 ships
+            // Promise.allSettled for MCP tools.
             Err(e) => Ok(json!({
                 "content": [{
                     "type": "text",
-                    "text": e
-                }],
-                "isError": true
+                    "text": format!("ERROR: {}", e)
+                }]
             })),
         }
     }
@@ -992,10 +1005,11 @@ mod tests {
         let result = server
             .call_tool("fmm_file_info", serde_json::json!({"file": "src/cli/"}))
             .unwrap();
-        let text = result["content"][0]["text"].as_str().unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap_or("");
         assert!(
-            result["isError"].as_bool().unwrap_or(false),
-            "expected isError"
+            text.starts_with("ERROR:"),
+            "expected ERROR: prefix, got: {}",
+            text
         );
         assert!(
             text.contains("fmm_list_files"),
@@ -1017,11 +1031,12 @@ mod tests {
                 serde_json::json!({"file": "src/mcp/"}),
             )
             .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap_or("");
         assert!(
-            result["isError"].as_bool().unwrap_or(false),
-            "expected isError"
+            text.starts_with("ERROR:"),
+            "expected ERROR: prefix, got: {}",
+            text
         );
-        let text = result["content"][0]["text"].as_str().unwrap();
         assert!(
             text.contains("fmm_list_files"),
             "should suggest fmm_list_files, got: {}",
@@ -1039,11 +1054,12 @@ mod tests {
         let result = server
             .call_tool("fmm_read_symbol", serde_json::json!({"name": ""}))
             .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap_or("");
         assert!(
-            result["isError"].as_bool().unwrap_or(false),
-            "expected isError"
+            text.starts_with("ERROR:"),
+            "expected ERROR: prefix, got: {}",
+            text
         );
-        let text = result["content"][0]["text"].as_str().unwrap();
         assert!(
             text.contains("fmm_list_exports"),
             "should suggest fmm_list_exports, got: {}",
@@ -1061,11 +1077,12 @@ mod tests {
         let result = server
             .call_tool("fmm_file_outline", serde_json::json!({"file": "src/cli/"}))
             .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap_or("");
         assert!(
-            result["isError"].as_bool().unwrap_or(false),
-            "expected isError"
+            text.starts_with("ERROR:"),
+            "expected ERROR: prefix, got: {}",
+            text
         );
-        let text = result["content"][0]["text"].as_str().unwrap();
         assert!(
             text.contains("fmm_list_files"),
             "should suggest fmm_list_files, got: {}",

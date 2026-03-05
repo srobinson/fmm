@@ -1,11 +1,11 @@
 ---
 file: src/cli/search.rs
-fmm: v0.3
+fmm: v0.3+0.1.11
 exports:
   search: [49, 83]
 imports: [anyhow, colored]
-dependencies: [crate]
+dependencies: ['crate::manifest']
 loc: 449
-modified: 2026-03-04
+modified: 2026-03-05
 rust:
   derives: ['serde::Serialize']

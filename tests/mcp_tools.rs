@@ -70,14 +70,19 @@ fn call_tool_text(server: &fmm::mcp::McpServer, tool: &str, args: Value) -> Stri
     result["content"][0]["text"].as_str().unwrap().to_string()
 }
 
-/// Call a tool expecting an error response.
+/// Call a tool expecting an error response (text starts with "ERROR:").
 fn call_tool_expect_error(server: &fmm::mcp::McpServer, tool: &str, args: Value) -> String {
     let result = server.call_tool(tool, args).unwrap();
+    let text = result["content"][0]["text"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     assert!(
-        result["isError"].as_bool().unwrap_or(false),
-        "Expected error but got success"
+        text.starts_with("ERROR:"),
+        "Expected ERROR: prefix but got: {}",
+        text
     );
-    result["content"][0]["text"].as_str().unwrap().to_string()
+    text
 }
 
 // ---------------------------------------------------------------------------
