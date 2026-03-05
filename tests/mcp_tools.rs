@@ -751,6 +751,96 @@ fn search_imports_filter() {
 }
 
 // ---------------------------------------------------------------------------
+// fmm_search — combined term + structured filters (ALP-786)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn search_term_and_imports_filter_intersects() {
+    let (_tmp, server) = setup_mcp_server();
+    // term="session" matches exports in session.ts AND types.ts (SessionToken).
+    // imports="jwt" restricts to session.ts only.
+    // Combined: only session.ts exports should appear.
+    let text = call_tool_text(
+        &server,
+        "fmm_search",
+        json!({"term": "session", "imports": "jwt"}),
+    );
+
+    assert!(
+        text.contains("createSession"),
+        "should include createSession"
+    );
+    assert!(
+        text.contains("validateSession"),
+        "should include validateSession"
+    );
+    assert!(
+        !text.contains("SessionToken"),
+        "SessionToken is in types.ts which doesn't import jwt"
+    );
+}
+
+#[test]
+fn search_term_and_min_loc_filter_intersects() {
+    let (_tmp, server) = setup_mcp_server();
+    // term="hash" matches hashPassword (crypto.ts, LOC=9) and verifyPassword doesn't match.
+    // min_loc=10 restricts to files with LOC >= 10 (config.ts=10, pool.ts=10, session.ts=12).
+    // crypto.ts has LOC=9 so it's excluded — combined result should be empty exports.
+    let text = call_tool_text(
+        &server,
+        "fmm_search",
+        json!({"term": "hashPassword", "min_loc": 10}),
+    );
+
+    assert!(
+        !text.contains("hashPassword"),
+        "hashPassword is in crypto.ts (LOC=9) which fails min_loc=10 filter"
+    );
+}
+
+#[test]
+fn search_term_and_depends_on_filter_intersects() {
+    let (_tmp, server) = setup_mcp_server();
+    // term="session" matches createSession/validateSession (session.ts) and SessionToken (types.ts).
+    // depends_on="config" restricts to files depending on config (session.ts, pool.ts).
+    // types.ts has no config dependency so SessionToken should be excluded.
+    let text = call_tool_text(
+        &server,
+        "fmm_search",
+        json!({"term": "session", "depends_on": "config"}),
+    );
+
+    assert!(
+        text.contains("createSession"),
+        "session.ts depends on config"
+    );
+    assert!(
+        !text.contains("SessionToken"),
+        "types.ts does not depend on config"
+    );
+}
+
+#[test]
+fn search_term_only_regression() {
+    // Term-only queries must continue to work identically (no regression).
+    let (_tmp, server) = setup_mcp_server();
+    let text = call_tool_text(&server, "fmm_search", json!({"term": "createSession"}));
+
+    assert!(text.contains("EXPORTS"));
+    assert!(text.contains("createSession"));
+    assert!(text.contains("src/auth/session.ts"));
+}
+
+#[test]
+fn search_filter_only_regression() {
+    // Filter-only queries must continue to work identically (no regression).
+    let (_tmp, server) = setup_mcp_server();
+    let text = call_tool_text(&server, "fmm_search", json!({"imports": "jwt"}));
+
+    assert!(text.contains("src/auth/session.ts"));
+}
+
+// ---------------------------------------------------------------------------
 // Go module path resolution (ALP-738)
 // ---------------------------------------------------------------------------
 

@@ -374,13 +374,13 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_search".to_string(),
-                description: "Universal codebase search. Use 'term' for smart search across exports, files, and imports (like 'fmm search <term>'). Use structured filters (export, imports, depends_on, LOC) for precise queries. Filters combine with AND logic.".to_string(),
+                description: "Universal codebase search. Use 'term' for smart search across exports, files, and imports. Use structured filters (export, imports, depends_on, LOC) for precise queries. Combine 'term' with filters to narrow results with AND semantics — only exports matching the term from files matching the filters are returned.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
                         "term": {
                             "type": "string",
-                            "description": "Universal search term — searches exports (exact then fuzzy), file paths, and imports. Returns grouped results. Use alone without other filters."
+                            "description": "Universal search term — searches exports (exact then fuzzy), file paths, and imports. Returns grouped results. Can be combined with structured filters to narrow results to matching files."
                         },
                         "export": {
                             "type": "string",
@@ -837,13 +837,14 @@ impl McpServer {
         let args: SearchArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
-        // Universal term search
-        if let Some(ref term) = args.term {
-            let result = crate::search::bare_search(manifest, term, args.limit);
-            return Ok(crate::format::format_bare_search(&result, false));
-        }
+        let has_filters = args.export.is_some()
+            || args.imports.is_some()
+            || args.depends_on.is_some()
+            || args.min_loc.is_some()
+            || args.max_loc.is_some();
 
-        // Structured filter search
+        let term = args.term;
+        let limit = args.limit;
         let filters = crate::search::SearchFilters {
             export: args.export,
             imports: args.imports,
@@ -851,6 +852,28 @@ impl McpServer {
             min_loc: args.min_loc,
             max_loc: args.max_loc,
         };
+
+        if let Some(term) = term {
+            let mut result = crate::search::bare_search(manifest, &term, limit);
+            // When structured filters are also present, intersect with AND semantics:
+            // keep only exports/files/imports that are in the filter file set.
+            if has_filters {
+                let filter_results = crate::search::filter_search(manifest, &filters);
+                let filter_files: std::collections::HashSet<&str> =
+                    filter_results.iter().map(|r| r.file.as_str()).collect();
+                result
+                    .exports
+                    .retain(|h| filter_files.contains(h.file.as_str()));
+                result.files.retain(|f| filter_files.contains(f.as_str()));
+                result.imports.iter_mut().for_each(|h| {
+                    h.files.retain(|f| filter_files.contains(f.as_str()));
+                });
+                result.imports.retain(|h| !h.files.is_empty());
+            }
+            return Ok(crate::format::format_bare_search(&result, false));
+        }
+
+        // Structured filter search (no term)
         let results = crate::search::filter_search(manifest, &filters);
         Ok(crate::format::format_filter_search(&results, false))
     }
