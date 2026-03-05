@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.lua
-fmm: v0.3+0.1.12
+fmm: v0.3+0.1.13
 exports:
   init: [24, 28]
   process: [33, 42]

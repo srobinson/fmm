@@ -1,0 +1,12 @@
+---
+file: fixtures/typescript/decorators.ts
+fmm: v0.3+0.1.13
+exports:
+  UserService: [1, 6]
+  UserController: [8, 15]
+  AppModule: [17, 21]
+  PlainService: [23, 25]
+loc: 25
+modified: 2026-03-05
+typescript:
+  decorators: [Controller, Injectable, Module]

@@ -102,11 +102,17 @@ impl ParserRegistry {
 
     /// Register all builtin parsers.
     fn register_builtin(&mut self) {
-        // TypeScript / JavaScript
-        self.register(&["ts", "tsx", "js", "jsx"], || {
+        // TypeScript / JavaScript (ALP-753: split TS and TSX into separate parsers)
+        self.register(&["ts", "js"], || {
             Ok(Box::new(builtin::typescript::TypeScriptParser::new()?))
         });
-        self.register_language_id(&["ts", "tsx", "js", "jsx"], "typescript");
+        self.register_language_id(&["ts", "js"], "typescript");
+
+        // TSX / JSX — uses LANGUAGE_TSX grammar for correct JSX angle-bracket parsing
+        self.register(&["tsx", "jsx"], || {
+            Ok(Box::new(builtin::typescript::TypeScriptParser::new_tsx()?))
+        });
+        self.register_language_id(&["tsx", "jsx"], "tsx");
 
         // Python
         self.register(&["py"], || {
@@ -271,6 +277,9 @@ mod tests {
         let registry = ParserRegistry::with_builtins();
         assert_eq!(registry.language_id_for("rs"), Some("rust"));
         assert_eq!(registry.language_id_for("ts"), Some("typescript"));
+        assert_eq!(registry.language_id_for("js"), Some("typescript"));
+        assert_eq!(registry.language_id_for("tsx"), Some("tsx"));
+        assert_eq!(registry.language_id_for("jsx"), Some("tsx"));
         assert_eq!(registry.language_id_for("py"), Some("python"));
         assert_eq!(registry.language_id_for("go"), Some("go"));
         assert_eq!(registry.language_id_for("java"), Some("java"));

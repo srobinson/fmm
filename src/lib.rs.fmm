@@ -1,6 +1,6 @@
 ---
 file: src/lib.rs
-fmm: v0.3+0.1.12
+fmm: v0.3+0.1.13
 exports:
   cli: [1, 1]
   config: [2, 2]

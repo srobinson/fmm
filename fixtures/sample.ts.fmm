@@ -1,0 +1,14 @@
+---
+file: fixtures/sample.ts
+fmm: v0.3+0.1.13
+exports:
+  AppConfig: [6, 10]
+  Handler: [12, 12]
+  Status: [14, 18]
+  DEFAULT_PORT: [20, 20]
+  AppService: [22, 36]
+  createApp: [38, 40]
+imports: [events, fs/promises]
+dependencies: [../config, ./helper]
+loc: 42
+modified: 2026-03-05
