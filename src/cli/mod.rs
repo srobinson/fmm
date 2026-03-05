@@ -426,7 +426,7 @@ pub enum Commands {
         pattern: Option<String>,
 
         /// Filter mode: source (default, no tests), tests (test coverage only), all (unfiltered)
-        #[arg(long, value_name = "MODE", default_value = "source")]
+        #[arg(long, value_name = "MODE", default_value = "source", value_parser = ["source", "tests", "all"])]
         mode: String,
 
         /// Output as JSON
