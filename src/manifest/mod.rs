@@ -433,10 +433,66 @@ impl Default for Manifest {
     }
 }
 
+/// Remove duplicate mapping keys from a YAML document by keeping the first occurrence of each
+/// key at each indentation level. Used to recover from sidecars generated before the method-
+/// overload dedup fix, where TypeScript overloads produced duplicate keys in `methods:` that
+/// serde_yaml 0.9 rejects.
+fn dedup_yaml_mapping_keys(content: &str) -> String {
+    let mut seen: std::collections::HashSet<(usize, String)> = std::collections::HashSet::new();
+    let mut result: Vec<&str> = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        let indent = line.len() - trimmed.len();
+        // Identify mapping keys: non-empty text before ':', no spaces in key, not a
+        // comment, list item, or flow-sequence/mapping start.
+        if !trimmed.starts_with('#')
+            && !trimmed.starts_with('-')
+            && !trimmed.starts_with('[')
+            && !trimmed.starts_with('{')
+        {
+            if let Some(colon_pos) = trimmed.find(':') {
+                let key = &trimmed[..colon_pos];
+                if !key.is_empty() && !key.contains(' ') && !seen.insert((indent, key.to_string()))
+                {
+                    continue; // duplicate — skip this line
+                }
+            }
+        }
+        result.push(line);
+    }
+    result.join("\n")
+}
+
 /// Parse a sidecar YAML file into (file_path, FileEntry).
 /// Handles both v0.2 (exports as list) and v0.3 (exports as map with line ranges).
+/// If serde_yaml rejects the document due to duplicate mapping keys (TypeScript overloads in
+/// sidecars generated before the dedup fix), deduplicates and retries with a warning.
 fn parse_sidecar(content: &str) -> Option<(String, FileEntry)> {
-    let data: SidecarData = serde_yaml::from_str(content).ok()?;
+    let data: SidecarData = match serde_yaml::from_str(content) {
+        Ok(d) => d,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("duplicate entry") {
+                eprintln!(
+                    "fmm: warning: sidecar has duplicate YAML keys (TypeScript overloads) — \
+                     deduplicating and reloading. Run 'fmm generate' to regenerate clean sidecars. \
+                     Error: {}",
+                    e
+                );
+                let deduped = dedup_yaml_mapping_keys(content);
+                match serde_yaml::from_str(&deduped) {
+                    Ok(d) => d,
+                    Err(e2) => {
+                        eprintln!("fmm: warning: sidecar still invalid after dedup: {}", e2);
+                        return None;
+                    }
+                }
+            } else {
+                eprintln!("fmm: warning: failed to parse sidecar: {}", e);
+                return None;
+            }
+        }
+    };
 
     if data.file.is_empty() {
         return None;
@@ -837,6 +893,22 @@ pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<Str
     rev
 }
 
+/// Strip a file extension from a path only when the suffix is a recognized source-file
+/// extension. Returns the original string unchanged for compound names like
+/// `runtime.exception` or `crypto.utils` where the dot is part of the filename.
+fn strip_source_ext(path: &str) -> &str {
+    if let Some((stem, ext)) = path.rsplit_once('.') {
+        match ext {
+            "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "py" | "go" | "rs" | "java" | "kt"
+            | "swift" | "dart" | "rb" | "php" | "cs" | "cpp" | "c" | "h" | "lua" | "zig" | "ex"
+            | "exs" | "scala" | "cr" => stem,
+            _ => path,
+        }
+    } else {
+        path
+    }
+}
+
 /// Check if a dependency path from `dependent_file` resolves to `target_file`.
 /// Dependencies are stored as relative paths like "../utils/crypto.utils.js"
 /// and need to be resolved against the dependent file's directory.
@@ -865,11 +937,11 @@ pub fn dep_matches(dep: &str, target_file: &str, dependent_file: &str) -> bool {
 
     let resolved = parts.join("/");
 
-    // Strip extension from both for comparison (.ts/.js/.tsx/.jsx interchangeable)
-    let resolved_stem = resolved
-        .rsplit_once('.')
-        .map(|(stem, _)| stem)
-        .unwrap_or(&resolved);
+    // Strip extension from the target file path (always has a real extension like .ts/.js).
+    // For the resolved dep, only strip if the suffix is a known source-file extension —
+    // NestJS-style compound names like `runtime.exception` use `.exception` as part of the
+    // filename, not as an extension, and stripping it would produce a wrong stem.
+    let resolved_stem = strip_source_ext(&resolved);
     let target_stem = target_file
         .rsplit_once('.')
         .map(|(stem, _)| stem)
@@ -1683,6 +1755,29 @@ modified: 2026-01-30"#;
     }
 
     #[test]
+    fn dep_matches_compound_filename_with_dot() {
+        // NestJS convention: files named `foo.exception.ts`, `foo.service.ts` etc.
+        // The dep stored without extension is `../errors/runtime.exception` — the `.exception`
+        // part is the filename segment, not a file extension, and must not be stripped.
+        assert!(dep_matches(
+            "../errors/exceptions/runtime.exception",
+            "packages/core/errors/exceptions/runtime.exception.ts",
+            "packages/core/injector/injector.ts"
+        ));
+        assert!(dep_matches(
+            "../errors/exceptions/undefined-dependency.exception",
+            "packages/core/errors/exceptions/undefined-dependency.exception.ts",
+            "packages/core/injector/injector.ts"
+        ));
+        // Regular dep with an actual .js extension should still resolve to .ts
+        assert!(dep_matches(
+            "../utils/crypto.utils.js",
+            "pkg/src/utils/crypto.utils.ts",
+            "pkg/src/services/auth.service.ts"
+        ));
+    }
+
+    #[test]
     fn dep_matches_nested_path() {
         // dep "./utils/helpers" from "src/index.ts" resolves to "src/utils/helpers"
         assert!(dep_matches(
@@ -1890,5 +1985,40 @@ modified: 2026-01-30"#;
         assert!(entries
             .windows(2)
             .all(|w| w[0].name.to_lowercase() <= w[1].name.to_lowercase()));
+    }
+
+    #[test]
+    fn parse_sidecar_recovers_from_duplicate_method_keys() {
+        // TypeScript method overloads produce duplicate keys in methods: sections.
+        // Sidecars generated before the dedup fix contain these and must still load.
+        let content = concat!(
+            "---\n",
+            "file: packages/core/injector/module.ts\n",
+            "fmm: v0.3+0.1.19\n",
+            "exports:\n",
+            "  Module: [44, 680]\n",
+            "methods:\n",
+            "  Module.token: [83, 85]\n",
+            "  Module.token: [87, 89]\n",
+            "  Module.isGlobal: [95, 97]\n",
+            "  Module.isGlobal: [99, 101]\n",
+            "imports: ['@nestjs/common/constants']\n",
+            "dependencies: [./instance-wrapper, ./module-ref]\n",
+            "loc: 680\n",
+            "modified: 2026-03-05\n",
+        );
+        let result = parse_sidecar(content);
+        assert!(
+            result.is_some(),
+            "parse_sidecar returned None for sidecar with duplicate method keys"
+        );
+        let (path, entry) = result.unwrap();
+        assert_eq!(path, "packages/core/injector/module.ts");
+        assert_eq!(entry.loc, 680);
+        // Only one Module.token entry should survive dedup (first occurrence kept)
+        assert!(entry
+            .methods
+            .as_ref()
+            .is_some_and(|m| m.contains_key("Module.token")));
     }
 }

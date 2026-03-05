@@ -77,6 +77,9 @@ impl Frontmatter {
         }
 
         // Methods as flat map: ClassName.method: [start, end]
+        // Deduplicate by key — TypeScript method overloads produce the same dotted name for
+        // each signature, and duplicate YAML mapping keys cause serde_yaml to reject the
+        // document on reload, silently dropping the file from the manifest.
         let methods: Vec<_> = self
             .metadata
             .exports
@@ -85,15 +88,18 @@ impl Frontmatter {
             .collect();
         if !methods.is_empty() {
             lines.push("methods:".to_string());
+            let mut seen_keys = std::collections::HashSet::new();
             for entry in &methods {
                 let class = entry.parent_class.as_deref().unwrap_or("");
                 let key = format!("{}.{}", class, entry.name);
-                lines.push(format!(
-                    "  {}: [{}, {}]",
-                    yaml_escape(&key),
-                    entry.start_line,
-                    entry.end_line
-                ));
+                if seen_keys.insert(key.clone()) {
+                    lines.push(format!(
+                        "  {}: [{}, {}]",
+                        yaml_escape(&key),
+                        entry.start_line,
+                        entry.end_line
+                    ));
+                }
             }
         }
 
