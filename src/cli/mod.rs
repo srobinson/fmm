@@ -9,6 +9,7 @@ use crate::config::Config;
 
 mod glossary;
 pub mod init;
+mod navigate;
 mod search;
 mod sidecar;
 mod status;
@@ -17,6 +18,7 @@ mod watch;
 pub use glossary::glossary;
 pub use init::init;
 pub use init::init_skill;
+pub use navigate::{deps, exports, lookup, ls, outline, read_symbol};
 pub use search::search;
 pub use sidecar::{clean, generate, validate};
 pub use status::status;
@@ -29,54 +31,68 @@ Frontmatter Matters — 80-90% fewer file reads for LLM agents";
 
 // Short help (-h): commands + hint to use --help
 const SHORT_HELP: &str = cstr!(
-    r#"<bold><underline>Commands</underline></bold>
+    r#"<bold><underline>Navigation</underline></bold>
+  <bold>lookup</bold>        Find where a symbol is defined — O(1)
+  <bold>read</bold>          Extract exact source for a symbol or method
+  <bold>deps</bold>          Dependency graph: local_deps, external, downstream
+  <bold>outline</bold>       File table-of-contents with line ranges
+  <bold>ls</bold>            List indexed files under a directory
+  <bold>exports</bold>       Search exports by pattern
+  <bold>search</bold>        Smart search — exports, files, imports (just works)
+  <bold>glossary</bold>      Symbol-level impact analysis — who uses this export?
+
+<bold><underline>Project</underline></bold>
   <bold>init</bold>          Set up config, Claude skill, and MCP server
   <bold>generate</bold>      Create and update .fmm sidecars (exports, imports, deps, LOC)
   <bold>watch</bold>         Watch source files and regenerate sidecars on change
   <bold>validate</bold>      Check sidecars are current (CI-friendly, exit 1 if stale)
-  <bold>search</bold>        Smart search — exports, files, imports (just works)
-  <bold>glossary</bold>      Symbol-level impact analysis — who uses this export?
   <bold>mcp</bold>           Start MCP server (9 tools for LLM navigation)
   <bold>status</bold>        Show config and workspace stats
   <bold>clean</bold>         Remove all .fmm sidecars
 
-Use <bold>--help</bold> for MCP tools, workflows, and examples.
+Use <bold>--help</bold> for workflows and examples.
 https://github.com/srobinson/fmm"#
 );
 
 // Full help (--help): commands + MCP tools + workflows + languages
 const LONG_HELP: &str = cstr!(
-    r#"<bold><underline>Commands</underline></bold>
+    r#"<bold><underline>Navigation Commands</underline></bold>
+  <bold>lookup</bold> SYMBOL       Find where a symbol is defined — O(1)
+  <bold>read</bold> SYMBOL         Extract exact source for a symbol or ClassName.method
+  <bold>deps</bold> FILE           Dependency graph: local_deps, external, downstream
+  <bold>outline</bold> FILE        File table-of-contents with line ranges
+  <bold>ls</bold> [DIR]           List indexed files under a directory
+  <bold>exports</bold> [PATTERN]  Search exports by pattern (fuzzy, case-insensitive)
+  <bold>search</bold>             Smart search — exports, files, imports (just works)
+  <bold>glossary</bold>           Symbol-level impact analysis — who uses this export?
+
+<bold><underline>Project Commands</underline></bold>
   <bold>init</bold>          Set up config, Claude skill, and MCP server
   <bold>generate</bold>      Create and update .fmm sidecars (exports, imports, deps, LOC)
   <bold>watch</bold>         Watch source files and regenerate sidecars on change
   <bold>validate</bold>      Check sidecars are current (CI-friendly, exit 1 if stale)
-  <bold>search</bold>        Smart search — exports, files, imports (just works)
-  <bold>glossary</bold>      Symbol-level impact analysis — who uses this export?
   <bold>mcp</bold>           Start MCP server (9 tools for LLM navigation)
   <bold>status</bold>        Show config and workspace stats
   <bold>clean</bold>         Remove all .fmm sidecars
 
-<bold><underline>MCP Tools</underline></bold> <dim>(via</dim> <bold>fmm mcp</bold><dim>)</dim>
-  <bold>fmm_lookup_export</bold>    Find which file defines a symbol — O(1)
-  <bold>fmm_read_symbol</bold>      Extract exact source; use ClassName.method for public methods
-  <bold>fmm_dependency_graph</bold>  local_deps, external packages, and downstream blast radius
-  <bold>fmm_file_outline</bold>     Table of contents with line ranges
-  <bold>fmm_list_exports</bold>     Search exports by pattern (fuzzy)
-  <bold>fmm_file_info</bold>        Structural profile without reading source
-  <bold>fmm_search</bold>           Multi-criteria AND queries with relevance scoring
-  <bold>fmm_list_files</bold>       List all indexed files under a directory path
-  <bold>fmm_glossary</bold>         Symbol-level blast radius — all definitions + who imports each
+<bold><underline>Navigation Examples</underline></bold>
+  <dim>$</dim> <bold>fmm lookup Injector</bold>                         <dim># File + line range + deps</dim>
+  <dim>$</dim> <bold>fmm read Injector</bold>                           <dim># Full class source</dim>
+  <dim>$</dim> <bold>fmm read Injector.loadInstance</bold>              <dim># Single method source</dim>
+  <dim>$</dim> <bold>fmm read Injector --no-truncate</bold>            <dim># Bypass 10KB cap</dim>
+  <dim>$</dim> <bold>fmm deps src/injector.ts</bold>                    <dim># Direct dependency graph</dim>
+  <dim>$</dim> <bold>fmm deps src/injector.ts --depth 2</bold>         <dim># Transitive (2 hops)</dim>
+  <dim>$</dim> <bold>fmm outline src/injector.ts</bold>                 <dim># Exports with line ranges</dim>
+  <dim>$</dim> <bold>fmm ls src/</bold>                                 <dim># Files in src/</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by loc</bold>                        <dim># Heaviest files first</dim>
+  <dim>$</dim> <bold>fmm exports Module</bold>                          <dim># All exports matching "Module"</dim>
+  <dim>$</dim> <bold>fmm exports Module --dir packages/core/</bold>     <dim># Scoped to directory</dim>
+  <dim>$</dim> <bold>fmm lookup Injector --json | jq .file</bold>      <dim># Machine-readable output</dim>
 
-<bold><underline>Workflows</underline></bold>
+<bold><underline>Project Workflows</underline></bold>
   <dim>$</dim> <bold>fmm init</bold>                              <dim># One-command setup</dim>
   <dim>$</dim> <bold>fmm generate && fmm validate</bold>          <dim># CI pipeline</dim>
-  <dim>$</dim> <bold>fmm watch</bold>                             <dim># Live sidecar regeneration</dim>
   <dim>$</dim> <bold>fmm search store</bold>                      <dim># Smart search across everything</dim>
-  <dim>$</dim> <bold>fmm search --export createStore</bold>       <dim># O(1) symbol lookup + fuzzy</dim>
-  <dim>$</dim> <bold>fmm search --depends-on src/auth.ts</bold>   <dim># Impact analysis</dim>
-  <dim>$</dim> <bold>fmm search --loc ">500"</bold>              <dim># Find large files</dim>
-  <dim>$</dim> <bold>fmm search --imports react --json</bold>     <dim># Structured output</dim>
   <dim>$</dim> <bold>fmm glossary config</bold>                   <dim># Who uses Config, loadConfig, AppConfig?</dim>
 
 <bold><underline>Languages</underline></bold>
@@ -432,6 +448,159 @@ pub enum Commands {
         /// Filter mode: source (default, no tests), tests (test coverage only), all (unfiltered)
         #[arg(long, value_name = "MODE", default_value = "source", value_parser = ["source", "tests", "all"])]
         mode: String,
+
+        /// Output as JSON
+        #[arg(short = 'j', long = "json")]
+        json: bool,
+    },
+
+    /// Find where a symbol is defined — O(1) lookup
+    #[command(
+        long_about = "Find which file defines a symbol and show its metadata.\n\n\
+            Uses the pre-built export index for O(1) lookup. \
+            Supports plain exports, re-exports, and dotted ClassName.method notation.",
+        after_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+  <dim>$</dim> <bold>fmm lookup Injector</bold>           <dim># Find symbol definition</dim>
+  <dim>$</dim> <bold>fmm lookup createPipeline</bold>     <dim># Any exported name</dim>
+  <dim>$</dim> <bold>fmm lookup Injector --json</bold>    <dim># JSON output</dim>"#),
+    )]
+    Lookup {
+        /// Symbol name to look up (exact match; use 'fmm exports <term>' for fuzzy)
+        #[arg(value_name = "SYMBOL")]
+        symbol: String,
+
+        /// Output as JSON
+        #[arg(short = 'j', long = "json")]
+        json: bool,
+    },
+
+    /// Extract exact source for a symbol or method
+    #[command(
+        name = "read",
+        long_about = "Read the source code of an exported symbol or a specific method.\n\n\
+            Use plain name for a top-level export, or ClassName.method notation for a \
+            specific public method. Truncates at 10KB by default; use --no-truncate for \
+            full source.",
+        after_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+  <dim>$</dim> <bold>fmm read Injector</bold>                  <dim># Full class source</dim>
+  <dim>$</dim> <bold>fmm read Injector.loadInstance</bold>     <dim># Single method</dim>
+  <dim>$</dim> <bold>fmm read Injector --no-truncate</bold>   <dim># Bypass 10KB cap</dim>
+  <dim>$</dim> <bold>fmm read createStore --json</bold>        <dim># JSON output</dim>"#),
+    )]
+    Read {
+        /// Symbol name (or ClassName.method for a specific public method)
+        #[arg(value_name = "SYMBOL")]
+        symbol: String,
+
+        /// Return full source, bypassing the 10KB truncation cap
+        #[arg(long = "no-truncate")]
+        no_truncate: bool,
+
+        /// Output as JSON
+        #[arg(short = 'j', long = "json")]
+        json: bool,
+    },
+
+    /// Show dependency graph for a file
+    #[command(
+        long_about = "Show a file's dependency graph: local_deps (resolved local imports), \
+            external (packages), and downstream (what would break if this file changes).\n\n\
+            Use --depth for transitive traversal. depth=-1 computes the full closure.",
+        after_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+  <dim>$</dim> <bold>fmm deps src/injector.ts</bold>              <dim># Direct deps (depth=1)</dim>
+  <dim>$</dim> <bold>fmm deps src/injector.ts --depth 2</bold>   <dim># Transitive (2 hops)</dim>
+  <dim>$</dim> <bold>fmm deps src/injector.ts --depth -1</bold>  <dim># Full closure</dim>
+  <dim>$</dim> <bold>fmm deps src/injector.ts --json</bold>       <dim># JSON output</dim>"#),
+    )]
+    Deps {
+        /// Source file path (relative to project root, as indexed by fmm)
+        #[arg(value_name = "FILE")]
+        file: String,
+
+        /// Traversal depth (1 = direct deps only, -1 = full closure)
+        #[arg(long, default_value = "1")]
+        depth: i32,
+
+        /// Output as JSON
+        #[arg(short = 'j', long = "json")]
+        json: bool,
+    },
+
+    /// Show file table-of-contents with export line ranges
+    #[command(
+        long_about = "Show all exports in a file with their line ranges.\n\n\
+            Use before reading source to identify which symbol to target with 'fmm read'.",
+        after_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+  <dim>$</dim> <bold>fmm outline src/injector.ts</bold>         <dim># All exports + line ranges</dim>
+  <dim>$</dim> <bold>fmm outline src/injector.ts --json</bold>  <dim># JSON output</dim>"#),
+    )]
+    Outline {
+        /// Source file path (relative to project root)
+        #[arg(value_name = "FILE")]
+        file: String,
+
+        /// Output as JSON
+        #[arg(short = 'j', long = "json")]
+        json: bool,
+    },
+
+    /// List indexed files under a directory
+    #[command(
+        long_about = "List all files indexed by fmm under a directory prefix.\n\n\
+            Shows file paths with LOC and export count. Use --sort-by to find the \
+            heaviest files. Defaults to alphabetical sort.",
+        after_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+  <dim>$</dim> <bold>fmm ls</bold>                          <dim># All indexed files</dim>
+  <dim>$</dim> <bold>fmm ls src/</bold>                     <dim># Files under src/</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by loc</bold>            <dim># Heaviest files first</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by exports</bold>        <dim># Most exports first</dim>
+  <dim>$</dim> <bold>fmm ls src/ --json</bold>              <dim># JSON output</dim>"#),
+    )]
+    Ls {
+        /// Directory prefix to filter (e.g. src/, packages/core/)
+        #[arg(value_name = "DIR")]
+        directory: Option<String>,
+
+        /// Sort field: name (default), loc, exports
+        #[arg(long = "sort-by", default_value = "name", value_parser = ["name", "loc", "exports"])]
+        sort_by: String,
+
+        /// Sort order: asc or desc (default depends on sort-by)
+        #[arg(long, value_parser = ["asc", "desc"])]
+        order: Option<String>,
+
+        /// Output as JSON
+        #[arg(short = 'j', long = "json")]
+        json: bool,
+    },
+
+    /// Search exports by pattern (fuzzy, case-insensitive)
+    #[command(
+        long_about = "List exports matching a pattern across the indexed codebase.\n\n\
+            Without a pattern, lists all exports grouped by file. \
+            Use --dir to scope results to a directory. \
+            Includes dotted method names (ClassName.method).",
+        after_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+  <dim>$</dim> <bold>fmm exports</bold>                         <dim># All exports (grouped by file)</dim>
+  <dim>$</dim> <bold>fmm exports Module</bold>                  <dim># Fuzzy match "Module"</dim>
+  <dim>$</dim> <bold>fmm exports create</bold>                  <dim># All exports containing "create"</dim>
+  <dim>$</dim> <bold>fmm exports Module --dir packages/core/</bold>  <dim># Scoped to directory</dim>
+  <dim>$</dim> <bold>fmm exports Module --json</bold>           <dim># JSON output</dim>"#),
+    )]
+    Exports {
+        /// Pattern to filter exports (case-insensitive substring)
+        #[arg(value_name = "PATTERN")]
+        pattern: Option<String>,
+
+        /// Scope results to a directory prefix (e.g. packages/core/)
+        #[arg(long = "dir")]
+        dir: Option<String>,
 
         /// Output as JSON
         #[arg(short = 'j', long = "json")]

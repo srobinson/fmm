@@ -463,7 +463,7 @@ pub(super) fn tool_glossary(
 
 /// Return true if a file path is a conventional re-export hub (index/init file).
 /// These files aggregate symbols from sub-modules and are not the definition site.
-pub(super) fn is_reexport_file(file_path: &str) -> bool {
+pub(crate) fn is_reexport_file(file_path: &str) -> bool {
     let filename = file_path.rsplit('/').next().unwrap_or(file_path);
     matches!(
         filename,
@@ -476,7 +476,7 @@ pub(super) fn is_reexport_file(file_path: &str) -> bool {
 /// directory path shares the most prefix with `reexport_file`.
 ///
 /// Returns `(concrete_file_path, ExportLines)` or `None` if no candidate found.
-pub(super) fn find_concrete_definition(
+pub(crate) fn find_concrete_definition(
     manifest: &crate::manifest::Manifest,
     symbol: &str,
     reexport_file: &str,

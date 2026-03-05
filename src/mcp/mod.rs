@@ -9,7 +9,7 @@ mod args;
 mod schema;
 #[cfg(test)]
 mod tests;
-mod tools;
+pub(crate) mod tools;
 
 const PROTOCOL_VERSION: &str = "2024-11-05";
 

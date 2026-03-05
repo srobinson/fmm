@@ -115,6 +115,33 @@ fn run() -> anyhow::Result<()> {
         } => {
             cli::glossary(pattern, &mode, json)?;
         }
+        Commands::Lookup { symbol, json } => {
+            cli::lookup(&symbol, json)?;
+        }
+        Commands::Read {
+            symbol,
+            no_truncate,
+            json,
+        } => {
+            cli::read_symbol(&symbol, no_truncate, json)?;
+        }
+        Commands::Deps { file, depth, json } => {
+            cli::deps(&file, depth, json)?;
+        }
+        Commands::Outline { file, json } => {
+            cli::outline(&file, json)?;
+        }
+        Commands::Ls {
+            directory,
+            sort_by,
+            order,
+            json,
+        } => {
+            cli::ls(directory.as_deref(), &sort_by, order.as_deref(), json)?;
+        }
+        Commands::Exports { pattern, dir, json } => {
+            cli::exports(pattern.as_deref(), dir.as_deref(), json)?;
+        }
         Commands::Mcp | Commands::Serve => {
             let mut server = mcp::McpServer::new();
             server.run()?;

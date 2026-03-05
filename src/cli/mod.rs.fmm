@@ -1,21 +1,27 @@
 ---
 file: src/cli/mod.rs
-fmm: v0.3+0.1.21
+fmm: v0.3+0.1.23
 exports:
   init: [11, 11]
-  glossary: [17, 17]
-  init_skill: [19, 19]
-  search: [20, 20]
-  clean: [21, 21]
-  generate: [21, 21]
-  validate: [21, 21]
-  status: [22, 22]
-  watch: [23, 23]
-  Cli: [105, 116]
-  Commands: [119, 492]
-imports: [anyhow, clap, clap_complete, color_print, glossary, ignore, init, search, sidecar, status, std, watch]
+  glossary: [18, 18]
+  init_skill: [20, 20]
+  deps: [21, 21]
+  exports: [21, 21]
+  lookup: [21, 21]
+  ls: [21, 21]
+  outline: [21, 21]
+  read_symbol: [21, 21]
+  search: [22, 22]
+  clean: [23, 23]
+  generate: [23, 23]
+  validate: [23, 23]
+  status: [24, 24]
+  watch: [25, 25]
+  Cli: [121, 132]
+  Commands: [135, 661]
+imports: [anyhow, clap, clap_complete, color_print, glossary, ignore, init, navigate, search, sidecar, status, std, watch]
 dependencies: ['crate::config']
-loc: 687
+loc: 856
 modified: 2026-03-05
 rust:
   derives: [Parser, Subcommand]

@@ -1,6 +1,6 @@
 ---
 file: fixtures/typescript/barrel.ts
-fmm: v0.3+0.1.21
+fmm: v0.3+0.1.23
 exports:
   UserService: [1, 1]
   AuthService: [2, 2]
