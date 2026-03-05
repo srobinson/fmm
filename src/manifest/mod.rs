@@ -392,6 +392,79 @@ fn parse_sidecar(content: &str) -> Option<(String, FileEntry)> {
     ))
 }
 
+/// Entry for a single export name in the glossary.
+#[derive(Debug, Clone, Serialize)]
+pub struct GlossaryEntry {
+    pub name: String,
+    pub sources: Vec<GlossarySource>,
+}
+
+/// One definition of a glossary export — the file it lives in, its line range,
+/// and all files that import it.
+#[derive(Debug, Clone, Serialize)]
+pub struct GlossarySource {
+    pub file: String,
+    pub lines: Option<ExportLines>,
+    pub used_by: Vec<String>,
+}
+
+impl Manifest {
+    /// Build the glossary: for each export name matching `pattern` (case-insensitive
+    /// substring), collect all definitions and their dependents.
+    /// Returns entries sorted alphabetically by name (case-insensitive).
+    pub fn build_glossary(&self, pattern: &str) -> Vec<GlossaryEntry> {
+        let pat_lower = pattern.to_lowercase();
+        let mut entries: Vec<GlossaryEntry> = self
+            .export_all
+            .iter()
+            .filter(|(name, _)| name.to_lowercase().contains(&pat_lower))
+            .map(|(name, locations)| {
+                let sources = locations
+                    .iter()
+                    .map(|loc| {
+                        let used_by = self.find_dependents(&loc.file);
+                        GlossarySource {
+                            file: loc.file.clone(),
+                            lines: loc.lines.clone(),
+                            used_by,
+                        }
+                    })
+                    .collect();
+                GlossaryEntry {
+                    name: name.clone(),
+                    sources,
+                }
+            })
+            .collect();
+        entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        entries
+    }
+
+    /// Find all files that depend on `target_file` using all three dependency matchers:
+    /// dep_matches (JS/TS/Rust/Go), python_dep_matches (Python relative), dotted_dep_matches (Python absolute).
+    pub fn find_dependents(&self, target_file: &str) -> Vec<String> {
+        let mut dependents: Vec<String> = self
+            .files
+            .iter()
+            .filter(|(path, entry)| {
+                let path = path.as_str();
+                if path == target_file {
+                    return false;
+                }
+                entry.dependencies.iter().any(|d| {
+                    dep_matches(d, target_file, path) || python_dep_matches(d, target_file, path)
+                }) || entry
+                    .imports
+                    .iter()
+                    .any(|i| dotted_dep_matches(i, target_file))
+            })
+            .map(|(path, _)| path.clone())
+            .collect();
+        dependents.sort();
+        dependents
+    }
+}
+
 /// Check if a dependency path from `dependent_file` resolves to `target_file`.
 /// Dependencies are stored as relative paths like "../utils/crypto.utils.js"
 /// and need to be resolved against the dependent file's directory.
@@ -462,6 +535,73 @@ pub fn dep_matches(dep: &str, target_file: &str, dependent_file: &str) -> bool {
     }
 
     false
+}
+
+fn resolve_python_relative_path(dep: &str, source_file: &str) -> Option<String> {
+    debug_assert!(dep.starts_with('.') && !dep.starts_with("./"));
+    let dots = dep.chars().take_while(|&c| c == '.').count();
+    let module_name = &dep[dots..];
+
+    let source_dir = source_file.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
+    let mut parts: Vec<&str> = if source_dir.is_empty() {
+        vec![]
+    } else {
+        source_dir.split('/').collect()
+    };
+
+    // Single dot = current package; each additional dot = one level up
+    for _ in 1..dots {
+        parts.pop()?; // None if we'd go above the root
+    }
+
+    if module_name.is_empty() {
+        // `from . import X` — no module name, can't pinpoint a file
+        return None;
+    }
+
+    for part in module_name.split('.') {
+        parts.push(part);
+    }
+
+    Some(parts.join("/"))
+}
+
+/// Match a Python-style relative import (`._run`, `..utils`) against a target
+/// file path, given the dependent file's location. Used for downstream detection.
+pub fn python_dep_matches(dep: &str, target_file: &str, dependent_file: &str) -> bool {
+    if !dep.starts_with('.') || dep.starts_with("./") || dep.starts_with("../") {
+        return false;
+    }
+    if let Some(resolved) = resolve_python_relative_path(dep, dependent_file) {
+        let target_stem = target_file
+            .rsplit_once('.')
+            .map(|(s, _)| s)
+            .unwrap_or(target_file);
+        resolved == target_stem
+    } else {
+        false
+    }
+}
+
+/// Match a Python absolute module import (`agno.models.message`) against a target
+/// file path. Used for downstream detection.
+///
+/// Returns true when the dotted path resolves to the target file, considering
+/// both root-relative paths (`agno/models/message.py`) and src-layout paths
+/// (`src/agno/models/message.py`).
+pub fn dotted_dep_matches(dep: &str, target_file: &str) -> bool {
+    // Only handle dotted absolute imports — exclude relative (`.X`), paths (`/`), Rust (`::`)
+    if dep.starts_with('.') || dep.contains('/') || dep.contains("::") || !dep.contains('.') {
+        return false;
+    }
+    let path_stem = dep.replace('.', "/");
+    let target_stem = target_file
+        .rsplit_once('.')
+        .map(|(s, _)| s)
+        .unwrap_or(target_file);
+    // Handle packages: `agno.models` resolves to `agno/models/__init__.py`
+    let effective = target_stem.strip_suffix("/__init__").unwrap_or(target_stem);
+    effective == path_stem.as_str() || effective.ends_with(&format!("/{}", path_stem))
 }
 
 #[cfg(test)]
