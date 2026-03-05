@@ -464,6 +464,35 @@ fn search_depends_on_filter() {
     assert!(text.contains("src/db/pool.ts"));
 }
 
+/// Regression test for ALP-758: depends_on with a full manifest path (src/config.ts) was
+/// returning empty because the filter used a naive substring match on raw relative-path
+/// dependency strings like "../config". dep_matches() must be used to resolve correctly.
+#[test]
+fn search_depends_on_full_manifest_path() {
+    let (_tmp, server) = setup_mcp_server();
+    // Pass the full manifest-relative path, not just a fragment.
+    // "../config" (in session.ts) and "../config" (in pool.ts) must both resolve to src/config.ts.
+    let text = call_tool_text(
+        &server,
+        "fmm_search",
+        json!({"depends_on": "src/config.ts"}),
+    );
+
+    assert!(
+        text.contains("src/auth/session.ts"),
+        "session.ts should appear; got: {text}"
+    );
+    assert!(
+        text.contains("src/db/pool.ts"),
+        "pool.ts should appear; got: {text}"
+    );
+    // config.ts itself has no dependency on config.ts — it should not appear
+    assert!(
+        !text.contains("src/config.ts\n") && !text.contains("src/config.ts "),
+        "config.ts should not appear as a dependent of itself; got: {text}"
+    );
+}
+
 #[test]
 fn search_loc_range() {
     let (_tmp, server) = setup_mcp_server();
