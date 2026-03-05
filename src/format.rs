@@ -200,7 +200,7 @@ pub fn format_list_files(
     }
     lines.push(format!("total: {}", total));
     let showing = files.len();
-    if showing < total {
+    if showing > 0 && showing < total {
         let end = offset + showing;
         lines.push(format!("showing: {}-{} of {}", offset + 1, end, total,));
         if end < total {

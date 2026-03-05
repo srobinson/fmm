@@ -1297,5 +1297,24 @@ mod tests {
             "should not show next hint on last page; got: {}",
             text3
         );
+
+        // Out-of-bounds offset: should return empty files but NOT a bad "showing: N+1-N of M" line
+        let result_oob = server
+            .call_tool(
+                "fmm_list_files",
+                serde_json::json!({"limit": 2, "offset": 1000}),
+            )
+            .unwrap();
+        let text_oob = result_oob["content"][0]["text"].as_str().unwrap();
+        assert!(
+            text_oob.contains("total: 5"),
+            "total should still appear; got: {}",
+            text_oob
+        );
+        assert!(
+            !text_oob.contains("showing:"),
+            "showing line must not appear for out-of-bounds offset; got: {}",
+            text_oob
+        );
     }
 }
