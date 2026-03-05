@@ -1,6 +1,6 @@
 ---
 file: src/config/mod.rs
-fmm: v0.3+0.1.19
+fmm: v0.3+0.1.21
 exports:
   Config: [7, 11]
 methods:

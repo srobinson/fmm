@@ -1,6 +1,6 @@
 ---
 file: examples/demo-project/src/config/index.ts
-fmm: v0.3+0.1.19
+fmm: v0.3+0.1.21
 exports:
   AppConfig: [3, 8]
   loadConfig: [10, 18]

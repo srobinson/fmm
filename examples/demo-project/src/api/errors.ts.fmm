@@ -1,6 +1,6 @@
 ---
 file: examples/demo-project/src/api/errors.ts
-fmm: v0.3+0.1.19
+fmm: v0.3+0.1.21
 exports:
   AppError: [3, 12]
   notFound: [14, 16]

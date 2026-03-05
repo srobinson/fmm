@@ -1,6 +1,6 @@
 ---
 file: src/mcp/mod.rs
-fmm: v0.3+0.1.19
+fmm: v0.3+0.1.21
 exports:
   JsonRpcError: [91, 96]
   McpServer: [106, 109]

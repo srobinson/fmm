@@ -122,6 +122,11 @@ pub struct Manifest {
     /// Built in-memory from `methods:` sidecar sections. Not persisted.
     #[serde(skip)]
     pub method_index: HashMap<String, ExportLocation>,
+    /// Reverse dependency index: maps file path → all files that import it.
+    /// Built once during `load_from_sidecars` for O(1) downstream lookups.
+    /// Not persisted — rebuilt on each load.
+    #[serde(skip)]
+    pub reverse_deps: HashMap<String, Vec<String>>,
 }
 
 impl Manifest {
@@ -134,6 +139,7 @@ impl Manifest {
             export_locations: HashMap::new(),
             export_all: HashMap::new(),
             method_index: HashMap::new(),
+            reverse_deps: HashMap::new(),
         }
     }
 
@@ -235,6 +241,8 @@ impl Manifest {
                 manifest.files.insert(key, file_entry);
             }
         }
+
+        manifest.reverse_deps = build_reverse_deps(&manifest);
 
         Ok(manifest)
     }
@@ -407,6 +415,15 @@ impl Manifest {
 
     pub fn file_paths(&self) -> Vec<&String> {
         self.files.keys().collect()
+    }
+
+    /// Rebuild the reverse dependency index from the current file set.
+    ///
+    /// Called automatically by `load_from_sidecars`. Call this manually when
+    /// building a manifest incrementally via `add_file` (e.g. in tests or
+    /// benchmarks) to ensure downstream lookups are accurate.
+    pub fn rebuild_reverse_deps(&mut self) {
+        self.reverse_deps = build_reverse_deps(self);
     }
 }
 
@@ -677,6 +694,147 @@ impl Manifest {
         dependents.sort();
         dependents
     }
+}
+
+/// Attempt to resolve a dependency string to a file path present in the manifest.
+///
+/// Handles Python-style relative imports (`._run`, `..config`), JS/TS-style relative
+/// paths (`./utils`, `../config`), Go module paths, and Rust `crate::` paths.
+pub(crate) fn try_resolve_local_dep(
+    dep: &str,
+    source_file: &str,
+    manifest: &Manifest,
+) -> Option<String> {
+    // Python-style relative imports: start with . but NOT ./ or ../
+    if dep.starts_with('.') && !dep.starts_with("./") && !dep.starts_with("../") {
+        let resolved_stem = resolve_python_relative_path(dep, source_file)?;
+        for candidate in [
+            format!("{}.py", resolved_stem),
+            format!("{}/__init__.py", resolved_stem),
+            resolved_stem.clone(),
+        ] {
+            if manifest.files.contains_key(&candidate) {
+                return Some(candidate);
+            }
+        }
+        return None;
+    }
+    // JS/TS-style or other relative paths: use dep_matches to find the manifest key
+    if dep.starts_with("./") || dep.starts_with("../") {
+        // First: direct file match (extension-agnostic stem comparison)
+        if let Some(found) = manifest
+            .files
+            .keys()
+            .find(|path| dep_matches(dep, path, source_file))
+        {
+            return Some(found.clone());
+        }
+        // Fallback: directory-style JS/TS imports — `./module` should match `module/index.ts`
+        // when no direct file `module.ts` exists. Direct match takes priority above.
+        let dep_dir = source_file.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
+        let mut parts: Vec<&str> = if dep_dir.is_empty() {
+            Vec::new()
+        } else {
+            dep_dir.split('/').collect()
+        };
+        let dep_clean = dep.strip_prefix("./").unwrap_or(dep);
+        for segment in dep_clean.split('/') {
+            match segment {
+                ".." => {
+                    parts.pop();
+                }
+                "." => {}
+                s => parts.push(s),
+            }
+        }
+        let resolved = parts.join("/");
+        for index_name in &["index.ts", "index.tsx", "index.js", "index.jsx"] {
+            let candidate = format!("{}/{}", resolved, index_name);
+            if manifest.files.contains_key(&candidate) {
+                return Some(candidate);
+            }
+        }
+        return None;
+    }
+    // Domain-qualified paths: Go module paths (github.com/...) and Rust crate:: paths.
+    // dep_matches has suffix-matching fallback for these. Plain external packages like
+    // "anyhow" or "fmt" (no "/" or "::") are left as external.
+    if dep.contains('/') || dep.contains("::") {
+        return manifest
+            .files
+            .keys()
+            .find(|path| dep_matches(dep, path, source_file))
+            .cloned();
+    }
+    // Dotted module path: Python absolute self-imports (e.g. `agno.models.message`).
+    // Replace dots with slashes and suffix-match against manifest file stems.
+    if dep.contains('.') {
+        let path_stem = dep.replace('.', "/");
+        for candidate in [
+            format!("{}.py", path_stem),
+            format!("{}/__init__.py", path_stem),
+            path_stem.clone(),
+        ] {
+            if manifest.files.contains_key(&candidate) {
+                return Some(candidate);
+            }
+        }
+        return manifest
+            .files
+            .keys()
+            .find(|path| {
+                let stem = path.rsplit_once('.').map(|(s, _)| s).unwrap_or(path);
+                let effective = stem.strip_suffix("/__init__").unwrap_or(stem);
+                effective == path_stem.as_str() || effective.ends_with(&format!("/{}", path_stem))
+            })
+            .cloned();
+    }
+    None
+}
+
+/// Build the reverse dependency index from a fully-loaded manifest.
+///
+/// Maps each file to the set of files that directly import it. Built once at
+/// manifest load time so downstream lookups are O(1) instead of O(N × D).
+///
+/// Mirrors the logic of `dependency_graph()` downstream detection exactly:
+/// - `entry.dependencies` resolved via `dep_targets_file`-equivalent logic
+/// - `entry.imports` resolved via `dotted_dep_matches`
+pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<String>> {
+    let mut rev: HashMap<String, Vec<String>> = HashMap::new();
+
+    for (source, entry) in &manifest.files {
+        for dep in &entry.dependencies {
+            if dep.starts_with("./") || dep.starts_with("../") {
+                // Relative: try_resolve_local_dep gives the single canonical target
+                if let Some(target) = try_resolve_local_dep(dep, source, manifest) {
+                    rev.entry(target).or_default().push(source.clone());
+                }
+            } else {
+                // Non-relative: mirror dep_matches + python_dep_matches (same as dep_targets_file)
+                for target in manifest.files.keys() {
+                    if dep_matches(dep, target, source) || python_dep_matches(dep, target, source) {
+                        rev.entry(target.clone()).or_default().push(source.clone());
+                    }
+                }
+            }
+        }
+
+        for imp in &entry.imports {
+            // Dotted dep matches (Python absolute style), same check as downstream filter
+            for target in manifest.files.keys() {
+                if dotted_dep_matches(imp, target) {
+                    rev.entry(target.clone()).or_default().push(source.clone());
+                }
+            }
+        }
+    }
+
+    for v in rev.values_mut() {
+        v.sort();
+        v.dedup();
+    }
+    rev
 }
 
 /// Check if a dependency path from `dependent_file` resolves to `target_file`.
