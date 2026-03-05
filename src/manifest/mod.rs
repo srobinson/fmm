@@ -867,6 +867,173 @@ modified: 2026-01-30"#;
         assert_eq!(manifest.file_count(), 1);
     }
 
+    // --- export_all / build_glossary / find_dependents tests ---
+
+    #[test]
+    fn export_all_tracks_all_definitions_including_duplicates() {
+        let mut manifest = Manifest::new();
+
+        let meta_a = Metadata {
+            exports: vec![entry("Config", 1, 10)],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 20,
+        };
+        let meta_b = Metadata {
+            exports: vec![entry("Config", 5, 15)],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 30,
+        };
+
+        manifest.add_file("src/config/types.rs", meta_a);
+        manifest.add_file("src/config/defaults.rs", meta_b);
+
+        // export_index last-writer-wins
+        assert_eq!(
+            manifest.export_index.get("Config"),
+            Some(&"src/config/defaults.rs".to_string())
+        );
+        // export_all has both
+        let all = manifest.export_all.get("Config").unwrap();
+        assert_eq!(all.len(), 2);
+        let files: Vec<&str> = all.iter().map(|l| l.file.as_str()).collect();
+        assert!(files.contains(&"src/config/types.rs"));
+        assert!(files.contains(&"src/config/defaults.rs"));
+    }
+
+    #[test]
+    fn build_glossary_returns_alphabetically_sorted_entries() {
+        let mut manifest = Manifest::new();
+        for (name, file) in [
+            ("zebra", "z.ts"),
+            ("alpha", "a.ts"),
+            ("Config", "c.ts"),
+            ("beta", "b.ts"),
+        ] {
+            manifest.add_file(
+                file,
+                Metadata {
+                    exports: vec![entry(name, 1, 5)],
+                    imports: vec![],
+                    dependencies: vec![],
+                    loc: 10,
+                },
+            );
+        }
+
+        let entries = manifest.build_glossary("a");
+        // "alpha" matches; "zebra" matches (contains "a"); "beta" matches; "Config" does not
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        // Sorted case-insensitively
+        assert!(names.windows(2).all(|w| w[0].to_lowercase() <= w[1].to_lowercase()));
+        assert!(names.contains(&"alpha"));
+        assert!(names.contains(&"zebra"));
+        assert!(names.contains(&"beta"));
+        assert!(!names.contains(&"Config"));
+    }
+
+    #[test]
+    fn build_glossary_case_insensitive_pattern() {
+        let mut manifest = Manifest::new();
+        manifest.add_file(
+            "src/config.ts",
+            Metadata {
+                exports: vec![entry("AppConfig", 1, 5), entry("loadConfig", 7, 12)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 20,
+            },
+        );
+
+        let entries = manifest.build_glossary("CONFIG");
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"AppConfig"));
+        assert!(names.contains(&"loadConfig"));
+    }
+
+    #[test]
+    fn find_dependents_uses_dep_matches() {
+        let mut manifest = Manifest::new();
+        manifest.add_file(
+            "src/config.ts",
+            Metadata {
+                exports: vec![entry("Config", 1, 5)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 10,
+            },
+        );
+        manifest.add_file(
+            "src/app.ts",
+            Metadata {
+                exports: vec![entry("App", 1, 10)],
+                imports: vec![],
+                dependencies: vec!["./config".to_string()],
+                loc: 20,
+            },
+        );
+        manifest.add_file(
+            "src/other.ts",
+            Metadata {
+                exports: vec![entry("Other", 1, 5)],
+                imports: vec![],
+                dependencies: vec!["./utils".to_string()],
+                loc: 5,
+            },
+        );
+
+        let deps = manifest.find_dependents("src/config.ts");
+        assert_eq!(deps, vec!["src/app.ts"]);
+    }
+
+    #[test]
+    fn export_all_remove_file_cleans_up() {
+        let mut manifest = Manifest::new();
+
+        manifest.add_file(
+            "src/a.ts",
+            Metadata {
+                exports: vec![entry("Foo", 1, 5)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 10,
+            },
+        );
+        manifest.add_file(
+            "src/b.ts",
+            Metadata {
+                exports: vec![entry("Foo", 1, 5)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 10,
+            },
+        );
+
+        assert_eq!(manifest.export_all.get("Foo").unwrap().len(), 2);
+
+        manifest.remove_file("src/a.ts");
+        let remaining = manifest.export_all.get("Foo").unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].file, "src/b.ts");
+    }
+
+    #[test]
+    fn export_all_remove_last_entry_cleans_key() {
+        let mut manifest = Manifest::new();
+        manifest.add_file(
+            "src/only.ts",
+            Metadata {
+                exports: vec![entry("Unique", 1, 5)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 10,
+            },
+        );
+        manifest.remove_file("src/only.ts");
+        assert!(!manifest.export_all.contains_key("Unique"));
+    }
+
     #[test]
     fn dep_matches_relative_path() {
         // dep "./types" from "src/index.ts" resolves to "src/types"
