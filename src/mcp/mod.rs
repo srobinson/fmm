@@ -309,20 +309,6 @@ impl McpServer {
                 }),
             },
             Tool {
-                name: "fmm_file_info".to_string(),
-                description: "[Alias for fmm_file_outline — prefer that tool] Get a file's structural profile from the index: exports, imports, dependencies, LOC.".to_string(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "file": {
-                            "type": "string",
-                            "description": "File path to inspect — returns exports, imports, dependencies, LOC without reading source"
-                        }
-                    },
-                    "required": ["file"]
-                }),
-            },
-            Tool {
                 name: "fmm_dependency_graph".to_string(),
                 description: "Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius. Add depth>1 for transitive traversal; depth=-1 for full closure.".to_string(),
                 input_schema: json!({
@@ -360,7 +346,7 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_file_outline".to_string(),
-                description: "Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. This is the canonical tool — fmm_file_info is an alias.".to_string(),
+                description: "Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -485,7 +471,6 @@ impl McpServer {
             // Original tools
             "fmm_lookup_export" => self.tool_lookup_export(&arguments),
             "fmm_list_exports" => self.tool_list_exports(&arguments),
-            "fmm_file_info" => self.tool_file_info(&arguments),
             "fmm_dependency_graph" => self.tool_dependency_graph(&arguments),
             "fmm_search" => self.tool_search(&arguments),
             "fmm_read_symbol" => self.tool_read_symbol(&arguments),
@@ -495,7 +480,7 @@ impl McpServer {
             // Legacy aliases
             "fmm_find_export" => self.tool_lookup_export(&arguments),
             "fmm_find_symbol" => self.tool_lookup_export(&arguments),
-            "fmm_file_metadata" => self.tool_file_info(&arguments),
+            "fmm_file_metadata" => self.tool_file_outline(&arguments),
             "fmm_analyze_dependencies" => self.tool_dependency_graph(&arguments),
             _ => Err(format!("Unknown tool: {}", tool_name)),
         };
@@ -649,10 +634,6 @@ impl McpServer {
     }
 
     /// Alias for tool_file_outline — delegates entirely for backwards compatibility.
-    fn tool_file_info(&self, args: &Value) -> Result<String, String> {
-        self.tool_file_outline(args)
-    }
-
     fn tool_dependency_graph(&self, args: &Value) -> Result<String, String> {
         let manifest = self.require_manifest()?;
 
@@ -1082,7 +1063,7 @@ mod tests {
             root: std::path::PathBuf::from("/tmp"),
         };
         let result = server
-            .call_tool("fmm_file_info", serde_json::json!({"file": "src/cli/"}))
+            .call_tool("fmm_file_outline", serde_json::json!({"file": "src/cli/"}))
             .unwrap();
         let text = result["content"][0]["text"].as_str().unwrap_or("");
         assert!(
