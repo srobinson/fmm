@@ -19,6 +19,7 @@ This codebase has FMM metadata available via MCP tools. Use them for instant, st
 | `mcp__fmm__fmm_dependency_graph` | "Deps and blast radius for this file" | `fmm_dependency_graph(file: "src/core/index.ts")` |
 | `mcp__fmm__fmm_file_info` | "Quick file summary" | `fmm_file_info(file: "src/utils/helpers.ts")` |
 | `mcp__fmm__fmm_search` | Multi-criteria search with relevance ranking | `fmm_search(imports: "lodash", min_loc: 100)` |
+| `mcp__fmm__fmm_glossary` | Symbol-level blast radius — who imports this symbol? | `fmm_glossary(pattern: "run_dispatch")` |
 
 ## Navigation Protocol
 
@@ -59,6 +60,15 @@ Re-export chains are resolved automatically: if `X` is re-exported via `__init__
 3. Use this to decide WHAT to read before reading anything
 ```
 
+### "What would break if I rename/change X?"
+
+```
+1. Call mcp__fmm__fmm_glossary(pattern: "X")
+2. Returns all definitions of X + exact files that import each one — DONE
+```
+
+More surgical than fmm_dependency_graph: file-level blast radius tells you which files are affected; glossary tells you which specific callers import that symbol.
+
 ### "What files depend on this file?" / "What does this file import?"
 
 ```
@@ -90,6 +100,7 @@ Re-export chains are resolved automatically: if `X` is re-exported via `__init__
 | Impact analysis | `fmm_dependency_graph` | local_deps, external packages, downstream dependents |
 | Quick file summary | `fmm_file_info` | Exports/imports/LOC without reading |
 | Complex queries | `fmm_search` | Combine filters with relevance ranking (imports X, size > N) |
+| Refactor/rename a symbol | `fmm_glossary` | Symbol-level used_by — exact files importing that symbol |
 
 ## When to Fall Back to Grep/Read
 
