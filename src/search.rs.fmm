@@ -1,6 +1,6 @@
 ---
 file: src/search.rs
-fmm: v0.3+0.1.11
+fmm: v0.3+0.1.12
 exports:
   ExportHit: [16, 20]
   ImportHit: [23, 26]

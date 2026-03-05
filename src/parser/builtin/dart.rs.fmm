@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/dart.rs
-fmm: v0.3+0.1.11
+fmm: v0.3+0.1.12
 exports:
   DartParser: [6, 8]
   new: [11, 18]

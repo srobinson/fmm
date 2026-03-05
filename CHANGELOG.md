@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.12](https://github.com/srobinson/fmm/compare/v0.1.11...v0.1.12) (2026-03-05)
+
+
+### Features
+
+* field report MCP hardening, dependency graph, and parser improvements ([#50](https://github.com/srobinson/fmm/issues/50)) ([18001ff](https://github.com/srobinson/fmm/commit/18001ffa27fd9b02536410c09346493d6a4185ca))
+* support decorated Python definitions and add --force generate flag ([52e5309](https://github.com/srobinson/fmm/commit/52e5309702452d3fb071206eecd3805747da103e))
+
 ## [0.1.11](https://github.com/srobinson/fmm/compare/v0.1.10...v0.1.11) (2026-03-04)
 
 

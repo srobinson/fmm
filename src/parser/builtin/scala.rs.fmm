@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/scala.rs
-fmm: v0.3+0.1.11
+fmm: v0.3+0.1.12
 exports:
   ScalaParser: [6, 8]
   new: [11, 19]

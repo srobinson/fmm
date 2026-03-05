@@ -1,6 +1,6 @@
 ---
 file: src/format.rs
-fmm: v0.3+0.1.11
+fmm: v0.3+0.1.12
 exports:
   format_file_info: [15, 24]
   format_file_outline: [27, 53]
