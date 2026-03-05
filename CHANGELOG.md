@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.24](https://github.com/srobinson/fmm/compare/v0.1.23...v0.1.24) (2026-03-05)
+
+
+### Features
+
+* **cli:** full CLI parity with MCP — lookup, read, deps, outline, ls, exports ([#75](https://github.com/srobinson/fmm/issues/75)) ([70d21d9](https://github.com/srobinson/fmm/commit/70d21d9435f5f8f3038ea8350fdd5bfcaccef6a0))
+
 ## [0.1.23](https://github.com/srobinson/fmm/compare/v0.1.22...v0.1.23) (2026-03-05)
 
 
