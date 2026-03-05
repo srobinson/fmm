@@ -1,6 +1,6 @@
 ---
 file: fixtures/typescript/decorators.ts
-fmm: v0.3+0.1.21
+fmm: v0.3+0.1.23
 exports:
   UserService: [1, 6]
   UserController: [8, 15]

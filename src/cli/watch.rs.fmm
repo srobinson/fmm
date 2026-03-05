@@ -1,6 +1,6 @@
 ---
 file: src/cli/watch.rs
-fmm: v0.3+0.1.21
+fmm: v0.3+0.1.23
 exports:
   watch: [16, 80]
 imports: [anyhow, colored, notify, notify_debouncer_full, std]

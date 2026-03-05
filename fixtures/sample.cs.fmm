@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.cs
-fmm: v0.3+0.1.21
+fmm: v0.3+0.1.23
 exports:
   DataService: [8, 29]
   Transform: [18, 22]

@@ -239,6 +239,10 @@ pub fn deps(file: &str, depth: i32, json_output: bool) -> Result<()> {
         return Ok(());
     }
 
+    if depth != -1 && depth < 1 {
+        anyhow::bail!("--depth must be >= 1 or -1 (full closure). Got {}.", depth);
+    }
+
     if file.ends_with('/') || root.join(file).is_dir() {
         anyhow::bail!(
             "'{}' is a directory. Use {} to list files.",

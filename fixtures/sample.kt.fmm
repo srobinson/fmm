@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.kt
-fmm: v0.3+0.1.21
+fmm: v0.3+0.1.23
 exports:
   NetworkManager: [15, 21]
   BaseRepository: [23, 25]

@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/php.rs
-fmm: v0.3+0.1.21
+fmm: v0.3+0.1.23
 exports:
   PhpParser: [8, 21]
 methods:
