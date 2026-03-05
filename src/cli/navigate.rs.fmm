@@ -1,0 +1,16 @@
+---
+file: src/cli/navigate.rs
+fmm: v0.3+0.1.22
+exports:
+  lookup: [82, 127]
+  read_symbol: [131, 230]
+  deps: [234, 327]
+  outline: [331, 383]
+  ls: [387, 474]
+  exports: [478, 606]
+imports: [anyhow, colored]
+dependencies: ['crate::manifest']
+loc: 606
+modified: 2026-03-05
+rust:
+  derives: ['serde::Serialize']
