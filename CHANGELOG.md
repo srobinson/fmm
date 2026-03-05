@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.20](https://github.com/srobinson/fmm/compare/v0.1.19...v0.1.20) (2026-03-05)
+
+
+### Bug Fixes
+
+* parser import classification — ghost entries and missing local deps (ALP-792) ([#66](https://github.com/srobinson/fmm/issues/66)) ([5e524ec](https://github.com/srobinson/fmm/commit/5e524ecd3430e910dc2f8f0e315a6fde9079d8af))
+
 ## [0.1.19](https://github.com/srobinson/fmm/compare/v0.1.18...v0.1.19) (2026-03-05)
 
 
