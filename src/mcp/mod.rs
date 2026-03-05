@@ -28,11 +28,7 @@ struct LookupExportArgs {
 struct ListExportsArgs {
     pattern: Option<String>,
     file: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct FileInfoArgs {
-    file: String,
+    directory: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -65,6 +61,8 @@ struct FileOutlineArgs {
 struct ListFilesArgs {
     directory: Option<String>,
     pattern: Option<String>,
+    limit: Option<usize>,
+    offset: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -280,7 +278,7 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_list_exports".to_string(),
-                description: "Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Use 'file' to list a specific file's exports.".to_string(),
+                description: "Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Use 'directory' to scope results to a path prefix (e.g. 'packages/core/'). Use 'file' to list a specific file's exports.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -291,13 +289,17 @@ impl McpServer {
                         "file": {
                             "type": "string",
                             "description": "File path — returns all exports from this specific file"
+                        },
+                        "directory": {
+                            "type": "string",
+                            "description": "Path prefix to scope results (e.g. 'packages/core/'). Only exports from files under this directory are returned."
                         }
                     }
                 }),
             },
             Tool {
                 name: "fmm_file_info".to_string(),
-                description: "Get a file's structural profile from the index: exports, imports, dependencies, LOC. Same data as the file's .fmm sidecar, but from the pre-built index.".to_string(),
+                description: "[Alias for fmm_file_outline — prefer that tool] Get a file's structural profile from the index: exports, imports, dependencies, LOC.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -339,7 +341,7 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_file_outline".to_string(),
-                description: "Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols.".to_string(),
+                description: "Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. This is the canonical tool — fmm_file_info is an alias.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -390,7 +392,7 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_list_files".to_string(),
-                description: "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC and export count sorted alphabetically.".to_string(),
+                description: "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC and export count sorted alphabetically. Default limit: 200. Use offset to page through large directories.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -401,6 +403,14 @@ impl McpServer {
                         "pattern": {
                             "type": "string",
                             "description": "Glob pattern to filter by filename within the directory (e.g. '*.py', '*.rs', 'test_*'). Supports * wildcard."
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of files to return (default: 200). Increase for broader listings."
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Number of files to skip before returning results (default: 0). Use for pagination: offset=200 returns files 201–400."
                         }
                     }
                 }),
@@ -529,6 +539,8 @@ impl McpServer {
         let args: ListExportsArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
+        let dir = args.directory.as_deref();
+
         if let Some(ref file_path) = args.file {
             let entry = manifest
                 .files
@@ -540,7 +552,14 @@ impl McpServer {
             let mut matches: Vec<(String, String, Option<[usize; 2]>)> = manifest
                 .export_index
                 .iter()
-                .filter(|(name, _)| name.to_lowercase().contains(&pat_lower))
+                .filter(|(name, path)| {
+                    if let Some(d) = dir {
+                        if !path.starts_with(d) {
+                            return false;
+                        }
+                    }
+                    name.to_lowercase().contains(&pat_lower)
+                })
                 .map(|(name, path)| {
                     let lines = manifest
                         .export_locations
@@ -556,7 +575,14 @@ impl McpServer {
             let mut by_file: Vec<(&str, &crate::manifest::FileEntry)> = manifest
                 .files
                 .iter()
-                .filter(|(_, entry)| !entry.exports.is_empty())
+                .filter(|(path, entry)| {
+                    if let Some(d) = dir {
+                        if !path.starts_with(d) {
+                            return false;
+                        }
+                    }
+                    !entry.exports.is_empty()
+                })
                 .map(|(path, entry)| (path.as_str(), entry))
                 .collect();
             by_file.sort_by_key(|(path, _)| path.to_lowercase());
@@ -564,22 +590,9 @@ impl McpServer {
         }
     }
 
+    /// Alias for tool_file_outline — delegates entirely for backwards compatibility.
     fn tool_file_info(&self, args: &Value) -> Result<String, String> {
-        let manifest = self.require_manifest()?;
-
-        let args: FileInfoArgs =
-            serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
-
-        validate_not_directory(&args.file, &self.root)?;
-
-        let entry = manifest.files.get(&args.file).ok_or_else(|| {
-            format!(
-                "File '{}' not found in manifest. Run 'fmm generate' to index the file.",
-                args.file
-            )
-        })?;
-
-        Ok(crate::format::format_file_info(&args.file, entry))
+        self.tool_file_outline(args)
     }
 
     fn tool_dependency_graph(&self, args: &Value) -> Result<String, String> {
@@ -693,6 +706,8 @@ impl McpServer {
     }
 
     fn tool_list_files(&self, args: &Value) -> Result<String, String> {
+        const DEFAULT_LIMIT: usize = 200;
+
         let manifest = self.require_manifest()?;
 
         let args: ListFilesArgs =
@@ -700,6 +715,8 @@ impl McpServer {
 
         let dir = args.directory.as_deref();
         let pat = args.pattern.as_deref();
+        let limit = args.limit.unwrap_or(DEFAULT_LIMIT);
+        let offset = args.offset.unwrap_or(0);
 
         let mut entries: Vec<(&str, usize, usize)> = manifest
             .files
@@ -723,7 +740,11 @@ impl McpServer {
 
         entries.sort_by_key(|(path, _, _)| path.to_lowercase());
 
-        Ok(crate::format::format_list_files(dir, &entries))
+        let total = entries.len();
+        let page: Vec<(&str, usize, usize)> =
+            entries.into_iter().skip(offset).take(limit).collect();
+
+        Ok(crate::format::format_list_files(dir, &page, total, offset))
     }
 
     fn tool_search(&self, args: &Value) -> Result<String, String> {
@@ -1201,5 +1222,99 @@ mod tests {
         assert!(text.contains("total: 1"), "got: {}", text);
         assert!(text.contains("src/cli/mod.rs"));
         assert!(!text.contains("src/mcp/mod.rs"));
+    }
+
+    #[test]
+    fn list_files_tool_pagination_limit_and_offset() {
+        use crate::manifest::Manifest;
+        use crate::parser::{ExportEntry, Metadata};
+
+        let mut manifest = Manifest::new();
+        for i in 1..=5 {
+            manifest.add_file(
+                &format!("src/mod{i}.rs"),
+                Metadata {
+                    exports: vec![ExportEntry::new(format!("Item{i}"), 1, 5)],
+                    imports: vec![],
+                    dependencies: vec![],
+                    loc: 10,
+                },
+            );
+        }
+
+        let server = McpServer {
+            manifest: Some(manifest),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+
+        // First page: limit=2, offset=0 — should show src/mod1.rs and src/mod2.rs
+        let result = server
+            .call_tool(
+                "fmm_list_files",
+                serde_json::json!({"limit": 2, "offset": 0}),
+            )
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("total: 5"), "total wrong; got: {}", text);
+        assert!(
+            text.contains("showing: 1-2 of 5"),
+            "pagination header wrong; got: {}",
+            text
+        );
+        assert!(
+            text.contains("offset=2"),
+            "next-page hint missing; got: {}",
+            text
+        );
+        assert!(text.contains("src/mod1.rs"));
+        assert!(text.contains("src/mod2.rs"));
+        assert!(!text.contains("src/mod3.rs"));
+
+        // Second page: limit=2, offset=2 — should show src/mod3.rs and src/mod4.rs
+        let result2 = server
+            .call_tool(
+                "fmm_list_files",
+                serde_json::json!({"limit": 2, "offset": 2}),
+            )
+            .unwrap();
+        let text2 = result2["content"][0]["text"].as_str().unwrap();
+        assert!(text2.contains("total: 5"), "got: {}", text2);
+        assert!(text2.contains("src/mod3.rs"));
+        assert!(text2.contains("src/mod4.rs"));
+        assert!(!text2.contains("src/mod1.rs"));
+
+        // Last page: offset=4, limit=2 — only src/mod5.rs, no "next" hint
+        let result3 = server
+            .call_tool(
+                "fmm_list_files",
+                serde_json::json!({"limit": 2, "offset": 4}),
+            )
+            .unwrap();
+        let text3 = result3["content"][0]["text"].as_str().unwrap();
+        assert!(text3.contains("src/mod5.rs"));
+        assert!(
+            !text3.contains("offset=6"),
+            "should not show next hint on last page; got: {}",
+            text3
+        );
+
+        // Out-of-bounds offset: should return empty files but NOT a bad "showing: N+1-N of M" line
+        let result_oob = server
+            .call_tool(
+                "fmm_list_files",
+                serde_json::json!({"limit": 2, "offset": 1000}),
+            )
+            .unwrap();
+        let text_oob = result_oob["content"][0]["text"].as_str().unwrap();
+        assert!(
+            text_oob.contains("total: 5"),
+            "total should still appear; got: {}",
+            text_oob
+        );
+        assert!(
+            !text_oob.contains("showing:"),
+            "showing line must not appear for out-of-bounds offset; got: {}",
+            text_oob
+        );
     }
 }

@@ -196,11 +196,13 @@ fn file_outline_shows_all_exports() {
 }
 
 // ---------------------------------------------------------------------------
-// fmm_file_info
+// fmm_file_info (alias for fmm_file_outline)
 // ---------------------------------------------------------------------------
 
 #[test]
-fn file_info_returns_sidecar_yaml() {
+fn file_info_delegates_to_file_outline() {
+    // fmm_file_info is now an alias for fmm_file_outline — both must return
+    // the same outline format (symbols: key, not exports:).
     let (_tmp, server) = setup_mcp_server();
     let text = call_tool_text(
         &server,
@@ -210,12 +212,27 @@ fn file_info_returns_sidecar_yaml() {
 
     assert!(text.starts_with("---"));
     assert!(text.contains("file: src/auth/session.ts"));
-    assert!(text.contains("exports:"));
-    assert!(text.contains("  createSession: [6, 8]"));
-    assert!(text.contains("  validateSession: [10, 12]"));
+    // outline format uses "symbols:" not "exports:"
+    assert!(
+        text.contains("symbols:"),
+        "expected symbols: key; got: {text}"
+    );
+    assert!(text.contains("createSession:"));
+    assert!(text.contains("validateSession:"));
     assert!(text.contains("imports: [jwt, redis]"));
     assert!(text.contains("dependencies: [./types, ../config]"));
     assert!(text.contains("loc: 12"));
+
+    // Verify it returns identical output to fmm_file_outline
+    let outline_text = call_tool_text(
+        &server,
+        "fmm_file_outline",
+        json!({"file": "src/auth/session.ts"}),
+    );
+    assert_eq!(
+        text, outline_text,
+        "fmm_file_info and fmm_file_outline must return identical output"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -288,6 +305,41 @@ fn list_exports_all() {
     assert!(text.contains("---"));
     assert!(text.contains("file:"));
     assert!(text.contains("exports:"));
+}
+
+#[test]
+fn list_exports_directory_filter_pattern() {
+    let (_tmp, server) = setup_mcp_server();
+    // Scoped to src/auth/ — should only return session.ts and types.ts exports
+    let text = call_tool_text(
+        &server,
+        "fmm_list_exports",
+        json!({"pattern": "session", "directory": "src/auth/"}),
+    );
+    assert!(
+        text.contains("createSession"),
+        "createSession should appear; got: {text}"
+    );
+    // Pool is outside src/auth/ — should not appear
+    assert!(
+        !text.contains("Pool"),
+        "Pool (from src/db/) should not appear with directory=src/auth/; got: {text}"
+    );
+}
+
+#[test]
+fn list_exports_directory_filter_all() {
+    let (_tmp, server) = setup_mcp_server();
+    // Scoped to src/db/ — only pool.ts should appear
+    let text = call_tool_text(&server, "fmm_list_exports", json!({"directory": "src/db/"}));
+    assert!(
+        text.contains("Pool"),
+        "Pool should appear under src/db/; got: {text}"
+    );
+    assert!(
+        !text.contains("createSession"),
+        "createSession (from src/auth/) should not appear; got: {text}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -462,6 +514,35 @@ fn search_depends_on_filter() {
 
     assert!(text.contains("src/auth/session.ts"));
     assert!(text.contains("src/db/pool.ts"));
+}
+
+/// Regression test for ALP-758: depends_on with a full manifest path (src/config.ts) was
+/// returning empty because the filter used a naive substring match on raw relative-path
+/// dependency strings like "../config". dep_matches() must be used to resolve correctly.
+#[test]
+fn search_depends_on_full_manifest_path() {
+    let (_tmp, server) = setup_mcp_server();
+    // Pass the full manifest-relative path, not just a fragment.
+    // "../config" (in session.ts) and "../config" (in pool.ts) must both resolve to src/config.ts.
+    let text = call_tool_text(
+        &server,
+        "fmm_search",
+        json!({"depends_on": "src/config.ts"}),
+    );
+
+    assert!(
+        text.contains("src/auth/session.ts"),
+        "session.ts should appear; got: {text}"
+    );
+    assert!(
+        text.contains("src/db/pool.ts"),
+        "pool.ts should appear; got: {text}"
+    );
+    // config.ts itself has no dependency on config.ts — it should not appear
+    assert!(
+        !text.contains("src/config.ts\n") && !text.contains("src/config.ts "),
+        "config.ts should not appear as a dependent of itself; got: {text}"
+    );
 }
 
 #[test]

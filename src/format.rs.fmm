@@ -10,10 +10,10 @@ exports:
   format_list_exports_pattern: [127, 150]
   format_list_exports_file: [153, 159]
   format_list_exports_all: [162, 178]
-  format_list_files: [186, 208]
-  format_bare_search: [217, 298]
-  format_filter_search: [301, 324]
-  format_glossary: [365, 395]
+  format_list_files: [190, 225]
+  format_bare_search: [234, 315]
+  format_filter_search: [318, 341]
+  format_glossary: [382, 412]
 dependencies: ['crate::formatter::yaml_escape', 'crate::manifest', 'crate::search']
-loc: 410
+loc: 427
 modified: 2026-03-05

@@ -19,14 +19,14 @@ exports:
   GlossaryMode: [397, 405]
   GlossaryEntry: [409, 412]
   GlossarySource: [417, 421]
-  build_glossary: [459, 494]
-  find_dependents: [498, 518]
-  dep_matches: [524, 591]
-  python_dep_matches: [624, 637]
-  dotted_dep_matches: [645, 658]
+  build_glossary: [466, 513]
+  find_dependents: [517, 537]
+  dep_matches: [543, 610]
+  python_dep_matches: [643, 656]
+  dotted_dep_matches: [664, 677]
 imports: [anyhow, chrono, ignore, serde, std]
 dependencies: ['crate::parser']
-loc: 1297
+loc: 1350
 modified: 2026-03-05
 rust:
   derives: [Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize]

@@ -103,9 +103,10 @@ fn run() -> anyhow::Result<()> {
             imports,
             loc,
             depends_on,
+            dir,
             json,
         } => {
-            cli::search(term, export, imports, loc, depends_on, json)?;
+            cli::search(term, export, imports, loc, depends_on, dir, json)?;
         }
         Commands::Glossary {
             pattern,

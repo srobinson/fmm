@@ -219,15 +219,25 @@ pub fn filter_search(manifest: &Manifest, filters: &SearchFilters) -> Vec<FileSe
         }
     }
 
-    // Search by depends_on
+    // Search by depends_on — use the same resolution logic as dependency_graph's downstream
+    // computation so that relative paths (./ ../), extension variants (.ts/.js), Python
+    // dot-imports and Go/Rust module paths all resolve correctly.
+    //
+    // Full manifest paths (e.g. "src/config.ts") are resolved via dep_matches so that
+    // a dep string like "../config" correctly maps to "src/config.ts".
+    // Short fragments (e.g. "config") are also matched via substring fallback so that
+    // callers can pass a bare name without knowing the full path.
     if let Some(ref dep_path) = filters.depends_on {
         for (file_path, entry) in &manifest.files {
-            if entry
-                .dependencies
+            let matches = entry.dependencies.iter().any(|d| {
+                dep_matches(d, dep_path, file_path)
+                    || python_dep_matches(d, dep_path, file_path)
+                    || d.contains(dep_path.as_str())
+            }) || entry
+                .imports
                 .iter()
-                .any(|d| d.contains(dep_path.as_str()))
-                && !file_set.iter().any(|(f, _)| *f == file_path)
-            {
+                .any(|i| dotted_dep_matches(i, dep_path));
+            if matches && !file_set.iter().any(|(f, _)| *f == file_path) {
                 file_set.push((file_path, entry));
             }
         }
