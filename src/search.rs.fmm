@@ -13,11 +13,12 @@ exports:
   export_match_score: [148, 177]
   filter_search: [180, 267]
   find_export_matches: [270, 297]
-  dependency_graph: [304, 338]
-  python_dep_matches: [414, 427]
+  dependency_graph: [304, 350]
+  python_dep_matches: [452, 465]
+  dotted_dep_matches: [473, 486]
 imports: [std]
 dependencies: ['crate::manifest', 'crate::mcp::dep_matches']
-loc: 693
+loc: 876
 modified: 2026-03-05
 rust:
   lifetimes: ['''a']
