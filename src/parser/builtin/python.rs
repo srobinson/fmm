@@ -239,9 +239,9 @@ impl PythonParser {
             while let Some(m) = iter.next() {
                 for capture in m.captures {
                     if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                        let root_module = text.split('.').next().unwrap_or(text).to_string();
-                        if seen.insert(root_module.clone()) {
-                            imports.push(root_module);
+                        let full_module = text.to_string();
+                        if seen.insert(full_module.clone()) {
+                            imports.push(full_module);
                         }
                     }
                 }
@@ -255,9 +255,9 @@ impl PythonParser {
             for capture in m.captures {
                 if let Ok(text) = capture.node.utf8_text(source_bytes) {
                     if !text.starts_with('.') {
-                        let root_module = text.split('.').next().unwrap_or(text).to_string();
-                        if seen.insert(root_module.clone()) {
-                            imports.push(root_module);
+                        let full_module = text.to_string();
+                        if seen.insert(full_module.clone()) {
+                            imports.push(full_module);
                         }
                     }
                 }
@@ -571,6 +571,43 @@ def bare_func():
             .unwrap();
         assert_eq!(model.start_line, 6); // @dataclass line
         assert_eq!(model.end_line, 9);
+    }
+
+    #[test]
+    fn parse_python_dotted_imports_full_path() {
+        // `from agno.models.message import Message` should store "agno.models.message",
+        // not just the root "agno". Single-name imports are unaffected.
+        let mut parser = PythonParser::new().unwrap();
+        let source = "from agno.models.message import Message\nfrom agno.tools.function import Function\nimport os\n";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            result
+                .metadata
+                .imports
+                .contains(&"agno.models.message".to_string()),
+            "expected full dotted path, got: {:?}",
+            result.metadata.imports
+        );
+        assert!(
+            result
+                .metadata
+                .imports
+                .contains(&"agno.tools.function".to_string()),
+            "expected full dotted path, got: {:?}",
+            result.metadata.imports
+        );
+        // Single-name import unchanged
+        assert!(result.metadata.imports.contains(&"os".to_string()));
+        // Deduplicated: only one entry per unique dotted path
+        assert_eq!(
+            result
+                .metadata
+                .imports
+                .iter()
+                .filter(|i| i.as_str() == "agno.models.message")
+                .count(),
+            1
+        );
     }
 
     #[test]

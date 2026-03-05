@@ -318,6 +318,17 @@ pub fn dependency_graph<'a>(
             external.push(dep.clone());
         }
     }
+    // Also resolve absolute imports (e.g. Python `from agno.models.message import X`).
+    // Dotted paths that resolve to manifest files become local deps; others are external.
+    for imp in &entry.imports {
+        if let Some(resolved) = try_resolve_local_dep(imp, file, manifest) {
+            if !local.contains(&resolved) {
+                local.push(resolved);
+            }
+        } else if !external.contains(imp) {
+            external.push(imp.clone());
+        }
+    }
     local.sort();
     external.sort();
 
@@ -329,6 +340,7 @@ pub fn dependency_graph<'a>(
             e.dependencies
                 .iter()
                 .any(|d| dep_matches(d, file, path) || python_dep_matches(d, file, path))
+                || e.imports.iter().any(|i| dotted_dep_matches(i, file))
         })
         .map(|(path, _)| path)
         .collect();
@@ -373,6 +385,32 @@ fn try_resolve_local_dep(dep: &str, source_file: &str, manifest: &Manifest) -> O
             .files
             .keys()
             .find(|path| dep_matches(dep, path, source_file))
+            .cloned();
+    }
+    // Dotted module path: Python absolute self-imports (e.g. `agno.models.message`).
+    // Replace dots with slashes and suffix-match against manifest file stems.
+    if dep.contains('.') {
+        let path_stem = dep.replace('.', "/");
+        // Direct candidates first (project root or exact match)
+        for candidate in [
+            format!("{}.py", path_stem),
+            format!("{}/__init__.py", path_stem),
+            path_stem.clone(),
+        ] {
+            if manifest.files.contains_key(&candidate) {
+                return Some(candidate);
+            }
+        }
+        // Suffix match for src/ style layouts: `agno/models/message` matches
+        // `src/agno/models/message.py` or `lib/agno/models/message/__init__.py`.
+        return manifest
+            .files
+            .keys()
+            .find(|path| {
+                let stem = path.rsplit_once('.').map(|(s, _)| s).unwrap_or(path);
+                let effective = stem.strip_suffix("/__init__").unwrap_or(stem);
+                effective == path_stem.as_str() || effective.ends_with(&format!("/{}", path_stem))
+            })
             .cloned();
     }
     None
@@ -424,6 +462,27 @@ pub fn python_dep_matches(dep: &str, target_file: &str, dependent_file: &str) ->
     } else {
         false
     }
+}
+
+/// Match a Python absolute module import (`agno.models.message`) against a target
+/// file path. Used for downstream detection in `dependency_graph`.
+///
+/// Returns true when the dotted path resolves to the target file, considering
+/// both root-relative paths (`agno/models/message.py`) and src-layout paths
+/// (`src/agno/models/message.py`).
+pub fn dotted_dep_matches(dep: &str, target_file: &str) -> bool {
+    // Only handle dotted absolute imports — exclude relative (`.X`), paths (`/`), Rust (`::`)
+    if dep.starts_with('.') || dep.contains('/') || dep.contains("::") || !dep.contains('.') {
+        return false;
+    }
+    let path_stem = dep.replace('.', "/");
+    let target_stem = target_file
+        .rsplit_once('.')
+        .map(|(s, _)| s)
+        .unwrap_or(target_file);
+    // Handle packages: `agno.models` resolves to `agno/models/__init__.py`
+    let effective = target_stem.strip_suffix("/__init__").unwrap_or(target_stem);
+    effective == path_stem.as_str() || effective.ends_with(&format!("/{}", path_stem))
 }
 
 // ---------------------------------------------------------------------------
@@ -659,6 +718,130 @@ mod tests {
                 names
             );
         }
+    }
+
+    fn manifest_with_imports(files: Vec<(&str, Vec<&str>, Vec<&str>)>) -> Manifest {
+        let mut m = Manifest::new();
+        for (path, deps, imps) in files {
+            m.add_file(
+                path,
+                Metadata {
+                    exports: vec![ExportEntry::new(path.to_string(), 1, 1)],
+                    imports: imps.iter().map(|s| s.to_string()).collect(),
+                    dependencies: deps.iter().map(|s| s.to_string()).collect(),
+                    loc: 10,
+                },
+            );
+        }
+        m
+    }
+
+    #[test]
+    fn dotted_dep_matches_basic() {
+        assert!(dotted_dep_matches(
+            "agno.models.message",
+            "agno/models/message.py"
+        ));
+        assert!(dotted_dep_matches(
+            "agno.models.message",
+            "src/agno/models/message.py"
+        ));
+    }
+
+    #[test]
+    fn dotted_dep_matches_package_init() {
+        assert!(dotted_dep_matches("agno.models", "agno/models/__init__.py"));
+        assert!(dotted_dep_matches(
+            "agno.models",
+            "src/agno/models/__init__.py"
+        ));
+    }
+
+    #[test]
+    fn dotted_dep_matches_ignores_relative_and_paths() {
+        // Relative imports are NOT dotted_dep
+        assert!(!dotted_dep_matches("._run", "agno/agent/_run.py"));
+        assert!(!dotted_dep_matches("./utils", "utils.py"));
+        assert!(!dotted_dep_matches("os", "os.py")); // no dot
+        assert!(!dotted_dep_matches("crate::config", "src/config.rs")); // ::
+    }
+
+    #[test]
+    fn dependency_graph_resolves_dotted_absolute_imports() {
+        let manifest = manifest_with_imports(vec![
+            ("agno/models/message.py", vec![], vec![]),
+            ("agno/models/response.py", vec![], vec![]),
+            (
+                "agno/models/interfaces.py",
+                vec![],
+                vec!["agno.models.message", "agno.models.response", "typing"],
+            ),
+        ]);
+        let entry = manifest.files["agno/models/interfaces.py"].clone();
+
+        let (local, external, downstream) =
+            dependency_graph(&manifest, "agno/models/interfaces.py", &entry);
+
+        assert!(
+            local.contains(&"agno/models/message.py".to_string()),
+            "should resolve agno.models.message, got local: {:?}",
+            local
+        );
+        assert!(
+            local.contains(&"agno/models/response.py".to_string()),
+            "should resolve agno.models.response, got local: {:?}",
+            local
+        );
+        assert!(
+            external.contains(&"typing".to_string()),
+            "typing should stay external, got: {:?}",
+            external
+        );
+        assert!(downstream.is_empty(), "no downstream expected");
+    }
+
+    #[test]
+    fn dependency_graph_dotted_downstream_detection() {
+        let manifest = manifest_with_imports(vec![
+            ("agno/models/message.py", vec![], vec![]),
+            (
+                "agno/models/interfaces.py",
+                vec![],
+                vec!["agno.models.message"],
+            ),
+        ]);
+        let entry = manifest.files["agno/models/message.py"].clone();
+
+        let (_, _, downstream) = dependency_graph(&manifest, "agno/models/message.py", &entry);
+
+        assert!(
+            downstream.contains(&&"agno/models/interfaces.py".to_string()),
+            "interfaces.py should appear as downstream of message.py, got: {:?}",
+            downstream
+        );
+    }
+
+    #[test]
+    fn dependency_graph_dotted_src_layout() {
+        // Projects with src/ prefix: `from agno.models.message import X`
+        // should resolve to `src/agno/models/message.py`
+        let manifest = manifest_with_imports(vec![
+            ("src/agno/models/message.py", vec![], vec![]),
+            (
+                "src/agno/models/interfaces.py",
+                vec![],
+                vec!["agno.models.message"],
+            ),
+        ]);
+        let entry = manifest.files["src/agno/models/interfaces.py"].clone();
+
+        let (local, _, _) = dependency_graph(&manifest, "src/agno/models/interfaces.py", &entry);
+
+        assert!(
+            local.contains(&"src/agno/models/message.py".to_string()),
+            "src layout: should resolve agno.models.message → src/agno/models/message.py, got: {:?}",
+            local
+        );
     }
 
     #[test]
