@@ -60,6 +60,42 @@ fn setup_glossary_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     (tmp, server)
 }
 
+fn setup_glossary_server_with_tests() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path();
+
+    // Normal Python source file with a real export and a test function
+    write_sidecar(
+        root,
+        "src/agent.py",
+        "file: src/agent.py\nfmm: v0.3\nexports:\n  run_dispatch: [1, 50]\n  test_run_dispatch: [52, 80]\nimports: []\ndependencies: []\nloc: 80\n",
+    );
+
+    // Go test file (TestRunDispatch is a Go test)
+    write_sidecar(
+        root,
+        "agent_test.go",
+        "file: agent_test.go\nfmm: v0.3\nexports:\n  TestRunDispatch: [1, 20]\nimports: []\ndependencies: []\nloc: 20\n",
+    );
+
+    // tests/ directory export
+    write_sidecar(
+        root,
+        "tests/helpers.py",
+        "file: tests/helpers.py\nfmm: v0.3\nexports:\n  helper_fixture: [1, 10]\nimports: []\ndependencies: []\nloc: 10\n",
+    );
+
+    // __tests__/ directory export (JS)
+    write_sidecar(
+        root,
+        "__tests__/utils.ts",
+        "file: __tests__/utils.ts\nfmm: v0.3\nexports:\n  mockConfig: [1, 8]\nimports: []\ndependencies: []\nloc: 8\n",
+    );
+
+    let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
+    (tmp, server)
+}
+
 fn call_tool_text(server: &fmm::mcp::McpServer, tool: &str, args: serde_json::Value) -> String {
     let result = server.call_tool(tool, args).unwrap();
     result["content"][0]["text"].as_str().unwrap().to_string()
@@ -213,6 +249,114 @@ fn glossary_yaml_format_has_src_and_used_by_keys() {
     assert!(
         text.contains("used_by:"),
         "should have used_by: key, got: {}",
+        text
+    );
+}
+
+#[test]
+fn glossary_excludes_test_functions_by_default() {
+    let (_tmp, server) = setup_glossary_server_with_tests();
+    // Default call — include_tests not set (defaults to false)
+    let text = call_tool_text(&server, "fmm_glossary", json!({"pattern": "dispatch"}));
+    // Real export should appear
+    assert!(
+        text.contains("run_dispatch:"),
+        "run_dispatch should be included, got: {}",
+        text
+    );
+    // test_ prefixed name should be filtered out
+    assert!(
+        !text.contains("test_run_dispatch"),
+        "test_run_dispatch should be excluded by default, got: {}",
+        text
+    );
+}
+
+#[test]
+fn glossary_include_tests_true_shows_test_functions() {
+    let (_tmp, server) = setup_glossary_server_with_tests();
+    let text = call_tool_text(
+        &server,
+        "fmm_glossary",
+        json!({"pattern": "dispatch", "include_tests": true}),
+    );
+    assert!(
+        text.contains("run_dispatch:"),
+        "run_dispatch should be included, got: {}",
+        text
+    );
+    assert!(
+        text.contains("test_run_dispatch:"),
+        "test_run_dispatch should be included with include_tests=true, got: {}",
+        text
+    );
+}
+
+#[test]
+fn glossary_excludes_test_directory_exports_by_default() {
+    let (_tmp, server) = setup_glossary_server_with_tests();
+    // helper_fixture is in tests/ dir; mockConfig is in __tests__/ dir
+    let text = call_tool_text(&server, "fmm_glossary", json!({"pattern": "helper"}));
+    assert!(
+        text.contains("(no matching exports)"),
+        "tests/ exports should be excluded by default, got: {}",
+        text
+    );
+
+    let text2 = call_tool_text(&server, "fmm_glossary", json!({"pattern": "mock"}));
+    assert!(
+        text2.contains("(no matching exports)"),
+        "__tests__/ exports should be excluded by default, got: {}",
+        text2
+    );
+}
+
+#[test]
+fn glossary_include_tests_true_shows_test_directory_exports() {
+    let (_tmp, server) = setup_glossary_server_with_tests();
+    let text = call_tool_text(
+        &server,
+        "fmm_glossary",
+        json!({"pattern": "helper", "include_tests": true}),
+    );
+    assert!(
+        text.contains("helper_fixture:"),
+        "helper_fixture should appear with include_tests=true, got: {}",
+        text
+    );
+}
+
+#[test]
+fn glossary_excludes_go_test_prefix_by_default() {
+    let (_tmp, server) = setup_glossary_server_with_tests();
+    // TestRunDispatch is in agent_test.go AND has a Test prefix
+    let text = call_tool_text(&server, "fmm_glossary", json!({"pattern": "RunDispatch"}));
+    assert!(
+        text.contains("(no matching exports)"),
+        "TestRunDispatch should be excluded by default, got: {}",
+        text
+    );
+}
+
+#[test]
+fn glossary_default_limit_is_ten() {
+    // Build a fixture with 11 distinct exports all matching "item"
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path();
+    for i in 1..=11 {
+        let filename = format!("src/mod{i}.ts");
+        let export = format!("item{i}");
+        let content = format!(
+            "file: {filename}\nfmm: v0.3\nexports:\n  {export}: [1, 5]\nimports: []\ndependencies: []\nloc: 5\n"
+        );
+        write_sidecar(root, &filename, &content);
+    }
+    let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
+    let text = call_tool_text(&server, "fmm_glossary", json!({"pattern": "item"}));
+    // 11 matches, default limit 10 → truncation notice
+    assert!(
+        text.contains("showing 10/11 matches"),
+        "default limit should be 10, got: {}",
         text
     );
 }

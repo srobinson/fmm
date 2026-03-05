@@ -3,7 +3,7 @@ use colored::Colorize;
 
 use crate::manifest::Manifest;
 
-pub fn glossary(pattern: Option<String>, json_output: bool) -> Result<()> {
+pub fn glossary(pattern: Option<String>, include_tests: bool, json_output: bool) -> Result<()> {
     let pattern = pattern.as_deref().unwrap_or("").trim().to_string();
     if pattern.is_empty() {
         anyhow::bail!(
@@ -23,7 +23,7 @@ pub fn glossary(pattern: Option<String>, json_output: bool) -> Result<()> {
         return Ok(());
     }
 
-    let entries = manifest.build_glossary(&pattern);
+    let entries = manifest.build_glossary(&pattern, include_tests);
 
     if json_output {
         let json = serde_json::to_string_pretty(&entries)?;

@@ -71,6 +71,7 @@ struct ListFilesArgs {
 struct GlossaryArgs {
     pattern: Option<String>,
     limit: Option<usize>,
+    include_tests: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -416,7 +417,11 @@ impl McpServer {
                         },
                         "limit": {
                             "type": "integer",
-                            "description": "Max entries returned (default 20, hard cap at 50)."
+                            "description": "Max entries returned (default 10, hard cap at 50). Use a specific pattern to stay under the default."
+                        },
+                        "include_tests": {
+                            "type": "boolean",
+                            "description": "Include test functions and test-file exports (default false). By default, symbols starting with test_/Test and exports from tests/ or __tests__/ directories are excluded."
                         }
                     },
                     "required": ["pattern"]
@@ -759,11 +764,12 @@ impl McpServer {
             );
         }
 
-        const DEFAULT_LIMIT: usize = 20;
+        const DEFAULT_LIMIT: usize = 10;
         const HARD_CAP: usize = 50;
         let limit = args.limit.unwrap_or(DEFAULT_LIMIT).min(HARD_CAP);
+        let include_tests = args.include_tests.unwrap_or(false);
 
-        let all_entries = manifest.build_glossary(pattern);
+        let all_entries = manifest.build_glossary(pattern, include_tests);
         let total_matched = all_entries.len();
         let entries: Vec<_> = all_entries.into_iter().take(limit).collect();
 

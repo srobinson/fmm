@@ -408,19 +408,51 @@ pub struct GlossarySource {
     pub used_by: Vec<String>,
 }
 
+/// Returns true if an export should be classified as a test artifact.
+///
+/// Checks symbol name conventions and file path conventions:
+/// - Symbol starts with `test_` (Python) or `Test` (Go)
+/// - File is under a test directory: `tests/`, `test/`, `__tests__/`
+/// - File matches test file patterns: `_test.go`, `test_*.py`, `*_test.py`
+fn is_test_export(name: &str, file: &str) -> bool {
+    if name.starts_with("test_") || name.starts_with("Test") {
+        return true;
+    }
+    let filename = file.rsplit('/').next().unwrap_or(file);
+    if filename.ends_with("_test.go") {
+        return true;
+    }
+    if filename.ends_with(".py")
+        && (filename.starts_with("test_") || filename.ends_with("_test.py"))
+    {
+        return true;
+    }
+    file.starts_with("tests/")
+        || file.starts_with("test/")
+        || file.starts_with("__tests__/")
+        || file.contains("/tests/")
+        || file.contains("/test/")
+        || file.contains("/__tests__/")
+}
+
 impl Manifest {
     /// Build the glossary: for each export name matching `pattern` (case-insensitive
     /// substring), collect all definitions and their dependents.
     /// Returns entries sorted alphabetically by name (case-insensitive).
-    pub fn build_glossary(&self, pattern: &str) -> Vec<GlossaryEntry> {
+    ///
+    /// When `include_tests` is false (default), exports are filtered out where the
+    /// symbol name follows test conventions (`test_`, `Test`) or the source file is
+    /// under a test directory (`tests/`, `test/`, `__tests__/`, `_test.go`, etc.).
+    pub fn build_glossary(&self, pattern: &str, include_tests: bool) -> Vec<GlossaryEntry> {
         let pat_lower = pattern.to_lowercase();
         let mut entries: Vec<GlossaryEntry> = self
             .export_all
             .iter()
             .filter(|(name, _)| name.to_lowercase().contains(&pat_lower))
-            .map(|(name, locations)| {
-                let sources = locations
+            .filter_map(|(name, locations)| {
+                let sources: Vec<GlossarySource> = locations
                     .iter()
+                    .filter(|loc| include_tests || !is_test_export(name, &loc.file))
                     .map(|loc| {
                         let used_by = self.find_dependents(&loc.file);
                         GlossarySource {
@@ -430,9 +462,13 @@ impl Manifest {
                         }
                     })
                     .collect();
-                GlossaryEntry {
-                    name: name.clone(),
-                    sources,
+                if sources.is_empty() {
+                    None
+                } else {
+                    Some(GlossaryEntry {
+                        name: name.clone(),
+                        sources,
+                    })
                 }
             })
             .collect();
@@ -922,7 +958,7 @@ modified: 2026-01-30"#;
             );
         }
 
-        let entries = manifest.build_glossary("a");
+        let entries = manifest.build_glossary("a", true);
         // "alpha" matches; "zebra" matches (contains "a"); "beta" matches; "Config" does not
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
         // Sorted case-insensitively
@@ -948,10 +984,93 @@ modified: 2026-01-30"#;
             },
         );
 
-        let entries = manifest.build_glossary("CONFIG");
+        let entries = manifest.build_glossary("CONFIG", true);
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
         assert!(names.contains(&"AppConfig"));
         assert!(names.contains(&"loadConfig"));
+    }
+
+    #[test]
+    fn build_glossary_filters_test_exports_by_default() {
+        let mut manifest = Manifest::new();
+        // Normal export alongside a test function in the same file
+        manifest.add_file(
+            "src/agent.py",
+            Metadata {
+                exports: vec![entry("run_dispatch", 1, 50), entry("test_run_dispatch", 51, 80)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 80,
+            },
+        );
+        // Go test function (Test prefix) in a _test.go file
+        manifest.add_file(
+            "agent_test.go",
+            Metadata {
+                exports: vec![entry("TestRunDispatch", 1, 20)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 20,
+            },
+        );
+        // Export under tests/ directory
+        manifest.add_file(
+            "tests/helpers.py",
+            Metadata {
+                exports: vec![entry("helper_fixture", 1, 10)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 10,
+            },
+        );
+
+        // Default: include_tests=false — test artifacts excluded
+        let entries = manifest.build_glossary("", false);
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(
+            names.contains(&"run_dispatch"),
+            "normal export should be included"
+        );
+        assert!(
+            !names.contains(&"test_run_dispatch"),
+            "test_ prefix should be excluded"
+        );
+        assert!(
+            !names.contains(&"TestRunDispatch"),
+            "Test prefix should be excluded"
+        );
+        assert!(
+            !names.contains(&"helper_fixture"),
+            "tests/ dir export should be excluded"
+        );
+
+        // With include_tests=true — all exports returned
+        let entries_all = manifest.build_glossary("", true);
+        let names_all: Vec<&str> = entries_all.iter().map(|e| e.name.as_str()).collect();
+        assert!(names_all.contains(&"test_run_dispatch"));
+        assert!(names_all.contains(&"TestRunDispatch"));
+        assert!(names_all.contains(&"helper_fixture"));
+    }
+
+    #[test]
+    fn is_test_export_covers_all_conventions() {
+        // Symbol name prefix
+        assert!(is_test_export("test_foo", "src/agent.py"));
+        assert!(is_test_export("TestFoo", "agent.go"));
+        assert!(!is_test_export("Config", "src/config.ts"));
+        // Go test file
+        assert!(is_test_export("anything", "agent_test.go"));
+        assert!(!is_test_export("anything", "agent.go"));
+        // Python test files
+        assert!(is_test_export("foo", "test_agent.py"));
+        assert!(is_test_export("foo", "agent_test.py"));
+        assert!(!is_test_export("foo", "agent.py"));
+        // Test directories
+        assert!(is_test_export("foo", "tests/helpers.py"));
+        assert!(is_test_export("foo", "test/fixtures.ts"));
+        assert!(is_test_export("foo", "__tests__/utils.ts"));
+        assert!(is_test_export("foo", "src/tests/helpers.py"));
+        assert!(!is_test_export("foo", "src/config.ts"));
     }
 
     #[test]

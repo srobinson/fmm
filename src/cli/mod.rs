@@ -422,6 +422,10 @@ pub enum Commands {
         #[arg(value_name = "PATTERN")]
         pattern: Option<String>,
 
+        /// Include test functions and exports from test directories
+        #[arg(long = "include-tests")]
+        include_tests: bool,
+
         /// Output as JSON
         #[arg(short = 'j', long = "json")]
         json: bool,
