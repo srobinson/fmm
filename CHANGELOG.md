@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.16](https://github.com/srobinson/fmm/compare/v0.1.15...v0.1.16) (2026-03-05)
+
+
+### Features
+
+* Rust parser production readiness — pub use, macro_export, wildcard deps (ALP-773) ([#58](https://github.com/srobinson/fmm/issues/58)) ([7598ddb](https://github.com/srobinson/fmm/commit/7598ddb3612661dc55774573d3bc41de310683fa))
+
 ## [0.1.15](https://github.com/srobinson/fmm/compare/v0.1.14...v0.1.15) (2026-03-05)
 
 
