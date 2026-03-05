@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.19](https://github.com/srobinson/fmm/compare/v0.1.18...v0.1.19) (2026-03-05)
+
+
+### Features
+
+* MCP tool improvements — pagination, truncate, transitive graph, call-site precision, combined filters (ALP-791) ([#64](https://github.com/srobinson/fmm/issues/64)) ([acf53e0](https://github.com/srobinson/fmm/commit/acf53e0d9429fcfeefda100b9caaa481113ac43b))
+
 ## [0.1.18](https://github.com/srobinson/fmm/compare/v0.1.17...v0.1.18) (2026-03-05)
 
 
