@@ -5,8 +5,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use crate::manifest::{ExportLocation, FileEntry, Manifest};
-use crate::mcp::dep_matches;
+use crate::manifest::{dep_matches, ExportLocation, FileEntry, Manifest};
 
 // ---------------------------------------------------------------------------
 // Result types
