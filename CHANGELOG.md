@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.15](https://github.com/srobinson/fmm/compare/v0.1.14...v0.1.15) (2026-03-05)
+
+
+### Features
+
+* TypeScript parser hardening and tool improvements (ALP-748) ([#56](https://github.com/srobinson/fmm/issues/56)) ([31904f3](https://github.com/srobinson/fmm/commit/31904f365bccd60c7799e9628757f4e2f892c456))
+
 ## [0.1.14](https://github.com/srobinson/fmm/compare/v0.1.13...v0.1.14) (2026-03-05)
 
 
