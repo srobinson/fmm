@@ -85,7 +85,7 @@ pub fn search(
 // -- Bare search --
 
 fn bare_search(manifest: &Manifest, term: &str, json_output: bool) -> Result<()> {
-    let result = crate::search::bare_search(manifest, term);
+    let result = crate::search::bare_search(manifest, term, None);
 
     if json_output {
         let json = BareSearchJson {
@@ -425,7 +425,7 @@ mod tests {
     #[test]
     fn bare_search_produces_grouped_text() {
         let m = test_manifest();
-        let result = crate::search::bare_search(&m, "store");
+        let result = crate::search::bare_search(&m, "store", None);
         let text = crate::format::format_bare_search(&result, false);
         assert!(text.contains("EXPORTS"));
         assert!(text.contains("createStore"));

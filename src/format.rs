@@ -213,6 +213,7 @@ pub fn format_list_files(directory: Option<&str>, files: &[(&str, usize, usize)]
 
 /// Format bare search result as CLI grouped text.
 /// When `colored` is true, uses ANSI escape codes (for terminal).
+/// Shows a truncation notice if results were capped by the limit.
 pub fn format_bare_search(result: &BareSearchResult, colored: bool) -> String {
     let mut sections = Vec::new();
 
@@ -282,6 +283,15 @@ pub fn format_bare_search(result: &BareSearchResult, colored: bool) -> String {
             lines.push(format!("  {}  ({})", hit.package, file_list.join(", ")));
         }
         sections.push(lines.join("\n"));
+    }
+
+    // Truncation notice if fuzzy results were capped
+    if let Some(total_fuzzy) = result.total_exports {
+        sections.push(format!(
+            "[{} fuzzy matches — showing top {} by relevance. Use a more specific term or set limit.]",
+            total_fuzzy,
+            result.exports.len(),
+        ));
     }
 
     sections.join("\n\n")

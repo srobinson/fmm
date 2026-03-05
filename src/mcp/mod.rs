@@ -48,6 +48,7 @@ struct SearchArgs {
     depends_on: Option<String>,
     min_loc: Option<usize>,
     max_loc: Option<usize>,
+    limit: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -363,6 +364,10 @@ impl McpServer {
                         "max_loc": {
                             "type": "integer",
                             "description": "Maximum lines of code — find files smaller than this"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of fuzzy export results (default: 50). Increase for broader searches."
                         }
                     }
                 }),
@@ -681,7 +686,7 @@ impl McpServer {
 
         // Universal term search
         if let Some(ref term) = args.term {
-            let result = crate::search::bare_search(manifest, term);
+            let result = crate::search::bare_search(manifest, term, args.limit);
             return Ok(crate::format::format_bare_search(&result, false));
         }
 

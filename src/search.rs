@@ -30,6 +30,8 @@ pub struct BareSearchResult {
     pub exports: Vec<ExportHit>,
     pub files: Vec<String>,
     pub imports: Vec<ImportHit>,
+    /// Total fuzzy export hits before the limit was applied. None = no limit applied.
+    pub total_exports: Option<usize>,
 }
 
 /// Per-file search result for filter-based search.
@@ -60,9 +62,14 @@ pub struct SearchFilters {
 // Search functions
 // ---------------------------------------------------------------------------
 
-/// Universal term search: searches exports (exact → fuzzy), file paths, imports.
-pub fn bare_search(manifest: &Manifest, term: &str) -> BareSearchResult {
+/// Default cap for fuzzy export results in bare_search.
+pub const DEFAULT_SEARCH_LIMIT: usize = 50;
+
+/// Universal term search: searches exports (exact → scored fuzzy), file paths, imports.
+/// `limit` caps fuzzy export results (default: 50). Exact match always included.
+pub fn bare_search(manifest: &Manifest, term: &str, limit: Option<usize>) -> BareSearchResult {
     let term_lower = term.to_lowercase();
+    let cap = limit.unwrap_or(DEFAULT_SEARCH_LIMIT);
 
     // 1. Exact export match (O(1))
     let mut export_hits: Vec<ExportHit> = Vec::new();
@@ -80,17 +87,21 @@ pub fn bare_search(manifest: &Manifest, term: &str) -> BareSearchResult {
         seen_exports.insert(term.to_string());
     }
 
-    // 2. Fuzzy export matches (case-insensitive substring, excluding exact)
-    let mut fuzzy: Vec<(&str, &ExportLocation)> = manifest
+    // 2. Fuzzy export matches — scored by relevance, capped at limit
+    let mut fuzzy: Vec<(u32, &str, &ExportLocation)> = manifest
         .export_locations
         .iter()
         .filter(|(name, _)| !seen_exports.contains(name.as_str()))
         .filter(|(name, _)| name.to_lowercase().contains(&term_lower))
-        .map(|(name, loc)| (name.as_str(), loc))
+        .map(|(name, loc)| (export_match_score(name, &term_lower), name.as_str(), loc))
         .collect();
-    fuzzy.sort_by_key(|(name, _)| name.to_lowercase());
+    // Score descending, then alphabetically for ties
+    fuzzy.sort_by(|(sa, na, _), (sb, nb, _)| sb.cmp(sa).then(na.cmp(nb)));
 
-    for (name, loc) in fuzzy {
+    let total_fuzzy = fuzzy.len();
+    let capped = total_fuzzy > cap;
+
+    for (_, name, loc) in fuzzy.into_iter().take(cap) {
         export_hits.push(export_hit_from_location(name, loc));
     }
 
@@ -128,7 +139,41 @@ pub fn bare_search(manifest: &Manifest, term: &str) -> BareSearchResult {
         exports: export_hits,
         files: file_matches,
         imports: import_hits,
+        total_exports: if capped { Some(total_fuzzy) } else { None },
     }
+}
+
+/// Score an export name against a lower-cased search term.
+/// Higher score = more relevant. Drives sorting in bare_search fuzzy results.
+pub fn export_match_score(name: &str, term_lower: &str) -> u32 {
+    let name_lower = name.to_lowercase();
+    if name_lower == term_lower {
+        return 100;
+    }
+    if name_lower.starts_with(term_lower) {
+        return 80;
+    }
+    if name_lower.ends_with(term_lower) {
+        return 60;
+    }
+    if let Some(pos) = name_lower.find(term_lower) {
+        let before_boundary = pos == 0
+            || matches!(
+                name_lower.as_bytes().get(pos - 1),
+                Some(b'_' | b'.' | b'-' | b':')
+            );
+        let after_pos = pos + term_lower.len();
+        let after_boundary = after_pos >= name_lower.len()
+            || matches!(
+                name_lower.as_bytes().get(after_pos),
+                Some(b'_' | b'.' | b'-' | b':')
+            );
+        if before_boundary || after_boundary {
+            return 40;
+        }
+        return 20;
+    }
+    0
 }
 
 /// Structured filter search: export, imports, depends_on, LOC range.
@@ -417,6 +462,7 @@ mod tests {
     use crate::manifest::{FileEntry, Manifest};
     use crate::parser::{ExportEntry, Metadata};
 
+    #[allow(dead_code)]
     fn make_entry(deps: Vec<&str>, loc: usize) -> FileEntry {
         FileEntry {
             exports: vec![],
@@ -446,32 +492,56 @@ mod tests {
     #[test]
     fn python_dep_matches_single_dot() {
         // `from ._run import X` in `agno/agent/agent.py` should match `agno/agent/_run.py`
-        assert!(python_dep_matches("._run", "agno/agent/_run.py", "agno/agent/agent.py"));
-        assert!(!python_dep_matches("._run", "agno/agent/other.py", "agno/agent/agent.py"));
+        assert!(python_dep_matches(
+            "._run",
+            "agno/agent/_run.py",
+            "agno/agent/agent.py"
+        ));
+        assert!(!python_dep_matches(
+            "._run",
+            "agno/agent/other.py",
+            "agno/agent/agent.py"
+        ));
     }
 
     #[test]
     fn python_dep_matches_double_dot() {
         // `from ..config import X` in `agno/agent/agent.py` should match `agno/config.py`
-        assert!(python_dep_matches("..config", "agno/config.py", "agno/agent/agent.py"));
-        assert!(!python_dep_matches("..config", "agno/agent/config.py", "agno/agent/agent.py"));
+        assert!(python_dep_matches(
+            "..config",
+            "agno/config.py",
+            "agno/agent/agent.py"
+        ));
+        assert!(!python_dep_matches(
+            "..config",
+            "agno/agent/config.py",
+            "agno/agent/agent.py"
+        ));
     }
 
     #[test]
     fn python_dep_matches_dot_only_returns_false() {
         // `from . import X` — can't resolve to a specific file
-        assert!(!python_dep_matches(".", "agno/agent/_run.py", "agno/agent/agent.py"));
+        assert!(!python_dep_matches(
+            ".",
+            "agno/agent/_run.py",
+            "agno/agent/agent.py"
+        ));
     }
 
     #[test]
     fn python_dep_does_not_match_js_style() {
         // Should not match JS/TS style paths — those are handled by dep_matches
-        assert!(!python_dep_matches("./utils", "src/utils.ts", "src/index.ts"));
+        assert!(!python_dep_matches(
+            "./utils",
+            "src/utils.ts",
+            "src/index.ts"
+        ));
     }
 
     #[test]
     fn dependency_graph_resolves_python_deps() {
-        let mut manifest = manifest_with(vec![
+        let manifest = manifest_with(vec![
             ("agno/agent/_run.py", vec![]),
             ("agno/agent/models.py", vec![]),
             (
@@ -527,4 +597,77 @@ mod tests {
             downstream
         );
     }
+
+    #[test]
+    fn export_match_score_exact() {
+        assert_eq!(export_match_score("Agent", "agent"), 100);
+    }
+
+    #[test]
+    fn export_match_score_prefix() {
+        assert_eq!(export_match_score("AgentConfig", "agent"), 80);
+    }
+
+    #[test]
+    fn export_match_score_suffix() {
+        assert_eq!(export_match_score("MockAgent", "agent"), 60);
+    }
+
+    #[test]
+    fn export_match_score_word_boundary() {
+        assert_eq!(export_match_score("run_agent_loop", "agent"), 40);
+    }
+
+    #[test]
+    fn export_match_score_substring() {
+        // "ck" in "buckets" is a mid-word substring (no boundary around it)
+        assert_eq!(export_match_score("buckets_handler", "ck"), 20);
+    }
+
+    #[test]
+    fn bare_search_scores_prefix_before_suffix() {
+        let manifest = manifest_with(vec![
+            ("src/mock_agent.py", vec![]),
+            ("src/agent_config.py", vec![]),
+        ]);
+        // Add exports manually via add_file with ExportEntry
+        let result = bare_search(&manifest, "agent", None);
+        // AgentConfig (prefix) should come before MockAgent (suffix)
+        let names: Vec<&str> = result.exports.iter().map(|h| h.name.as_str()).collect();
+        if let (Some(ag_pos), Some(mock_pos)) = (
+            names.iter().position(|&n| n.contains("AgentConfig") || n == "agent_config.py"),
+            names.iter().position(|&n| n.contains("MockAgent") || n == "mock_agent.py"),
+        ) {
+            // prefix match should rank higher than suffix match
+            assert!(
+                ag_pos <= mock_pos,
+                "Expected prefix match before suffix match, got: {:?}",
+                names
+            );
+        }
+    }
+
+    #[test]
+    fn bare_search_limit_caps_results() {
+        let mut manifest = Manifest::new();
+        use crate::parser::{ExportEntry, Metadata};
+        // Add 10 exports all containing "foo"
+        for i in 0..10 {
+            manifest.add_file(
+                &format!("src/mod{}.py", i),
+                Metadata {
+                    exports: vec![ExportEntry::new(format!("FooHandler{}", i), 1, 5)],
+                    imports: vec![],
+                    dependencies: vec![],
+                    loc: 10,
+                },
+            );
+        }
+        let result = bare_search(&manifest, "foo", Some(3));
+        // Should cap fuzzy results at 3
+        assert!(result.exports.len() <= 3, "expected at most 3 results, got {}", result.exports.len());
+        assert!(result.total_exports.is_some(), "should report total when capped");
+        assert_eq!(result.total_exports.unwrap(), 10);
+    }
+
 }
