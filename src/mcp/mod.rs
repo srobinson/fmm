@@ -66,6 +66,8 @@ struct ListFilesArgs {
     pattern: Option<String>,
     limit: Option<usize>,
     offset: Option<usize>,
+    sort_by: Option<String>,
+    order: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -152,7 +154,7 @@ impl McpServer {
         let total_lines = text.lines().count();
         let shown_lines = result.lines().count();
         result.push_str(&format!(
-            "\n\n[Truncated — showing {}/{} lines. Use more specific filters.]",
+            "\n\n[Truncated — showing {}/{} lines. Use truncate: false to get the full source.]",
             shown_lines, total_lines
         ));
         result
@@ -309,20 +311,6 @@ impl McpServer {
                 }),
             },
             Tool {
-                name: "fmm_file_info".to_string(),
-                description: "[Alias for fmm_file_outline — prefer that tool] Get a file's structural profile from the index: exports, imports, dependencies, LOC.".to_string(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "file": {
-                            "type": "string",
-                            "description": "File path to inspect — returns exports, imports, dependencies, LOC without reading source"
-                        }
-                    },
-                    "required": ["file"]
-                }),
-            },
-            Tool {
                 name: "fmm_dependency_graph".to_string(),
                 description: "Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius. Add depth>1 for transitive traversal; depth=-1 for full closure.".to_string(),
                 input_schema: json!({
@@ -360,7 +348,7 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_file_outline".to_string(),
-                description: "Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. This is the canonical tool — fmm_file_info is an alias.".to_string(),
+                description: "Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -374,7 +362,7 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_search".to_string(),
-                description: "Universal codebase search. Use 'term' for smart search across exports, files, and imports. Use structured filters (export, imports, depends_on, LOC) for precise queries. Combine 'term' with filters to narrow results with AND semantics — only exports matching the term from files matching the filters are returned.".to_string(),
+                description: "Universal codebase search. Use 'term' for smart search across exports, files, and imports. Use structured filters (export, imports, depends_on, LOC) for precise queries. Combine 'term' with filters to narrow results with AND semantics — only exports matching the term from files matching the filters are returned. Note: depends_on uses transitive matching (full import chain), not direct-only. For direct importers only, use fmm_dependency_graph with depth=1.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -392,7 +380,7 @@ impl McpServer {
                         },
                         "depends_on": {
                             "type": "string",
-                            "description": "Find all files that depend on this local path — use for impact analysis"
+                            "description": "Find all files that transitively depend on this local path (full import chain, not just direct importers) — use for full blast radius before renaming. For direct-only importers, use fmm_dependency_graph with depth=1."
                         },
                         "min_loc": {
                             "type": "integer",
@@ -411,7 +399,7 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_list_files".to_string(),
-                description: "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC and export count sorted alphabetically. Default limit: 200. Use offset to page through large directories.".to_string(),
+                description: "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC and export count. Default sort: alphabetical by name. Use sort_by=loc or sort_by=exports (default desc) to find the heaviest files. Default limit: 200. Use offset to page through large directories.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -430,19 +418,29 @@ impl McpServer {
                         "offset": {
                             "type": "integer",
                             "description": "Number of files to skip before returning results (default: 0). Use for pagination: offset=200 returns files 201–400."
+                        },
+                        "sort_by": {
+                            "type": "string",
+                            "enum": ["name", "loc", "exports"],
+                            "description": "Sort field. 'name' (default): alphabetical. 'loc': lines of code. 'exports': export count. 'loc' and 'exports' default to descending order (largest first)."
+                        },
+                        "order": {
+                            "type": "string",
+                            "enum": ["asc", "desc"],
+                            "description": "Sort order. Defaults: 'name' → asc, 'loc'/'exports' → desc. Explicit 'asc'/'desc' overrides the default."
                         }
                     }
                 }),
             },
             Tool {
                 name: "fmm_glossary".to_string(),
-                description: "Symbol-level impact analysis. Given a symbol name or pattern, returns all definitions and exactly which files import each one. Use before renaming a function or changing a signature to get a precise blast radius — more surgical than fmm_dependency_graph which only gives file-level downstream.".to_string(),
+                description: "Symbol-level impact analysis. Given a symbol name or pattern, returns all definitions and exactly which files import each one. Two modes controlled by the pattern: bare name (e.g. 'loadInstance') returns file-level used_by — all files that import the symbol's file; dotted name (e.g. 'Injector.loadInstance') adds call-site precision — a second tree-sitter pass filters to files that actually call that method. Use before renaming or changing a signature to get a precise blast radius — more surgical than fmm_dependency_graph which only gives file-level downstream.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
                         "pattern": {
                             "type": "string",
-                            "description": "Required. Case-insensitive substring filter on export name. E.g. 'run_dispatch' finds exact match; 'config' finds Config, loadConfig, AppConfig."
+                            "description": "Required. Case-insensitive substring filter on export name. Bare name (e.g. 'loadInstance') → file-level used_by. Dotted name (e.g. 'Injector.loadInstance') → call-site precision, filtered to actual callers."
                         },
                         "limit": {
                             "type": "integer",
@@ -485,7 +483,6 @@ impl McpServer {
             // Original tools
             "fmm_lookup_export" => self.tool_lookup_export(&arguments),
             "fmm_list_exports" => self.tool_list_exports(&arguments),
-            "fmm_file_info" => self.tool_file_info(&arguments),
             "fmm_dependency_graph" => self.tool_dependency_graph(&arguments),
             "fmm_search" => self.tool_search(&arguments),
             "fmm_read_symbol" => self.tool_read_symbol(&arguments),
@@ -495,7 +492,7 @@ impl McpServer {
             // Legacy aliases
             "fmm_find_export" => self.tool_lookup_export(&arguments),
             "fmm_find_symbol" => self.tool_lookup_export(&arguments),
-            "fmm_file_metadata" => self.tool_file_info(&arguments),
+            "fmm_file_metadata" => self.tool_file_outline(&arguments),
             "fmm_analyze_dependencies" => self.tool_dependency_graph(&arguments),
             _ => Err(format!("Unknown tool: {}", tool_name)),
         };
@@ -649,10 +646,6 @@ impl McpServer {
     }
 
     /// Alias for tool_file_outline — delegates entirely for backwards compatibility.
-    fn tool_file_info(&self, args: &Value) -> Result<String, String> {
-        self.tool_file_outline(args)
-    }
-
     fn tool_dependency_graph(&self, args: &Value) -> Result<String, String> {
         let manifest = self.require_manifest()?;
 
@@ -801,6 +794,20 @@ impl McpServer {
         let pat = args.pattern.as_deref();
         let limit = args.limit.unwrap_or(DEFAULT_LIMIT);
         let offset = args.offset.unwrap_or(0);
+        let sort_by = args.sort_by.as_deref().unwrap_or("name");
+        let order = args.order.as_deref();
+
+        if !matches!(sort_by, "name" | "loc" | "exports") {
+            return Err(format!(
+                "Invalid sort_by '{}'. Valid values: name, loc, exports.",
+                sort_by
+            ));
+        }
+        if let Some(o) = order {
+            if !matches!(o, "asc" | "desc") {
+                return Err(format!("Invalid order '{}'. Valid values: asc, desc.", o));
+            }
+        }
 
         let mut entries: Vec<(&str, usize, usize)> = manifest
             .files
@@ -822,7 +829,36 @@ impl McpServer {
             .map(|(path, entry)| (path.as_str(), entry.loc, entry.exports.len()))
             .collect();
 
-        entries.sort_by_key(|(path, _, _)| path.to_lowercase());
+        // Smart defaults: loc/exports sort descending unless explicitly overridden.
+        // name sorts ascending by default.
+        let desc = match sort_by {
+            "loc" | "exports" => order != Some("asc"),
+            _ => order == Some("desc"),
+        };
+
+        match sort_by {
+            "loc" => {
+                if desc {
+                    entries.sort_by(|(_, a, _), (_, b, _)| b.cmp(a));
+                } else {
+                    entries.sort_by(|(_, a, _), (_, b, _)| a.cmp(b));
+                }
+            }
+            "exports" => {
+                if desc {
+                    entries.sort_by(|(_, _, a), (_, _, b)| b.cmp(a));
+                } else {
+                    entries.sort_by(|(_, _, a), (_, _, b)| a.cmp(b));
+                }
+            }
+            _ => {
+                if desc {
+                    entries.sort_by(|(a, _, _), (b, _, _)| b.to_lowercase().cmp(&a.to_lowercase()));
+                } else {
+                    entries.sort_by_key(|(path, _, _)| path.to_lowercase());
+                }
+            }
+        }
 
         let total = entries.len();
         let page: Vec<(&str, usize, usize)> =
@@ -1051,6 +1087,11 @@ mod tests {
         let result = McpServer::cap_response(text, true);
         assert!(result.is_char_boundary(result.len()));
         assert!(result.contains("[Truncated"));
+        assert!(
+            result.contains("truncate: false"),
+            "marker must reference truncate: false, got: {}",
+            result
+        );
     }
 
     #[test]
@@ -1082,7 +1123,7 @@ mod tests {
             root: std::path::PathBuf::from("/tmp"),
         };
         let result = server
-            .call_tool("fmm_file_info", serde_json::json!({"file": "src/cli/"}))
+            .call_tool("fmm_file_outline", serde_json::json!({"file": "src/cli/"}))
             .unwrap();
         let text = result["content"][0]["text"].as_str().unwrap_or("");
         assert!(
@@ -1551,6 +1592,179 @@ mod tests {
             !text_oob.contains("showing:"),
             "showing line must not appear for out-of-bounds offset; got: {}",
             text_oob
+        );
+    }
+
+    // --- ALP-803: fmm_list_files sort_by + order ---
+
+    fn list_files_sort_manifest() -> McpServer {
+        use crate::manifest::Manifest;
+        use crate::parser::{ExportEntry, Metadata};
+        let mut manifest = Manifest::new();
+        manifest.add_file(
+            "src/alpha.ts",
+            Metadata {
+                exports: vec![
+                    ExportEntry::new("A".to_string(), 1, 5),
+                    ExportEntry::new("B".to_string(), 6, 10),
+                ],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 100,
+            },
+        );
+        manifest.add_file(
+            "src/beta.ts",
+            Metadata {
+                exports: vec![ExportEntry::new("C".to_string(), 1, 5)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 30,
+            },
+        );
+        manifest.add_file(
+            "src/gamma.ts",
+            Metadata {
+                exports: vec![
+                    ExportEntry::new("D".to_string(), 1, 5),
+                    ExportEntry::new("E".to_string(), 6, 10),
+                    ExportEntry::new("F".to_string(), 11, 15),
+                ],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 60,
+            },
+        );
+        McpServer {
+            manifest: Some(manifest),
+            root: std::path::PathBuf::from("/tmp"),
+        }
+    }
+
+    fn list_files_order(server: &McpServer, args: serde_json::Value) -> Vec<String> {
+        let result = server.call_tool("fmm_list_files", args).unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap().to_string();
+        // Output format: "  - src/alpha.ts   # loc: 100, exports: 2"
+        text.lines()
+            .filter(|l| l.trim_start().starts_with("- "))
+            .map(|l| {
+                l.trim_start()
+                    .strip_prefix("- ")
+                    .unwrap_or("")
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .to_string()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn list_files_default_sort_is_alphabetical_asc() {
+        let server = list_files_sort_manifest();
+        let order = list_files_order(&server, serde_json::json!({}));
+        assert_eq!(
+            order,
+            vec!["src/alpha.ts", "src/beta.ts", "src/gamma.ts"],
+            "default sort should be alphabetical ascending, got: {:?}",
+            order
+        );
+    }
+
+    #[test]
+    fn list_files_sort_by_loc_defaults_to_desc() {
+        let server = list_files_sort_manifest();
+        let order = list_files_order(&server, serde_json::json!({"sort_by": "loc"}));
+        assert_eq!(
+            order,
+            vec!["src/alpha.ts", "src/gamma.ts", "src/beta.ts"],
+            "sort_by=loc should default to desc (largest first), got: {:?}",
+            order
+        );
+    }
+
+    #[test]
+    fn list_files_sort_by_loc_asc() {
+        let server = list_files_sort_manifest();
+        let order = list_files_order(
+            &server,
+            serde_json::json!({"sort_by": "loc", "order": "asc"}),
+        );
+        assert_eq!(
+            order,
+            vec!["src/beta.ts", "src/gamma.ts", "src/alpha.ts"],
+            "sort_by=loc order=asc should return smallest first, got: {:?}",
+            order
+        );
+    }
+
+    #[test]
+    fn list_files_sort_by_exports_defaults_to_desc() {
+        let server = list_files_sort_manifest();
+        let order = list_files_order(&server, serde_json::json!({"sort_by": "exports"}));
+        assert_eq!(
+            order,
+            vec!["src/gamma.ts", "src/alpha.ts", "src/beta.ts"],
+            "sort_by=exports should default to desc (most exports first), got: {:?}",
+            order
+        );
+    }
+
+    #[test]
+    fn list_files_sort_by_name_desc() {
+        let server = list_files_sort_manifest();
+        let order = list_files_order(
+            &server,
+            serde_json::json!({"sort_by": "name", "order": "desc"}),
+        );
+        assert_eq!(
+            order,
+            vec!["src/gamma.ts", "src/beta.ts", "src/alpha.ts"],
+            "sort_by=name order=desc should reverse alphabetical, got: {:?}",
+            order
+        );
+    }
+
+    #[test]
+    fn list_files_invalid_sort_by_returns_error() {
+        let server = list_files_sort_manifest();
+        let result = server.call_tool("fmm_list_files", serde_json::json!({"sort_by": "invalid"}));
+        let text = result.unwrap()["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(
+            text.starts_with("ERROR:"),
+            "invalid sort_by must return ERROR:, got: {}",
+            text
+        );
+        assert!(
+            text.contains("sort_by"),
+            "error message should mention sort_by, got: {}",
+            text
+        );
+    }
+
+    #[test]
+    fn list_files_invalid_order_returns_error() {
+        let server = list_files_sort_manifest();
+        let result = server.call_tool(
+            "fmm_list_files",
+            serde_json::json!({"sort_by": "loc", "order": "random"}),
+        );
+        let text = result.unwrap()["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(
+            text.starts_with("ERROR:"),
+            "invalid order must return ERROR:, got: {}",
+            text
+        );
+        assert!(
+            text.contains("order"),
+            "error message should mention order, got: {}",
+            text
         );
     }
 
