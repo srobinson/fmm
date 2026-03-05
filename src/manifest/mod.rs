@@ -997,7 +997,10 @@ modified: 2026-01-30"#;
         manifest.add_file(
             "src/agent.py",
             Metadata {
-                exports: vec![entry("run_dispatch", 1, 50), entry("test_run_dispatch", 51, 80)],
+                exports: vec![
+                    entry("run_dispatch", 1, 50),
+                    entry("test_run_dispatch", 51, 80),
+                ],
                 imports: vec![],
                 dependencies: vec![],
                 loc: 80,
