@@ -11,13 +11,13 @@ exports:
   DEFAULT_SEARCH_LIMIT: [67, 67]
   bare_search: [71, 145]
   export_match_score: [149, 178]
-  filter_search: [181, 278]
-  find_export_matches: [281, 308]
-  dependency_graph: [315, 369]
-  dependency_graph_transitive: [383, 506]
+  filter_search: [181, 276]
+  find_export_matches: [279, 306]
+  dependency_graph: [313, 367]
+  dependency_graph_transitive: [381, 506]
 imports: [std]
 dependencies: ['crate::manifest']
-loc: 1163
+loc: 1477
 modified: 2026-03-05
 rust:
   lifetimes: ['''a']
