@@ -384,8 +384,12 @@ impl Manifest {
 
     pub fn validate_file(&self, path: &str, current: &Metadata) -> bool {
         if let Some(entry) = self.files.get(path) {
-            let current_names: Vec<String> =
-                current.exports.iter().map(|e| e.name.clone()).collect();
+            let current_names: Vec<String> = current
+                .exports
+                .iter()
+                .filter(|e| e.parent_class.is_none())
+                .map(|e| e.name.clone())
+                .collect();
             entry.exports == current_names
                 && entry.imports == current.imports
                 && entry.dependencies == current.dependencies
@@ -1016,6 +1020,27 @@ modified: 2026-01-30"#;
             loc: 50,
         };
         assert!(!manifest.validate_file("file.ts", &different));
+    }
+
+    #[test]
+    fn validate_file_ignores_method_entries() {
+        let mut manifest = Manifest::new();
+
+        let metadata = Metadata {
+            exports: vec![
+                entry("MyClass", 1, 20),
+                ExportEntry::method("doThing".to_string(), 5, 10, "MyClass".to_string()),
+            ],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 20,
+        };
+
+        manifest.add_file("svc.ts", metadata.clone());
+        // Must return true — methods are not top-level exports and should not affect
+        // the comparison. Prior to the fix this would return false because method
+        // names leaked into current_names.
+        assert!(manifest.validate_file("svc.ts", &metadata));
     }
 
     #[test]
