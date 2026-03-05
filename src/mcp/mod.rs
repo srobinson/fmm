@@ -521,10 +521,14 @@ impl McpServer {
         let args: FileInfoArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
-        let entry = manifest
-            .files
-            .get(&args.file)
-            .ok_or_else(|| format!("File '{}' not found in manifest", args.file))?;
+        validate_not_directory(&args.file, &self.root)?;
+
+        let entry = manifest.files.get(&args.file).ok_or_else(|| {
+            format!(
+                "File '{}' not found in manifest. Run 'fmm generate' to index the file.",
+                args.file
+            )
+        })?;
 
         Ok(crate::format::format_file_info(&args.file, entry))
     }
@@ -535,10 +539,14 @@ impl McpServer {
         let args: DependencyGraphArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
-        let entry = manifest
-            .files
-            .get(&args.file)
-            .ok_or_else(|| format!("File '{}' not found in manifest", args.file))?;
+        validate_not_directory(&args.file, &self.root)?;
+
+        let entry = manifest.files.get(&args.file).ok_or_else(|| {
+            format!(
+                "File '{}' not found in manifest. Run 'fmm generate' to index the file.",
+                args.file
+            )
+        })?;
 
         let (upstream, downstream) = crate::search::dependency_graph(manifest, &args.file, entry);
 
@@ -556,10 +564,14 @@ impl McpServer {
         let args: ReadSymbolArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
+        if args.name.trim().is_empty() {
+            return Err("Symbol name must not be empty. Use fmm_list_exports to discover available symbols.".to_string());
+        }
+
         let location = manifest
             .export_locations
             .get(&args.name)
-            .ok_or_else(|| format!("Export '{}' not found", args.name))?;
+            .ok_or_else(|| format!("Export '{}' not found. Use fmm_list_exports or fmm_search to discover available symbols.", args.name))?;
 
         let lines = location.lines.as_ref().ok_or_else(|| {
             format!(
@@ -667,6 +679,25 @@ impl McpServer {
         let results = crate::search::filter_search(manifest, &filters);
         Ok(crate::format::format_filter_search(&results, false))
     }
+}
+
+/// Return an error if `path` looks like a directory (ends with `/` or resolves to a dir on disk).
+/// Provides a helpful message pointing to fmm_list_files.
+fn validate_not_directory(path: &str, root: &std::path::Path) -> Result<(), String> {
+    if path.ends_with('/') || path.ends_with(std::path::MAIN_SEPARATOR) {
+        return Err(format!(
+            "'{}' is a directory, not a file. Use fmm_list_files(directory: \"{}\") to list its contents.",
+            path, path
+        ));
+    }
+    let resolved = root.join(path);
+    if resolved.is_dir() {
+        return Err(format!(
+            "'{}' is a directory, not a file. Use fmm_list_files(directory: \"{}/\") to list its contents.",
+            path, path
+        ));
+    }
+    Ok(())
 }
 
 /// Match a glob pattern against a filename (last path component).
@@ -819,6 +850,54 @@ mod tests {
     }
 
     #[test]
+    fn file_info_directory_path_returns_helpful_error() {
+        use crate::manifest::Manifest;
+        let server = McpServer {
+            manifest: Some(Manifest::new()),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+        let result = server
+            .call_tool("fmm_file_info", serde_json::json!({"file": "src/cli/"}))
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(result["isError"].as_bool().unwrap_or(false), "expected isError");
+        assert!(text.contains("fmm_list_files"), "should suggest fmm_list_files, got: {}", text);
+    }
+
+    #[test]
+    fn dependency_graph_directory_path_returns_helpful_error() {
+        use crate::manifest::Manifest;
+        let server = McpServer {
+            manifest: Some(Manifest::new()),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+        let result = server
+            .call_tool(
+                "fmm_dependency_graph",
+                serde_json::json!({"file": "src/mcp/"}),
+            )
+            .unwrap();
+        assert!(result["isError"].as_bool().unwrap_or(false), "expected isError");
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("fmm_list_files"), "should suggest fmm_list_files, got: {}", text);
+    }
+
+    #[test]
+    fn read_symbol_empty_name_returns_helpful_error() {
+        use crate::manifest::Manifest;
+        let server = McpServer {
+            manifest: Some(Manifest::new()),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+        let result = server
+            .call_tool("fmm_read_symbol", serde_json::json!({"name": ""}))
+            .unwrap();
+        assert!(result["isError"].as_bool().unwrap_or(false), "expected isError");
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("fmm_list_exports"), "should suggest fmm_list_exports, got: {}", text);
+    }
+
+    #[test]
     fn glob_filename_matches_star_ext() {
         assert!(glob_filename_matches("*.py", "agent.py"));
         assert!(glob_filename_matches("*.rs", "mod.rs"));
@@ -847,7 +926,7 @@ mod tests {
 
     #[test]
     fn list_files_tool_no_args() {
-        use crate::manifest::{ExportLines, FileEntry, Manifest};
+        use crate::manifest::Manifest;
         use crate::parser::{ExportEntry, Metadata};
 
         let mut manifest = Manifest::new();
@@ -879,7 +958,11 @@ mod tests {
             .call_tool("fmm_list_files", serde_json::json!({}))
             .unwrap();
         let text = result["content"][0]["text"].as_str().unwrap();
-        assert!(text.contains("total: 2"), "expected total: 2, got: {}", text);
+        assert!(
+            text.contains("total: 2"),
+            "expected total: 2, got: {}",
+            text
+        );
         assert!(text.contains("src/a.rs"));
         assert!(text.contains("src/b.rs"));
     }
