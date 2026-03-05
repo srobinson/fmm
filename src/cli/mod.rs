@@ -59,7 +59,7 @@ const LONG_HELP: &str = cstr!(
 
 <bold><underline>MCP Tools</underline></bold> <dim>(via</dim> <bold>fmm mcp</bold><dim>)</dim>
   <bold>fmm_lookup_export</bold>    Find which file defines a symbol — O(1)
-  <bold>fmm_read_symbol</bold>      Extract exact source; follows re-export chains automatically
+  <bold>fmm_read_symbol</bold>      Extract exact source; use ClassName.method for public methods
   <bold>fmm_dependency_graph</bold>  local_deps, external packages, and downstream blast radius
   <bold>fmm_file_outline</bold>     Table of contents with line ranges
   <bold>fmm_list_exports</bold>     Search exports by pattern (fuzzy)
@@ -447,7 +447,7 @@ pub enum Commands {
         after_long_help = cstr!(
             r#"<bold><underline>Tools</underline></bold>
   <bold>fmm_lookup_export</bold>    Find which file defines a symbol — O(1)
-  <bold>fmm_read_symbol</bold>      Extract exact source; follows re-export chains automatically
+  <bold>fmm_read_symbol</bold>      Extract exact source; use ClassName.method for public methods
   <bold>fmm_dependency_graph</bold>  local_deps, external packages, and downstream blast radius
   <bold>fmm_file_outline</bold>     Table of contents with line ranges
   <bold>fmm_list_exports</bold>     Search exports by pattern (fuzzy)
