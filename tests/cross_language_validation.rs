@@ -1129,16 +1129,11 @@ public class UserController {
             .metadata
             .exports
             .iter()
-            .any(|e| e.parent_class.as_deref() == Some("UserController")
-                && e.name == "createUser"),
+            .any(|e| e.parent_class.as_deref() == Some("UserController") && e.name == "createUser"),
         "UserController.createUser should be a method entry"
     );
     assert!(
-        !result
-            .metadata
-            .exports
-            .iter()
-            .any(|e| e.name == "validate"),
+        !result.metadata.exports.iter().any(|e| e.name == "validate"),
         "private validate() should NOT be indexed at all"
     );
 

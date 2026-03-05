@@ -1,9 +1,10 @@
 ---
 file: src/parser/builtin/scala.rs
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 exports:
   ScalaParser: [6, 8]
-  new: [11, 19]
+methods:
+  ScalaParser.new: [11, 19]
 imports: [anyhow, std, tree_sitter]
 dependencies: ['crate::parser']
 loc: 452

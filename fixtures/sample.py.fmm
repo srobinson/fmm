@@ -1,12 +1,17 @@
 ---
 file: fixtures/sample.py
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 exports:
   MAX_RETRIES: [11, 11]
   ProcessConfig: [15, 19]
   DataProcessor: [22, 34]
   fetch_data: [37, 40]
   transform: [43, 45]
+methods:
+  ProcessConfig.__init__: [18, 19]
+  DataProcessor.validate: [25, 27]
+  DataProcessor.status: [29, 31]
+  DataProcessor.run: [33, 34]
 imports: [pandas, pathlib, requests]
 dependencies: [../models, ./utils]
 loc: 50

@@ -909,10 +909,7 @@ export const DEFAULT_PORT = 5432;
         assert_eq!(method.start_line, 2);
         // export_names() excludes methods
         assert!(!result.metadata.export_names().contains(&"bar".to_string()));
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"Foo".to_string()));
+        assert!(result.metadata.export_names().contains(&"Foo".to_string()));
     }
 
     #[test]
@@ -958,8 +955,7 @@ export const DEFAULT_PORT = 5432;
 
     #[test]
     fn class_method_line_range_correct() {
-        let source =
-            "export class Svc {\n  create() {\n    return 1;\n  }\n  destroy() {}\n}\n";
+        let source = "export class Svc {\n  create() {\n    return 1;\n  }\n  destroy() {}\n}\n";
         let result = parse(source);
         let create = result
             .metadata

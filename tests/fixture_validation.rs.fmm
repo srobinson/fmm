@@ -1,6 +1,6 @@
 ---
 file: tests/fixture_validation.rs
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 imports: [fmm]
-loc: 1402
+loc: 1415
 modified: 2026-03-05

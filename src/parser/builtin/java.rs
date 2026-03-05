@@ -110,6 +110,11 @@ impl JavaParser {
             let method_cap = m.captures.iter().find(|c| c.index == method_name_idx);
 
             if let (Some(class_name), Some(method_cap)) = (class_name, method_cap) {
+                // Skip methods from inner/private classes not in the exported set.
+                // At this point seen contains only top-level class/interface/enum names.
+                if !seen.contains(&class_name) {
+                    continue;
+                }
                 let method_node = method_cap.node;
                 if let Some(method_decl) = method_node.parent() {
                     if self.has_public_modifier(method_decl, source_bytes) {
@@ -302,6 +307,23 @@ public class UserService {
         assert!(
             !result.metadata.export_names().contains(&"bar".to_string()),
             "bar should NOT appear in flat export index"
+        );
+    }
+
+    #[test]
+    fn java_inner_class_methods_not_indexed() {
+        // The method_query matches all class_declaration nodes. Without the exported-class
+        // guard, methods from private/package-private inner classes would leak into the index.
+        let mut parser = JavaParser::new().unwrap();
+        let source = "public class Outer {\n    public void outerMethod() {}\n    private class Inner {\n        public void innerMethod() {}\n    }\n}\n";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            get_method(&result.metadata.exports, "Outer", "outerMethod").is_some(),
+            "Outer.outerMethod should be indexed"
+        );
+        assert!(
+            get_method(&result.metadata.exports, "Inner", "innerMethod").is_none(),
+            "Inner.innerMethod should NOT be indexed — Inner is not a top-level exported class"
         );
     }
 

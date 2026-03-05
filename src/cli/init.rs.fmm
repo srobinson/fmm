@@ -1,6 +1,6 @@
 ---
 file: src/cli/init.rs
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 exports:
   init: [14, 129]
   init_skill: [149, 175]

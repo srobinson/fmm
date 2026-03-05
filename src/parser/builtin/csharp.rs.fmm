@@ -1,9 +1,8 @@
 ---
 file: src/parser/builtin/csharp.rs
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 exports:
   CSharpParser: [9, 19]
-  new: [22, 70]
 imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: [../query_helpers/collect_matches, 'crate::parser']
 loc: 344

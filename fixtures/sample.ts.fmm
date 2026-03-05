@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.ts
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 exports:
   AppConfig: [6, 10]
   Handler: [12, 12]
@@ -8,6 +8,10 @@ exports:
   DEFAULT_PORT: [20, 20]
   AppService: [22, 36]
   createApp: [38, 40]
+methods:
+  AppService.constructor: [25, 27]
+  AppService.start: [29, 31]
+  AppService.stop: [33, 35]
 imports: [events, fs/promises]
 dependencies: [../config, ./helper]
 loc: 42

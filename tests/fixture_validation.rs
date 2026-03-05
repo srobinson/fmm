@@ -353,16 +353,15 @@ fn validate_java_fixture() {
     );
     // Methods must NOT appear in flat export_names()
     assert!(
-        !result.metadata.export_names().contains(&"process".to_string()),
+        !result
+            .metadata
+            .export_names()
+            .contains(&"process".to_string()),
         "process should NOT be in flat export_names()"
     );
 
     // Private methods should not be exported
-    assert!(!result
-        .metadata
-        .exports
-        .iter()
-        .any(|e| e.name == "validate"));
+    assert!(!result.metadata.exports.iter().any(|e| e.name == "validate"));
 
     // Imports
     assert!(result.metadata.imports.contains(&"java.util".to_string()));

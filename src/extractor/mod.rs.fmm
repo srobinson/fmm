@@ -1,14 +1,15 @@
 ---
 file: src/extractor/mod.rs
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 exports:
   FileProcessor: [17, 20]
   sidecar_path_for: [23, 27]
-  new: [30, 35]
-  process: [37, 67]
-  validate: [69, 82]
-  clean: [85, 93]
-  extract_metadata: [96, 100]
+methods:
+  FileProcessor.new: [30, 35]
+  FileProcessor.process: [37, 67]
+  FileProcessor.validate: [69, 82]
+  FileProcessor.clean: [85, 93]
+  FileProcessor.extract_metadata: [96, 100]
 imports: [anyhow, std]
 dependencies: ['crate::formatter', 'crate::parser']
 loc: 176

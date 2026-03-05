@@ -1,9 +1,10 @@
 ---
 file: src/parser/builtin/ruby.rs
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 exports:
   RubyParser: [8, 15]
-  new: [18, 54]
+methods:
+  RubyParser.new: [18, 54]
 imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: [../query_helpers, 'crate::parser']
 loc: 326

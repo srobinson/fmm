@@ -1,14 +1,15 @@
 ---
 file: fixtures/sample.java
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 exports:
   DataProcessor: [8, 39]
-  process: [16, 20]
-  transform: [22, 27]
-  toString: [35, 38]
   Repository: [41, 45]
   Status: [47, 52]
   ProcessConfig: [54, 57]
+methods:
+  DataProcessor.process: [16, 20]
+  DataProcessor.transform: [22, 27]
+  DataProcessor.toString: [35, 38]
 imports: [java.util, org.springframework]
 dependencies: [java.util.List, java.util.Map, java.util.Optional, org.springframework.stereotype.Service]
 loc: 57
