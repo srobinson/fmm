@@ -29,11 +29,14 @@ struct ListExportsArgs {
     pattern: Option<String>,
     file: Option<String>,
     directory: Option<String>,
+    limit: Option<usize>,
+    offset: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
 struct DependencyGraphArgs {
     file: String,
+    depth: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -135,8 +138,8 @@ impl McpServer {
     /// Large responses get truncated to disk by Claude, defeating the purpose.
     const MAX_RESPONSE_BYTES: usize = 10_240;
 
-    fn cap_response(text: String) -> String {
-        if text.len() <= Self::MAX_RESPONSE_BYTES {
+    fn cap_response(text: String, truncate: bool) -> String {
+        if !truncate || text.len() <= Self::MAX_RESPONSE_BYTES {
             return text;
         }
         // Find a valid UTF-8 boundary at or before MAX_RESPONSE_BYTES
@@ -278,7 +281,7 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_list_exports".to_string(),
-                description: "Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Use 'directory' to scope results to a path prefix (e.g. 'packages/core/'). Use 'file' to list a specific file's exports.".to_string(),
+                description: "Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Use 'directory' to scope results to a path prefix (e.g. 'packages/core/'). Use 'file' to list a specific file's exports. Default limit: 200. Use offset to page through large result sets.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -293,6 +296,14 @@ impl McpServer {
                         "directory": {
                             "type": "string",
                             "description": "Path prefix to scope results (e.g. 'packages/core/'). Only exports from files under this directory are returned."
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of results to return (default: 200). Increase for broader listings."
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Number of results to skip before returning (default: 0). Use for pagination: offset=200 returns results 201–400."
                         }
                     }
                 }),
@@ -313,13 +324,17 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_dependency_graph".to_string(),
-                description: "Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius.".to_string(),
+                description: "Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius. Add depth>1 for transitive traversal; depth=-1 for full closure.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
                         "file": {
                             "type": "string",
                             "description": "File path to analyze — returns all upstream dependencies and downstream dependents"
+                        },
+                        "depth": {
+                            "type": "integer",
+                            "description": "Traversal depth (default: 1 = direct deps only). depth=2 adds transitive deps. depth=-1 computes the full transitive closure. depth>1 returns flat lists with a depth annotation per entry."
                         }
                     },
                     "required": ["file"]
@@ -327,13 +342,17 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_read_symbol".to_string(),
-                description: "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Requires line-range data from v0.3 sidecars. Use `ClassName.method` notation to read a specific public method: `fmm_read_symbol(name: \"NestFactoryStatic.createApplicationContext\")`.".to_string(),
+                description: "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Requires line-range data from v0.3 sidecars. Use `ClassName.method` notation to read a specific public method: `fmm_read_symbol(name: \"NestFactoryStatic.createApplicationContext\")`. For large symbols (>10KB) use truncate: false to get the full source.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
                         "name": {
                             "type": "string",
                             "description": "Exact export name to read (function, class, type, component), or ClassName.method for a specific public method"
+                        },
+                        "truncate": {
+                            "type": "boolean",
+                            "description": "Whether to apply the 10KB response cap (default: true). Set to false to return the full source for large symbols that would otherwise be truncated."
                         }
                     },
                     "required": ["name"]
@@ -355,13 +374,13 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_search".to_string(),
-                description: "Universal codebase search. Use 'term' for smart search across exports, files, and imports (like 'fmm search <term>'). Use structured filters (export, imports, depends_on, LOC) for precise queries. Filters combine with AND logic.".to_string(),
+                description: "Universal codebase search. Use 'term' for smart search across exports, files, and imports. Use structured filters (export, imports, depends_on, LOC) for precise queries. Combine 'term' with filters to narrow results with AND semantics — only exports matching the term from files matching the filters are returned.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
                         "term": {
                             "type": "string",
-                            "description": "Universal search term — searches exports (exact then fuzzy), file paths, and imports. Returns grouped results. Use alone without other filters."
+                            "description": "Universal search term — searches exports (exact then fuzzy), file paths, and imports. Returns grouped results. Can be combined with structured filters to narrow results to matching files."
                         },
                         "export": {
                             "type": "string",
@@ -481,9 +500,19 @@ impl McpServer {
             _ => Err(format!("Unknown tool: {}", tool_name)),
         };
 
+        // fmm_read_symbol supports truncate: false to bypass the 10KB cap.
+        let should_truncate = if tool_name == "fmm_read_symbol" {
+            arguments
+                .get("truncate")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true)
+        } else {
+            true
+        };
+
         match result {
             Ok(text) => {
-                let text = Self::cap_response(text);
+                let text = Self::cap_response(text, should_truncate);
                 Ok(json!({
                     "content": [{
                         "type": "text",
@@ -537,12 +566,16 @@ impl McpServer {
     }
 
     fn tool_list_exports(&self, args: &Value) -> Result<String, String> {
+        const DEFAULT_LIMIT: usize = 200;
+
         let manifest = self.require_manifest()?;
 
         let args: ListExportsArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
         let dir = args.directory.as_deref();
+        let limit = args.limit.unwrap_or(DEFAULT_LIMIT);
+        let offset = args.offset.unwrap_or(0);
 
         if let Some(ref file_path) = args.file {
             let entry = manifest
@@ -587,7 +620,12 @@ impl McpServer {
                 matches.push((dotted_name.clone(), loc.file.clone(), lines));
             }
             matches.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
-            Ok(crate::format::format_list_exports_pattern(&matches))
+            let total = matches.len();
+            let page: Vec<(String, String, Option<[usize; 2]>)> =
+                matches.into_iter().skip(offset).take(limit).collect();
+            Ok(crate::format::format_list_exports_pattern(
+                &page, total, offset,
+            ))
         } else {
             let mut by_file: Vec<(&str, &crate::manifest::FileEntry)> = manifest
                 .files
@@ -603,7 +641,10 @@ impl McpServer {
                 .map(|(path, entry)| (path.as_str(), entry))
                 .collect();
             by_file.sort_by_key(|(path, _)| path.to_lowercase());
-            Ok(crate::format::format_list_exports_all(&by_file))
+            let total = by_file.len();
+            let page: Vec<(&str, &crate::manifest::FileEntry)> =
+                by_file.into_iter().skip(offset).take(limit).collect();
+            Ok(crate::format::format_list_exports_all(&page, total, offset))
         }
     }
 
@@ -627,16 +668,32 @@ impl McpServer {
             )
         })?;
 
-        let (local, external, downstream) =
-            crate::search::dependency_graph(manifest, &args.file, entry);
+        let depth = args.depth.unwrap_or(1);
 
-        Ok(crate::format::format_dependency_graph(
-            &args.file,
-            entry,
-            &local,
-            &external,
-            &downstream,
-        ))
+        if depth == 1 {
+            // depth=1: use existing single-hop implementation for backward compatibility
+            let (local, external, downstream) =
+                crate::search::dependency_graph(manifest, &args.file, entry);
+            Ok(crate::format::format_dependency_graph(
+                &args.file,
+                entry,
+                &local,
+                &external,
+                &downstream,
+            ))
+        } else {
+            // depth>1 or depth=-1: BFS transitive traversal with depth annotations
+            let (upstream, external, downstream) =
+                crate::search::dependency_graph_transitive(manifest, &args.file, entry, depth);
+            Ok(crate::format::format_dependency_graph_transitive(
+                &args.file,
+                entry,
+                &upstream,
+                &external,
+                &downstream,
+                depth,
+            ))
+        }
     }
 
     fn tool_read_symbol(&self, args: &Value) -> Result<String, String> {
@@ -780,13 +837,14 @@ impl McpServer {
         let args: SearchArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
-        // Universal term search
-        if let Some(ref term) = args.term {
-            let result = crate::search::bare_search(manifest, term, args.limit);
-            return Ok(crate::format::format_bare_search(&result, false));
-        }
+        let has_filters = args.export.is_some()
+            || args.imports.is_some()
+            || args.depends_on.is_some()
+            || args.min_loc.is_some()
+            || args.max_loc.is_some();
 
-        // Structured filter search
+        let term = args.term;
+        let limit = args.limit;
         let filters = crate::search::SearchFilters {
             export: args.export,
             imports: args.imports,
@@ -794,6 +852,28 @@ impl McpServer {
             min_loc: args.min_loc,
             max_loc: args.max_loc,
         };
+
+        if let Some(term) = term {
+            let mut result = crate::search::bare_search(manifest, &term, limit);
+            // When structured filters are also present, intersect with AND semantics:
+            // keep only exports/files/imports that are in the filter file set.
+            if has_filters {
+                let filter_results = crate::search::filter_search(manifest, &filters);
+                let filter_files: std::collections::HashSet<&str> =
+                    filter_results.iter().map(|r| r.file.as_str()).collect();
+                result
+                    .exports
+                    .retain(|h| filter_files.contains(h.file.as_str()));
+                result.files.retain(|f| filter_files.contains(f.as_str()));
+                result.imports.iter_mut().for_each(|h| {
+                    h.files.retain(|f| filter_files.contains(f.as_str()));
+                });
+                result.imports.retain(|h| !h.files.is_empty());
+            }
+            return Ok(crate::format::format_bare_search(&result, false));
+        }
+
+        // Structured filter search (no term)
         let results = crate::search::filter_search(manifest, &filters);
         Ok(crate::format::format_filter_search(&results, false))
     }
@@ -824,7 +904,26 @@ impl McpServer {
 
         let all_entries = manifest.build_glossary(pattern, mode);
         let total_matched = all_entries.len();
-        let entries: Vec<_> = all_entries.into_iter().take(limit).collect();
+        let mut entries: Vec<_> = all_entries.into_iter().take(limit).collect();
+
+        // ALP-785: For dotted method queries (e.g. "ClassName.method"), refine
+        // used_by via tree-sitter call-site detection (pass 2 of 2-pass architecture).
+        // Non-dotted queries skip this — file-level used_by is correct for class-level.
+        if let Some(dot_pos) = pattern.rfind('.') {
+            let method_name = &pattern[dot_pos + 1..];
+            if !method_name.is_empty() {
+                for entry in &mut entries {
+                    for source in &mut entry.sources {
+                        let refined = crate::manifest::call_site_finder::find_call_sites(
+                            &self.root,
+                            method_name,
+                            &source.used_by,
+                        );
+                        source.used_by = refined;
+                    }
+                }
+            }
+        }
 
         Ok(crate::format::format_glossary(
             &entries,
@@ -949,7 +1048,7 @@ mod tests {
         let prefix = "x".repeat(McpServer::MAX_RESPONSE_BYTES - 1);
         // 4-byte emoji straddles the boundary
         let text = format!("{}🦀 and more text after", prefix);
-        let result = McpServer::cap_response(text);
+        let result = McpServer::cap_response(text, true);
         assert!(result.is_char_boundary(result.len()));
         assert!(result.contains("[Truncated"));
     }
@@ -957,7 +1056,22 @@ mod tests {
     #[test]
     fn cap_response_passes_through_short_text() {
         let short = "hello world".to_string();
-        assert_eq!(McpServer::cap_response(short.clone()), short);
+        assert_eq!(McpServer::cap_response(short.clone(), true), short);
+    }
+
+    #[test]
+    fn cap_response_truncate_false_returns_full_text() {
+        // Build a string larger than MAX_RESPONSE_BYTES
+        let large = "x\n".repeat(McpServer::MAX_RESPONSE_BYTES);
+        let result = McpServer::cap_response(large.clone(), false);
+        assert_eq!(
+            result, large,
+            "truncate=false must return full text unchanged"
+        );
+        assert!(
+            !result.contains("[Truncated"),
+            "no truncation notice with truncate=false"
+        );
     }
 
     #[test]

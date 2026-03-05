@@ -360,6 +360,139 @@ pub fn dependency_graph<'a>(
     (local, external, downstream)
 }
 
+/// Transitive dependency traversal with BFS and cycle detection.
+///
+/// Returns `(upstream, external, downstream)`:
+/// - `upstream`: local dep file paths discovered by traversal, each annotated with
+///   the hop depth at which it was first reached
+/// - `external`: unresolvable dep strings (packages, etc.), deduplicated and sorted
+/// - `downstream`: files that transitively depend on `file`, depth-annotated
+///
+/// `depth=1` gives the same results as `dependency_graph()` but with depth annotations.
+/// `depth=N` traverses N hops. `depth=-1` computes the full transitive closure.
+/// Cycle detection via `HashSet<String>` — already-visited files are never re-queued.
+#[allow(clippy::type_complexity)]
+pub fn dependency_graph_transitive(
+    manifest: &Manifest,
+    file: &str,
+    entry: &FileEntry,
+    depth: i32,
+) -> (Vec<(String, i32)>, Vec<String>, Vec<(String, i32)>) {
+    use std::collections::{BTreeSet, HashSet, VecDeque};
+
+    // -------------------------------------------------------------------------
+    // Upstream BFS
+    // -------------------------------------------------------------------------
+    let mut upstream: Vec<(String, i32)> = Vec::new();
+    let mut visited_up: HashSet<String> = HashSet::new();
+    visited_up.insert(file.to_string());
+    let mut external_set: BTreeSet<String> = BTreeSet::new();
+
+    let mut queue_up: VecDeque<(String, i32)> = VecDeque::new();
+    for dep in &entry.dependencies {
+        if let Some(resolved) = try_resolve_local_dep(dep, file, manifest) {
+            if !visited_up.contains(&resolved) {
+                queue_up.push_back((resolved, 1));
+            }
+        } else {
+            external_set.insert(dep.clone());
+        }
+    }
+    for imp in &entry.imports {
+        if let Some(resolved) = try_resolve_local_dep(imp, file, manifest) {
+            if !visited_up.contains(&resolved) {
+                queue_up.push_back((resolved, 1));
+            }
+        } else {
+            external_set.insert(imp.clone());
+        }
+    }
+
+    while let Some((current, d)) = queue_up.pop_front() {
+        if visited_up.contains(&current) {
+            continue;
+        }
+        visited_up.insert(current.clone());
+        upstream.push((current.clone(), d));
+
+        if depth == -1 || d < depth {
+            if let Some(e) = manifest.files.get(&current) {
+                for dep in &e.dependencies {
+                    if let Some(resolved) = try_resolve_local_dep(dep, &current, manifest) {
+                        if !visited_up.contains(&resolved) {
+                            queue_up.push_back((resolved, d + 1));
+                        }
+                    } else {
+                        external_set.insert(dep.clone());
+                    }
+                }
+                for imp in &e.imports {
+                    if let Some(resolved) = try_resolve_local_dep(imp, &current, manifest) {
+                        if !visited_up.contains(&resolved) {
+                            queue_up.push_back((resolved, d + 1));
+                        }
+                    } else {
+                        external_set.insert(imp.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    upstream.sort_by(|a, b| a.0.cmp(&b.0));
+    let external: Vec<String> = external_set.into_iter().collect();
+
+    // -------------------------------------------------------------------------
+    // Downstream BFS
+    // -------------------------------------------------------------------------
+    let mut downstream: Vec<(String, i32)> = Vec::new();
+    let mut visited_down: HashSet<String> = HashSet::new();
+    visited_down.insert(file.to_string());
+
+    let mut queue_down: VecDeque<(String, i32)> = VecDeque::new();
+
+    // Seed with files that directly depend on the start file
+    for (path, e) in &manifest.files {
+        if visited_down.contains(path.as_str()) {
+            continue;
+        }
+        let depends = e
+            .dependencies
+            .iter()
+            .any(|d| dep_matches(d, file, path) || python_dep_matches(d, file, path))
+            || e.imports.iter().any(|i| dotted_dep_matches(i, file));
+        if depends {
+            queue_down.push_back((path.clone(), 1));
+        }
+    }
+
+    while let Some((current, d)) = queue_down.pop_front() {
+        if visited_down.contains(&current) {
+            continue;
+        }
+        visited_down.insert(current.clone());
+        downstream.push((current.clone(), d));
+
+        if depth == -1 || d < depth {
+            for (path, e) in &manifest.files {
+                if visited_down.contains(path.as_str()) {
+                    continue;
+                }
+                let depends = e.dependencies.iter().any(|d| {
+                    dep_matches(d, &current, path) || python_dep_matches(d, &current, path)
+                }) || e.imports.iter().any(|i| dotted_dep_matches(i, &current));
+                if depends {
+                    queue_down.push_back((path.clone(), d + 1));
+                }
+            }
+        }
+    }
+
+    downstream.sort_by(|a, b| a.0.cmp(&b.0));
+
+    (upstream, external, downstream)
+}
+
 /// Attempt to resolve a dependency string to a file path present in the manifest.
 ///
 /// Handles both Python-style relative imports (`._run`, `..config`) and
@@ -846,5 +979,135 @@ mod tests {
             "should report total when capped"
         );
         assert_eq!(result.total_exports.unwrap(), 10);
+    }
+
+    // -------------------------------------------------------------------------
+    // dependency_graph_transitive — BFS + cycle detection (ALP-787)
+    // -------------------------------------------------------------------------
+
+    /// Build linear chain: app/a.py -> app/b.py -> app/c.py -> app/d.py
+    fn chain_manifest() -> Manifest {
+        manifest_with(vec![
+            ("app/a.py", vec![".b"]),
+            ("app/b.py", vec![".c"]),
+            ("app/c.py", vec![".d"]),
+            ("app/d.py", vec![]),
+        ])
+    }
+
+    #[test]
+    fn transitive_upstream_depth1_matches_single_hop() {
+        let m = chain_manifest();
+        let entry = m.files["app/a.py"].clone();
+        let (upstream, _ext, downstream) = dependency_graph_transitive(&m, "app/a.py", &entry, 1);
+
+        let up_files: Vec<&str> = upstream.iter().map(|(f, _)| f.as_str()).collect();
+        assert_eq!(up_files, ["app/b.py"], "depth=1 upstream: direct dep only");
+        assert!(
+            upstream.iter().all(|(_, d)| *d == 1),
+            "all depth=1 entries marked with d=1"
+        );
+        assert!(
+            downstream.is_empty(),
+            "nothing depends on app/a.py in the chain"
+        );
+    }
+
+    #[test]
+    fn transitive_upstream_depth2_follows_two_hops() {
+        let m = chain_manifest();
+        let entry = m.files["app/a.py"].clone();
+        let (upstream, _ext, _) = dependency_graph_transitive(&m, "app/a.py", &entry, 2);
+
+        let up_files: Vec<&str> = upstream.iter().map(|(f, _)| f.as_str()).collect();
+        assert!(
+            up_files.contains(&"app/b.py"),
+            "app/b.py at depth 1; got: {:?}",
+            up_files
+        );
+        assert!(
+            up_files.contains(&"app/c.py"),
+            "app/c.py at depth 2; got: {:?}",
+            up_files
+        );
+        assert!(
+            !up_files.contains(&"app/d.py"),
+            "app/d.py should be beyond depth=2; got: {:?}",
+            up_files
+        );
+        let b_depth = upstream.iter().find(|(f, _)| f == "app/b.py").unwrap().1;
+        let c_depth = upstream.iter().find(|(f, _)| f == "app/c.py").unwrap().1;
+        assert_eq!(b_depth, 1);
+        assert_eq!(c_depth, 2);
+    }
+
+    #[test]
+    fn transitive_upstream_full_closure() {
+        let m = chain_manifest();
+        let entry = m.files["app/a.py"].clone();
+        let (upstream, _ext, _) = dependency_graph_transitive(&m, "app/a.py", &entry, -1);
+
+        let up_files: Vec<&str> = upstream.iter().map(|(f, _)| f.as_str()).collect();
+        assert!(up_files.contains(&"app/b.py"), "b in closure");
+        assert!(up_files.contains(&"app/c.py"), "c in closure");
+        assert!(up_files.contains(&"app/d.py"), "d in closure");
+    }
+
+    #[test]
+    fn transitive_downstream_multi_hop() {
+        let m = chain_manifest();
+        let entry = m.files["app/d.py"].clone();
+        // d is depended on by c (depth 1), b (depth 2), a (depth 3)
+        let (_up, _ext, downstream) = dependency_graph_transitive(&m, "app/d.py", &entry, -1);
+
+        let down_files: Vec<&str> = downstream.iter().map(|(f, _)| f.as_str()).collect();
+        assert!(
+            down_files.contains(&"app/c.py"),
+            "c depends on d at depth 1"
+        );
+        assert!(
+            down_files.contains(&"app/b.py"),
+            "b depends on c at depth 2"
+        );
+        assert!(
+            down_files.contains(&"app/a.py"),
+            "a depends on b at depth 3"
+        );
+
+        let c_depth = downstream.iter().find(|(f, _)| f == "app/c.py").unwrap().1;
+        let b_depth = downstream.iter().find(|(f, _)| f == "app/b.py").unwrap().1;
+        let a_depth = downstream.iter().find(|(f, _)| f == "app/a.py").unwrap().1;
+        assert_eq!(c_depth, 1);
+        assert_eq!(b_depth, 2);
+        assert_eq!(a_depth, 3);
+    }
+
+    #[test]
+    fn transitive_cycle_does_not_loop() {
+        // Circular: x depends on y, y depends on x
+        let m = manifest_with(vec![("app/x.py", vec![".y"]), ("app/y.py", vec![".x"])]);
+        let entry = m.files["app/x.py"].clone();
+        // Should terminate without infinite loop
+        let (upstream, _ext, downstream) = dependency_graph_transitive(&m, "app/x.py", &entry, -1);
+
+        // x's upstream: y (depth 1). x itself is not revisited.
+        let up_files: Vec<&str> = upstream.iter().map(|(f, _)| f.as_str()).collect();
+        assert!(up_files.contains(&"app/y.py"), "y is upstream of x");
+        assert!(
+            !up_files.contains(&"app/x.py"),
+            "x must not appear in its own upstream"
+        );
+
+        // x's downstream: y depends on x, so y at depth 1
+        let down_files: Vec<&str> = downstream.iter().map(|(f, _)| f.as_str()).collect();
+        assert!(
+            down_files.contains(&"app/y.py"),
+            "y depends on x so appears downstream; got: {:?}",
+            down_files
+        );
+        assert!(
+            !down_files.contains(&"app/x.py"),
+            "x must not appear in its own downstream"
+        );
     }
 }

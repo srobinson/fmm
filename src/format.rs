@@ -142,6 +142,50 @@ pub fn format_dependency_graph(
     lines.join("\n")
 }
 
+/// Format dependency graph for transitive results (depth > 1 or depth = -1).
+///
+/// Renders a flat list with `depth:` annotation per entry. The `local_deps`
+/// and `downstream` vectors contain `(file, depth_discovered_at)` pairs.
+pub fn format_dependency_graph_transitive(
+    file: &str,
+    entry: &FileEntry,
+    upstream: &[(String, i32)],
+    external: &[String],
+    downstream: &[(String, i32)],
+    max_depth: i32,
+) -> String {
+    let mut lines = Vec::new();
+    lines.push("---".to_string());
+    lines.push(format!("file: {}", yaml_escape(file)));
+    if max_depth == -1 {
+        lines.push("depth: full (transitive closure)".to_string());
+    } else {
+        lines.push(format!("depth: {}", max_depth));
+    }
+
+    if !upstream.is_empty() {
+        lines.push("local_deps:".to_string());
+        for (path, d) in upstream {
+            lines.push(format!("  - file: {}  depth: {}", yaml_escape(path), d));
+        }
+    }
+
+    if !external.is_empty() {
+        let items: Vec<String> = external.iter().map(|s| yaml_escape(s)).collect();
+        lines.push(format!("external: [{}]", items.join(", ")));
+    }
+
+    if !downstream.is_empty() {
+        lines.push("downstream:".to_string());
+        for (path, d) in downstream {
+            lines.push(format!("  - file: {}  depth: {}", yaml_escape(path), d));
+        }
+    }
+
+    push_inline_list(&mut lines, "imports", &entry.imports);
+    lines.join("\n")
+}
+
 /// Format read symbol: YAML header + source code.
 pub fn format_read_symbol(symbol: &str, file: &str, el: &ExportLines, source: &str) -> String {
     let mut lines = Vec::new();
@@ -158,8 +202,16 @@ pub fn format_read_symbol(symbol: &str, file: &str, el: &ExportLines, source: &s
 // List exports formatters
 // ---------------------------------------------------------------------------
 
-/// Format list exports for a pattern search: column-aligned text.
-pub fn format_list_exports_pattern(matches: &[(String, String, Option<[usize; 2]>)]) -> String {
+/// Format list exports for a pattern search: column-aligned text with optional pagination.
+///
+/// - `matches`: the current page of results (already sliced by offset/limit)
+/// - `total`: total number of matches before pagination
+/// - `offset`: the page start index (0-based)
+pub fn format_list_exports_pattern(
+    matches: &[(String, String, Option<[usize; 2]>)],
+    total: usize,
+    offset: usize,
+) -> String {
     if matches.is_empty() {
         return String::new();
     }
@@ -167,6 +219,14 @@ pub fn format_list_exports_pattern(matches: &[(String, String, Option<[usize; 2]
     let file_width = matches.iter().map(|(_, f, _)| f.len()).max().unwrap_or(0);
 
     let mut out = Vec::new();
+    let showing = matches.len();
+    if showing < total {
+        let end = offset + showing;
+        out.push(format!("# showing: {}-{} of {}", offset + 1, end, total));
+        if end < total {
+            out.push(format!("# next: Use offset={} to continue.", end));
+        }
+    }
     for (name, file, lines) in matches {
         let lines_str = match lines {
             Some([s, e]) => format!("  [{}, {}]", s, e),
@@ -193,9 +253,28 @@ pub fn format_list_exports_file(file: &str, entry: &FileEntry) -> String {
     lines.join("\n")
 }
 
-/// Format list exports for all files: multi-document sidecar YAML.
-pub fn format_list_exports_all(files: &[(&str, &FileEntry)]) -> String {
+/// Format list exports for all files: multi-document sidecar YAML with optional pagination.
+///
+/// - `files`: the current page of entries (already sliced by offset/limit)
+/// - `total`: total number of matching files before pagination
+/// - `offset`: the page start index (0-based)
+pub fn format_list_exports_all(
+    files: &[(&str, &FileEntry)],
+    total: usize,
+    offset: usize,
+) -> String {
     let mut docs = Vec::new();
+    let showing = files.len();
+    if showing > 0 && showing < total {
+        let end = offset + showing;
+        let mut header = Vec::new();
+        header.push("---".to_string());
+        header.push(format!("showing: {}-{} of {}", offset + 1, end, total));
+        if end < total {
+            header.push(format!("next: Use offset={} to continue.", end));
+        }
+        docs.push(header.join("\n"));
+    }
     for (file, entry) in files {
         let mut lines = Vec::new();
         lines.push("---".to_string());

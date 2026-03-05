@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/dart.rs
-fmm: v0.3+0.1.17
+fmm: v0.3+0.1.18
 exports:
   DartParser: [6, 8]
 methods:

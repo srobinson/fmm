@@ -73,7 +73,68 @@ pub fn search(
     let has_flags = export.is_some() || imports.is_some() || depends_on.is_some() || loc.is_some();
 
     if let Some(ref search_term) = term {
-        bare_search(&manifest, search_term, json_output)?;
+        if has_flags {
+            // Combined: intersect term results with the filter file set (AND semantics).
+            let (min_loc, max_loc) = if let Some(ref loc_expr) = loc {
+                let (op, value) = parse_loc_expr(loc_expr)?;
+                match op.as_str() {
+                    ">" => (Some(value + 1), None),
+                    ">=" => (Some(value), None),
+                    "<" => (None, Some(value.saturating_sub(1))),
+                    "<=" => (None, Some(value)),
+                    "=" => (Some(value), Some(value)),
+                    _ => (None, None),
+                }
+            } else {
+                (None, None)
+            };
+            let filters = crate::search::SearchFilters {
+                export,
+                imports,
+                depends_on,
+                min_loc,
+                max_loc,
+            };
+            let filter_results = crate::search::filter_search(&manifest, &filters);
+            let filter_files: std::collections::HashSet<&str> =
+                filter_results.iter().map(|r| r.file.as_str()).collect();
+            let mut result = crate::search::bare_search(&manifest, search_term, None);
+            result
+                .exports
+                .retain(|h| filter_files.contains(h.file.as_str()));
+            result.files.retain(|f| filter_files.contains(f.as_str()));
+            result.imports.iter_mut().for_each(|h| {
+                h.files.retain(|f| filter_files.contains(f.as_str()));
+            });
+            result.imports.retain(|h| !h.files.is_empty());
+            if json_output {
+                let json = BareSearchJson {
+                    exports: result
+                        .exports
+                        .iter()
+                        .map(|h| ExportMatchJson {
+                            name: h.name.clone(),
+                            file: h.file.clone(),
+                            lines: h.lines,
+                        })
+                        .collect(),
+                    files: result.files.clone(),
+                    imports: result
+                        .imports
+                        .iter()
+                        .map(|h| ImportMatchJson {
+                            package: h.package.clone(),
+                            files: h.files.clone(),
+                        })
+                        .collect(),
+                };
+                println!("{}", serde_json::to_string_pretty(&json)?);
+            } else {
+                println!("{}", crate::format::format_bare_search(&result, true));
+            }
+        } else {
+            bare_search(&manifest, search_term, json_output)?;
+        }
     } else if has_flags {
         flag_search(
             &manifest,
@@ -168,7 +229,11 @@ fn flag_search(
                         .iter()
                         .map(|h| (h.name.clone(), h.file.clone(), h.lines))
                         .collect();
-                    println!("{}", crate::format::format_list_exports_pattern(&tuples));
+                    let total = tuples.len();
+                    println!(
+                        "{}",
+                        crate::format::format_list_exports_pattern(&tuples, total, 0)
+                    );
                 }
                 return Ok(());
             }

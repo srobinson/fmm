@@ -1,9 +1,9 @@
 ---
 file: src/cli/glossary.rs
-fmm: v0.3+0.1.17
+fmm: v0.3+0.1.18
 exports:
-  glossary: [6, 83]
+  glossary: [6, 100]
 imports: [anyhow, colored]
 dependencies: ['crate::manifest']
-loc: 83
+loc: 100
 modified: 2026-03-05

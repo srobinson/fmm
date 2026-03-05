@@ -148,6 +148,41 @@ fn read_symbol_not_found() {
     assert!(text.contains("not found"));
 }
 
+#[test]
+fn read_symbol_truncate_false_bypasses_cap() {
+    let (_tmp, server) = setup_mcp_server();
+    // truncate: false — small symbol, same result, no truncation notice
+    let text = call_tool_text(
+        &server,
+        "fmm_read_symbol",
+        json!({"name": "createSession", "truncate": false}),
+    );
+    assert!(
+        text.contains("symbol: createSession"),
+        "symbol header present"
+    );
+    assert!(
+        !text.contains("[Truncated"),
+        "no truncation notice with truncate=false; got: {text}"
+    );
+}
+
+#[test]
+fn read_symbol_truncate_true_is_default() {
+    let (_tmp, server) = setup_mcp_server();
+    // truncate: true (default) — small symbol still returns full content unchanged
+    let text_default = call_tool_text(&server, "fmm_read_symbol", json!({"name": "createSession"}));
+    let text_explicit = call_tool_text(
+        &server,
+        "fmm_read_symbol",
+        json!({"name": "createSession", "truncate": true}),
+    );
+    assert_eq!(
+        text_default, text_explicit,
+        "truncate: true matches default"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // fmm_file_outline
 // ---------------------------------------------------------------------------
@@ -343,6 +378,105 @@ fn list_exports_directory_filter_all() {
 }
 
 // ---------------------------------------------------------------------------
+// fmm_list_exports — pagination tests (ALP-782)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn list_exports_pattern_pagination_limit_and_offset() {
+    let (_tmp, server) = setup_mcp_server();
+
+    // The fixture has 10 exports total. "S" (case-insensitive) matches:
+    // SessionToken, UserRole (no), createSession, validateSession, AppConfig (no),
+    // loadConfig (no), Pool (no), createPool (no), hashPassword (no), verifyPassword (no)
+    // Actually let's use "" pattern won't work. Use "session" which matches 2 exports +
+    // possibly method index. Use "e" to get a broader set. Actually just use limit=2
+    // against all-matches for "a" to get at least 3 results.
+    //
+    // Fixture exports: createSession, validateSession, SessionToken, UserRole,
+    //   loadConfig, AppConfig, Pool, createPool, hashPassword, verifyPassword
+    // "a" matches: validateSession, SessionToken, loadConfig, AppConfig, hashPassword
+    // That's 5. Test with limit=2.
+
+    // First page: limit=2, offset=0
+    let text = call_tool_text(
+        &server,
+        "fmm_list_exports",
+        json!({"pattern": "a", "limit": 2, "offset": 0}),
+    );
+    assert!(
+        text.contains("showing: 1-2 of"),
+        "should show pagination header; got: {text}"
+    );
+    assert!(
+        text.contains("offset=2"),
+        "should hint next offset=2; got: {text}"
+    );
+
+    // Second page: limit=2, offset=2
+    let text2 = call_tool_text(
+        &server,
+        "fmm_list_exports",
+        json!({"pattern": "a", "limit": 2, "offset": 2}),
+    );
+    assert!(
+        text2.contains("showing: 3-4 of"),
+        "second page header; got: {text2}"
+    );
+
+    // Last page: limit=10 — returns all, no pagination header
+    let text3 = call_tool_text(
+        &server,
+        "fmm_list_exports",
+        json!({"pattern": "a", "limit": 10, "offset": 0}),
+    );
+    assert!(
+        !text3.contains("showing:"),
+        "no pagination header when all results fit; got: {text3}"
+    );
+}
+
+#[test]
+fn list_exports_all_pagination_limit_and_offset() {
+    let (_tmp, server) = setup_mcp_server();
+
+    // Fixture has 5 files with exports. Test with limit=2.
+
+    // First page: limit=2, offset=0
+    let text = call_tool_text(
+        &server,
+        "fmm_list_exports",
+        json!({"limit": 2, "offset": 0}),
+    );
+    assert!(
+        text.contains("showing: 1-2 of 5"),
+        "all-mode page 1 header; got: {text}"
+    );
+    assert!(text.contains("offset=2"), "should hint next=2; got: {text}");
+
+    // Last page: limit=2, offset=4 — only 1 file remains, no "next" hint
+    let text2 = call_tool_text(
+        &server,
+        "fmm_list_exports",
+        json!({"limit": 2, "offset": 4}),
+    );
+    assert!(
+        text2.contains("showing: 5-5 of 5"),
+        "all-mode last page header; got: {text2}"
+    );
+    assert!(
+        !text2.contains("offset=6"),
+        "no next hint on last page; got: {text2}"
+    );
+
+    // No pagination header when all files fit
+    let text3 = call_tool_text(&server, "fmm_list_exports", json!({"limit": 200}));
+    assert!(
+        !text3.contains("showing:"),
+        "no header when all fit; got: {text3}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // fmm_dependency_graph
 // ---------------------------------------------------------------------------
 
@@ -386,6 +520,56 @@ fn dependency_graph_not_found() {
         json!({"file": "src/nonexistent.ts"}),
     );
     assert!(text.contains("not found"));
+}
+
+#[test]
+fn dependency_graph_depth2_returns_depth_annotations() {
+    let (_tmp, server) = setup_mcp_server();
+    // depth=2 transitive traversal — output includes depth annotations
+    let text = call_tool_text(
+        &server,
+        "fmm_dependency_graph",
+        json!({"file": "src/auth/session.ts", "depth": 2}),
+    );
+    assert!(
+        text.contains("depth: 2"),
+        "output should include depth header; got: {text}"
+    );
+    // local_deps section should appear with depth annotations
+    assert!(
+        text.contains("local_deps:"),
+        "local_deps section present; got: {text}"
+    );
+    // src/auth/types.ts and src/config.ts are direct deps (depth 1)
+    assert!(
+        text.contains("src/auth/types.ts"),
+        "types.ts in upstream; got: {text}"
+    );
+    assert!(
+        text.contains("src/config.ts"),
+        "config.ts in upstream; got: {text}"
+    );
+}
+
+#[test]
+fn dependency_graph_depth1_is_default_format() {
+    let (_tmp, server) = setup_mcp_server();
+    // depth=1 (default) should use backward-compatible format (no depth annotations)
+    let text_default = call_tool_text(
+        &server,
+        "fmm_dependency_graph",
+        json!({"file": "src/config.ts"}),
+    );
+    let text_explicit = call_tool_text(
+        &server,
+        "fmm_dependency_graph",
+        json!({"file": "src/config.ts", "depth": 1}),
+    );
+    assert_eq!(text_default, text_explicit, "depth=1 matches default");
+    assert!(
+        !text_default.contains("depth:"),
+        "depth=1 format has no depth annotation; got: {text_default}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -560,6 +744,96 @@ fn search_loc_range() {
 
 #[test]
 fn search_imports_filter() {
+    let (_tmp, server) = setup_mcp_server();
+    let text = call_tool_text(&server, "fmm_search", json!({"imports": "jwt"}));
+
+    assert!(text.contains("src/auth/session.ts"));
+}
+
+// ---------------------------------------------------------------------------
+// fmm_search — combined term + structured filters (ALP-786)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn search_term_and_imports_filter_intersects() {
+    let (_tmp, server) = setup_mcp_server();
+    // term="session" matches exports in session.ts AND types.ts (SessionToken).
+    // imports="jwt" restricts to session.ts only.
+    // Combined: only session.ts exports should appear.
+    let text = call_tool_text(
+        &server,
+        "fmm_search",
+        json!({"term": "session", "imports": "jwt"}),
+    );
+
+    assert!(
+        text.contains("createSession"),
+        "should include createSession"
+    );
+    assert!(
+        text.contains("validateSession"),
+        "should include validateSession"
+    );
+    assert!(
+        !text.contains("SessionToken"),
+        "SessionToken is in types.ts which doesn't import jwt"
+    );
+}
+
+#[test]
+fn search_term_and_min_loc_filter_intersects() {
+    let (_tmp, server) = setup_mcp_server();
+    // term="hash" matches hashPassword (crypto.ts, LOC=9) and verifyPassword doesn't match.
+    // min_loc=10 restricts to files with LOC >= 10 (config.ts=10, pool.ts=10, session.ts=12).
+    // crypto.ts has LOC=9 so it's excluded — combined result should be empty exports.
+    let text = call_tool_text(
+        &server,
+        "fmm_search",
+        json!({"term": "hashPassword", "min_loc": 10}),
+    );
+
+    assert!(
+        !text.contains("hashPassword"),
+        "hashPassword is in crypto.ts (LOC=9) which fails min_loc=10 filter"
+    );
+}
+
+#[test]
+fn search_term_and_depends_on_filter_intersects() {
+    let (_tmp, server) = setup_mcp_server();
+    // term="session" matches createSession/validateSession (session.ts) and SessionToken (types.ts).
+    // depends_on="config" restricts to files depending on config (session.ts, pool.ts).
+    // types.ts has no config dependency so SessionToken should be excluded.
+    let text = call_tool_text(
+        &server,
+        "fmm_search",
+        json!({"term": "session", "depends_on": "config"}),
+    );
+
+    assert!(
+        text.contains("createSession"),
+        "session.ts depends on config"
+    );
+    assert!(
+        !text.contains("SessionToken"),
+        "types.ts does not depend on config"
+    );
+}
+
+#[test]
+fn search_term_only_regression() {
+    // Term-only queries must continue to work identically (no regression).
+    let (_tmp, server) = setup_mcp_server();
+    let text = call_tool_text(&server, "fmm_search", json!({"term": "createSession"}));
+
+    assert!(text.contains("EXPORTS"));
+    assert!(text.contains("createSession"));
+    assert!(text.contains("src/auth/session.ts"));
+}
+
+#[test]
+fn search_filter_only_regression() {
+    // Filter-only queries must continue to work identically (no regression).
     let (_tmp, server) = setup_mcp_server();
     let text = call_tool_text(&server, "fmm_search", json!({"imports": "jwt"}));
 

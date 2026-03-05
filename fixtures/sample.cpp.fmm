@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.cpp
-fmm: v0.3+0.1.17
+fmm: v0.3+0.1.18
 exports:
   Point: [10, 12]
   Status: [14, 18]
