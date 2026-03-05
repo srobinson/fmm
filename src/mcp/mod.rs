@@ -67,6 +67,12 @@ struct ListFilesArgs {
     pattern: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct GlossaryArgs {
+    pattern: Option<String>,
+    limit: Option<usize>,
+}
+
 #[derive(Debug, Serialize)]
 struct JsonRpcResponse {
     jsonrpc: String,
@@ -398,6 +404,24 @@ impl McpServer {
                     }
                 }),
             },
+            Tool {
+                name: "fmm_glossary".to_string(),
+                description: "Symbol-level impact analysis. Given a symbol name or pattern, returns all definitions and exactly which files import each one. Use before renaming a function or changing a signature to get a precise blast radius — more surgical than fmm_dependency_graph which only gives file-level downstream.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "pattern": {
+                            "type": "string",
+                            "description": "Required. Case-insensitive substring filter on export name. E.g. 'run_dispatch' finds exact match; 'config' finds Config, loadConfig, AppConfig."
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max entries returned (default 20, hard cap at 50)."
+                        }
+                    },
+                    "required": ["pattern"]
+                }),
+            },
         ];
 
         Ok(json!({ "tools": tools }))
@@ -432,6 +456,7 @@ impl McpServer {
             "fmm_read_symbol" => self.tool_read_symbol(&arguments),
             "fmm_file_outline" => self.tool_file_outline(&arguments),
             "fmm_list_files" => self.tool_list_files(&arguments),
+            "fmm_glossary" => self.tool_glossary(&arguments),
             // Legacy aliases
             "fmm_find_export" => self.tool_lookup_export(&arguments),
             "fmm_find_symbol" => self.tool_lookup_export(&arguments),
@@ -717,6 +742,36 @@ impl McpServer {
         };
         let results = crate::search::filter_search(manifest, &filters);
         Ok(crate::format::format_filter_search(&results, false))
+    }
+
+    fn tool_glossary(&self, args: &Value) -> Result<String, String> {
+        let manifest = self.require_manifest()?;
+
+        let args: GlossaryArgs =
+            serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
+
+        let pattern = args.pattern.as_deref().unwrap_or("").trim();
+        if pattern.is_empty() {
+            return Err(
+                "pattern is required — provide a symbol name or substring (e.g. 'run_dispatch', 'config'). \
+                A full unfiltered glossary on a large codebase would exceed any useful context window."
+                    .to_string(),
+            );
+        }
+
+        const DEFAULT_LIMIT: usize = 20;
+        const HARD_CAP: usize = 50;
+        let limit = args.limit.unwrap_or(DEFAULT_LIMIT).min(HARD_CAP);
+
+        let all_entries = manifest.build_glossary(pattern);
+        let total_matched = all_entries.len();
+        let entries: Vec<_> = all_entries.into_iter().take(limit).collect();
+
+        Ok(crate::format::format_glossary(
+            &entries,
+            total_matched,
+            limit,
+        ))
     }
 }
 
