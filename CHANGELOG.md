@@ -9,193 +9,166 @@
 
 ## [0.1.25](https://github.com/srobinson/fmm/compare/v0.1.24...v0.1.25) (2026-03-06)
 
-
 ### Features
 
-* **mcp+cli:** Round 3 evaluation improvements — 12 issues ([#77](https://github.com/srobinson/fmm/issues/77)) ([980e3a7](https://github.com/srobinson/fmm/commit/980e3a774c9343f8c491b541fd9b7e1ff11fe726))
+- **mcp+cli:** Round 3 evaluation improvements — 12 issues ([#77](https://github.com/srobinson/fmm/issues/77)) ([980e3a7](https://github.com/srobinson/fmm/commit/980e3a774c9343f8c491b541fd9b7e1ff11fe726))
 
 ## [0.1.24](https://github.com/srobinson/fmm/compare/v0.1.23...v0.1.24) (2026-03-05)
 
-
 ### Features
 
-* **cli:** full CLI parity with MCP — lookup, read, deps, outline, ls, exports ([#75](https://github.com/srobinson/fmm/issues/75)) ([70d21d9](https://github.com/srobinson/fmm/commit/70d21d9435f5f8f3038ea8350fdd5bfcaccef6a0))
+- **cli:** full CLI parity with MCP — lookup, read, deps, outline, ls, exports ([#75](https://github.com/srobinson/fmm/issues/75)) ([70d21d9](https://github.com/srobinson/fmm/commit/70d21d9435f5f8f3038ea8350fdd5bfcaccef6a0))
 
 ## [0.1.23](https://github.com/srobinson/fmm/compare/v0.1.22...v0.1.23) (2026-03-05)
 
-
 ### Bug Fixes
 
-* **manifest:** resolve two local_deps gaps in fmm_dependency_graph ([c79532a](https://github.com/srobinson/fmm/commit/c79532a4d7b1760c23d14e34ee4bb1b2973376ae))
+- **manifest:** resolve two local_deps gaps in fmm_dependency_graph ([c79532a](https://github.com/srobinson/fmm/commit/c79532a4d7b1760c23d14e34ee4bb1b2973376ae))
 
 ## [0.1.22](https://github.com/srobinson/fmm/compare/v0.1.21...v0.1.22) (2026-03-05)
 
-
 ### Performance
 
-* **manifest:** O(1) reverse dependency index for downstream lookups ([519b453](https://github.com/srobinson/fmm/commit/519b453ff6cb9a8871501fe431cbdb8a8bcc95cd))
+- **manifest:** O(1) reverse dependency index for downstream lookups ([519b453](https://github.com/srobinson/fmm/commit/519b453ff6cb9a8871501fe431cbdb8a8bcc95cd))
 
 ## [0.1.21](https://github.com/srobinson/fmm/compare/v0.1.20...v0.1.21) (2026-03-05)
 
-
 ### Features
 
-* MCP improvements and parser fixes — ALP-798 to ALP-803 ([#69](https://github.com/srobinson/fmm/issues/69)) ([3dac27e](https://github.com/srobinson/fmm/commit/3dac27ef6a95f1feb3bc5775889822531e6f4766))
+- MCP improvements and parser fixes — ALP-798 to ALP-803 ([#69](https://github.com/srobinson/fmm/issues/69)) ([3dac27e](https://github.com/srobinson/fmm/commit/3dac27ef6a95f1feb3bc5775889822531e6f4766))
 
 ## [0.1.20](https://github.com/srobinson/fmm/compare/v0.1.19...v0.1.20) (2026-03-05)
 
-
 ### Bug Fixes
 
-* parser import classification — ghost entries and missing local deps (ALP-792) ([#66](https://github.com/srobinson/fmm/issues/66)) ([5e524ec](https://github.com/srobinson/fmm/commit/5e524ecd3430e910dc2f8f0e315a6fde9079d8af))
+- parser import classification — ghost entries and missing local deps (ALP-792) ([#66](https://github.com/srobinson/fmm/issues/66)) ([5e524ec](https://github.com/srobinson/fmm/commit/5e524ecd3430e910dc2f8f0e315a6fde9079d8af))
 
 ## [0.1.19](https://github.com/srobinson/fmm/compare/v0.1.18...v0.1.19) (2026-03-05)
 
-
 ### Features
 
-* MCP tool improvements — pagination, truncate, transitive graph, call-site precision, combined filters (ALP-791) ([#64](https://github.com/srobinson/fmm/issues/64)) ([acf53e0](https://github.com/srobinson/fmm/commit/acf53e0d9429fcfeefda100b9caaa481113ac43b))
+- MCP tool improvements — pagination, truncate, transitive graph, call-site precision, combined filters (ALP-791) ([#64](https://github.com/srobinson/fmm/issues/64)) ([acf53e0](https://github.com/srobinson/fmm/commit/acf53e0d9429fcfeefda100b9caaa481113ac43b))
 
 ## [0.1.18](https://github.com/srobinson/fmm/compare/v0.1.17...v0.1.18) (2026-03-05)
 
-
 ### Features
 
-* expose class methods in fmm_lookup_export, fmm_list_exports, fmm_glossary (ALP-777) ([#62](https://github.com/srobinson/fmm/issues/62)) ([ee6136a](https://github.com/srobinson/fmm/commit/ee6136aae894fb5b200ea2161aeaa99bdec2759c))
+- expose class methods in fmm_lookup_export, fmm_list_exports, fmm_glossary (ALP-777) ([#62](https://github.com/srobinson/fmm/issues/62)) ([ee6136a](https://github.com/srobinson/fmm/commit/ee6136aae894fb5b200ea2161aeaa99bdec2759c))
 
 ## [0.1.17](https://github.com/srobinson/fmm/compare/v0.1.16...v0.1.17) (2026-03-05)
 
-
 ### Features
 
-* public method indexing — dotted symbol navigation (ClassName.method) (ALP-764) ([#60](https://github.com/srobinson/fmm/issues/60)) ([3b4db1d](https://github.com/srobinson/fmm/commit/3b4db1d895e7bffc2be6000215c82df6bb1e44a9))
+- public method indexing — dotted symbol navigation (ClassName.method) (ALP-764) ([#60](https://github.com/srobinson/fmm/issues/60)) ([3b4db1d](https://github.com/srobinson/fmm/commit/3b4db1d895e7bffc2be6000215c82df6bb1e44a9))
 
 ## [0.1.16](https://github.com/srobinson/fmm/compare/v0.1.15...v0.1.16) (2026-03-05)
 
-
 ### Features
 
-* Rust parser production readiness — pub use, macro_export, wildcard deps (ALP-773) ([#58](https://github.com/srobinson/fmm/issues/58)) ([7598ddb](https://github.com/srobinson/fmm/commit/7598ddb3612661dc55774573d3bc41de310683fa))
+- Rust parser production readiness — pub use, macro_export, wildcard deps (ALP-773) ([#58](https://github.com/srobinson/fmm/issues/58)) ([7598ddb](https://github.com/srobinson/fmm/commit/7598ddb3612661dc55774573d3bc41de310683fa))
 
 ## [0.1.15](https://github.com/srobinson/fmm/compare/v0.1.14...v0.1.15) (2026-03-05)
 
-
 ### Features
 
-* TypeScript parser hardening and tool improvements (ALP-748) ([#56](https://github.com/srobinson/fmm/issues/56)) ([31904f3](https://github.com/srobinson/fmm/commit/31904f365bccd60c7799e9628757f4e2f892c456))
+- TypeScript parser hardening and tool improvements (ALP-748) ([#56](https://github.com/srobinson/fmm/issues/56)) ([31904f3](https://github.com/srobinson/fmm/commit/31904f365bccd60c7799e9628757f4e2f892c456))
 
 ## [0.1.14](https://github.com/srobinson/fmm/compare/v0.1.13...v0.1.14) (2026-03-05)
 
-
 ### Features
 
-* TypeScript parser hardening ([#54](https://github.com/srobinson/fmm/issues/54)) ([26ef912](https://github.com/srobinson/fmm/commit/26ef91282959bd504e88c9b9dfd2bf80dda257a3))
+- TypeScript parser hardening ([#54](https://github.com/srobinson/fmm/issues/54)) ([26ef912](https://github.com/srobinson/fmm/commit/26ef91282959bd504e88c9b9dfd2bf80dda257a3))
 
 ## [0.1.13](https://github.com/srobinson/fmm/compare/v0.1.12...v0.1.13) (2026-03-05)
 
-
 ### Features
 
-* glossary feature -- symbol-level impact analysis ([#52](https://github.com/srobinson/fmm/issues/52)) ([b6c4669](https://github.com/srobinson/fmm/commit/b6c46694d9f08c84f041cc90d7b26e353b9442cd))
+- glossary feature -- symbol-level impact analysis ([#52](https://github.com/srobinson/fmm/issues/52)) ([b6c4669](https://github.com/srobinson/fmm/commit/b6c46694d9f08c84f041cc90d7b26e353b9442cd))
 
 ## [0.1.12](https://github.com/srobinson/fmm/compare/v0.1.11...v0.1.12) (2026-03-05)
 
-
 ### Features
 
-* field report MCP hardening, dependency graph, and parser improvements ([#50](https://github.com/srobinson/fmm/issues/50)) ([18001ff](https://github.com/srobinson/fmm/commit/18001ffa27fd9b02536410c09346493d6a4185ca))
-* support decorated Python definitions and add --force generate flag ([52e5309](https://github.com/srobinson/fmm/commit/52e5309702452d3fb071206eecd3805747da103e))
+- field report MCP hardening, dependency graph, and parser improvements ([#50](https://github.com/srobinson/fmm/issues/50)) ([18001ff](https://github.com/srobinson/fmm/commit/18001ffa27fd9b02536410c09346493d6a4185ca))
+- support decorated Python definitions and add --force generate flag ([52e5309](https://github.com/srobinson/fmm/commit/52e5309702452d3fb071206eecd3805747da103e))
 
 ## [0.1.11](https://github.com/srobinson/fmm/compare/v0.1.10...v0.1.11) (2026-03-04)
 
-
 ### Features
 
-* unify MCP output to sidecar YAML and index Rust binary crates ([4b4d6af](https://github.com/srobinson/fmm/commit/4b4d6afebb581013acac4af0975301e6be0bdd93))
+- unify MCP output to sidecar YAML and index Rust binary crates ([4b4d6af](https://github.com/srobinson/fmm/commit/4b4d6afebb581013acac4af0975301e6be0bdd93))
 
 ## [0.1.10](https://github.com/srobinson/fmm/compare/v0.1.9...v0.1.10) (2026-03-04)
 
-
 ### Bug Fixes
 
-* guard fromJSON against empty release-please pr output ([2a0c8d8](https://github.com/srobinson/fmm/commit/2a0c8d83a89c700608e29b3e547960bf33347ac3))
+- guard fromJSON against empty release-please pr output ([2a0c8d8](https://github.com/srobinson/fmm/commit/2a0c8d83a89c700608e29b3e547960bf33347ac3))
 
 ## [0.1.9](https://github.com/srobinson/fmm/compare/v0.1.8...v0.1.9) (2026-03-04)
 
-
 ### Bug Fixes
 
-* automated release pipeline and sidecar discovery ([d6952fe](https://github.com/srobinson/fmm/commit/d6952fe6183b798887041814849d0b63682e7c99))
-* extract PR number from release-please JSON output ([e953b99](https://github.com/srobinson/fmm/commit/e953b9917abb345760f92d9ed9f38570c4db0328))
+- automated release pipeline and sidecar discovery ([d6952fe](https://github.com/srobinson/fmm/commit/d6952fe6183b798887041814849d0b63682e7c99))
+- extract PR number from release-please JSON output ([e953b99](https://github.com/srobinson/fmm/commit/e953b9917abb345760f92d9ed9f38570c4db0328))
 
 ## [0.1.8](https://github.com/srobinson/fmm/compare/v0.1.7...v0.1.8) (2026-03-04)
 
-
 ### Bug Fixes
 
-* resolve conflict markers in fixture sidecars ([fba0703](https://github.com/srobinson/fmm/commit/fba07033709be3bbe025dd14e66019673781d0c4))
+- resolve conflict markers in fixture sidecars ([fba0703](https://github.com/srobinson/fmm/commit/fba07033709be3bbe025dd14e66019673781d0c4))
 
 ## [0.1.7](https://github.com/srobinson/fmm/compare/v0.1.6...v0.1.7) (2026-03-04)
 
-
 ### Bug Fixes
 
-* parser correctness issues and deterministic config ordering ([#43](https://github.com/srobinson/fmm/issues/43)) ([97d6370](https://github.com/srobinson/fmm/commit/97d63700f88114356d0bfb642f5c27d62458ea2a))
+- parser correctness issues and deterministic config ordering ([#43](https://github.com/srobinson/fmm/issues/43)) ([97d6370](https://github.com/srobinson/fmm/commit/97d63700f88114356d0bfb642f5c27d62458ea2a))
 
 ## [0.1.6](https://github.com/srobinson/fmm/compare/v0.1.5...v0.1.6) (2026-03-04)
 
-
 ### Features
 
-* add language parsers for PHP, C, Zig, Lua, Scala ([#40](https://github.com/srobinson/fmm/issues/40)) ([fc13ad8](https://github.com/srobinson/fmm/commit/fc13ad849a0e678774047c8667a4ff119e78da4c))
-* add language parsers for Swift, Kotlin, Dart, Elixir ([#42](https://github.com/srobinson/fmm/issues/42)) ([30b29e4](https://github.com/srobinson/fmm/commit/30b29e4a9a07659770c4e672125fbd152b2f8207))
+- add language parsers for PHP, C, Zig, Lua, Scala ([#40](https://github.com/srobinson/fmm/issues/40)) ([fc13ad8](https://github.com/srobinson/fmm/commit/fc13ad849a0e678774047c8667a4ff119e78da4c))
+- add language parsers for Swift, Kotlin, Dart, Elixir ([#42](https://github.com/srobinson/fmm/issues/42)) ([30b29e4](https://github.com/srobinson/fmm/commit/30b29e4a9a07659770c4e672125fbd152b2f8207))
 
 ## [0.1.5](https://github.com/srobinson/fmm/compare/v0.1.4...v0.1.5) (2026-03-03)
 
-
 ### Bug Fixes
 
-* use parent node for Rust impl method line ranges, sort exports by line number ([#38](https://github.com/srobinson/fmm/issues/38)) ([d6e04d0](https://github.com/srobinson/fmm/commit/d6e04d05e7a8fabe79f8b1eccb98c31921d76272))
+- use parent node for Rust impl method line ranges, sort exports by line number ([#38](https://github.com/srobinson/fmm/issues/38)) ([d6e04d0](https://github.com/srobinson/fmm/commit/d6e04d05e7a8fabe79f8b1eccb98c31921d76272))
 
 ## [0.1.4](https://github.com/srobinson/fmm/compare/v0.1.3...v0.1.4) (2026-03-03)
 
-
 ### Features
 
-* make .claude/ dir creation opt-in in fmm init ([#36](https://github.com/srobinson/fmm/issues/36)) ([cd107a5](https://github.com/srobinson/fmm/commit/cd107a52af2b53421f6a62be7a0903b0401e5441))
+- make .claude/ dir creation opt-in in fmm init ([#36](https://github.com/srobinson/fmm/issues/36)) ([cd107a5](https://github.com/srobinson/fmm/commit/cd107a52af2b53421f6a62be7a0903b0401e5441))
 
 ## [0.1.3](https://github.com/srobinson/fmm/compare/v0.1.2...v0.1.3) (2026-03-03)
 
-
 ### Features
 
-* support multiple paths in generate, validate, and clean commands ([87478c3](https://github.com/srobinson/fmm/commit/87478c3ad70354614ffa16203b7cc9d091278787))
+- support multiple paths in generate, validate, and clean commands ([87478c3](https://github.com/srobinson/fmm/commit/87478c3ad70354614ffa16203b7cc9d091278787))
 
 ## [0.1.2](https://github.com/srobinson/fmm/compare/v0.1.1...v0.1.2) (2026-02-14)
 
-
 ### Features
 
-* world-class CLI help system ([#27](https://github.com/srobinson/fmm/issues/27)) ([dffbacf](https://github.com/srobinson/fmm/commit/dffbacf1d7105f4268c987b09f11f8e6c1e088f6))
-
+- world-class CLI help system ([#27](https://github.com/srobinson/fmm/issues/27)) ([dffbacf](https://github.com/srobinson/fmm/commit/dffbacf1d7105f4268c987b09f11f8e6c1e088f6))
 
 ### Bug Fixes
 
-* remove crates.io publish from release pipeline ([#25](https://github.com/srobinson/fmm/issues/25)) ([39125dc](https://github.com/srobinson/fmm/commit/39125dc8f7f8f68370df1058a5a8ea20c4c058de))
+- remove crates.io publish from release pipeline ([#25](https://github.com/srobinson/fmm/issues/25)) ([39125dc](https://github.com/srobinson/fmm/commit/39125dc8f7f8f68370df1058a5a8ea20c4c058de))
 
 ## [0.1.1](https://github.com/srobinson/fmm/compare/v0.1.0...v0.1.1) (2026-02-14)
 
-
 ### Features
 
-* Add search CLI, MCP server, and Claude integration ([43c9e3b](https://github.com/srobinson/fmm/commit/43c9e3b3fc2d851af48f1e0aae3cfb33d8397f4b))
-* automated release pipeline with npm distribution ([4b829cc](https://github.com/srobinson/fmm/commit/4b829cc2571a2e8cc16e754b8d6c375b1f40c5a9))
-
+- Add search CLI, MCP server, and Claude integration ([43c9e3b](https://github.com/srobinson/fmm/commit/43c9e3b3fc2d851af48f1e0aae3cfb33d8397f4b))
+- automated release pipeline with npm distribution ([4b829cc](https://github.com/srobinson/fmm/commit/4b829cc2571a2e8cc16e754b8d6c375b1f40c5a9))
 
 ### Bug Fixes
 
-* Address clippy warnings ([9bf789d](https://github.com/srobinson/fmm/commit/9bf789d1129bee08e98126441f8a4ae0faaa08b4))
-* Apply cargo fmt to report.rs ([6849220](https://github.com/srobinson/fmm/commit/684922047047cc69279bb163a6291457271e4563))
-* cargo fmt trailing whitespace ([88a12df](https://github.com/srobinson/fmm/commit/88a12df30c2003293df4d5e7935782b40b80a704))
-* reference resolution — stem matching + fallback cap ([c4c89f4](https://github.com/srobinson/fmm/commit/c4c89f47d6657b804dd76835bbaaf053f32c1149))
-* remaining cargo fmt issue ([2a598be](https://github.com/srobinson/fmm/commit/2a598be7fadd9c2e1d02164f740e40f8559458ca))
+- Address clippy warnings ([9bf789d](https://github.com/srobinson/fmm/commit/9bf789d1129bee08e98126441f8a4ae0faaa08b4))
+- Apply cargo fmt to report.rs ([6849220](https://github.com/srobinson/fmm/commit/684922047047cc69279bb163a6291457271e4563))
+- cargo fmt trailing whitespace ([88a12df](https://github.com/srobinson/fmm/commit/88a12df30c2003293df4d5e7935782b40b80a704))
+- reference resolution — stem matching + fallback cap ([c4c89f4](https://github.com/srobinson/fmm/commit/c4c89f47d6657b804dd76835bbaaf053f32c1149))
+- remaining cargo fmt issue ([2a598be](https://github.com/srobinson/fmm/commit/2a598be7fadd9c2e1d02164f740e40f8559458ca))
