@@ -635,8 +635,12 @@ mod tests {
         // AgentConfig (prefix) should come before MockAgent (suffix)
         let names: Vec<&str> = result.exports.iter().map(|h| h.name.as_str()).collect();
         if let (Some(ag_pos), Some(mock_pos)) = (
-            names.iter().position(|&n| n.contains("AgentConfig") || n == "agent_config.py"),
-            names.iter().position(|&n| n.contains("MockAgent") || n == "mock_agent.py"),
+            names
+                .iter()
+                .position(|&n| n.contains("AgentConfig") || n == "agent_config.py"),
+            names
+                .iter()
+                .position(|&n| n.contains("MockAgent") || n == "mock_agent.py"),
         ) {
             // prefix match should rank higher than suffix match
             assert!(
@@ -665,9 +669,15 @@ mod tests {
         }
         let result = bare_search(&manifest, "foo", Some(3));
         // Should cap fuzzy results at 3
-        assert!(result.exports.len() <= 3, "expected at most 3 results, got {}", result.exports.len());
-        assert!(result.total_exports.is_some(), "should report total when capped");
+        assert!(
+            result.exports.len() <= 3,
+            "expected at most 3 results, got {}",
+            result.exports.len()
+        );
+        assert!(
+            result.total_exports.is_some(),
+            "should report total when capped"
+        );
         assert_eq!(result.total_exports.unwrap(), 10);
     }
-
 }

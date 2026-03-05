@@ -636,10 +636,14 @@ impl McpServer {
         let args: FileOutlineArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
-        let entry = manifest
-            .files
-            .get(&args.file)
-            .ok_or_else(|| format!("File '{}' not found in manifest", args.file))?;
+        validate_not_directory(&args.file, &self.root)?;
+
+        let entry = manifest.files.get(&args.file).ok_or_else(|| {
+            format!(
+                "File '{}' not found in manifest. Run 'fmm generate' to index the file.",
+                args.file
+            )
+        })?;
 
         Ok(crate::format::format_file_outline(&args.file, entry))
     }
@@ -990,6 +994,28 @@ mod tests {
         assert!(
             text.contains("fmm_list_exports"),
             "should suggest fmm_list_exports, got: {}",
+            text
+        );
+    }
+
+    #[test]
+    fn file_outline_directory_path_returns_helpful_error() {
+        use crate::manifest::Manifest;
+        let server = McpServer {
+            manifest: Some(Manifest::new()),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+        let result = server
+            .call_tool("fmm_file_outline", serde_json::json!({"file": "src/cli/"}))
+            .unwrap();
+        assert!(
+            result["isError"].as_bool().unwrap_or(false),
+            "expected isError"
+        );
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(
+            text.contains("fmm_list_files"),
+            "should suggest fmm_list_files, got: {}",
             text
         );
     }

@@ -4,17 +4,20 @@ fmm: v0.3
 exports:
   ExportHit: [16, 20]
   ImportHit: [23, 26]
-  BareSearchResult: [29, 33]
-  FileSearchResult: [36, 42]
-  ExportHitCompact: [45, 48]
-  SearchFilters: [51, 57]
-  bare_search: [64, 132]
-  filter_search: [135, 222]
-  find_export_matches: [225, 252]
-  dependency_graph: [255, 272]
+  BareSearchResult: [29, 35]
+  FileSearchResult: [38, 44]
+  ExportHitCompact: [47, 50]
+  SearchFilters: [53, 59]
+  DEFAULT_SEARCH_LIMIT: [66, 66]
+  bare_search: [70, 144]
+  export_match_score: [148, 177]
+  filter_search: [180, 267]
+  find_export_matches: [270, 297]
+  dependency_graph: [304, 338]
+  python_dep_matches: [404, 417]
 imports: [std]
 dependencies: [crate]
-loc: 312
-modified: 2026-03-04
+loc: 575
+modified: 2026-03-05
 rust:
   lifetimes: ['''a']
