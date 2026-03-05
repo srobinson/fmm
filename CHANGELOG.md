@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.18](https://github.com/srobinson/fmm/compare/v0.1.17...v0.1.18) (2026-03-05)
+
+
+### Features
+
+* expose class methods in fmm_lookup_export, fmm_list_exports, fmm_glossary (ALP-777) ([#62](https://github.com/srobinson/fmm/issues/62)) ([ee6136a](https://github.com/srobinson/fmm/commit/ee6136aae894fb5b200ea2161aeaa99bdec2759c))
+
 ## [0.1.17](https://github.com/srobinson/fmm/compare/v0.1.16...v0.1.17) (2026-03-05)
 
 
