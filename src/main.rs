@@ -109,10 +109,10 @@ fn run() -> anyhow::Result<()> {
         }
         Commands::Glossary {
             pattern,
-            include_tests,
+            mode,
             json,
         } => {
-            cli::glossary(pattern, include_tests, json)?;
+            cli::glossary(pattern, &mode, json)?;
         }
         Commands::Mcp | Commands::Serve => {
             let mut server = mcp::McpServer::new();

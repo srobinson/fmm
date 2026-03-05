@@ -71,7 +71,7 @@ struct ListFilesArgs {
 struct GlossaryArgs {
     pattern: Option<String>,
     limit: Option<usize>,
-    include_tests: Option<bool>,
+    mode: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -419,9 +419,10 @@ impl McpServer {
                             "type": "integer",
                             "description": "Max entries returned (default 10, hard cap at 50). Use a specific pattern to stay under the default."
                         },
-                        "include_tests": {
-                            "type": "boolean",
-                            "description": "Include test functions and test-file exports (default false). By default, symbols starting with test_/Test and exports from tests/ or __tests__/ directories are excluded."
+                        "mode": {
+                            "type": "string",
+                            "enum": ["source", "tests", "all"],
+                            "description": "source (default): excludes test symbols and test files — exact callers for refactoring. tests: only test exports — what tests exercise this symbol? all: unfiltered."
                         }
                     },
                     "required": ["pattern"]
@@ -767,9 +768,13 @@ impl McpServer {
         const DEFAULT_LIMIT: usize = 10;
         const HARD_CAP: usize = 50;
         let limit = args.limit.unwrap_or(DEFAULT_LIMIT).min(HARD_CAP);
-        let include_tests = args.include_tests.unwrap_or(false);
+        let mode = match args.mode.as_deref().unwrap_or("source") {
+            "tests" => crate::manifest::GlossaryMode::Tests,
+            "all" => crate::manifest::GlossaryMode::All,
+            _ => crate::manifest::GlossaryMode::Source,
+        };
 
-        let all_entries = manifest.build_glossary(pattern, include_tests);
+        let all_entries = manifest.build_glossary(pattern, mode);
         let total_matched = all_entries.len();
         let entries: Vec<_> = all_entries.into_iter().take(limit).collect();
 

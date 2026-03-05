@@ -392,6 +392,18 @@ fn parse_sidecar(content: &str) -> Option<(String, FileEntry)> {
     ))
 }
 
+/// Controls which exports are included when building the glossary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GlossaryMode {
+    /// Exclude test symbols and test files — exact callers for refactoring (default).
+    #[default]
+    Source,
+    /// Include only test exports — what tests exercise this symbol?
+    Tests,
+    /// Unfiltered — source and test exports combined.
+    All,
+}
+
 /// Entry for a single export name in the glossary.
 #[derive(Debug, Clone, Serialize)]
 pub struct GlossaryEntry {
@@ -440,10 +452,11 @@ impl Manifest {
     /// substring), collect all definitions and their dependents.
     /// Returns entries sorted alphabetically by name (case-insensitive).
     ///
-    /// When `include_tests` is false (default), exports are filtered out where the
-    /// symbol name follows test conventions (`test_`, `Test`) or the source file is
-    /// under a test directory (`tests/`, `test/`, `__tests__/`, `_test.go`, etc.).
-    pub fn build_glossary(&self, pattern: &str, include_tests: bool) -> Vec<GlossaryEntry> {
+    /// `mode` controls test filtering:
+    /// - `Source` (default): excludes test symbols/files — exact callers for refactoring
+    /// - `Tests`: only test symbols/files — what tests exercise this symbol?
+    /// - `All`: unfiltered
+    pub fn build_glossary(&self, pattern: &str, mode: GlossaryMode) -> Vec<GlossaryEntry> {
         let pat_lower = pattern.to_lowercase();
         let mut entries: Vec<GlossaryEntry> = self
             .export_all
@@ -452,7 +465,11 @@ impl Manifest {
             .filter_map(|(name, locations)| {
                 let sources: Vec<GlossarySource> = locations
                     .iter()
-                    .filter(|loc| include_tests || !is_test_export(name, &loc.file))
+                    .filter(|loc| match mode {
+                        GlossaryMode::Source => !is_test_export(name, &loc.file),
+                        GlossaryMode::Tests => is_test_export(name, &loc.file),
+                        GlossaryMode::All => true,
+                    })
                     .map(|loc| {
                         let used_by = self.find_dependents(&loc.file);
                         GlossarySource {
@@ -958,7 +975,7 @@ modified: 2026-01-30"#;
             );
         }
 
-        let entries = manifest.build_glossary("a", true);
+        let entries = manifest.build_glossary("a", GlossaryMode::All);
         // "alpha" matches; "zebra" matches (contains "a"); "beta" matches; "Config" does not
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
         // Sorted case-insensitively
@@ -984,7 +1001,7 @@ modified: 2026-01-30"#;
             },
         );
 
-        let entries = manifest.build_glossary("CONFIG", true);
+        let entries = manifest.build_glossary("CONFIG", GlossaryMode::All);
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
         assert!(names.contains(&"AppConfig"));
         assert!(names.contains(&"loadConfig"));
@@ -1027,8 +1044,8 @@ modified: 2026-01-30"#;
             },
         );
 
-        // Default: include_tests=false — test artifacts excluded
-        let entries = manifest.build_glossary("", false);
+        // Source mode (default): test artifacts excluded
+        let entries = manifest.build_glossary("", GlossaryMode::Source);
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
         assert!(
             names.contains(&"run_dispatch"),
@@ -1047,9 +1064,21 @@ modified: 2026-01-30"#;
             "tests/ dir export should be excluded"
         );
 
-        // With include_tests=true — all exports returned
-        let entries_all = manifest.build_glossary("", true);
+        // Tests mode: only test artifacts returned
+        let entries_tests = manifest.build_glossary("", GlossaryMode::Tests);
+        let names_tests: Vec<&str> = entries_tests.iter().map(|e| e.name.as_str()).collect();
+        assert!(
+            !names_tests.contains(&"run_dispatch"),
+            "normal export excluded in tests mode"
+        );
+        assert!(names_tests.contains(&"test_run_dispatch"));
+        assert!(names_tests.contains(&"TestRunDispatch"));
+        assert!(names_tests.contains(&"helper_fixture"));
+
+        // All mode: everything returned
+        let entries_all = manifest.build_glossary("", GlossaryMode::All);
         let names_all: Vec<&str> = entries_all.iter().map(|e| e.name.as_str()).collect();
+        assert!(names_all.contains(&"run_dispatch"));
         assert!(names_all.contains(&"test_run_dispatch"));
         assert!(names_all.contains(&"TestRunDispatch"));
         assert!(names_all.contains(&"helper_fixture"));

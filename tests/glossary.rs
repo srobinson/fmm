@@ -254,9 +254,9 @@ fn glossary_yaml_format_has_src_and_used_by_keys() {
 }
 
 #[test]
-fn glossary_excludes_test_functions_by_default() {
+fn glossary_mode_source_excludes_test_functions_by_default() {
     let (_tmp, server) = setup_glossary_server_with_tests();
-    // Default call — include_tests not set (defaults to false)
+    // Default call — mode not set (defaults to "source")
     let text = call_tool_text(&server, "fmm_glossary", json!({"pattern": "dispatch"}));
     // Real export should appear
     assert!(
@@ -267,18 +267,18 @@ fn glossary_excludes_test_functions_by_default() {
     // test_ prefixed name should be filtered out
     assert!(
         !text.contains("test_run_dispatch"),
-        "test_run_dispatch should be excluded by default, got: {}",
+        "test_run_dispatch should be excluded in source mode, got: {}",
         text
     );
 }
 
 #[test]
-fn glossary_include_tests_true_shows_test_functions() {
+fn glossary_mode_all_shows_test_functions() {
     let (_tmp, server) = setup_glossary_server_with_tests();
     let text = call_tool_text(
         &server,
         "fmm_glossary",
-        json!({"pattern": "dispatch", "include_tests": true}),
+        json!({"pattern": "dispatch", "mode": "all"}),
     );
     assert!(
         text.contains("run_dispatch:"),
@@ -287,53 +287,75 @@ fn glossary_include_tests_true_shows_test_functions() {
     );
     assert!(
         text.contains("test_run_dispatch:"),
-        "test_run_dispatch should be included with include_tests=true, got: {}",
+        "test_run_dispatch should be included with mode=all, got: {}",
         text
     );
 }
 
 #[test]
-fn glossary_excludes_test_directory_exports_by_default() {
+fn glossary_mode_tests_returns_only_test_exports() {
+    let (_tmp, server) = setup_glossary_server_with_tests();
+    // mode=tests: only test symbols returned
+    let text = call_tool_text(
+        &server,
+        "fmm_glossary",
+        json!({"pattern": "dispatch", "mode": "tests"}),
+    );
+    // "run_dispatch:" is a substring of "test_run_dispatch:" so check for the full entry line
+    assert!(
+        !text.contains("\nrun_dispatch:"),
+        "run_dispatch (source) should be excluded in tests mode, got: {}",
+        text
+    );
+    assert!(
+        text.contains("test_run_dispatch:"),
+        "test_run_dispatch should appear in tests mode, got: {}",
+        text
+    );
+}
+
+#[test]
+fn glossary_mode_source_excludes_test_directory_exports_by_default() {
     let (_tmp, server) = setup_glossary_server_with_tests();
     // helper_fixture is in tests/ dir; mockConfig is in __tests__/ dir
     let text = call_tool_text(&server, "fmm_glossary", json!({"pattern": "helper"}));
     assert!(
         text.contains("(no matching exports)"),
-        "tests/ exports should be excluded by default, got: {}",
+        "tests/ exports should be excluded in source mode, got: {}",
         text
     );
 
     let text2 = call_tool_text(&server, "fmm_glossary", json!({"pattern": "mock"}));
     assert!(
         text2.contains("(no matching exports)"),
-        "__tests__/ exports should be excluded by default, got: {}",
+        "__tests__/ exports should be excluded in source mode, got: {}",
         text2
     );
 }
 
 #[test]
-fn glossary_include_tests_true_shows_test_directory_exports() {
+fn glossary_mode_tests_shows_test_directory_exports() {
     let (_tmp, server) = setup_glossary_server_with_tests();
     let text = call_tool_text(
         &server,
         "fmm_glossary",
-        json!({"pattern": "helper", "include_tests": true}),
+        json!({"pattern": "helper", "mode": "tests"}),
     );
     assert!(
         text.contains("helper_fixture:"),
-        "helper_fixture should appear with include_tests=true, got: {}",
+        "helper_fixture should appear with mode=tests, got: {}",
         text
     );
 }
 
 #[test]
-fn glossary_excludes_go_test_prefix_by_default() {
+fn glossary_mode_source_excludes_go_test_prefix_by_default() {
     let (_tmp, server) = setup_glossary_server_with_tests();
     // TestRunDispatch is in agent_test.go AND has a Test prefix
     let text = call_tool_text(&server, "fmm_glossary", json!({"pattern": "RunDispatch"}));
     assert!(
         text.contains("(no matching exports)"),
-        "TestRunDispatch should be excluded by default, got: {}",
+        "TestRunDispatch should be excluded in source mode, got: {}",
         text
     );
 }

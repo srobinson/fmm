@@ -413,18 +413,20 @@ pub enum Commands {
             precisely what breaks.",
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm glossary run_dispatch</bold>   <dim># Exact symbol lookup</dim>
-  <dim>$</dim> <bold>fmm glossary config</bold>          <dim># All Config, loadConfig, AppConfig, ...</dim>
-  <dim>$</dim> <bold>fmm glossary config --json</bold>   <dim># JSON output for scripting</dim>"#),
+  <dim>$</dim> <bold>fmm glossary run_dispatch</bold>              <dim># Exact symbol lookup (source mode)</dim>
+  <dim>$</dim> <bold>fmm glossary config</bold>                    <dim># All Config, loadConfig, AppConfig, ...</dim>
+  <dim>$</dim> <bold>fmm glossary run_dispatch --mode tests</bold> <dim># What tests cover this symbol?</dim>
+  <dim>$</dim> <bold>fmm glossary config --mode all</bold>         <dim># Source + tests combined</dim>
+  <dim>$</dim> <bold>fmm glossary config --json</bold>             <dim># JSON output for scripting</dim>"#),
     )]
     Glossary {
         /// Symbol name or substring pattern (case-insensitive)
         #[arg(value_name = "PATTERN")]
         pattern: Option<String>,
 
-        /// Include test functions and exports from test directories
-        #[arg(long = "include-tests")]
-        include_tests: bool,
+        /// Filter mode: source (default, no tests), tests (test coverage only), all (unfiltered)
+        #[arg(long, value_name = "MODE", default_value = "source")]
+        mode: String,
 
         /// Output as JSON
         #[arg(short = 'j', long = "json")]

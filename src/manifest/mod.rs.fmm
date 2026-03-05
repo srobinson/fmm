@@ -16,17 +16,18 @@ exports:
   validate_file: [309, 320]
   file_count: [322, 324]
   file_paths: [326, 328]
-  GlossaryEntry: [397, 400]
-  GlossarySource: [405, 409]
-  build_glossary: [446, 477]
-  find_dependents: [481, 501]
-  dep_matches: [507, 574]
-  python_dep_matches: [607, 620]
-  dotted_dep_matches: [628, 641]
+  GlossaryMode: [397, 405]
+  GlossaryEntry: [409, 412]
+  GlossarySource: [417, 421]
+  build_glossary: [459, 494]
+  find_dependents: [498, 518]
+  dep_matches: [524, 591]
+  python_dep_matches: [624, 637]
+  dotted_dep_matches: [645, 658]
 imports: [anyhow, chrono, ignore, serde, std]
 dependencies: ['crate::parser']
-loc: 1265
+loc: 1297
 modified: 2026-03-05
 rust:
-  derives: [Clone, Debug, Deserialize, Eq, PartialEq, Serialize]
+  derives: [Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize]
   trait_impls: [Default for Manifest]

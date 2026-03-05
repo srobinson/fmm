@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 
-use crate::manifest::Manifest;
+use crate::manifest::{GlossaryMode, Manifest};
 
-pub fn glossary(pattern: Option<String>, include_tests: bool, json_output: bool) -> Result<()> {
+pub fn glossary(pattern: Option<String>, mode: &str, json_output: bool) -> Result<()> {
     let pattern = pattern.as_deref().unwrap_or("").trim().to_string();
     if pattern.is_empty() {
         anyhow::bail!(
@@ -23,7 +23,12 @@ pub fn glossary(pattern: Option<String>, include_tests: bool, json_output: bool)
         return Ok(());
     }
 
-    let entries = manifest.build_glossary(&pattern, include_tests);
+    let mode = match mode {
+        "tests" => GlossaryMode::Tests,
+        "all" => GlossaryMode::All,
+        _ => GlossaryMode::Source,
+    };
+    let entries = manifest.build_glossary(&pattern, mode);
 
     if json_output {
         let json = serde_json::to_string_pretty(&entries)?;

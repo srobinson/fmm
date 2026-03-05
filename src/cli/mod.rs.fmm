@@ -4,10 +4,10 @@ fmm: v0.3+0.1.12
 exports:
   init: [11, 11]
   Cli: [104, 115]
-  Commands: [118, 484]
+  Commands: [118, 486]
 imports: [anyhow, clap, clap_complete, color_print, glossary, ignore, init, search, sidecar, status, std, watch]
 dependencies: ['crate::config']
-loc: 679
+loc: 681
 modified: 2026-03-05
 rust:
   derives: [Parser, Subcommand]
