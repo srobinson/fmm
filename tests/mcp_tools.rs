@@ -343,6 +343,105 @@ fn list_exports_directory_filter_all() {
 }
 
 // ---------------------------------------------------------------------------
+// fmm_list_exports — pagination tests (ALP-782)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn list_exports_pattern_pagination_limit_and_offset() {
+    let (_tmp, server) = setup_mcp_server();
+
+    // The fixture has 10 exports total. "S" (case-insensitive) matches:
+    // SessionToken, UserRole (no), createSession, validateSession, AppConfig (no),
+    // loadConfig (no), Pool (no), createPool (no), hashPassword (no), verifyPassword (no)
+    // Actually let's use "" pattern won't work. Use "session" which matches 2 exports +
+    // possibly method index. Use "e" to get a broader set. Actually just use limit=2
+    // against all-matches for "a" to get at least 3 results.
+    //
+    // Fixture exports: createSession, validateSession, SessionToken, UserRole,
+    //   loadConfig, AppConfig, Pool, createPool, hashPassword, verifyPassword
+    // "a" matches: validateSession, SessionToken, loadConfig, AppConfig, hashPassword
+    // That's 5. Test with limit=2.
+
+    // First page: limit=2, offset=0
+    let text = call_tool_text(
+        &server,
+        "fmm_list_exports",
+        json!({"pattern": "a", "limit": 2, "offset": 0}),
+    );
+    assert!(
+        text.contains("showing: 1-2 of"),
+        "should show pagination header; got: {text}"
+    );
+    assert!(
+        text.contains("offset=2"),
+        "should hint next offset=2; got: {text}"
+    );
+
+    // Second page: limit=2, offset=2
+    let text2 = call_tool_text(
+        &server,
+        "fmm_list_exports",
+        json!({"pattern": "a", "limit": 2, "offset": 2}),
+    );
+    assert!(
+        text2.contains("showing: 3-4 of"),
+        "second page header; got: {text2}"
+    );
+
+    // Last page: limit=10 — returns all, no pagination header
+    let text3 = call_tool_text(
+        &server,
+        "fmm_list_exports",
+        json!({"pattern": "a", "limit": 10, "offset": 0}),
+    );
+    assert!(
+        !text3.contains("showing:"),
+        "no pagination header when all results fit; got: {text3}"
+    );
+}
+
+#[test]
+fn list_exports_all_pagination_limit_and_offset() {
+    let (_tmp, server) = setup_mcp_server();
+
+    // Fixture has 5 files with exports. Test with limit=2.
+
+    // First page: limit=2, offset=0
+    let text = call_tool_text(
+        &server,
+        "fmm_list_exports",
+        json!({"limit": 2, "offset": 0}),
+    );
+    assert!(
+        text.contains("showing: 1-2 of 5"),
+        "all-mode page 1 header; got: {text}"
+    );
+    assert!(text.contains("offset=2"), "should hint next=2; got: {text}");
+
+    // Last page: limit=2, offset=4 — only 1 file remains, no "next" hint
+    let text2 = call_tool_text(
+        &server,
+        "fmm_list_exports",
+        json!({"limit": 2, "offset": 4}),
+    );
+    assert!(
+        text2.contains("showing: 5-5 of 5"),
+        "all-mode last page header; got: {text2}"
+    );
+    assert!(
+        !text2.contains("offset=6"),
+        "no next hint on last page; got: {text2}"
+    );
+
+    // No pagination header when all files fit
+    let text3 = call_tool_text(&server, "fmm_list_exports", json!({"limit": 200}));
+    assert!(
+        !text3.contains("showing:"),
+        "no header when all fit; got: {text3}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // fmm_dependency_graph
 // ---------------------------------------------------------------------------
 

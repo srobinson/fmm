@@ -168,7 +168,11 @@ fn flag_search(
                         .iter()
                         .map(|h| (h.name.clone(), h.file.clone(), h.lines))
                         .collect();
-                    println!("{}", crate::format::format_list_exports_pattern(&tuples));
+                    let total = tuples.len();
+                    println!(
+                        "{}",
+                        crate::format::format_list_exports_pattern(&tuples, total, 0)
+                    );
                 }
                 return Ok(());
             }

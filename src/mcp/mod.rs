@@ -29,6 +29,8 @@ struct ListExportsArgs {
     pattern: Option<String>,
     file: Option<String>,
     directory: Option<String>,
+    limit: Option<usize>,
+    offset: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -278,7 +280,7 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_list_exports".to_string(),
-                description: "Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Use 'directory' to scope results to a path prefix (e.g. 'packages/core/'). Use 'file' to list a specific file's exports.".to_string(),
+                description: "Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Use 'directory' to scope results to a path prefix (e.g. 'packages/core/'). Use 'file' to list a specific file's exports. Default limit: 200. Use offset to page through large result sets.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -293,6 +295,14 @@ impl McpServer {
                         "directory": {
                             "type": "string",
                             "description": "Path prefix to scope results (e.g. 'packages/core/'). Only exports from files under this directory are returned."
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of results to return (default: 200). Increase for broader listings."
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Number of results to skip before returning (default: 0). Use for pagination: offset=200 returns results 201–400."
                         }
                     }
                 }),
@@ -537,12 +547,16 @@ impl McpServer {
     }
 
     fn tool_list_exports(&self, args: &Value) -> Result<String, String> {
+        const DEFAULT_LIMIT: usize = 200;
+
         let manifest = self.require_manifest()?;
 
         let args: ListExportsArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
         let dir = args.directory.as_deref();
+        let limit = args.limit.unwrap_or(DEFAULT_LIMIT);
+        let offset = args.offset.unwrap_or(0);
 
         if let Some(ref file_path) = args.file {
             let entry = manifest
@@ -587,7 +601,12 @@ impl McpServer {
                 matches.push((dotted_name.clone(), loc.file.clone(), lines));
             }
             matches.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
-            Ok(crate::format::format_list_exports_pattern(&matches))
+            let total = matches.len();
+            let page: Vec<(String, String, Option<[usize; 2]>)> =
+                matches.into_iter().skip(offset).take(limit).collect();
+            Ok(crate::format::format_list_exports_pattern(
+                &page, total, offset,
+            ))
         } else {
             let mut by_file: Vec<(&str, &crate::manifest::FileEntry)> = manifest
                 .files
@@ -603,7 +622,10 @@ impl McpServer {
                 .map(|(path, entry)| (path.as_str(), entry))
                 .collect();
             by_file.sort_by_key(|(path, _)| path.to_lowercase());
-            Ok(crate::format::format_list_exports_all(&by_file))
+            let total = by_file.len();
+            let page: Vec<(&str, &crate::manifest::FileEntry)> =
+                by_file.into_iter().skip(offset).take(limit).collect();
+            Ok(crate::format::format_list_exports_all(&page, total, offset))
         }
     }
 
