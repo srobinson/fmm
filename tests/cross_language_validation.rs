@@ -278,24 +278,55 @@ def _internal_validator(data):
 
     let names = result.metadata.export_names();
     // Decorated classes
-    assert!(names.contains(&"AppConfig".to_string()), "decorated @dataclass class missing");
-    assert!(names.contains(&"CacheKey".to_string()), "decorated @dataclass(frozen=True) class missing");
+    assert!(
+        names.contains(&"AppConfig".to_string()),
+        "decorated @dataclass class missing"
+    );
+    assert!(
+        names.contains(&"CacheKey".to_string()),
+        "decorated @dataclass(frozen=True) class missing"
+    );
     // Bare class
-    assert!(names.contains(&"RequestBody".to_string()), "bare class missing");
+    assert!(
+        names.contains(&"RequestBody".to_string()),
+        "bare class missing"
+    );
     // Decorated functions
-    assert!(names.contains(&"health_check".to_string()), "decorated @app.get function missing");
-    assert!(names.contains(&"process_item".to_string()), "decorated @app.post function missing");
+    assert!(
+        names.contains(&"health_check".to_string()),
+        "decorated @app.get function missing"
+    );
+    assert!(
+        names.contains(&"process_item".to_string()),
+        "decorated @app.post function missing"
+    );
     // Private excluded
     assert!(!names.contains(&"_internal_validator".to_string()));
 
     // Line ranges: AppConfig should start at @dataclass, not class keyword
-    let config = result.metadata.exports.iter().find(|e| e.name == "AppConfig").unwrap();
-    assert_eq!(config.start_line, 8, "AppConfig range should start at @dataclass");
+    let config = result
+        .metadata
+        .exports
+        .iter()
+        .find(|e| e.name == "AppConfig")
+        .unwrap();
+    assert_eq!(
+        config.start_line, 8,
+        "AppConfig range should start at @dataclass"
+    );
     assert_eq!(config.end_line, 12);
 
     // CacheKey: @dataclass(frozen=True) decorator
-    let cache_key = result.metadata.exports.iter().find(|e| e.name == "CacheKey").unwrap();
-    assert_eq!(cache_key.start_line, 18, "CacheKey range should start at @dataclass(frozen=True)");
+    let cache_key = result
+        .metadata
+        .exports
+        .iter()
+        .find(|e| e.name == "CacheKey")
+        .unwrap();
+    assert_eq!(
+        cache_key.start_line, 18,
+        "CacheKey range should start at @dataclass(frozen=True)"
+    );
 
     // Imports
     assert!(result.metadata.imports.contains(&"dataclasses".to_string()));
@@ -343,8 +374,16 @@ def _run_migrations():
     assert!(names.contains(&"create_engine".to_string()));
 
     // DatabaseConfig resolves to decorated definition site
-    let db_config = result.metadata.exports.iter().find(|e| e.name == "DatabaseConfig").unwrap();
-    assert_eq!(db_config.start_line, 7, "DatabaseConfig should resolve to @dataclass line");
+    let db_config = result
+        .metadata
+        .exports
+        .iter()
+        .find(|e| e.name == "DatabaseConfig")
+        .unwrap();
+    assert_eq!(
+        db_config.start_line, 7,
+        "DatabaseConfig should resolve to @dataclass line"
+    );
     assert_eq!(db_config.end_line, 11);
 
     // Unlisted items not exported

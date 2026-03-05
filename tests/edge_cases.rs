@@ -271,7 +271,8 @@ fn rust_comments_only() {
 #[test]
 fn python_decorated_all_private() {
     let mut parser = PythonParser::new().unwrap();
-    let source = "@dataclass\nclass _Internal:\n    x: int\n\n@staticmethod\ndef _helper():\n    pass\n";
+    let source =
+        "@dataclass\nclass _Internal:\n    x: int\n\n@staticmethod\ndef _helper():\n    pass\n";
     let result = parser.parse(source).unwrap();
     assert!(
         result.metadata.exports.is_empty(),
@@ -288,7 +289,12 @@ fn python_decorated_crlf_line_endings() {
         .metadata
         .export_names()
         .contains(&"Agent".to_string()));
-    let agent = result.metadata.exports.iter().find(|e| e.name == "Agent").unwrap();
+    let agent = result
+        .metadata
+        .exports
+        .iter()
+        .find(|e| e.name == "Agent")
+        .unwrap();
     assert_eq!(agent.start_line, 1, "range should start at decorator");
 }
 
@@ -301,7 +307,12 @@ fn python_stacked_decorators() {
         .metadata
         .export_names()
         .contains(&"stacked".to_string()));
-    let entry = result.metadata.exports.iter().find(|e| e.name == "stacked").unwrap();
+    let entry = result
+        .metadata
+        .exports
+        .iter()
+        .find(|e| e.name == "stacked")
+        .unwrap();
     assert_eq!(entry.start_line, 1, "range should include first decorator");
     assert_eq!(entry.end_line, 5);
 }

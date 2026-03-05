@@ -76,11 +76,11 @@ fn validate_python_heuristic_fixture() {
 
     // Path B (no __all__): decorated and bare classes/functions exported
     let names = result.metadata.export_names();
-    assert!(names.contains(&"Agent".to_string()), "decorated class missing");
     assert!(
-        names.contains(&"Router".to_string()),
-        "bare class missing"
+        names.contains(&"Agent".to_string()),
+        "decorated class missing"
     );
+    assert!(names.contains(&"Router".to_string()), "bare class missing");
     assert!(
         names.contains(&"handle_request".to_string()),
         "bare function missing"
@@ -105,7 +105,10 @@ fn validate_python_heuristic_fixture() {
         .iter()
         .find(|e| e.name == "Agent")
         .unwrap();
-    assert_eq!(agent.start_line, 7, "Agent range should start at @dataclass");
+    assert_eq!(
+        agent.start_line, 7,
+        "Agent range should start at @dataclass"
+    );
 }
 
 #[test]

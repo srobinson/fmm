@@ -453,7 +453,8 @@ class _InternalClass:
     #[test]
     fn parse_python_decorated_class() {
         let mut parser = PythonParser::new().unwrap();
-        let source = "from dataclasses import dataclass\n\n@dataclass\nclass Agent:\n    name: str\n";
+        let source =
+            "from dataclasses import dataclass\n\n@dataclass\nclass Agent:\n    name: str\n";
         let result = parser.parse(source).unwrap();
         assert!(result
             .metadata
