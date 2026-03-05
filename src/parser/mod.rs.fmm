@@ -1,23 +1,24 @@
 ---
 file: src/parser/mod.rs
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.16
 exports:
   builtin: [1, 1]
-  ExportEntry: [10, 14]
-  new: [17, 23]
-  Metadata: [27, 32]
-  export_names: [36, 38]
-  ParseResult: [43, 46]
-  Parser: [48, 63]
-  ParserRegistry: [68, 71]
-  with_builtins: [82, 86]
-  register: [89, 101]
-  language_id_for: [207, 209]
-  get_parser: [212, 218]
-  has_parser: [222, 224]
-  extensions: [228, 232]
+  ExportEntry: [10, 18]
+  new: [21, 28]
+  method: [31, 38]
+  Metadata: [42, 47]
+  export_names: [51, 53]
+  ParseResult: [58, 61]
+  Parser: [63, 78]
+  ParserRegistry: [83, 86]
+  with_builtins: [97, 101]
+  register: [104, 116]
+  language_id_for: [222, 224]
+  get_parser: [227, 233]
+  has_parser: [237, 239]
+  extensions: [243, 247]
 imports: [anyhow, serde, std]
-loc: 364
+loc: 379
 modified: 2026-03-05
 rust:
   derives: [Clone, Debug, Deserialize, Eq, PartialEq, Serialize]

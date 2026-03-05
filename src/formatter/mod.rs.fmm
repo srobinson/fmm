@@ -1,14 +1,14 @@
 ---
 file: src/formatter/mod.rs
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.16
 exports:
   Frontmatter: [6, 13]
   new: [16, 24]
   with_version: [27, 30]
   with_custom_fields: [33, 44]
-  render: [46, 113]
-  yaml_escape: [118, 127]
+  render: [46, 140]
+  yaml_escape: [145, 154]
 imports: [chrono, std]
 dependencies: ['crate::parser']
-loc: 395
+loc: 484
 modified: 2026-03-05
