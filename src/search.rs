@@ -5,8 +5,9 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use crate::manifest::{ExportLocation, FileEntry, Manifest};
-use crate::mcp::dep_matches;
+use crate::manifest::{
+    dep_matches, dotted_dep_matches, python_dep_matches, ExportLocation, FileEntry, Manifest,
+};
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -445,44 +446,6 @@ fn resolve_python_relative_path(dep: &str, source_file: &str) -> Option<String> 
     }
 
     Some(parts.join("/"))
-}
-
-/// Match a Python-style relative import (`._run`, `..utils`) against a target
-/// file path, given the dependent file's location. Used for downstream detection.
-pub fn python_dep_matches(dep: &str, target_file: &str, dependent_file: &str) -> bool {
-    if !dep.starts_with('.') || dep.starts_with("./") || dep.starts_with("../") {
-        return false;
-    }
-    if let Some(resolved) = resolve_python_relative_path(dep, dependent_file) {
-        let target_stem = target_file
-            .rsplit_once('.')
-            .map(|(s, _)| s)
-            .unwrap_or(target_file);
-        resolved == target_stem
-    } else {
-        false
-    }
-}
-
-/// Match a Python absolute module import (`agno.models.message`) against a target
-/// file path. Used for downstream detection in `dependency_graph`.
-///
-/// Returns true when the dotted path resolves to the target file, considering
-/// both root-relative paths (`agno/models/message.py`) and src-layout paths
-/// (`src/agno/models/message.py`).
-pub fn dotted_dep_matches(dep: &str, target_file: &str) -> bool {
-    // Only handle dotted absolute imports — exclude relative (`.X`), paths (`/`), Rust (`::`)
-    if dep.starts_with('.') || dep.contains('/') || dep.contains("::") || !dep.contains('.') {
-        return false;
-    }
-    let path_stem = dep.replace('.', "/");
-    let target_stem = target_file
-        .rsplit_once('.')
-        .map(|(s, _)| s)
-        .unwrap_or(target_file);
-    // Handle packages: `agno.models` resolves to `agno/models/__init__.py`
-    let effective = target_stem.strip_suffix("/__init__").unwrap_or(target_stem);
-    effective == path_stem.as_str() || effective.ends_with(&format!("/{}", path_stem))
 }
 
 // ---------------------------------------------------------------------------

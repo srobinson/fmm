@@ -107,6 +107,13 @@ fn run() -> anyhow::Result<()> {
         } => {
             cli::search(term, export, imports, loc, depends_on, json)?;
         }
+        Commands::Glossary {
+            pattern,
+            mode,
+            json,
+        } => {
+            cli::glossary(pattern, &mode, json)?;
+        }
         Commands::Mcp | Commands::Serve => {
             let mut server = mcp::McpServer::new();
             server.run()?;

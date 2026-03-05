@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/csharp.rs
-fmm: v0.3+0.1.11
+fmm: v0.3+0.1.12
 exports:
   CSharpParser: [9, 19]
   new: [22, 70]

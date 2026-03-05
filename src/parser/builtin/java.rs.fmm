@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/java.rs
-fmm: v0.3+0.1.11
+fmm: v0.3+0.1.12
 exports:
   JavaParser: [9, 17]
   new: [20, 67]

@@ -1,25 +1,33 @@
 ---
 file: src/manifest/mod.rs
-fmm: v0.3+0.1.11
+fmm: v0.3+0.1.12
 exports:
   ExportLines: [30, 33]
   FileEntry: [37, 45]
   ExportLocation: [70, 73]
-  Manifest: [79, 88]
-  new: [91, 99]
-  load_from_sidecars: [102, 178]
-  add_file: [181, 241]
-  remove_file: [243, 250]
-  touch: [252, 254]
-  has_file: [256, 258]
-  get_file: [260, 262]
-  validate_file: [264, 275]
-  file_count: [277, 279]
-  file_paths: [281, 283]
+  Manifest: [79, 92]
+  new: [95, 104]
+  load_from_sidecars: [107, 194]
+  add_file: [197, 277]
+  remove_file: [279, 295]
+  touch: [297, 299]
+  has_file: [301, 303]
+  get_file: [305, 307]
+  validate_file: [309, 320]
+  file_count: [322, 324]
+  file_paths: [326, 328]
+  GlossaryMode: [397, 405]
+  GlossaryEntry: [409, 412]
+  GlossarySource: [417, 421]
+  build_glossary: [459, 494]
+  find_dependents: [498, 518]
+  dep_matches: [524, 591]
+  python_dep_matches: [624, 637]
+  dotted_dep_matches: [645, 658]
 imports: [anyhow, chrono, ignore, serde, std]
 dependencies: ['crate::parser']
-loc: 612
+loc: 1297
 modified: 2026-03-05
 rust:
-  derives: [Clone, Debug, Deserialize, Eq, PartialEq, Serialize]
+  derives: [Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize]
   trait_impls: [Default for Manifest]

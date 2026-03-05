@@ -67,6 +67,13 @@ struct ListFilesArgs {
     pattern: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct GlossaryArgs {
+    pattern: Option<String>,
+    limit: Option<usize>,
+    mode: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 struct JsonRpcResponse {
     jsonrpc: String,
@@ -398,6 +405,29 @@ impl McpServer {
                     }
                 }),
             },
+            Tool {
+                name: "fmm_glossary".to_string(),
+                description: "Symbol-level impact analysis. Given a symbol name or pattern, returns all definitions and exactly which files import each one. Use before renaming a function or changing a signature to get a precise blast radius — more surgical than fmm_dependency_graph which only gives file-level downstream.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "pattern": {
+                            "type": "string",
+                            "description": "Required. Case-insensitive substring filter on export name. E.g. 'run_dispatch' finds exact match; 'config' finds Config, loadConfig, AppConfig."
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max entries returned (default 10, hard cap at 50). Use a specific pattern to stay under the default."
+                        },
+                        "mode": {
+                            "type": "string",
+                            "enum": ["source", "tests", "all"],
+                            "description": "source (default): excludes test symbols and test files — exact callers for refactoring. tests: only test exports — what tests exercise this symbol? all: unfiltered."
+                        }
+                    },
+                    "required": ["pattern"]
+                }),
+            },
         ];
 
         Ok(json!({ "tools": tools }))
@@ -432,6 +462,7 @@ impl McpServer {
             "fmm_read_symbol" => self.tool_read_symbol(&arguments),
             "fmm_file_outline" => self.tool_file_outline(&arguments),
             "fmm_list_files" => self.tool_list_files(&arguments),
+            "fmm_glossary" => self.tool_glossary(&arguments),
             // Legacy aliases
             "fmm_find_export" => self.tool_lookup_export(&arguments),
             "fmm_find_symbol" => self.tool_lookup_export(&arguments),
@@ -718,6 +749,41 @@ impl McpServer {
         let results = crate::search::filter_search(manifest, &filters);
         Ok(crate::format::format_filter_search(&results, false))
     }
+
+    fn tool_glossary(&self, args: &Value) -> Result<String, String> {
+        let manifest = self.require_manifest()?;
+
+        let args: GlossaryArgs =
+            serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
+
+        let pattern = args.pattern.as_deref().unwrap_or("").trim();
+        if pattern.is_empty() {
+            return Err(
+                "pattern is required — provide a symbol name or substring (e.g. 'run_dispatch', 'config'). \
+                A full unfiltered glossary on a large codebase would exceed any useful context window."
+                    .to_string(),
+            );
+        }
+
+        const DEFAULT_LIMIT: usize = 10;
+        const HARD_CAP: usize = 50;
+        let limit = args.limit.unwrap_or(DEFAULT_LIMIT).min(HARD_CAP);
+        let mode = match args.mode.as_deref().unwrap_or("source") {
+            "tests" => crate::manifest::GlossaryMode::Tests,
+            "all" => crate::manifest::GlossaryMode::All,
+            _ => crate::manifest::GlossaryMode::Source,
+        };
+
+        let all_entries = manifest.build_glossary(pattern, mode);
+        let total_matched = all_entries.len();
+        let entries: Vec<_> = all_entries.into_iter().take(limit).collect();
+
+        Ok(crate::format::format_glossary(
+            &entries,
+            total_matched,
+            limit,
+        ))
+    }
 }
 
 /// Return true if a file path is a conventional re-export hub (index/init file).
@@ -819,189 +885,9 @@ fn glob_filename_matches(pattern: &str, filename: &str) -> bool {
     }
 }
 
-/// Check if a dependency path from `dependent_file` resolves to `target_file`.
-/// Dependencies are stored as relative paths like "../utils/crypto.utils.js"
-/// and need to be resolved against the dependent file's directory.
-pub fn dep_matches(dep: &str, target_file: &str, dependent_file: &str) -> bool {
-    // Resolve the dependency path relative to the dependent file's directory
-    let dep_dir = dependent_file
-        .rsplit_once('/')
-        .map(|(dir, _)| dir)
-        .unwrap_or("");
-
-    // Build resolved path by applying relative segments
-    let mut parts: Vec<&str> = if dep_dir.is_empty() {
-        Vec::new()
-    } else {
-        dep_dir.split('/').collect()
-    };
-
-    let dep_clean = dep.strip_prefix("./").unwrap_or(dep);
-    for segment in dep_clean.split('/') {
-        if segment == ".." {
-            parts.pop();
-        } else if segment != "." {
-            parts.push(segment);
-        }
-    }
-
-    let resolved = parts.join("/");
-
-    // Strip extension from both for comparison (.ts/.js/.tsx/.jsx interchangeable)
-    let resolved_stem = resolved
-        .rsplit_once('.')
-        .map(|(stem, _)| stem)
-        .unwrap_or(&resolved);
-    let target_stem = target_file
-        .rsplit_once('.')
-        .map(|(stem, _)| stem)
-        .unwrap_or(target_file);
-
-    if resolved_stem == target_stem {
-        return true;
-    }
-
-    // Python packages: `./utils` should match `utils/__init__.py`
-    if let Some(package_stem) = target_stem.strip_suffix("/__init__") {
-        if resolved_stem == package_stem {
-            return true;
-        }
-    }
-
-    // Fallback: crate:: paths (Rust internal modules)
-    // e.g. "crate::config" matches "src/config.rs"
-    if let Some(module_path_str) = dep.strip_prefix("crate::") {
-        let module_path = module_path_str.replace("::", "/");
-        return target_stem.ends_with(&module_path);
-    }
-
-    // Fallback: domain-qualified paths (Go module paths, etc.)
-    // e.g. "github.com/user/project/internal/handler" matches "internal/handler/handler.go"
-    // Try progressively shorter path suffixes until one matches.
-    if dep.contains('/') && !dep.starts_with('.') {
-        let segments: Vec<&str> = dep.split('/').collect();
-        for start in 1..segments.len() {
-            let suffix = segments[start..].join("/");
-            if target_stem.ends_with(&suffix) {
-                return true;
-            }
-        }
-    }
-
-    false
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn dep_matches_relative_path() {
-        // dep "./types" from "src/index.ts" resolves to "src/types"
-        assert!(dep_matches("./types", "src/types.ts", "src/index.ts"));
-        assert!(dep_matches("./config", "src/config.ts", "src/index.ts"));
-        assert!(!dep_matches("./types", "src/other.ts", "src/index.ts"));
-    }
-
-    #[test]
-    fn dep_matches_nested_path() {
-        // dep "./utils/helpers" from "src/index.ts" resolves to "src/utils/helpers"
-        assert!(dep_matches(
-            "./utils/helpers",
-            "src/utils/helpers.ts",
-            "src/index.ts"
-        ));
-        assert!(!dep_matches(
-            "./utils/helpers",
-            "src/utils/other.ts",
-            "src/index.ts"
-        ));
-    }
-
-    #[test]
-    fn dep_matches_parent_relative() {
-        // dep "../utils/crypto.utils.js" from "pkg/src/services/auth.service.ts"
-        // resolves to "pkg/src/utils/crypto.utils"
-        assert!(dep_matches(
-            "../utils/crypto.utils.js",
-            "pkg/src/utils/crypto.utils.ts",
-            "pkg/src/services/auth.service.ts"
-        ));
-        assert!(!dep_matches(
-            "../utils/crypto.utils.js",
-            "pkg/src/services/other.ts",
-            "pkg/src/services/auth.service.ts"
-        ));
-    }
-
-    #[test]
-    fn dep_matches_deep_parent_relative() {
-        // dep "../../../utils/crypto.utils.js" from "pkg/src/tests/unit/auth/test.ts"
-        // resolves to "pkg/src/utils/crypto.utils" (going up 3 dirs from tests/unit/auth)
-        assert!(dep_matches(
-            "../../../utils/crypto.utils.js",
-            "pkg/src/utils/crypto.utils.ts",
-            "pkg/src/tests/unit/auth/test.ts"
-        ));
-    }
-
-    #[test]
-    fn dep_matches_without_prefix() {
-        assert!(dep_matches("types", "src/types.ts", "src/index.ts"));
-    }
-
-    #[test]
-    fn dep_matches_python_package() {
-        // `./utils` should resolve to `utils/__init__.py` (Python package)
-        assert!(dep_matches(
-            "./utils",
-            "src/utils/__init__.py",
-            "src/service.py"
-        ));
-        // `../models` should resolve to `models/__init__.py` one level up
-        assert!(dep_matches(
-            "../models",
-            "models/__init__.py",
-            "src/service.py"
-        ));
-        // Should still match plain module file
-        assert!(dep_matches("./utils", "src/utils.py", "src/service.py"));
-        // No false positive: different package
-        assert!(!dep_matches(
-            "./utils",
-            "src/auth/__init__.py",
-            "src/service.py"
-        ));
-    }
-
-    #[test]
-    fn dep_matches_crate_path() {
-        // Rust crate:: paths resolve via suffix matching
-        assert!(dep_matches("crate::config", "src/config.rs", "src/main.rs"));
-        assert!(dep_matches(
-            "crate::parser::builtin",
-            "src/parser/builtin.rs",
-            "src/main.rs"
-        ));
-        // No false positives
-        assert!(!dep_matches("crate::config", "src/other.rs", "src/main.rs"));
-    }
-
-    #[test]
-    fn dep_matches_go_module_path() {
-        // Go domain-qualified module paths resolve via suffix matching
-        assert!(dep_matches(
-            "github.com/user/project/internal/handler",
-            "internal/handler/handler.go",
-            "cmd/main.go"
-        ));
-        // Stdlib short paths don't match unrelated files
-        assert!(!dep_matches(
-            "fmt",
-            "internal/format/format.go",
-            "cmd/main.go"
-        ));
-    }
 
     #[test]
     fn test_server_construction() {

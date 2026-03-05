@@ -4,7 +4,7 @@
 //! CLI-style grouped text for search results.
 
 use crate::formatter::yaml_escape;
-use crate::manifest::{ExportLines, FileEntry};
+use crate::manifest::{ExportLines, FileEntry, GlossaryEntry};
 use crate::search::{BareSearchResult, ExportHitCompact, FileSearchResult};
 
 // ---------------------------------------------------------------------------
@@ -350,6 +350,48 @@ fn push_exports_map(
         }
         lines.push(format!("  {}", yaml_escape(name)));
     }
+}
+
+/// Format glossary entries as YAML.
+///
+/// ```yaml
+/// run_dispatch:
+///   - src: libs/agno/agno/agent/_run.py [1207-1384]
+///     used_by: [libs/agno/agno/team/_run.py, libs/agno/agno/team/_task_tools.py]
+/// Config:
+///   - src: src/config/index.ts [3-8]
+///     used_by: [src/api/routes.ts, src/auth/middleware.ts]
+/// ```
+pub fn format_glossary(entries: &[GlossaryEntry], total_matched: usize, limit: usize) -> String {
+    let mut lines = Vec::new();
+    lines.push("---".to_string());
+    if entries.is_empty() {
+        lines.push("(no matching exports)".to_string());
+        return lines.join("\n");
+    }
+    for entry in entries {
+        lines.push(format!("{}:", yaml_escape(&entry.name)));
+        for src in &entry.sources {
+            let loc_str = match &src.lines {
+                Some(l) if l.start > 0 => format!(" [{}-{}]", l.start, l.end),
+                _ => String::new(),
+            };
+            lines.push(format!("  - src: {}{}", src.file, loc_str));
+            if src.used_by.is_empty() {
+                lines.push("    used_by: []".to_string());
+            } else {
+                let items: Vec<String> = src.used_by.iter().map(|s| yaml_escape(s)).collect();
+                lines.push(format!("    used_by: [{}]", items.join(", ")));
+            }
+        }
+    }
+    if total_matched > limit {
+        lines.push(format!(
+            "\n# showing {}/{} matches — use a more specific pattern to narrow results",
+            limit, total_matched
+        ));
+    }
+    lines.join("\n")
 }
 
 fn push_inline_list(lines: &mut Vec<String>, key: &str, items: &[String]) {

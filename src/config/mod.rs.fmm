@@ -1,6 +1,6 @@
 ---
 file: src/config/mod.rs
-fmm: v0.3+0.1.11
+fmm: v0.3+0.1.12
 exports:
   Config: [7, 11]
   load: [22, 24]

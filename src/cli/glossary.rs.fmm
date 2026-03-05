@@ -1,11 +1,9 @@
 ---
-file: src/cli/search.rs
+file: src/cli/glossary.rs
 fmm: v0.3+0.1.12
 exports:
-  search: [49, 83]
+  glossary: [6, 83]
 imports: [anyhow, colored]
 dependencies: ['crate::manifest']
-loc: 449
+loc: 83
 modified: 2026-03-05
-rust:
-  derives: ['serde::Serialize']
