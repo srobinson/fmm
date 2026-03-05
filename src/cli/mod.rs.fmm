@@ -1,6 +1,6 @@
 ---
 file: src/cli/mod.rs
-fmm: v0.3+0.1.12
+fmm: v0.3+0.1.13
 exports:
   init: [11, 11]
   Cli: [105, 116]

@@ -1,6 +1,6 @@
 ---
 file: src/formatter/mod.rs
-fmm: v0.3+0.1.12
+fmm: v0.3+0.1.13
 exports:
   Frontmatter: [6, 13]
   new: [16, 24]

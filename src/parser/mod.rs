@@ -277,6 +277,9 @@ mod tests {
         let registry = ParserRegistry::with_builtins();
         assert_eq!(registry.language_id_for("rs"), Some("rust"));
         assert_eq!(registry.language_id_for("ts"), Some("typescript"));
+        assert_eq!(registry.language_id_for("js"), Some("typescript"));
+        assert_eq!(registry.language_id_for("tsx"), Some("tsx"));
+        assert_eq!(registry.language_id_for("jsx"), Some("tsx"));
         assert_eq!(registry.language_id_for("py"), Some("python"));
         assert_eq!(registry.language_id_for("go"), Some("go"));
         assert_eq!(registry.language_id_for("java"), Some("java"));

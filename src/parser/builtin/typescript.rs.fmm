@@ -7,7 +7,7 @@ exports:
   new_tsx: [31, 33]
 imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: [../query_helpers/collect_matches_with_lines, 'crate::parser']
-loc: 905
+loc: 902
 modified: 2026-03-05
 rust:
   lifetimes: ['''static']

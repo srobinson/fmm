@@ -17,7 +17,7 @@ exports:
   has_parser: [222, 224]
   extensions: [228, 232]
 imports: [anyhow, serde, std]
-loc: 361
+loc: 364
 modified: 2026-03-05
 rust:
   derives: [Clone, Debug, Deserialize, Eq, PartialEq, Serialize]
