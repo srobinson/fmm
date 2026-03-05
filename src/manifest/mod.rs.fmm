@@ -1,6 +1,6 @@
 ---
 file: src/manifest/mod.rs
-fmm: v0.3
+fmm: v0.3+0.1.11
 exports:
   ExportLines: [30, 33]
   FileEntry: [37, 45]
@@ -17,9 +17,9 @@ exports:
   file_count: [277, 279]
   file_paths: [281, 283]
 imports: [anyhow, chrono, ignore, serde, std]
-dependencies: [crate]
+dependencies: ['crate::parser']
 loc: 612
-modified: 2026-03-04
+modified: 2026-03-05
 rust:
   derives: [Clone, Debug, Deserialize, Eq, PartialEq, Serialize]
   trait_impls: [Default for Manifest]

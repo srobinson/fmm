@@ -1,9 +1,9 @@
 ---
 file: src/cli/status.rs
-fmm: v0.3
+fmm: v0.3+0.1.11
 exports:
   status: [9, 59]
 imports: [anyhow, colored]
-dependencies: [crate, super]
+dependencies: [../collect_files, 'crate::config', 'crate::extractor::sidecar_path_for']
 loc: 59
-modified: 2026-03-04
+modified: 2026-03-05

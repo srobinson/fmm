@@ -1,13 +1,13 @@
 ---
 file: src/cli/mod.rs
-fmm: v0.3
+fmm: v0.3+0.1.11
 exports:
   init: [10, 10]
   Cli: [98, 109]
   Commands: [112, 451]
 imports: [anyhow, clap, clap_complete, color_print, ignore, init, search, sidecar, status, std, watch]
-dependencies: [crate]
+dependencies: ['crate::config']
 loc: 646
-modified: 2026-03-04
+modified: 2026-03-05
 rust:
   derives: [Parser, Subcommand]

@@ -48,6 +48,7 @@ struct SearchArgs {
     depends_on: Option<String>,
     min_loc: Option<usize>,
     max_loc: Option<usize>,
+    limit: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,6 +59,12 @@ struct ReadSymbolArgs {
 #[derive(Debug, Deserialize)]
 struct FileOutlineArgs {
     file: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ListFilesArgs {
+    directory: Option<String>,
+    pattern: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -186,8 +193,17 @@ impl McpServer {
             let response = self.handle_request(&request);
 
             if let Some(resp) = response {
-                writeln!(stdout, "{}", serde_json::to_string(&resp)?)?;
-                stdout.flush()?;
+                // WORKAROUND: handle BrokenPipe gracefully (cascade vector V4 from
+                // anthropics/claude-code#22264 — Claude Code may close the pipe when
+                // it cancels parallel tool calls).
+                let write_result = writeln!(stdout, "{}", serde_json::to_string(&resp)?)
+                    .and_then(|_| stdout.flush());
+                if let Err(e) = write_result {
+                    if e.kind() == std::io::ErrorKind::BrokenPipe {
+                        return Ok(());
+                    }
+                    return Err(e.into());
+                }
             }
         }
 
@@ -357,6 +373,27 @@ impl McpServer {
                         "max_loc": {
                             "type": "integer",
                             "description": "Maximum lines of code — find files smaller than this"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of fuzzy export results (default: 50). Increase for broader searches."
+                        }
+                    }
+                }),
+            },
+            Tool {
+                name: "fmm_list_files".to_string(),
+                description: "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC and export count sorted alphabetically.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "directory": {
+                            "type": "string",
+                            "description": "Directory prefix to filter files (e.g. 'src/cli/' or 'libs/agno/models'). Omit to list all indexed files."
+                        },
+                        "pattern": {
+                            "type": "string",
+                            "description": "Glob pattern to filter by filename within the directory (e.g. '*.py', '*.rs', 'test_*'). Supports * wildcard."
                         }
                     }
                 }),
@@ -394,6 +431,7 @@ impl McpServer {
             "fmm_search" => self.tool_search(&arguments),
             "fmm_read_symbol" => self.tool_read_symbol(&arguments),
             "fmm_file_outline" => self.tool_file_outline(&arguments),
+            "fmm_list_files" => self.tool_list_files(&arguments),
             // Legacy aliases
             "fmm_find_export" => self.tool_lookup_export(&arguments),
             "fmm_find_symbol" => self.tool_lookup_export(&arguments),
@@ -412,12 +450,16 @@ impl McpServer {
                     }]
                 }))
             }
+            // WORKAROUND: Claude Code cancels all sibling parallel MCP tool calls when
+            // any tool returns isError:true (Promise.all fail-fast, tracked at
+            // anthropics/claude-code#22264). Drop the flag; prefix with ERROR: so the
+            // LLM recognises failure from content alone. Revert when #22264 ships
+            // Promise.allSettled for MCP tools.
             Err(e) => Ok(json!({
                 "content": [{
                     "type": "text",
-                    "text": e
-                }],
-                "isError": true
+                    "text": format!("ERROR: {}", e)
+                }]
             })),
         }
     }
@@ -497,10 +539,14 @@ impl McpServer {
         let args: FileInfoArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
-        let entry = manifest
-            .files
-            .get(&args.file)
-            .ok_or_else(|| format!("File '{}' not found in manifest", args.file))?;
+        validate_not_directory(&args.file, &self.root)?;
+
+        let entry = manifest.files.get(&args.file).ok_or_else(|| {
+            format!(
+                "File '{}' not found in manifest. Run 'fmm generate' to index the file.",
+                args.file
+            )
+        })?;
 
         Ok(crate::format::format_file_info(&args.file, entry))
     }
@@ -511,17 +557,23 @@ impl McpServer {
         let args: DependencyGraphArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
-        let entry = manifest
-            .files
-            .get(&args.file)
-            .ok_or_else(|| format!("File '{}' not found in manifest", args.file))?;
+        validate_not_directory(&args.file, &self.root)?;
 
-        let (upstream, downstream) = crate::search::dependency_graph(manifest, &args.file, entry);
+        let entry = manifest.files.get(&args.file).ok_or_else(|| {
+            format!(
+                "File '{}' not found in manifest. Run 'fmm generate' to index the file.",
+                args.file
+            )
+        })?;
+
+        let (local, external, downstream) =
+            crate::search::dependency_graph(manifest, &args.file, entry);
 
         Ok(crate::format::format_dependency_graph(
             &args.file,
             entry,
-            &upstream,
+            &local,
+            &external,
             &downstream,
         ))
     }
@@ -532,21 +584,40 @@ impl McpServer {
         let args: ReadSymbolArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
+        if args.name.trim().is_empty() {
+            return Err("Symbol name must not be empty. Use fmm_list_exports to discover available symbols.".to_string());
+        }
+
         let location = manifest
             .export_locations
             .get(&args.name)
-            .ok_or_else(|| format!("Export '{}' not found", args.name))?;
+            .ok_or_else(|| format!("Export '{}' not found. Use fmm_list_exports or fmm_search to discover available symbols.", args.name))?;
 
-        let lines = location.lines.as_ref().ok_or_else(|| {
+        // If the winning location is a re-export hub (index file), try to find the
+        // concrete definition in a nearby non-index file that also exports this symbol.
+        let (resolved_file, resolved_lines) = if is_reexport_file(&location.file) {
+            if let Some((concrete_file, concrete_lines)) =
+                find_concrete_definition(manifest, &args.name, &location.file)
+            {
+                (concrete_file, Some(concrete_lines))
+            } else {
+                // No concrete definition found — fall back to the re-export site
+                (location.file.clone(), location.lines.clone())
+            }
+        } else {
+            (location.file.clone(), location.lines.clone())
+        };
+
+        let lines = resolved_lines.ok_or_else(|| {
             format!(
-                "No line range for '{}' — regenerate sidecars with 'fmm generate' for v0.3 format",
-                args.name
+                "No line range for '{}' in '{}' — regenerate sidecars with 'fmm generate' for v0.3 format",
+                args.name, resolved_file,
             )
         })?;
 
-        let source_path = self.root.join(&location.file);
+        let source_path = self.root.join(&resolved_file);
         let content = std::fs::read_to_string(&source_path)
-            .map_err(|e| format!("Cannot read '{}': {}", location.file, e))?;
+            .map_err(|e| format!("Cannot read '{}': {}", resolved_file, e))?;
 
         let source_lines: Vec<&str> = content.lines().collect();
         let start = lines.start.saturating_sub(1);
@@ -557,7 +628,7 @@ impl McpServer {
                 "Line range [{}, {}] out of bounds for '{}' ({} lines)",
                 lines.start,
                 lines.end,
-                location.file,
+                resolved_file,
                 source_lines.len()
             ));
         }
@@ -566,8 +637,8 @@ impl McpServer {
 
         Ok(crate::format::format_read_symbol(
             &args.name,
-            &location.file,
-            lines,
+            &resolved_file,
+            &lines,
             &symbol_source,
         ))
     }
@@ -578,12 +649,50 @@ impl McpServer {
         let args: FileOutlineArgs =
             serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
-        let entry = manifest
-            .files
-            .get(&args.file)
-            .ok_or_else(|| format!("File '{}' not found in manifest", args.file))?;
+        validate_not_directory(&args.file, &self.root)?;
+
+        let entry = manifest.files.get(&args.file).ok_or_else(|| {
+            format!(
+                "File '{}' not found in manifest. Run 'fmm generate' to index the file.",
+                args.file
+            )
+        })?;
 
         Ok(crate::format::format_file_outline(&args.file, entry))
+    }
+
+    fn tool_list_files(&self, args: &Value) -> Result<String, String> {
+        let manifest = self.require_manifest()?;
+
+        let args: ListFilesArgs =
+            serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
+
+        let dir = args.directory.as_deref();
+        let pat = args.pattern.as_deref();
+
+        let mut entries: Vec<(&str, usize, usize)> = manifest
+            .files
+            .iter()
+            .filter(|(path, _)| {
+                if let Some(d) = dir {
+                    if !path.starts_with(d) {
+                        return false;
+                    }
+                }
+                if let Some(p) = pat {
+                    let filename = path.rsplit('/').next().unwrap_or(path.as_str());
+                    if !glob_filename_matches(p, filename) {
+                        return false;
+                    }
+                }
+                true
+            })
+            .map(|(path, entry)| (path.as_str(), entry.loc, entry.exports.len()))
+            .collect();
+
+        entries.sort_by_key(|(path, _, _)| path.to_lowercase());
+
+        Ok(crate::format::format_list_files(dir, &entries))
     }
 
     fn tool_search(&self, args: &Value) -> Result<String, String> {
@@ -594,7 +703,7 @@ impl McpServer {
 
         // Universal term search
         if let Some(ref term) = args.term {
-            let result = crate::search::bare_search(manifest, term);
+            let result = crate::search::bare_search(manifest, term, args.limit);
             return Ok(crate::format::format_bare_search(&result, false));
         }
 
@@ -608,6 +717,105 @@ impl McpServer {
         };
         let results = crate::search::filter_search(manifest, &filters);
         Ok(crate::format::format_filter_search(&results, false))
+    }
+}
+
+/// Return true if a file path is a conventional re-export hub (index/init file).
+/// These files aggregate symbols from sub-modules and are not the definition site.
+fn is_reexport_file(file_path: &str) -> bool {
+    let filename = file_path.rsplit('/').next().unwrap_or(file_path);
+    matches!(
+        filename,
+        "__init__.py" | "index.ts" | "index.tsx" | "index.js" | "index.jsx" | "mod.rs"
+    )
+}
+
+/// Given that `symbol` was found in a re-export hub, search the manifest for a
+/// non-index file that also exports the same symbol, preferring files whose
+/// directory path shares the most prefix with `reexport_file`.
+///
+/// Returns `(concrete_file_path, ExportLines)` or `None` if no candidate found.
+fn find_concrete_definition(
+    manifest: &crate::manifest::Manifest,
+    symbol: &str,
+    reexport_file: &str,
+) -> Option<(String, crate::manifest::ExportLines)> {
+    let reexport_dir = reexport_file.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
+
+    let mut candidates: Vec<(String, crate::manifest::ExportLines, usize)> = manifest
+        .files
+        .iter()
+        .filter(|(path, _)| {
+            let p = path.as_str();
+            p != reexport_file && !is_reexport_file(p)
+        })
+        .filter_map(|(path, entry)| {
+            // Find this symbol in the file's export list
+            let idx = entry.exports.iter().position(|e| e == symbol)?;
+            // Require line-range data — without it we cannot show source
+            let lines = entry
+                .export_lines
+                .as_ref()
+                .and_then(|el| el.get(idx))
+                .filter(|l| l.start > 0)?;
+            // Shared prefix length as proximity score
+            let file_dir = path.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
+            let shared = reexport_dir
+                .chars()
+                .zip(file_dir.chars())
+                .take_while(|(a, b)| a == b)
+                .count();
+            Some((path.clone(), lines.clone(), shared))
+        })
+        .collect();
+
+    // Sort by proximity descending so closest sibling wins
+    candidates.sort_by(|(_, _, a), (_, _, b)| b.cmp(a));
+    candidates.into_iter().map(|(f, l, _)| (f, l)).next()
+}
+
+/// Return an error if `path` looks like a directory (ends with `/` or resolves to a dir on disk).
+/// Provides a helpful message pointing to fmm_list_files.
+fn validate_not_directory(path: &str, root: &std::path::Path) -> Result<(), String> {
+    if path.ends_with('/') || path.ends_with(std::path::MAIN_SEPARATOR) {
+        return Err(format!(
+            "'{}' is a directory, not a file. Use fmm_list_files(directory: \"{}\") to list its contents.",
+            path, path
+        ));
+    }
+    let resolved = root.join(path);
+    if resolved.is_dir() {
+        return Err(format!(
+            "'{}' is a directory, not a file. Use fmm_list_files(directory: \"{}/\") to list its contents.",
+            path, path
+        ));
+    }
+    Ok(())
+}
+
+/// Match a glob pattern against a filename (last path component).
+/// Supports `*` as a wildcard within the filename. Does not match path separators.
+/// Examples: `*.py`, `test_*`, `*_test.rs`, `*`
+fn glob_filename_matches(pattern: &str, filename: &str) -> bool {
+    if pattern == "*" {
+        return true;
+    }
+    if !pattern.contains('*') {
+        return filename == pattern;
+    }
+    // Split on the first `*` and check prefix + suffix
+    let (prefix, rest) = pattern.split_once('*').unwrap();
+    if !filename.starts_with(prefix) {
+        return false;
+    }
+    let after_prefix = &filename[prefix.len()..];
+    // Handle remaining pattern segments (multiple `*`)
+    if rest.contains('*') {
+        // Recursively match the remainder
+        glob_filename_matches(rest, after_prefix)
+    } else {
+        // Single `*` — remainder is a literal suffix
+        after_prefix.ends_with(rest) && after_prefix.len() >= rest.len()
     }
 }
 
@@ -649,7 +857,38 @@ pub fn dep_matches(dep: &str, target_file: &str, dependent_file: &str) -> bool {
         .map(|(stem, _)| stem)
         .unwrap_or(target_file);
 
-    resolved_stem == target_stem
+    if resolved_stem == target_stem {
+        return true;
+    }
+
+    // Python packages: `./utils` should match `utils/__init__.py`
+    if let Some(package_stem) = target_stem.strip_suffix("/__init__") {
+        if resolved_stem == package_stem {
+            return true;
+        }
+    }
+
+    // Fallback: crate:: paths (Rust internal modules)
+    // e.g. "crate::config" matches "src/config.rs"
+    if let Some(module_path_str) = dep.strip_prefix("crate::") {
+        let module_path = module_path_str.replace("::", "/");
+        return target_stem.ends_with(&module_path);
+    }
+
+    // Fallback: domain-qualified paths (Go module paths, etc.)
+    // e.g. "github.com/user/project/internal/handler" matches "internal/handler/handler.go"
+    // Try progressively shorter path suffixes until one matches.
+    if dep.contains('/') && !dep.starts_with('.') {
+        let segments: Vec<&str> = dep.split('/').collect();
+        for start in 1..segments.len() {
+            let suffix = segments[start..].join("/");
+            if target_stem.ends_with(&suffix) {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 #[cfg(test)]
@@ -712,6 +951,59 @@ mod tests {
     }
 
     #[test]
+    fn dep_matches_python_package() {
+        // `./utils` should resolve to `utils/__init__.py` (Python package)
+        assert!(dep_matches(
+            "./utils",
+            "src/utils/__init__.py",
+            "src/service.py"
+        ));
+        // `../models` should resolve to `models/__init__.py` one level up
+        assert!(dep_matches(
+            "../models",
+            "models/__init__.py",
+            "src/service.py"
+        ));
+        // Should still match plain module file
+        assert!(dep_matches("./utils", "src/utils.py", "src/service.py"));
+        // No false positive: different package
+        assert!(!dep_matches(
+            "./utils",
+            "src/auth/__init__.py",
+            "src/service.py"
+        ));
+    }
+
+    #[test]
+    fn dep_matches_crate_path() {
+        // Rust crate:: paths resolve via suffix matching
+        assert!(dep_matches("crate::config", "src/config.rs", "src/main.rs"));
+        assert!(dep_matches(
+            "crate::parser::builtin",
+            "src/parser/builtin.rs",
+            "src/main.rs"
+        ));
+        // No false positives
+        assert!(!dep_matches("crate::config", "src/other.rs", "src/main.rs"));
+    }
+
+    #[test]
+    fn dep_matches_go_module_path() {
+        // Go domain-qualified module paths resolve via suffix matching
+        assert!(dep_matches(
+            "github.com/user/project/internal/handler",
+            "internal/handler/handler.go",
+            "cmd/main.go"
+        ));
+        // Stdlib short paths don't match unrelated files
+        assert!(!dep_matches(
+            "fmt",
+            "internal/format/format.go",
+            "cmd/main.go"
+        ));
+    }
+
+    #[test]
     fn test_server_construction() {
         let server = McpServer::new();
         assert!(server.root.is_absolute() || server.root.as_os_str().is_empty());
@@ -732,5 +1024,296 @@ mod tests {
     fn cap_response_passes_through_short_text() {
         let short = "hello world".to_string();
         assert_eq!(McpServer::cap_response(short.clone()), short);
+    }
+
+    #[test]
+    fn file_info_directory_path_returns_helpful_error() {
+        use crate::manifest::Manifest;
+        let server = McpServer {
+            manifest: Some(Manifest::new()),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+        let result = server
+            .call_tool("fmm_file_info", serde_json::json!({"file": "src/cli/"}))
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap_or("");
+        assert!(
+            text.starts_with("ERROR:"),
+            "expected ERROR: prefix, got: {}",
+            text
+        );
+        assert!(
+            text.contains("fmm_list_files"),
+            "should suggest fmm_list_files, got: {}",
+            text
+        );
+    }
+
+    #[test]
+    fn dependency_graph_directory_path_returns_helpful_error() {
+        use crate::manifest::Manifest;
+        let server = McpServer {
+            manifest: Some(Manifest::new()),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+        let result = server
+            .call_tool(
+                "fmm_dependency_graph",
+                serde_json::json!({"file": "src/mcp/"}),
+            )
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap_or("");
+        assert!(
+            text.starts_with("ERROR:"),
+            "expected ERROR: prefix, got: {}",
+            text
+        );
+        assert!(
+            text.contains("fmm_list_files"),
+            "should suggest fmm_list_files, got: {}",
+            text
+        );
+    }
+
+    #[test]
+    fn read_symbol_empty_name_returns_helpful_error() {
+        use crate::manifest::Manifest;
+        let server = McpServer {
+            manifest: Some(Manifest::new()),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+        let result = server
+            .call_tool("fmm_read_symbol", serde_json::json!({"name": ""}))
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap_or("");
+        assert!(
+            text.starts_with("ERROR:"),
+            "expected ERROR: prefix, got: {}",
+            text
+        );
+        assert!(
+            text.contains("fmm_list_exports"),
+            "should suggest fmm_list_exports, got: {}",
+            text
+        );
+    }
+
+    #[test]
+    fn file_outline_directory_path_returns_helpful_error() {
+        use crate::manifest::Manifest;
+        let server = McpServer {
+            manifest: Some(Manifest::new()),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+        let result = server
+            .call_tool("fmm_file_outline", serde_json::json!({"file": "src/cli/"}))
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap_or("");
+        assert!(
+            text.starts_with("ERROR:"),
+            "expected ERROR: prefix, got: {}",
+            text
+        );
+        assert!(
+            text.contains("fmm_list_files"),
+            "should suggest fmm_list_files, got: {}",
+            text
+        );
+    }
+
+    #[test]
+    fn is_reexport_file_detects_index_files() {
+        assert!(is_reexport_file("agno/__init__.py"));
+        assert!(is_reexport_file("src/index.ts"));
+        assert!(is_reexport_file("src/index.tsx"));
+        assert!(is_reexport_file("src/mod.rs"));
+        assert!(is_reexport_file("libs/foo/index.js"));
+        assert!(!is_reexport_file("agno/agent/agent.py"));
+        assert!(!is_reexport_file("src/auth.ts"));
+    }
+
+    #[test]
+    fn read_symbol_follows_reexport_to_concrete_definition() {
+        use crate::manifest::Manifest;
+        use crate::parser::{ExportEntry, Metadata};
+
+        // Create a temp dir with actual source files
+        let dir = tempfile::tempdir().unwrap();
+        let init_path = dir.path().join("agno").join("__init__.py");
+        let agent_path = dir.path().join("agno").join("agent").join("agent.py");
+        std::fs::create_dir_all(agent_path.parent().unwrap()).unwrap();
+
+        // __init__.py re-exports Agent
+        std::fs::write(
+            &init_path,
+            "from .agent.agent import Agent\n__all__ = ['Agent']\n",
+        )
+        .unwrap();
+
+        // agent.py is the concrete definition with 5 lines
+        let agent_src = "class Agent:\n    def __init__(self):\n        pass\n    def run(self):\n        pass\n";
+        std::fs::write(&agent_path, agent_src).unwrap();
+
+        let mut manifest = Manifest::new();
+        // Index file re-exports Agent (no line range — typical for re-exports)
+        manifest.add_file(
+            "agno/__init__.py",
+            Metadata {
+                exports: vec![ExportEntry::new("Agent".to_string(), 1, 1)],
+                imports: vec!["agno.agent.agent".to_string()],
+                dependencies: vec![],
+                loc: 2,
+            },
+        );
+        // Concrete definition with proper line range
+        manifest.add_file(
+            "agno/agent/agent.py",
+            Metadata {
+                exports: vec![ExportEntry::new("Agent".to_string(), 1, 5)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 5,
+            },
+        );
+
+        // __init__.py wins the export_index (last writer wins), but we want agent.py
+        let server = McpServer {
+            manifest: Some(manifest),
+            root: dir.path().to_path_buf(),
+        };
+
+        let result = server
+            .call_tool("fmm_read_symbol", serde_json::json!({"name": "Agent"}))
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap();
+
+        // Should resolve to the concrete definition file, not __init__.py
+        assert!(
+            text.contains("agno/agent/agent.py"),
+            "should resolve to concrete definition, got: {}",
+            text
+        );
+        assert!(
+            !text.contains("__init__.py"),
+            "should not use re-export site, got: {}",
+            text
+        );
+        assert!(
+            text.contains("class Agent"),
+            "should include class body, got: {}",
+            text
+        );
+    }
+
+    #[test]
+    fn glob_filename_matches_star_ext() {
+        assert!(glob_filename_matches("*.py", "agent.py"));
+        assert!(glob_filename_matches("*.rs", "mod.rs"));
+        assert!(!glob_filename_matches("*.py", "agent.rs"));
+        assert!(!glob_filename_matches("*.py", "agent.pyc"));
+    }
+
+    #[test]
+    fn glob_filename_matches_prefix_star() {
+        assert!(glob_filename_matches("test_*", "test_agent.py"));
+        assert!(glob_filename_matches("test_*", "test_.py"));
+        assert!(!glob_filename_matches("test_*", "mytest_agent.py"));
+    }
+
+    #[test]
+    fn glob_filename_matches_literal() {
+        assert!(glob_filename_matches("mod.rs", "mod.rs"));
+        assert!(!glob_filename_matches("mod.rs", "mod.ts"));
+    }
+
+    #[test]
+    fn glob_filename_matches_star_wildcard() {
+        assert!(glob_filename_matches("*", "anything.py"));
+        assert!(glob_filename_matches("*", ""));
+    }
+
+    #[test]
+    fn list_files_tool_no_args() {
+        use crate::manifest::Manifest;
+        use crate::parser::{ExportEntry, Metadata};
+
+        let mut manifest = Manifest::new();
+        manifest.add_file(
+            "src/a.rs",
+            Metadata {
+                exports: vec![ExportEntry::new("Foo".to_string(), 1, 10)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 50,
+            },
+        );
+        manifest.add_file(
+            "src/b.rs",
+            Metadata {
+                exports: vec![],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 20,
+            },
+        );
+
+        let server = McpServer {
+            manifest: Some(manifest),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+
+        let result = server
+            .call_tool("fmm_list_files", serde_json::json!({}))
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(
+            text.contains("total: 2"),
+            "expected total: 2, got: {}",
+            text
+        );
+        assert!(text.contains("src/a.rs"));
+        assert!(text.contains("src/b.rs"));
+    }
+
+    #[test]
+    fn list_files_tool_with_directory() {
+        use crate::manifest::Manifest;
+        use crate::parser::{ExportEntry, Metadata};
+
+        let mut manifest = Manifest::new();
+        manifest.add_file(
+            "src/cli/mod.rs",
+            Metadata {
+                exports: vec![ExportEntry::new("Cli".to_string(), 1, 5)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 30,
+            },
+        );
+        manifest.add_file(
+            "src/mcp/mod.rs",
+            Metadata {
+                exports: vec![],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 100,
+            },
+        );
+
+        let server = McpServer {
+            manifest: Some(manifest),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+
+        let result = server
+            .call_tool(
+                "fmm_list_files",
+                serde_json::json!({"directory": "src/cli/"}),
+            )
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("total: 1"), "got: {}", text);
+        assert!(text.contains("src/cli/mod.rs"));
+        assert!(!text.contains("src/mcp/mod.rs"));
     }
 }

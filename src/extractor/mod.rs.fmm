@@ -1,6 +1,6 @@
 ---
 file: src/extractor/mod.rs
-fmm: v0.3
+fmm: v0.3+0.1.11
 exports:
   FileProcessor: [17, 20]
   sidecar_path_for: [23, 27]
@@ -10,6 +10,6 @@ exports:
   clean: [85, 93]
   extract_metadata: [96, 100]
 imports: [anyhow, std]
-dependencies: [crate]
+dependencies: ['crate::formatter', 'crate::parser']
 loc: 176
-modified: 2026-03-04
+modified: 2026-03-05

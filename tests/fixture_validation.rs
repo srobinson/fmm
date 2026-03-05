@@ -76,11 +76,11 @@ fn validate_python_heuristic_fixture() {
 
     // Path B (no __all__): decorated and bare classes/functions exported
     let names = result.metadata.export_names();
-    assert!(names.contains(&"Agent".to_string()), "decorated class missing");
     assert!(
-        names.contains(&"Router".to_string()),
-        "bare class missing"
+        names.contains(&"Agent".to_string()),
+        "decorated class missing"
     );
+    assert!(names.contains(&"Router".to_string()), "bare class missing");
     assert!(
         names.contains(&"handle_request".to_string()),
         "bare function missing"
@@ -105,7 +105,10 @@ fn validate_python_heuristic_fixture() {
         .iter()
         .find(|e| e.name == "Agent")
         .unwrap();
-    assert_eq!(agent.start_line, 7, "Agent range should start at @dataclass");
+    assert_eq!(
+        agent.start_line, 7,
+        "Agent range should start at @dataclass"
+    );
 }
 
 #[test]
@@ -183,9 +186,18 @@ fn validate_rust_fixture() {
     assert!(result.metadata.imports.contains(&"std".to_string()));
     assert!(result.metadata.imports.contains(&"tokio".to_string()));
 
-    // Expected dependencies: crate, super
-    assert!(result.metadata.dependencies.contains(&"crate".to_string()));
-    assert!(result.metadata.dependencies.contains(&"super".to_string()));
+    // Expected dependencies: full paths, not bare root keywords
+    let deps = &result.metadata.dependencies;
+    assert!(
+        deps.contains(&"crate::config".to_string()),
+        "expected crate::config in {:?}",
+        deps
+    );
+    assert!(
+        deps.contains(&"../utils".to_string()),
+        "expected ../utils in {:?}",
+        deps
+    );
 
     // LOC
     assert!(result.metadata.loc > 50);

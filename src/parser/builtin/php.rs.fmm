@@ -1,13 +1,13 @@
 ---
 file: src/parser/builtin/php.rs
-fmm: v0.3
+fmm: v0.3+0.1.11
 exports:
   PhpParser: [8, 21]
   new: [24, 116]
 imports: [anyhow, std, streaming_iterator, tree_sitter]
-dependencies: [crate, super]
+dependencies: [../query_helpers/collect_matches_with_lines, 'crate::parser']
 loc: 410
-modified: 2026-03-04
+modified: 2026-03-05
 rust:
   lifetimes: ['''static']
   trait_impls: [Parser for PhpParser]

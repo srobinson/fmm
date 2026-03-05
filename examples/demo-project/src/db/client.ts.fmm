@@ -1,10 +1,10 @@
 ---
 file: examples/demo-project/src/db/client.ts
-fmm: v0.3
+fmm: v0.3+0.1.11
 exports:
   DatabaseClient: [4, 18]
   createClient: [20, 23]
 imports: [pg]
 dependencies: [../config]
 loc: 23
-modified: 2026-03-04
+modified: 2026-03-05

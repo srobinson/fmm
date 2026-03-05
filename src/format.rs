@@ -74,19 +74,26 @@ pub fn format_lookup_export(
 }
 
 /// Format dependency graph as YAML.
+/// `local` contains resolved intra-project file paths; `external` contains package names.
 pub fn format_dependency_graph(
     file: &str,
     entry: &FileEntry,
-    upstream: &[&str],
+    local: &[String],
+    external: &[String],
     downstream: &[&String],
 ) -> String {
     let mut lines = Vec::new();
     lines.push("---".to_string());
     lines.push(format!("file: {}", yaml_escape(file)));
 
-    if !upstream.is_empty() {
-        let items: Vec<String> = upstream.iter().map(|s| yaml_escape(s)).collect();
-        lines.push(format!("upstream: [{}]", items.join(", ")));
+    if !local.is_empty() {
+        let items: Vec<String> = local.iter().map(|s| yaml_escape(s)).collect();
+        lines.push(format!("local_deps: [{}]", items.join(", ")));
+    }
+
+    if !external.is_empty() {
+        let items: Vec<String> = external.iter().map(|s| yaml_escape(s)).collect();
+        lines.push(format!("external: [{}]", items.join(", ")));
     }
 
     if !downstream.is_empty() {
@@ -171,11 +178,42 @@ pub fn format_list_exports_all(files: &[(&str, &FileEntry)]) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// List files formatter
+// ---------------------------------------------------------------------------
+
+/// Format list files result as compact YAML.
+/// Each entry shows: file path, loc, export count.
+pub fn format_list_files(directory: Option<&str>, files: &[(&str, usize, usize)]) -> String {
+    let mut lines = Vec::new();
+    lines.push("---".to_string());
+    if let Some(dir) = directory {
+        lines.push(format!("directory: {}", yaml_escape(dir)));
+    }
+    lines.push(format!("total: {}", files.len()));
+    if !files.is_empty() {
+        lines.push("files:".to_string());
+        // Column width for alignment
+        let path_width = files.iter().map(|(p, _, _)| p.len()).max().unwrap_or(0);
+        for (path, loc, exports) in files {
+            lines.push(format!(
+                "  - {:<pw$}  # loc: {}, exports: {}",
+                path,
+                loc,
+                exports,
+                pw = path_width,
+            ));
+        }
+    }
+    lines.join("\n")
+}
+
+// ---------------------------------------------------------------------------
 // Search formatters
 // ---------------------------------------------------------------------------
 
 /// Format bare search result as CLI grouped text.
 /// When `colored` is true, uses ANSI escape codes (for terminal).
+/// Shows a truncation notice if results were capped by the limit.
 pub fn format_bare_search(result: &BareSearchResult, colored: bool) -> String {
     let mut sections = Vec::new();
 
@@ -245,6 +283,15 @@ pub fn format_bare_search(result: &BareSearchResult, colored: bool) -> String {
             lines.push(format!("  {}  ({})", hit.package, file_list.join(", ")));
         }
         sections.push(lines.join("\n"));
+    }
+
+    // Truncation notice if fuzzy results were capped
+    if let Some(total_fuzzy) = result.total_exports {
+        sections.push(format!(
+            "[{} fuzzy matches — showing top {} by relevance. Use a more specific term or set limit.]",
+            total_fuzzy,
+            result.exports.len(),
+        ));
     }
 
     sections.join("\n\n")

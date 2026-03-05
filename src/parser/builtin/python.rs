@@ -5,6 +5,26 @@ use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
+/// Convert Python relative import dot-notation to path notation so that
+/// `dep_matches()` can resolve it against manifest file paths.
+///
+/// Examples:
+/// - `.utils`    → `./utils`
+/// - `..models`  → `../models`
+/// - `...deep.sub` → `../../deep/sub`
+/// - `.`         → `./` (bare relative import, e.g. `from . import X`)
+fn dot_import_to_path(raw: &str) -> String {
+    let dots = raw.chars().take_while(|c| *c == '.').count();
+    let rest = &raw[dots..];
+    let module_path = rest.replace('.', "/");
+    if dots <= 1 {
+        format!("./{}", module_path)
+    } else {
+        let ups = "../".repeat(dots - 1);
+        format!("{}{}", ups, module_path)
+    }
+}
+
 pub struct PythonParser {
     parser: TSParser,
     func_query: Query,
@@ -219,9 +239,9 @@ impl PythonParser {
             while let Some(m) = iter.next() {
                 for capture in m.captures {
                     if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                        let root_module = text.split('.').next().unwrap_or(text).to_string();
-                        if seen.insert(root_module.clone()) {
-                            imports.push(root_module);
+                        let full_module = text.to_string();
+                        if seen.insert(full_module.clone()) {
+                            imports.push(full_module);
                         }
                     }
                 }
@@ -235,9 +255,9 @@ impl PythonParser {
             for capture in m.captures {
                 if let Ok(text) = capture.node.utf8_text(source_bytes) {
                     if !text.starts_with('.') {
-                        let root_module = text.split('.').next().unwrap_or(text).to_string();
-                        if seen.insert(root_module.clone()) {
-                            imports.push(root_module);
+                        let full_module = text.to_string();
+                        if seen.insert(full_module.clone()) {
+                            imports.push(full_module);
                         }
                     }
                 }
@@ -250,6 +270,9 @@ impl PythonParser {
 
     fn extract_dependencies(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
         collect_matches(&self.relative_import_query, root_node, source.as_bytes())
+            .into_iter()
+            .map(|s| dot_import_to_path(&s))
+            .collect()
     }
 
     fn extract_decorators(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
@@ -368,7 +391,25 @@ mod tests {
         let mut parser = PythonParser::new().unwrap();
         let source = "from .utils import helper\nfrom ..models import User\n";
         let result = parser.parse(source).unwrap();
-        assert!(!result.metadata.dependencies.is_empty());
+        let deps = &result.metadata.dependencies;
+        assert!(
+            deps.contains(&"./utils".to_string()),
+            "expected ./utils in {:?}",
+            deps
+        );
+        assert!(
+            deps.contains(&"../models".to_string()),
+            "expected ../models in {:?}",
+            deps
+        );
+    }
+
+    #[test]
+    fn dot_import_to_path_conversions() {
+        assert_eq!(dot_import_to_path(".utils"), "./utils");
+        assert_eq!(dot_import_to_path("..models"), "../models");
+        assert_eq!(dot_import_to_path("...deep.sub"), "../../deep/sub");
+        assert_eq!(dot_import_to_path("."), "./");
     }
 
     #[test]
@@ -453,7 +494,8 @@ class _InternalClass:
     #[test]
     fn parse_python_decorated_class() {
         let mut parser = PythonParser::new().unwrap();
-        let source = "from dataclasses import dataclass\n\n@dataclass\nclass Agent:\n    name: str\n";
+        let source =
+            "from dataclasses import dataclass\n\n@dataclass\nclass Agent:\n    name: str\n";
         let result = parser.parse(source).unwrap();
         assert!(result
             .metadata
@@ -529,6 +571,43 @@ def bare_func():
             .unwrap();
         assert_eq!(model.start_line, 6); // @dataclass line
         assert_eq!(model.end_line, 9);
+    }
+
+    #[test]
+    fn parse_python_dotted_imports_full_path() {
+        // `from agno.models.message import Message` should store "agno.models.message",
+        // not just the root "agno". Single-name imports are unaffected.
+        let mut parser = PythonParser::new().unwrap();
+        let source = "from agno.models.message import Message\nfrom agno.tools.function import Function\nimport os\n";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            result
+                .metadata
+                .imports
+                .contains(&"agno.models.message".to_string()),
+            "expected full dotted path, got: {:?}",
+            result.metadata.imports
+        );
+        assert!(
+            result
+                .metadata
+                .imports
+                .contains(&"agno.tools.function".to_string()),
+            "expected full dotted path, got: {:?}",
+            result.metadata.imports
+        );
+        // Single-name import unchanged
+        assert!(result.metadata.imports.contains(&"os".to_string()));
+        // Deduplicated: only one entry per unique dotted path
+        assert_eq!(
+            result
+                .metadata
+                .imports
+                .iter()
+                .filter(|i| i.as_str() == "agno.models.message")
+                .count(),
+            1
+        );
     }
 
     #[test]

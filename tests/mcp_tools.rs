@@ -70,14 +70,19 @@ fn call_tool_text(server: &fmm::mcp::McpServer, tool: &str, args: Value) -> Stri
     result["content"][0]["text"].as_str().unwrap().to_string()
 }
 
-/// Call a tool expecting an error response.
+/// Call a tool expecting an error response (text starts with "ERROR:").
 fn call_tool_expect_error(server: &fmm::mcp::McpServer, tool: &str, args: Value) -> String {
     let result = server.call_tool(tool, args).unwrap();
+    let text = result["content"][0]["text"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     assert!(
-        result["isError"].as_bool().unwrap_or(false),
-        "Expected error but got success"
+        text.starts_with("ERROR:"),
+        "Expected ERROR: prefix but got: {}",
+        text
     );
-    result["content"][0]["text"].as_str().unwrap().to_string()
+    text
 }
 
 // ---------------------------------------------------------------------------
@@ -299,7 +304,10 @@ fn dependency_graph_upstream_and_downstream() {
     );
 
     assert!(text.contains("file: src/auth/session.ts"));
-    assert!(text.contains("upstream: [./types, ../config]"));
+    // JS/TS relative deps are resolved to local file paths
+    assert!(text.contains("local_deps:"), "got: {}", text);
+    assert!(text.contains("src/auth/types.ts"), "got: {}", text);
+    assert!(text.contains("src/config.ts"), "got: {}", text);
     assert!(text.contains("imports: [jwt, redis]"));
 }
 
@@ -475,4 +483,99 @@ fn search_imports_filter() {
     let text = call_tool_text(&server, "fmm_search", json!({"imports": "jwt"}));
 
     assert!(text.contains("src/auth/session.ts"));
+}
+
+// ---------------------------------------------------------------------------
+// Go module path resolution (ALP-738)
+// ---------------------------------------------------------------------------
+
+/// Build a server with a minimal Go multi-package project.
+///
+/// `cmd/main.go` imports `github.com/user/project/internal/handler`.
+/// `internal/handler/handler.go` has no internal deps.
+fn setup_go_mcp_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let cmd = tmp.path().join("cmd");
+    let handler_dir = tmp.path().join("internal").join("handler");
+    std::fs::create_dir_all(&cmd).unwrap();
+    std::fs::create_dir_all(&handler_dir).unwrap();
+
+    write_source_and_sidecar(
+        &cmd.join("main.go"),
+        "package main\n\nimport (\n\t\"fmt\"\n\t\"github.com/user/project/internal/handler\"\n)\n\nfunc main() {\n\tfmt.Println(handler.NewHandler())\n}\n",
+        "file: cmd/main.go\nfmm: v0.3\nexports:\n  main: [8, 10]\nimports: [fmt]\ndependencies: [github.com/user/project/internal/handler]\nloc: 10\n",
+    );
+
+    write_source_and_sidecar(
+        &handler_dir.join("handler.go"),
+        "package handler\n\nimport \"net/http\"\n\ntype Handler struct{}\n\nfunc NewHandler() *Handler {\n\treturn &Handler{}\n}\n\nfunc (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {}\n",
+        // net/http in dependencies (not just imports) so dep resolution is exercised.
+        // It must not match any project file — this is the stdlib false-positive guard.
+        "file: internal/handler/handler.go\nfmm: v0.3\nexports:\n  Handler: [5, 5]\n  NewHandler: [7, 9]\nimports: [net/http]\ndependencies: [net/http]\nloc: 11\n",
+    );
+
+    let server = fmm::mcp::McpServer::with_root(tmp.path().to_path_buf());
+    (tmp, server)
+}
+
+#[test]
+fn go_internal_import_resolves_upstream() {
+    let (_tmp, server) = setup_go_mcp_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_dependency_graph",
+        json!({"file": "cmd/main.go"}),
+    );
+
+    // cmd/main.go depends on internal/handler/handler.go
+    assert!(
+        text.contains("local_deps:"),
+        "expected local_deps in: {}",
+        text
+    );
+    assert!(
+        text.contains("internal/handler/handler.go"),
+        "expected handler.go as upstream dep, got: {}",
+        text
+    );
+}
+
+#[test]
+fn go_internal_import_resolves_downstream() {
+    let (_tmp, server) = setup_go_mcp_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_dependency_graph",
+        json!({"file": "internal/handler/handler.go"}),
+    );
+
+    // internal/handler/handler.go is depended on by cmd/main.go
+    assert!(
+        text.contains("downstream:"),
+        "expected downstream: in: {}",
+        text
+    );
+    assert!(
+        text.contains("cmd/main.go"),
+        "expected cmd/main.go as downstream dependent, got: {}",
+        text
+    );
+}
+
+#[test]
+fn go_stdlib_import_no_false_positive() {
+    let (_tmp, server) = setup_go_mcp_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_dependency_graph",
+        json!({"file": "internal/handler/handler.go"}),
+    );
+
+    // handler.go has net/http in dependencies — stdlib must not resolve to any project file.
+    // If it did, local_deps: would appear with a project file entry.
+    assert!(
+        !text.contains("local_deps:"),
+        "net/http stdlib import caused false positive local dep: {}",
+        text
+    );
 }
