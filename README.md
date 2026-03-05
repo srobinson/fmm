@@ -28,6 +28,7 @@ src/auth/session.ts.fmm  ← 7 lines of metadata
 ```yaml
 ---
 file: src/auth/session.ts
+fmm: v0.3+0.1.12
 exports:
   createSession: [12, 45]
   validateSession: [47, 89]
@@ -35,7 +36,7 @@ exports:
 imports: [jsonwebtoken]
 dependencies: [../config, ../db/users]
 loc: 234
----
+modified: 2024-01-15
 ```
 
 LLMs read sidecars first, then open source files only when they need to edit.
@@ -73,7 +74,8 @@ That's it. Your AI coding assistant now navigates via metadata instead of brute-
 | `fmm watch [path]`    | Watch source files and regenerate sidecars on change          |
 | `fmm validate [path]` | Check sidecars are current (CI-friendly, exit 1 if stale)     |
 | `fmm search`          | Query the index (O(1) export lookup, dependency graphs)       |
-| `fmm mcp`             | Start MCP server (7 tools for LLM navigation)                 |
+| `fmm glossary`        | Symbol-level impact analysis — who imports this export?       |
+| `fmm mcp`             | Start MCP server (9 tools for LLM navigation)                 |
 | `fmm status`          | Show config and workspace stats                               |
 | `fmm clean [path]`    | Remove all .fmm sidecars                                      |
 
@@ -81,7 +83,7 @@ Run `fmm --help` for workflows and examples, or `fmm <command> --help` for detai
 
 ## MCP Tools
 
-fmm includes a built-in MCP server with 7 tools. Configure via `fmm init --mcp` or manually:
+fmm includes a built-in MCP server with 9 tools. Configure via `fmm init --mcp` or manually:
 
 ```json
 {
@@ -94,15 +96,17 @@ fmm includes a built-in MCP server with 7 tools. Configure via `fmm init --mcp` 
 }
 ```
 
-| Tool                   | Purpose                                           |
-| ---------------------- | ------------------------------------------------- |
-| `fmm_lookup_export`    | Find which file defines a symbol — O(1)           |
-| `fmm_read_symbol`      | Extract exact source by symbol name (line ranges) |
-| `fmm_dependency_graph` | Upstream deps + downstream dependents             |
-| `fmm_file_outline`     | Table of contents with line ranges                |
-| `fmm_list_exports`     | Search exports by pattern (fuzzy)                 |
-| `fmm_file_info`        | Structural profile without reading source         |
-| `fmm_search`           | Multi-criteria AND queries                        |
+| Tool                   | Purpose                                                                       |
+| ---------------------- | ----------------------------------------------------------------------------- |
+| `fmm_lookup_export`    | Find which file defines a symbol — O(1)                                       |
+| `fmm_read_symbol`      | Extract exact source by symbol name; follows re-export chains automatically   |
+| `fmm_dependency_graph` | Intra-project deps (`local_deps`), external packages, and downstream blast radius |
+| `fmm_file_outline`     | Table of contents with line ranges                                            |
+| `fmm_list_exports`     | Search exports by pattern (fuzzy)                                             |
+| `fmm_file_info`        | Structural profile without reading source                                     |
+| `fmm_search`           | Multi-criteria AND queries with relevance scoring                             |
+| `fmm_list_files`       | List all indexed files under a directory path                                 |
+| `fmm_glossary`         | Symbol-level blast radius — all definitions of X + files that import each one |
 
 ## How it works
 
@@ -119,7 +123,8 @@ fmm includes a built-in MCP server with 7 tools. Configure via `fmm init --mcp` 
                         │                                     │   .fmm     │   │   fmm_file_outline
                         │                                     │  sidecars  │   │   fmm_list_exports
                         │                                     └─────┬──────┘   │   fmm_search
-                        │                                           │          │
+                        │                                           │          │   fmm_list_files
+                        │                                           │          │   fmm_glossary
                         │                                     ┌─────▼──────┐   │
                         │                                     │  In-memory │   │
                         │                                     │   Index    │───┼──► Query Results

@@ -36,7 +36,7 @@ const SHORT_HELP: &str = cstr!(
   <bold>validate</bold>      Check sidecars are current (CI-friendly, exit 1 if stale)
   <bold>search</bold>        Smart search — exports, files, imports (just works)
   <bold>glossary</bold>      Symbol-level impact analysis — who uses this export?
-  <bold>mcp</bold>           Start MCP server (8 tools for LLM navigation)
+  <bold>mcp</bold>           Start MCP server (9 tools for LLM navigation)
   <bold>status</bold>        Show config and workspace stats
   <bold>clean</bold>         Remove all .fmm sidecars
 
@@ -53,19 +53,20 @@ const LONG_HELP: &str = cstr!(
   <bold>validate</bold>      Check sidecars are current (CI-friendly, exit 1 if stale)
   <bold>search</bold>        Smart search — exports, files, imports (just works)
   <bold>glossary</bold>      Symbol-level impact analysis — who uses this export?
-  <bold>mcp</bold>           Start MCP server (8 tools for LLM navigation)
+  <bold>mcp</bold>           Start MCP server (9 tools for LLM navigation)
   <bold>status</bold>        Show config and workspace stats
   <bold>clean</bold>         Remove all .fmm sidecars
 
 <bold><underline>MCP Tools</underline></bold> <dim>(via</dim> <bold>fmm mcp</bold><dim>)</dim>
   <bold>fmm_lookup_export</bold>    Find which file defines a symbol — O(1)
-  <bold>fmm_read_symbol</bold>      Extract exact source by symbol name (line ranges)
-  <bold>fmm_dependency_graph</bold>  Upstream deps + downstream dependents
+  <bold>fmm_read_symbol</bold>      Extract exact source; follows re-export chains automatically
+  <bold>fmm_dependency_graph</bold>  local_deps, external packages, and downstream blast radius
   <bold>fmm_file_outline</bold>     Table of contents with line ranges
   <bold>fmm_list_exports</bold>     Search exports by pattern (fuzzy)
   <bold>fmm_file_info</bold>        Structural profile without reading source
-  <bold>fmm_search</bold>           Multi-criteria AND queries
-  <bold>fmm_glossary</bold>         Symbol-level impact analysis (who uses this export?)
+  <bold>fmm_search</bold>           Multi-criteria AND queries with relevance scoring
+  <bold>fmm_list_files</bold>       List all indexed files under a directory path
+  <bold>fmm_glossary</bold>         Symbol-level blast radius — all definitions + who imports each
 
 <bold><underline>Workflows</underline></bold>
   <dim>$</dim> <bold>fmm init</bold>                              <dim># One-command setup</dim>
@@ -285,7 +286,7 @@ pub enum Commands {
   MCP config uses .claude/fmm.local.json — gitignored, per-user, no merge conflicts.
   The --skill flag creates .claude/skills/ which may override global plugin skills.
   If using the helioy plugin globally, skip --skill to inherit skills from the plugin.
-  The MCP config enables 8 tools for O(1) symbol lookup and navigation."#),
+  The MCP config enables 9 tools for O(1) symbol lookup and navigation."#),
     )]
     Init {
         /// Install Claude Code skill (.claude/skills/fmm-navigate.md) — opt-in, creates project .claude/ dir
@@ -433,22 +434,23 @@ pub enum Commands {
         json: bool,
     },
 
-    /// Start MCP server — 8 tools for LLM code navigation
+    /// Start MCP server — 9 tools for LLM code navigation
     #[command(
         long_about = "Start the Model Context Protocol (MCP) server over stdio.\n\n\
-            Exposes 8 tools that LLM agents (Claude, GPT, etc.) can call for O(1) \
+            Exposes 9 tools that LLM agents (Claude, GPT, etc.) can call for O(1) \
             symbol lookup, dependency graphs, and surgical source reads — all without \
             reading entire files.",
         after_long_help = cstr!(
             r#"<bold><underline>Tools</underline></bold>
   <bold>fmm_lookup_export</bold>    Find which file defines a symbol — O(1)
-  <bold>fmm_read_symbol</bold>      Extract exact source lines by symbol name
-  <bold>fmm_dependency_graph</bold>  Upstream deps + downstream dependents
+  <bold>fmm_read_symbol</bold>      Extract exact source; follows re-export chains automatically
+  <bold>fmm_dependency_graph</bold>  local_deps, external packages, and downstream blast radius
   <bold>fmm_file_outline</bold>     Table of contents with line ranges
   <bold>fmm_list_exports</bold>     Search exports by pattern (fuzzy)
   <bold>fmm_file_info</bold>        Structural profile without reading source
-  <bold>fmm_search</bold>           Multi-criteria AND queries
-  <bold>fmm_glossary</bold>         Symbol-level impact analysis (who uses this export?)
+  <bold>fmm_search</bold>           Multi-criteria AND queries with relevance scoring
+  <bold>fmm_list_files</bold>       List all indexed files under a directory path
+  <bold>fmm_glossary</bold>         Symbol-level blast radius — all definitions + who imports each
 
 <bold><underline>Setup</underline></bold>
   <dim>$</dim> <bold>fmm init --mcp</bold>                      <dim># Add to .claude/fmm.local.json</dim>
