@@ -116,6 +116,10 @@ pub struct Manifest {
     /// Used by the glossary to show all definitions and their dependents.
     #[serde(skip)]
     pub export_all: HashMap<String, Vec<ExportLocation>>,
+    /// Maps `"ClassName.method"` -> location for dotted symbol lookups.
+    /// Built in-memory from `methods:` sidecar sections. Not persisted.
+    #[serde(skip)]
+    pub method_index: HashMap<String, ExportLocation>,
 }
 
 impl Manifest {
@@ -127,6 +131,7 @@ impl Manifest {
             export_index: HashMap::new(),
             export_locations: HashMap::new(),
             export_all: HashMap::new(),
+            method_index: HashMap::new(),
         }
     }
 
@@ -213,6 +218,18 @@ impl Manifest {
                         },
                     );
                 }
+                // Populate method_index from the methods: section
+                if let Some(ref methods) = file_entry.methods {
+                    for (dotted, lines) in methods {
+                        manifest.method_index.insert(
+                            dotted.clone(),
+                            ExportLocation {
+                                file: key.clone(),
+                                lines: Some(lines.clone()),
+                            },
+                        );
+                    }
+                }
                 manifest.files.insert(key, file_entry);
             }
         }
@@ -239,12 +256,33 @@ impl Manifest {
                     self.export_all.remove(old_export);
                 }
             }
+            // Remove old method entries for this file
+            if let Some(ref old_methods) = old_entry.methods {
+                for key in old_methods.keys() {
+                    self.method_index.remove(key);
+                }
+            }
         }
 
         for export_entry in &metadata.exports {
-            // Method entries belong to a class — skip the regular export index.
-            // ALP-766 will add them to a dedicated method_index.
-            if export_entry.parent_class.is_some() {
+            // Method entries belong to a class — add to method_index, not export_index.
+            if let Some(ref class) = export_entry.parent_class {
+                let dotted = format!("{}.{}", class, export_entry.name);
+                let lines = if export_entry.start_line > 0 {
+                    Some(ExportLines {
+                        start: export_entry.start_line,
+                        end: export_entry.end_line,
+                    })
+                } else {
+                    None
+                };
+                self.method_index.insert(
+                    dotted,
+                    ExportLocation {
+                        file: path.to_string(),
+                        lines,
+                    },
+                );
                 continue;
             }
 
@@ -311,17 +349,22 @@ impl Manifest {
 
     pub fn remove_file(&mut self, path: &str) {
         if let Some(entry) = self.files.remove(path) {
-            for export in entry.exports {
-                self.export_index.remove(&export);
-                self.export_locations.remove(&export);
-                let empty = if let Some(locations) = self.export_all.get_mut(&export) {
+            for export in &entry.exports {
+                self.export_index.remove(export);
+                self.export_locations.remove(export);
+                let empty = if let Some(locations) = self.export_all.get_mut(export) {
                     locations.retain(|loc| loc.file != path);
                     locations.is_empty()
                 } else {
                     false
                 };
                 if empty {
-                    self.export_all.remove(&export);
+                    self.export_all.remove(export);
+                }
+            }
+            if let Some(methods) = entry.methods {
+                for key in methods.keys() {
+                    self.method_index.remove(key);
                 }
             }
         }
@@ -816,7 +859,9 @@ modified: 2026-01-30"#;
         let create = methods.get("NestFactoryStatic.create").unwrap();
         assert_eq!(create.start, 55);
         assert_eq!(create.end, 89);
-        let ctx = methods.get("NestFactoryStatic.createApplicationContext").unwrap();
+        let ctx = methods
+            .get("NestFactoryStatic.createApplicationContext")
+            .unwrap();
         assert_eq!(ctx.start, 132);
         assert_eq!(ctx.end, 158);
     }
@@ -868,6 +913,46 @@ modified: 2026-01-30"#;
         // Method is NOT in export_index
         assert!(!manifest.export_index.contains_key("run"));
         assert!(!manifest.export_index.contains_key("MyClass.run"));
+    }
+
+    #[test]
+    fn test_method_index_populated_by_add_file() {
+        let mut manifest = Manifest::new();
+        let metadata = Metadata {
+            exports: vec![
+                ExportEntry::new("NestFactoryStatic".to_string(), 43, 381),
+                ExportEntry::method(
+                    "create".to_string(),
+                    55,
+                    89,
+                    "NestFactoryStatic".to_string(),
+                ),
+                ExportEntry::method(
+                    "createApplicationContext".to_string(),
+                    132,
+                    158,
+                    "NestFactoryStatic".to_string(),
+                ),
+            ],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 400,
+        };
+        manifest.add_file("src/factory.ts", metadata);
+
+        let loc = manifest
+            .method_index
+            .get("NestFactoryStatic.createApplicationContext")
+            .unwrap();
+        assert_eq!(loc.file, "src/factory.ts");
+        assert_eq!(loc.lines.as_ref().unwrap().start, 132);
+        assert_eq!(loc.lines.as_ref().unwrap().end, 158);
+
+        let create = manifest.method_index.get("NestFactoryStatic.create").unwrap();
+        assert_eq!(create.lines.as_ref().unwrap().start, 55);
+
+        // Class itself is still in export_index
+        assert!(manifest.export_index.contains_key("NestFactoryStatic"));
     }
 
     #[test]

@@ -384,12 +384,16 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn methods_render_in_separate_section() {
         let metadata = Metadata {
             exports: vec![
                 entry("NestFactoryStatic", 43, 381),
-                ExportEntry::method("create".to_string(), 55, 89, "NestFactoryStatic".to_string()),
+                ExportEntry::method(
+                    "create".to_string(),
+                    55,
+                    89,
+                    "NestFactoryStatic".to_string(),
+                ),
                 ExportEntry::method(
                     "createApplicationContext".to_string(),
                     132,
@@ -433,9 +437,12 @@ mod tests {
     #[test]
     fn methods_section_without_top_level_exports() {
         let metadata = Metadata {
-            exports: vec![
-                ExportEntry::method("doThing".to_string(), 5, 15, "MyClass".to_string()),
-            ],
+            exports: vec![ExportEntry::method(
+                "doThing".to_string(),
+                5,
+                15,
+                "MyClass".to_string(),
+            )],
             imports: vec![],
             dependencies: vec![],
             loc: 20,
@@ -446,6 +453,7 @@ mod tests {
         assert!(rendered.contains("  MyClass.doThing: [5, 15]"));
     }
 
+    #[test]
     fn render_starts_with_yaml_document_marker() {
         let metadata = Metadata {
             exports: vec![],
