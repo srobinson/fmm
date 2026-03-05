@@ -23,7 +23,7 @@ pub fn format_file_info(file: &str, entry: &FileEntry) -> String {
     lines.join("\n")
 }
 
-/// Format file outline: sidecar YAML with symbol sizes.
+/// Format file outline: sidecar YAML with symbol sizes and method sub-entries.
 pub fn format_file_outline(file: &str, entry: &FileEntry) -> String {
     let mut lines = Vec::new();
     lines.push("---".to_string());
@@ -35,15 +35,50 @@ pub fn format_file_outline(file: &str, entry: &FileEntry) -> String {
     if !entry.exports.is_empty() {
         lines.push("symbols:".to_string());
         for (i, name) in entry.exports.iter().enumerate() {
+            // Collect methods belonging to this class (prefix "ClassName.")
+            let class_methods: Vec<_> = entry
+                .methods
+                .as_ref()
+                .map(|m| {
+                    let prefix = format!("{}.", name);
+                    let mut v: Vec<_> = m
+                        .iter()
+                        .filter(|(k, _)| k.starts_with(&prefix))
+                        .map(|(k, v)| (k.trim_start_matches(&prefix).to_string(), v))
+                        .collect();
+                    v.sort_by(|a, b| a.0.cmp(&b.0));
+                    v
+                })
+                .unwrap_or_default();
+
             if let Some(el) = entry.export_lines.as_ref().and_then(|els| els.get(i)) {
                 let size = el.end.saturating_sub(el.start) + 1;
-                lines.push(format!(
-                    "  {}: [{}, {}]  # {} lines",
-                    yaml_escape(name),
-                    el.start,
-                    el.end,
-                    size
-                ));
+                if class_methods.is_empty() {
+                    lines.push(format!(
+                        "  {}: [{}, {}]  # {} lines",
+                        yaml_escape(name),
+                        el.start,
+                        el.end,
+                        size
+                    ));
+                } else {
+                    lines.push(format!(
+                        "  {}: [{}, {}]  # {} lines, {} public methods",
+                        yaml_escape(name),
+                        el.start,
+                        el.end,
+                        size,
+                        class_methods.len()
+                    ));
+                    for (method_name, method_lines) in &class_methods {
+                        lines.push(format!(
+                            "    {}: [{}, {}]",
+                            yaml_escape(method_name),
+                            method_lines.start,
+                            method_lines.end
+                        ));
+                    }
+                }
             } else {
                 lines.push(format!("  {}", yaml_escape(name)));
             }
@@ -423,5 +458,73 @@ fn format_export_compact(e: &ExportHitCompact) -> String {
     match e.lines {
         Some([s, end]) if s > 0 => format!("{} [{}, {}]", e.name, s, end),
         _ => e.name.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::manifest::{ExportLines, FileEntry};
+    use std::collections::HashMap;
+
+    fn make_entry_with_methods(
+        exports: Vec<(&str, usize, usize)>,
+        methods: Vec<(&str, usize, usize)>,
+    ) -> FileEntry {
+        let names: Vec<String> = exports.iter().map(|(n, _, _)| n.to_string()).collect();
+        let lines: Vec<ExportLines> = exports
+            .iter()
+            .map(|(_, s, e)| ExportLines { start: *s, end: *e })
+            .collect();
+        let method_map: HashMap<String, ExportLines> = methods
+            .into_iter()
+            .map(|(k, s, e)| (k.to_string(), ExportLines { start: s, end: e }))
+            .collect();
+        FileEntry {
+            exports: names,
+            export_lines: Some(lines),
+            methods: if method_map.is_empty() {
+                None
+            } else {
+                Some(method_map)
+            },
+            imports: vec![],
+            dependencies: vec![],
+            loc: 400,
+        }
+    }
+
+    #[test]
+    fn file_outline_shows_methods_under_class() {
+        let entry = make_entry_with_methods(
+            vec![("NestFactoryStatic", 43, 381), ("NestFactory", 396, 396)],
+            vec![
+                ("NestFactoryStatic.create", 55, 89),
+                ("NestFactoryStatic.createApplicationContext", 132, 158),
+            ],
+        );
+        let out = format_file_outline("src/factory.ts", &entry);
+
+        // Class line shows method count
+        assert!(out.contains("NestFactoryStatic: [43, 381]"));
+        assert!(out.contains("2 public methods"));
+
+        // Methods are sub-entries (4-space indent)
+        assert!(out.contains("    create: [55, 89]"));
+        assert!(out.contains("    createApplicationContext: [132, 158]"));
+
+        // Class without methods has no method count annotation
+        assert!(out.contains("NestFactory: [396, 396]"));
+        assert!(!out.contains("NestFactory.*public methods"));
+    }
+
+    #[test]
+    fn file_outline_no_methods_unchanged() {
+        let entry = make_entry_with_methods(vec![("foo", 1, 10), ("bar", 12, 20)], vec![]);
+        let out = format_file_outline("src/mod.ts", &entry);
+        assert!(out.contains("  foo: [1, 10]  # 10 lines"));
+        assert!(out.contains("  bar: [12, 20]  # 9 lines"));
+        assert!(!out.contains("public methods"));
+        assert!(!out.contains("    ")); // no sub-indent
     }
 }

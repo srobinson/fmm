@@ -948,7 +948,10 @@ modified: 2026-01-30"#;
         assert_eq!(loc.lines.as_ref().unwrap().start, 132);
         assert_eq!(loc.lines.as_ref().unwrap().end, 158);
 
-        let create = manifest.method_index.get("NestFactoryStatic.create").unwrap();
+        let create = manifest
+            .method_index
+            .get("NestFactoryStatic.create")
+            .unwrap();
         assert_eq!(create.lines.as_ref().unwrap().start, 55);
 
         // Class itself is still in export_index
