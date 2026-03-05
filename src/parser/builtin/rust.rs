@@ -5,6 +5,47 @@ use std::path::Path;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
+/// Convert a raw Rust use-path that starts with `crate::` or `super::` into
+/// the normalized dep string that `dep_matches()` understands.
+///
+/// * `crate::config::Config` → `Some("crate::config")`  (PascalCase tail dropped)
+/// * `super::utils` → `Some("../utils")`
+/// * `std::collections::HashMap` → `None` (external crate, not a dep)
+fn rust_use_path_to_dep(raw: &str) -> Option<String> {
+    if !raw.starts_with("crate::") && !raw.starts_with("super::") {
+        return None;
+    }
+
+    // Strip trailing PascalCase segment: Rust convention is types/traits are PascalCase,
+    // modules are snake_case. If the last :: segment starts with uppercase, it's a type.
+    let path = if let Some(sep_pos) = raw.rfind("::") {
+        let last = &raw[sep_pos + 2..];
+        if last
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+        {
+            &raw[..sep_pos]
+        } else {
+            raw
+        }
+    } else {
+        raw
+    };
+
+    if let Some(rest) = path.strip_prefix("super::") {
+        // super::X::Y → ../X/Y
+        Some(format!("../{}", rest.replace("::", "/")))
+    } else if path.starts_with("crate::") {
+        // crate::X → keep as-is for dep_matches() crate:: fallback
+        Some(path.to_string())
+    } else {
+        // bare "crate" or "super" with no sub-path — skip
+        None
+    }
+}
+
 pub struct RustParser {
     parser: TSParser,
     export_queries: Vec<Query>,
@@ -199,18 +240,65 @@ impl RustParser {
     }
 
     fn extract_dependencies(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+        let source_bytes = source.as_bytes();
         let mut seen = HashSet::new();
         let mut deps = Vec::new();
-        let source_bytes = source.as_bytes();
-        let roots = self.extract_use_roots(source_bytes, root_node);
-        for root in roots {
-            if ["crate", "super"].contains(&root.as_str()) && seen.insert(root.clone()) {
-                deps.push(root);
+
+        let mut cursor = root_node.walk();
+        for child in root_node.children(&mut cursor) {
+            if child.kind() != "use_declaration" {
+                continue;
+            }
+            for dep in self.use_declaration_deps(source_bytes, child) {
+                if seen.insert(dep.clone()) {
+                    deps.push(dep);
+                }
             }
         }
+
         deps.sort();
         deps.dedup();
         deps
+    }
+
+    /// Extract normalized dep strings from a single `use_declaration` node.
+    /// Returns `crate::X` or `../X` strings for internal dependencies;
+    /// returns nothing for external crate imports.
+    fn use_declaration_deps(&self, source_bytes: &[u8], node: tree_sitter::Node) -> Vec<String> {
+        let mut cursor = node.walk();
+        let mut results = Vec::new();
+
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "scoped_identifier" => {
+                    if let Ok(raw) = child.utf8_text(source_bytes) {
+                        if let Some(dep) = rust_use_path_to_dep(raw) {
+                            results.push(dep);
+                        }
+                    }
+                }
+                "scoped_use_list" => {
+                    // e.g. `crate::parser::{builtin, search}` — emit the path prefix
+                    let mut sub = child.walk();
+                    for sub_child in child.children(&mut sub) {
+                        match sub_child.kind() {
+                            "scoped_identifier" | "crate" | "super" => {
+                                if let Ok(raw) = sub_child.utf8_text(source_bytes) {
+                                    if let Some(dep) = rust_use_path_to_dep(raw) {
+                                        results.push(dep);
+                                    }
+                                }
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        results
     }
 
     fn extract_use_roots(&self, source_bytes: &[u8], root_node: tree_sitter::Node) -> Vec<String> {
@@ -600,8 +688,42 @@ mod tests {
         let mut parser = RustParser::new().unwrap();
         let source = "use crate::config::Config;\nuse super::utils;";
         let result = parser.parse(source).unwrap();
-        assert!(result.metadata.dependencies.contains(&"crate".to_string()));
-        assert!(result.metadata.dependencies.contains(&"super".to_string()));
+        let deps = &result.metadata.dependencies;
+        // Full paths, not bare root keywords
+        assert!(
+            deps.contains(&"crate::config".to_string()),
+            "expected crate::config in {:?}",
+            deps
+        );
+        assert!(
+            deps.contains(&"../utils".to_string()),
+            "expected ../utils in {:?}",
+            deps
+        );
+        // External stdlib stays out of deps
+        assert!(!deps.contains(&"std".to_string()));
+    }
+
+    #[test]
+    fn rust_use_path_to_dep_conversions() {
+        assert_eq!(
+            rust_use_path_to_dep("crate::config::Config"),
+            Some("crate::config".into())
+        );
+        assert_eq!(
+            rust_use_path_to_dep("crate::parser::builtin::rust"),
+            Some("crate::parser::builtin::rust".into())
+        );
+        assert_eq!(
+            rust_use_path_to_dep("super::utils"),
+            Some("../utils".into())
+        );
+        assert_eq!(
+            rust_use_path_to_dep("super::parser::builtin"),
+            Some("../parser/builtin".into())
+        );
+        assert_eq!(rust_use_path_to_dep("std::collections::HashMap"), None);
+        assert_eq!(rust_use_path_to_dep("anyhow"), None);
     }
 
     #[test]

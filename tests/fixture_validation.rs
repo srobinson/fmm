@@ -186,9 +186,10 @@ fn validate_rust_fixture() {
     assert!(result.metadata.imports.contains(&"std".to_string()));
     assert!(result.metadata.imports.contains(&"tokio".to_string()));
 
-    // Expected dependencies: crate, super
-    assert!(result.metadata.dependencies.contains(&"crate".to_string()));
-    assert!(result.metadata.dependencies.contains(&"super".to_string()));
+    // Expected dependencies: full paths, not bare root keywords
+    let deps = &result.metadata.dependencies;
+    assert!(deps.contains(&"crate::config".to_string()), "expected crate::config in {:?}", deps);
+    assert!(deps.contains(&"../utils".to_string()), "expected ../utils in {:?}", deps);
 
     // LOC
     assert!(result.metadata.loc > 50);
