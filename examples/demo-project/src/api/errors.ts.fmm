@@ -1,11 +1,13 @@
 ---
 file: examples/demo-project/src/api/errors.ts
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 exports:
   AppError: [3, 12]
   notFound: [14, 16]
   unauthorized: [18, 20]
   errorHandler: [22, 28]
+methods:
+  AppError.constructor: [4, 11]
 imports: [express]
 loc: 28
 modified: 2026-03-05

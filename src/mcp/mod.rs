@@ -327,13 +327,13 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_read_symbol".to_string(),
-                description: "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Requires line-range data from v0.3 sidecars.".to_string(),
+                description: "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Requires line-range data from v0.3 sidecars. Use `ClassName.method` notation to read a specific public method: `fmm_read_symbol(name: \"NestFactoryStatic.createApplicationContext\")`.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
                         "name": {
                             "type": "string",
-                            "description": "Exact export name to read (function, class, type, component)"
+                            "description": "Exact export name to read (function, class, type, component), or ClassName.method for a specific public method"
                         }
                     },
                     "required": ["name"]
@@ -632,24 +632,34 @@ impl McpServer {
             return Err("Symbol name must not be empty. Use fmm_list_exports to discover available symbols.".to_string());
         }
 
-        let location = manifest
-            .export_locations
-            .get(&args.name)
-            .ok_or_else(|| format!("Export '{}' not found. Use fmm_list_exports or fmm_search to discover available symbols.", args.name))?;
+        // Dotted notation: ClassName.method — look up in method_index directly.
+        let (resolved_file, resolved_lines) = if args.name.contains('.') {
+            let loc = manifest.method_index.get(&args.name).ok_or_else(|| {
+                format!(
+                    "Method '{}' not found. Use fmm_file_outline to see available methods.",
+                    args.name
+                )
+            })?;
+            (loc.file.clone(), loc.lines.clone())
+        } else {
+            let location = manifest
+                .export_locations
+                .get(&args.name)
+                .ok_or_else(|| format!("Export '{}' not found. Use fmm_list_exports or fmm_search to discover available symbols.", args.name))?;
 
-        // If the winning location is a re-export hub (index file), try to find the
-        // concrete definition in a nearby non-index file that also exports this symbol.
-        let (resolved_file, resolved_lines) = if is_reexport_file(&location.file) {
-            if let Some((concrete_file, concrete_lines)) =
-                find_concrete_definition(manifest, &args.name, &location.file)
-            {
-                (concrete_file, Some(concrete_lines))
+            // If the winning location is a re-export hub (index file), try to find the
+            // concrete definition in a nearby non-index file that also exports this symbol.
+            if is_reexport_file(&location.file) {
+                if let Some((concrete_file, concrete_lines)) =
+                    find_concrete_definition(manifest, &args.name, &location.file)
+                {
+                    (concrete_file, Some(concrete_lines))
+                } else {
+                    (location.file.clone(), location.lines.clone())
+                }
             } else {
-                // No concrete definition found — fall back to the re-export site
                 (location.file.clone(), location.lines.clone())
             }
-        } else {
-            (location.file.clone(), location.lines.clone())
         };
 
         let lines = resolved_lines.ok_or_else(|| {
@@ -1024,6 +1034,101 @@ mod tests {
         assert!(
             text.contains("fmm_list_files"),
             "should suggest fmm_list_files, got: {}",
+            text
+        );
+    }
+
+    #[test]
+    fn read_symbol_dotted_notation_returns_method_source() {
+        use crate::manifest::Manifest;
+        use crate::parser::{ExportEntry, Metadata};
+
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("factory.ts");
+        // Write a file with a class and a method
+        std::fs::write(
+            &file_path,
+            "class NestFactoryStatic {\n  create() {\n    return 1;\n  }\n}\n",
+        )
+        .unwrap();
+
+        let mut manifest = Manifest::new();
+        manifest.add_file(
+            "factory.ts",
+            Metadata {
+                exports: vec![
+                    ExportEntry::new("NestFactoryStatic".to_string(), 1, 5),
+                    ExportEntry::method(
+                        "create".to_string(),
+                        2,
+                        4,
+                        "NestFactoryStatic".to_string(),
+                    ),
+                ],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 5,
+            },
+        );
+
+        let server = McpServer {
+            manifest: Some(manifest),
+            root: dir.path().to_path_buf(),
+        };
+
+        // Dotted lookup returns the method
+        let result = server
+            .call_tool(
+                "fmm_read_symbol",
+                serde_json::json!({"name": "NestFactoryStatic.create"}),
+            )
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(
+            !text.starts_with("ERROR:"),
+            "expected success, got: {}",
+            text
+        );
+        assert!(text.contains("create"), "should contain method body");
+        assert!(
+            text.contains("factory.ts"),
+            "should contain file name, got: {}",
+            text
+        );
+
+        // Flat lookup still works for the class
+        let result2 = server
+            .call_tool(
+                "fmm_read_symbol",
+                serde_json::json!({"name": "NestFactoryStatic"}),
+            )
+            .unwrap();
+        let text2 = result2["content"][0]["text"].as_str().unwrap();
+        assert!(
+            !text2.starts_with("ERROR:"),
+            "class lookup should succeed, got: {}",
+            text2
+        );
+    }
+
+    #[test]
+    fn read_symbol_dotted_not_found_gives_helpful_error() {
+        use crate::manifest::Manifest;
+        let server = McpServer {
+            manifest: Some(Manifest::new()),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+        let result = server
+            .call_tool(
+                "fmm_read_symbol",
+                serde_json::json!({"name": "MyClass.missingMethod"}),
+            )
+            .unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap_or("");
+        assert!(text.starts_with("ERROR:"), "expected ERROR:, got: {}", text);
+        assert!(
+            text.contains("fmm_file_outline"),
+            "should suggest fmm_file_outline, got: {}",
             text
         );
     }

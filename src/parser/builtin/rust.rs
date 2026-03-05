@@ -3,7 +3,7 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use streaming_iterator::StreamingIterator;
-use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
+use tree_sitter::{Language, Node, Parser as TSParser, Query, QueryCursor};
 
 /// Convert a raw Rust use-path that starts with `crate::` or `super::` into
 /// the normalized dep string that `dep_matches()` understands.
@@ -55,6 +55,8 @@ pub struct RustParser {
     lifetime_query: Query,
     async_query: Query,
     derive_query: Query,
+    /// ALP-770: finds impl blocks for public method extraction
+    impl_query: Query,
 }
 
 impl RustParser {
@@ -66,7 +68,9 @@ impl RustParser {
             .map_err(|e| anyhow::anyhow!("Failed to set Rust language: {}", e))?;
 
         let export_query_strs = [
-            "(function_item (visibility_modifier) @vis name: (identifier) @name)",
+            // Anchored to source_file so that pub fn inside impl blocks are NOT captured here.
+            // impl block methods are extracted separately with parent_class set (ALP-770).
+            "(source_file (function_item (visibility_modifier) @vis name: (identifier) @name))",
             "(struct_item (visibility_modifier) @vis name: (type_identifier) @name)",
             "(enum_item (visibility_modifier) @vis name: (type_identifier) @name)",
             "(trait_item (visibility_modifier) @vis name: (type_identifier) @name)",
@@ -128,6 +132,10 @@ impl RustParser {
         )
         .map_err(|e| anyhow::anyhow!("Failed to compile derive query: {}", e))?;
 
+        // ALP-770: match all impl blocks; type extraction done in Rust code
+        let impl_query = Query::new(&language, "(impl_item) @impl")
+            .map_err(|e| anyhow::anyhow!("Failed to compile impl query: {}", e))?;
+
         Ok(Self {
             parser,
             export_queries,
@@ -137,6 +145,7 @@ impl RustParser {
             lifetime_query,
             async_query,
             derive_query,
+            impl_query,
         })
     }
 
@@ -213,8 +222,98 @@ impl RustParser {
         }
 
         exports.sort_by_key(|e| e.start_line);
-        exports.dedup_by(|a, b| a.name == b.name);
+        exports.dedup_by(|a, b| a.name == b.name && a.parent_class == b.parent_class);
         exports
+    }
+
+    /// ALP-770: resolve the self-type name from an impl_item's `type` field.
+    /// Handles both plain `type_identifier` and `generic_type` (impl Foo<T>).
+    fn impl_type_name(type_node: Node, source_bytes: &[u8]) -> Option<String> {
+        match type_node.kind() {
+            "type_identifier" => type_node
+                .utf8_text(source_bytes)
+                .ok()
+                .map(|s| s.to_string()),
+            "generic_type" => type_node
+                .child_by_field_name("type")
+                .and_then(|n| Self::impl_type_name(n, source_bytes)),
+            _ => None,
+        }
+    }
+
+    /// ALP-770: extract `pub fn` methods from impl blocks of exported types.
+    /// Both `impl Foo {}` and `impl Trait for Foo {}` are covered.
+    /// Returns `ExportEntry` items with `parent_class` set to the type name.
+    fn extract_impl_methods(
+        &self,
+        source: &str,
+        root_node: Node,
+        exported_type_names: &HashSet<String>,
+    ) -> Vec<ExportEntry> {
+        let source_bytes = source.as_bytes();
+        let mut entries = Vec::new();
+
+        let impl_idx = self.impl_query.capture_index_for_name("impl").unwrap_or(0);
+
+        let mut cursor = QueryCursor::new();
+        let mut iter = cursor.matches(&self.impl_query, root_node, source_bytes);
+
+        while let Some(m) = iter.next() {
+            let impl_node = match m.captures.iter().find(|c| c.index == impl_idx) {
+                Some(cap) => cap.node,
+                None => continue,
+            };
+
+            let type_name = match impl_node
+                .child_by_field_name("type")
+                .and_then(|n| Self::impl_type_name(n, source_bytes))
+            {
+                Some(name) => name,
+                None => continue,
+            };
+
+            if !exported_type_names.contains(&type_name) {
+                continue;
+            }
+
+            let body = match impl_node.child_by_field_name("body") {
+                Some(b) => b,
+                None => continue,
+            };
+
+            for i in 0..body.child_count() {
+                if let Some(child) = body.child(i) {
+                    if child.kind() != "function_item" {
+                        continue;
+                    }
+
+                    // Check for `pub` visibility modifier
+                    let is_pub = (0..child.child_count()).any(|j| {
+                        child
+                            .child(j)
+                            .filter(|c| c.kind() == "visibility_modifier")
+                            .and_then(|c| c.utf8_text(source_bytes).ok())
+                            .is_some_and(|t| t == "pub")
+                    });
+                    if !is_pub {
+                        continue;
+                    }
+
+                    if let Some(name_node) = child.child_by_field_name("name") {
+                        if let Ok(method_name) = name_node.utf8_text(source_bytes) {
+                            entries.push(ExportEntry::method(
+                                method_name.to_string(),
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                                type_name.clone(),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        entries
     }
 
     fn extract_imports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
@@ -772,8 +871,21 @@ impl RustParser {
 
         let root_node = tree.root_node();
 
-        let exports = self.extract_exports(source, root_node, binary_crate);
+        let mut exports = self.extract_exports(source, root_node, binary_crate);
         let imports = self.extract_imports(source, root_node);
+
+        // ALP-770: extract pub fn from impl blocks of exported types (library crates only).
+        // Binary crates use all_item_queries which already capture impl methods as flat entries.
+        if !binary_crate {
+            let exported_types: HashSet<String> = exports
+                .iter()
+                .filter(|e| e.parent_class.is_none())
+                .map(|e| e.name.clone())
+                .collect();
+            let methods = self.extract_impl_methods(source, root_node, &exported_types);
+            exports.extend(methods);
+            exports.sort_by_key(|e| e.start_line);
+        }
         let dependencies = self.extract_dependencies(source, root_node);
         let loc = source.lines().count();
 
@@ -1179,6 +1291,111 @@ const VERSION: &str = "1.0";
         assert!(names.contains(&"Exported".to_string()));
         assert!(!names.contains(&"private".to_string()));
         assert!(!names.contains(&"Hidden".to_string()));
+    }
+
+    // ALP-770: impl block method extraction tests
+
+    fn get_method<'a>(
+        exports: &'a [ExportEntry],
+        class: &str,
+        method: &str,
+    ) -> Option<&'a ExportEntry> {
+        exports
+            .iter()
+            .find(|e| e.parent_class.as_deref() == Some(class) && e.name == method)
+    }
+
+    #[test]
+    fn rust_impl_pub_fn_indexed_as_method() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub struct Foo;\nimpl Foo {\n    pub fn bar() {}\n}";
+        let result = parser.parse(source).unwrap();
+        let entry =
+            get_method(&result.metadata.exports, "Foo", "bar").expect("Foo.bar should be indexed");
+        assert_eq!(entry.parent_class.as_deref(), Some("Foo"));
+    }
+
+    #[test]
+    fn rust_impl_private_fn_not_indexed() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub struct Foo;\nimpl Foo {\n    fn internal() {}\n}";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            get_method(&result.metadata.exports, "Foo", "internal").is_none(),
+            "Foo.internal (no pub) should NOT be indexed"
+        );
+    }
+
+    #[test]
+    fn rust_trait_impl_pub_fn_indexed() {
+        let mut parser = RustParser::new().unwrap();
+        let source =
+            "pub struct Foo;\ntrait MyTrait {\n    fn method(&self);\n}\nimpl MyTrait for Foo {\n    pub fn method(&self) {}\n}";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            get_method(&result.metadata.exports, "Foo", "method").is_some(),
+            "Foo.method from trait impl should be indexed"
+        );
+    }
+
+    #[test]
+    fn rust_impl_non_exported_struct_not_indexed() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "struct Hidden;\nimpl Hidden {\n    pub fn method() {}\n}";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            get_method(&result.metadata.exports, "Hidden", "method").is_none(),
+            "methods of non-exported struct should NOT be indexed"
+        );
+    }
+
+    #[test]
+    fn rust_impl_method_line_range_spans_full_body() {
+        let mut parser = RustParser::new().unwrap();
+        // line 1: pub struct Foo;
+        // line 2: impl Foo {
+        // line 3:     pub fn bar() {
+        // line 4:         42
+        // line 5:     }
+        // line 6: }
+        let source = "pub struct Foo;\nimpl Foo {\n    pub fn bar() {\n        42\n    }\n}";
+        let result = parser.parse(source).unwrap();
+        let entry =
+            get_method(&result.metadata.exports, "Foo", "bar").expect("Foo.bar should be indexed");
+        assert_eq!(entry.start_line, 3);
+        assert_eq!(entry.end_line, 5);
+    }
+
+    #[test]
+    fn rust_impl_generic_type_indexed() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub struct Wrapper<T>(T);\nimpl<T> Wrapper<T> {\n    pub fn inner(&self) -> &T { &self.0 }\n}";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            get_method(&result.metadata.exports, "Wrapper", "inner").is_some(),
+            "Wrapper<T>.inner should be indexed under Wrapper"
+        );
+    }
+
+    #[test]
+    fn rust_impl_methods_have_correct_parent_class() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub struct Foo;\nimpl Foo {\n    pub fn new() -> Self { Foo }\n    pub fn get_x(&self) -> i32 { 0 }\n}";
+        let result = parser.parse(source).unwrap();
+        let exports = &result.metadata.exports;
+
+        let new_fn = get_method(exports, "Foo", "new").expect("Foo.new should be indexed");
+        assert_eq!(new_fn.parent_class.as_deref(), Some("Foo"));
+
+        let get_x = get_method(exports, "Foo", "get_x").expect("Foo.get_x should be indexed");
+        assert_eq!(get_x.parent_class.as_deref(), Some("Foo"));
+
+        // Foo itself should still be a top-level export
+        let foo = exports
+            .iter()
+            .find(|e| e.name == "Foo" && e.parent_class.is_none())
+            .expect("Foo should be a top-level export");
+        assert_eq!(foo.start_line, 1);
     }
 
     #[test]

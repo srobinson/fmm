@@ -3,7 +3,7 @@ use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
-use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
+use tree_sitter::{Language, Node, Parser as TSParser, Query, QueryCursor};
 
 /// Convert Python relative import dot-notation to path notation so that
 /// `dep_matches()` can resolve it against manifest file paths.
@@ -36,6 +36,8 @@ pub struct PythonParser {
     relative_import_query: Query,
     decorator_query: Query,
     dotted_decorator_query: Query,
+    /// ALP-769: finds class declarations for public method extraction
+    class_method_query: Query,
 }
 
 impl PythonParser {
@@ -91,6 +93,13 @@ impl PythonParser {
         let dotted_decorator_query = Query::new(&language, "(decorator (attribute) @name)")
             .map_err(|e| anyhow::anyhow!("Failed to compile dotted_decorator query: {}", e))?;
 
+        // ALP-769: find class declarations for public method extraction
+        let class_method_query = Query::new(
+            &language,
+            "(class_definition name: (identifier) @class_name) @class",
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to compile class_method query: {}", e))?;
+
         Ok(Self {
             parser,
             func_query,
@@ -102,6 +111,7 @@ impl PythonParser {
             relative_import_query,
             decorator_query,
             dotted_decorator_query,
+            class_method_query,
         })
     }
 
@@ -275,6 +285,123 @@ impl PythonParser {
             .collect()
     }
 
+    /// ALP-769: extract public methods from exported classes.
+    /// Returns `ExportEntry` items with `parent_class` set to the class name.
+    ///
+    /// Public heuristic: include if name does not start with `_`, OR name is `__init__`.
+    /// All other dunder methods (`__str__`, `__repr__`, etc.) are skipped.
+    /// Decorated methods (`@property`, `@staticmethod`, etc.) are included.
+    fn extract_class_methods(
+        &self,
+        source: &str,
+        root_node: Node,
+        exported_class_names: &HashSet<String>,
+    ) -> Vec<ExportEntry> {
+        let source_bytes = source.as_bytes();
+        let mut entries = Vec::new();
+
+        let class_name_idx = self
+            .class_method_query
+            .capture_index_for_name("class_name")
+            .unwrap_or(0);
+        let class_idx = self
+            .class_method_query
+            .capture_index_for_name("class")
+            .unwrap_or(1);
+
+        let mut cursor = QueryCursor::new();
+        let mut iter = cursor.matches(&self.class_method_query, root_node, source_bytes);
+
+        while let Some(m) = iter.next() {
+            let mut class_node: Option<Node> = None;
+            let mut class_name: Option<String> = None;
+
+            for cap in m.captures {
+                if cap.index == class_name_idx {
+                    if let Ok(text) = cap.node.utf8_text(source_bytes) {
+                        class_name = Some(text.to_string());
+                    }
+                } else if cap.index == class_idx {
+                    class_node = Some(cap.node);
+                }
+            }
+
+            let (class_node, class_name) = match (class_node, class_name) {
+                (Some(n), Some(name)) => (n, name),
+                _ => continue,
+            };
+
+            if !exported_class_names.contains(&class_name) {
+                continue;
+            }
+
+            let body = match class_node.child_by_field_name("body") {
+                Some(b) => b,
+                None => continue,
+            };
+
+            for i in 0..body.child_count() {
+                if let Some(child) = body.child(i) {
+                    match child.kind() {
+                        "function_definition" => {
+                            if let Some(entry) =
+                                Self::extract_python_method_entry(&class_name, child, source_bytes)
+                            {
+                                entries.push(entry);
+                            }
+                        }
+                        "decorated_definition" => {
+                            // Find the function_definition inside the decorated_definition
+                            for j in 0..child.child_count() {
+                                if let Some(inner) = child.child(j) {
+                                    if inner.kind() == "function_definition" {
+                                        if let Some(mut entry) = Self::extract_python_method_entry(
+                                            &class_name,
+                                            inner,
+                                            source_bytes,
+                                        ) {
+                                            // Use the decorated_definition range to include decorator lines
+                                            entry.start_line = child.start_position().row + 1;
+                                            entry.end_line = child.end_position().row + 1;
+                                            entries.push(entry);
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        entries
+    }
+
+    /// Extract a single function_definition node as an ExportEntry.
+    /// Returns None for private methods (leading underscore), except `__init__`.
+    fn extract_python_method_entry(
+        class_name: &str,
+        method_node: Node,
+        source_bytes: &[u8],
+    ) -> Option<ExportEntry> {
+        let name_node = method_node.child_by_field_name("name")?;
+        let method_name = name_node.utf8_text(source_bytes).ok()?.to_string();
+
+        // Include public methods and __init__; skip all other underscore-prefixed names
+        if method_name.starts_with('_') && method_name != "__init__" {
+            return None;
+        }
+
+        Some(ExportEntry::method(
+            method_name,
+            method_node.start_position().row + 1,
+            method_node.end_position().row + 1,
+            class_name.to_string(),
+        ))
+    }
+
     fn extract_decorators(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
         let source_bytes = source.as_bytes();
         let simple = collect_matches(&self.decorator_query, root_node, source_bytes);
@@ -297,10 +424,20 @@ impl Parser for PythonParser {
 
         let root_node = tree.root_node();
 
-        let exports = self.extract_exports(source, root_node);
+        let mut exports = self.extract_exports(source, root_node);
         let imports = self.extract_imports(source, root_node);
         let dependencies = self.extract_dependencies(source, root_node);
         let loc = source.lines().count();
+
+        // ALP-769: extract public methods from exported classes
+        let exported_classes: HashSet<String> = exports
+            .iter()
+            .filter(|e| e.parent_class.is_none())
+            .map(|e| e.name.clone())
+            .collect();
+        let methods = self.extract_class_methods(source, root_node, &exported_classes);
+        exports.extend(methods);
+        exports.sort_by_key(|e| e.start_line);
 
         let decorators = self.extract_decorators(source, root_node);
         let custom_fields = if decorators.is_empty() {
@@ -607,6 +744,131 @@ def bare_func():
                 .filter(|i| i.as_str() == "agno.models.message")
                 .count(),
             1
+        );
+    }
+
+    // ALP-769: public method extraction tests
+
+    fn get_method<'a>(
+        exports: &'a [ExportEntry],
+        class: &str,
+        method: &str,
+    ) -> Option<&'a ExportEntry> {
+        exports
+            .iter()
+            .find(|e| e.parent_class.as_deref() == Some(class) && e.name == method)
+    }
+
+    #[test]
+    fn python_methods_public_included() {
+        let mut parser = PythonParser::new().unwrap();
+        let source = "class Foo:\n    def bar(self):\n        pass\n";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            get_method(&result.metadata.exports, "Foo", "bar").is_some(),
+            "Foo.bar should be indexed"
+        );
+    }
+
+    #[test]
+    fn python_methods_private_excluded() {
+        let mut parser = PythonParser::new().unwrap();
+        let source = "class Foo:\n    def _internal(self):\n        pass\n";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            get_method(&result.metadata.exports, "Foo", "_internal").is_none(),
+            "Foo._internal should NOT be indexed"
+        );
+    }
+
+    #[test]
+    fn python_methods_init_included() {
+        let mut parser = PythonParser::new().unwrap();
+        let source = "class Foo:\n    def __init__(self):\n        pass\n";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            get_method(&result.metadata.exports, "Foo", "__init__").is_some(),
+            "Foo.__init__ should be indexed"
+        );
+    }
+
+    #[test]
+    fn python_methods_other_dunder_excluded() {
+        let mut parser = PythonParser::new().unwrap();
+        let source = "class Foo:\n    def __str__(self):\n        return ''\n";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            get_method(&result.metadata.exports, "Foo", "__str__").is_none(),
+            "Foo.__str__ should NOT be indexed"
+        );
+    }
+
+    #[test]
+    fn python_methods_non_exported_class_excluded() {
+        let mut parser = PythonParser::new().unwrap();
+        let source = "class _Internal:\n    def method(self):\n        pass\n";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            get_method(&result.metadata.exports, "_Internal", "method").is_none(),
+            "methods of non-exported class should NOT be indexed"
+        );
+    }
+
+    #[test]
+    fn python_methods_decorated_included() {
+        let mut parser = PythonParser::new().unwrap();
+        let source =
+            "class Foo:\n    @property\n    def value(self):\n        return self._value\n    @staticmethod\n    def create():\n        return Foo()\n";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            get_method(&result.metadata.exports, "Foo", "value").is_some(),
+            "Foo.value (@property) should be indexed"
+        );
+        assert!(
+            get_method(&result.metadata.exports, "Foo", "create").is_some(),
+            "Foo.create (@staticmethod) should be indexed"
+        );
+    }
+
+    #[test]
+    fn python_methods_decorated_line_range_includes_decorator() {
+        let mut parser = PythonParser::new().unwrap();
+        // line 1: class Foo:
+        // line 2:     @property
+        // line 3:     def value(self):
+        // line 4:         return 1
+        let source = "class Foo:\n    @property\n    def value(self):\n        return 1\n";
+        let result = parser.parse(source).unwrap();
+        let entry = get_method(&result.metadata.exports, "Foo", "value")
+            .expect("Foo.value should be indexed");
+        assert_eq!(
+            entry.start_line, 2,
+            "start_line should be the decorator line"
+        );
+    }
+
+    #[test]
+    fn python_methods_dunder_all_respects_export_list() {
+        let mut parser = PythonParser::new().unwrap();
+        let source = r#"
+__all__ = ["PublicClass"]
+
+class PublicClass:
+    def method(self):
+        pass
+
+class HiddenClass:
+    def method(self):
+        pass
+"#;
+        let result = parser.parse(source).unwrap();
+        assert!(
+            get_method(&result.metadata.exports, "PublicClass", "method").is_some(),
+            "PublicClass.method should be indexed"
+        );
+        assert!(
+            get_method(&result.metadata.exports, "HiddenClass", "method").is_none(),
+            "HiddenClass.method should NOT be indexed (not in __all__)"
         );
     }
 

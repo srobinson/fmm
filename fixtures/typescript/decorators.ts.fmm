@@ -1,11 +1,16 @@
 ---
 file: fixtures/typescript/decorators.ts
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 exports:
   UserService: [1, 6]
   UserController: [8, 15]
   AppModule: [17, 21]
   PlainService: [23, 25]
+methods:
+  UserService.findAll: [3, 5]
+  UserController.constructor: [10, 10]
+  UserController.getAll: [12, 14]
+  PlainService.execute: [24, 24]
 loc: 25
 modified: 2026-03-05
 typescript:

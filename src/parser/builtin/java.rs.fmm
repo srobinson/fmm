@@ -1,12 +1,11 @@
 ---
 file: src/parser/builtin/java.rs
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 exports:
   JavaParser: [9, 17]
-  new: [20, 67]
 imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: [../query_helpers, 'crate::parser']
-loc: 323
+loc: 408
 modified: 2026-03-05
 rust:
-  lifetimes: ['''static']
+  lifetimes: ['''a', '''static']

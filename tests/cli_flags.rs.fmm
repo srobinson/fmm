@@ -1,6 +1,6 @@
 ---
 file: tests/cli_flags.rs
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 imports: [clap, fmm, std, tempfile]
 loc: 185
 modified: 2026-03-05

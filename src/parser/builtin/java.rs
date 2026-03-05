@@ -42,9 +42,10 @@ impl JavaParser {
         )
         .map_err(|e| anyhow::anyhow!("Failed to compile enum query: {}", e))?;
 
+        // ALP-771: capture class_name alongside method_name so methods can be attributed to parent
         let method_query = Query::new(
             &language,
-            "(class_declaration body: (class_body (method_declaration name: (identifier) @name)))",
+            "(class_declaration name: (identifier) @class_name body: (class_body (method_declaration name: (identifier) @method_name)))",
         )
         .map_err(|e| anyhow::anyhow!("Failed to compile method query: {}", e))?;
 
@@ -87,20 +88,46 @@ impl JavaParser {
             }
         }
 
+        // ALP-771: attribute methods to their parent class using parent_class field
+        let class_name_idx = self
+            .method_query
+            .capture_index_for_name("class_name")
+            .unwrap_or(0);
+        let method_name_idx = self
+            .method_query
+            .capture_index_for_name("method_name")
+            .unwrap_or(1);
+
         let mut cursor = QueryCursor::new();
         let mut iter = cursor.matches(&self.method_query, root_node, source_bytes);
         while let Some(m) = iter.next() {
-            for capture in m.captures {
-                let method_node = capture.node;
+            let class_name = m
+                .captures
+                .iter()
+                .find(|c| c.index == class_name_idx)
+                .and_then(|c| c.node.utf8_text(source_bytes).ok())
+                .map(|s| s.to_string());
+            let method_cap = m.captures.iter().find(|c| c.index == method_name_idx);
+
+            if let (Some(class_name), Some(method_cap)) = (class_name, method_cap) {
+                // Skip methods from inner/private classes not in the exported set.
+                // At this point seen contains only top-level class/interface/enum names.
+                if !seen.contains(&class_name) {
+                    continue;
+                }
+                let method_node = method_cap.node;
                 if let Some(method_decl) = method_node.parent() {
                     if self.has_public_modifier(method_decl, source_bytes) {
                         if let Ok(text) = method_node.utf8_text(source_bytes) {
-                            let name = text.to_string();
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
+                            let method_name = text.to_string();
+                            // Use "ClassName.method" as the dedup key to scope correctly
+                            let key = format!("{}.{}", class_name, method_name);
+                            if seen.insert(key) {
+                                exports.push(ExportEntry::method(
+                                    method_name,
                                     method_decl.start_position().row + 1,
                                     method_decl.end_position().row + 1,
+                                    class_name,
                                 ));
                             }
                         }
@@ -218,6 +245,16 @@ impl Parser for JavaParser {
 mod tests {
     use super::*;
 
+    fn get_method<'a>(
+        exports: &'a [ExportEntry],
+        class: &str,
+        method: &str,
+    ) -> Option<&'a ExportEntry> {
+        exports
+            .iter()
+            .find(|e| e.parent_class.as_deref() == Some(class) && e.name == method)
+    }
+
     #[test]
     fn parse_java_classes() {
         let mut parser = JavaParser::new().unwrap();
@@ -228,18 +265,66 @@ public class UserService {
 }
 "#;
         let result = parser.parse(source).unwrap();
+        // Class itself is a top-level export
         assert!(result
             .metadata
             .export_names()
             .contains(&"UserService".to_string()));
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"createUser".to_string()));
-        assert!(!result
-            .metadata
-            .export_names()
-            .contains(&"validate".to_string()));
+        // ALP-771: public methods are now method entries with parent_class, NOT in export_names()
+        assert!(
+            !result
+                .metadata
+                .export_names()
+                .contains(&"createUser".to_string()),
+            "createUser should NOT be in flat export_names() — it's a method entry"
+        );
+        assert!(
+            get_method(&result.metadata.exports, "UserService", "createUser").is_some(),
+            "UserService.createUser should be in method entries"
+        );
+        assert!(
+            get_method(&result.metadata.exports, "UserService", "validate").is_none(),
+            "private validate() should NOT be indexed"
+        );
+    }
+
+    #[test]
+    fn java_method_has_correct_parent_class() {
+        let mut parser = JavaParser::new().unwrap();
+        let source = "public class Foo {\n    public void bar() {}\n}\n";
+        let result = parser.parse(source).unwrap();
+        let entry =
+            get_method(&result.metadata.exports, "Foo", "bar").expect("Foo.bar should be indexed");
+        assert_eq!(entry.parent_class.as_deref(), Some("Foo"));
+    }
+
+    #[test]
+    fn java_method_not_in_flat_export_names() {
+        // Regression: fmm_lookup_export("bar") should return not-found
+        let mut parser = JavaParser::new().unwrap();
+        let source = "public class Foo {\n    public void bar() {}\n}\n";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            !result.metadata.export_names().contains(&"bar".to_string()),
+            "bar should NOT appear in flat export index"
+        );
+    }
+
+    #[test]
+    fn java_inner_class_methods_not_indexed() {
+        // The method_query matches all class_declaration nodes. Without the exported-class
+        // guard, methods from private/package-private inner classes would leak into the index.
+        let mut parser = JavaParser::new().unwrap();
+        let source = "public class Outer {\n    public void outerMethod() {}\n    private class Inner {\n        public void innerMethod() {}\n    }\n}\n";
+        let result = parser.parse(source).unwrap();
+        assert!(
+            get_method(&result.metadata.exports, "Outer", "outerMethod").is_some(),
+            "Outer.outerMethod should be indexed"
+        );
+        assert!(
+            get_method(&result.metadata.exports, "Inner", "innerMethod").is_none(),
+            "Inner.innerMethod should NOT be indexed — Inner is not a top-level exported class"
+        );
     }
 
     #[test]

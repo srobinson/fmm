@@ -1,9 +1,10 @@
 ---
 file: src/parser/builtin/php.rs
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 exports:
   PhpParser: [8, 21]
-  new: [24, 116]
+methods:
+  PhpParser.new: [24, 116]
 imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: [../query_helpers/collect_matches_with_lines, 'crate::parser']
 loc: 410

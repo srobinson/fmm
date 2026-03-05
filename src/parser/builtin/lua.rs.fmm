@@ -1,9 +1,10 @@
 ---
 file: src/parser/builtin/lua.rs
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 exports:
   LuaParser: [6, 8]
-  new: [11, 19]
+methods:
+  LuaParser.new: [11, 19]
 imports: [anyhow, std, tree_sitter]
 dependencies: ['crate::parser']
 loc: 274

@@ -1108,18 +1108,34 @@ public class UserController {
         .metadata
         .export_names()
         .contains(&"UserController".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"getUsers".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"createUser".to_string()));
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"validate".to_string()));
+    // ALP-771: public methods are now method entries with parent_class, not in export_names()
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"getUsers".to_string()),
+        "getUsers should NOT be in flat exports"
+    );
+    assert!(
+        result
+            .metadata
+            .exports
+            .iter()
+            .any(|e| e.parent_class.as_deref() == Some("UserController") && e.name == "getUsers"),
+        "UserController.getUsers should be a method entry"
+    );
+    assert!(
+        result
+            .metadata
+            .exports
+            .iter()
+            .any(|e| e.parent_class.as_deref() == Some("UserController") && e.name == "createUser"),
+        "UserController.createUser should be a method entry"
+    );
+    assert!(
+        !result.metadata.exports.iter().any(|e| e.name == "validate"),
+        "private validate() should NOT be indexed at all"
+    );
 
     let fields = result.custom_fields.unwrap();
     let annotations = fields.get("annotations").unwrap().as_array().unwrap();

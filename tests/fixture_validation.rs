@@ -334,21 +334,34 @@ fn validate_java_fixture() {
         .export_names()
         .contains(&"ProcessConfig".to_string()));
 
-    // Public methods
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"process".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"transform".to_string()));
+    // ALP-771: public methods are now method entries with parent_class, not in export_names()
+    assert!(
+        result
+            .metadata
+            .exports
+            .iter()
+            .any(|e| e.parent_class.as_deref() == Some("DataProcessor") && e.name == "process"),
+        "DataProcessor.process should be a method entry"
+    );
+    assert!(
+        result
+            .metadata
+            .exports
+            .iter()
+            .any(|e| e.parent_class.as_deref() == Some("DataProcessor") && e.name == "transform"),
+        "DataProcessor.transform should be a method entry"
+    );
+    // Methods must NOT appear in flat export_names()
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"process".to_string()),
+        "process should NOT be in flat export_names()"
+    );
 
     // Private methods should not be exported
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"validate".to_string()));
+    assert!(!result.metadata.exports.iter().any(|e| e.name == "validate"));
 
     // Imports
     assert!(result.metadata.imports.contains(&"java.util".to_string()));

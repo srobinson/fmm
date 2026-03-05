@@ -509,6 +509,7 @@ mod tests {
         FileEntry {
             exports: vec![],
             export_lines: None,
+            methods: None,
             imports: vec![],
             dependencies: deps.iter().map(|s| s.to_string()).collect(),
             loc,

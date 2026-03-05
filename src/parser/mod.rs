@@ -11,6 +11,10 @@ pub struct ExportEntry {
     pub name: String,
     pub start_line: usize,
     pub end_line: usize,
+    /// When set, this entry is a method of the named class, not a top-level export.
+    /// The method renders under `methods:` in the sidecar as `ClassName.method: [start, end]`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_class: Option<String>,
 }
 
 impl ExportEntry {
@@ -19,6 +23,17 @@ impl ExportEntry {
             name,
             start_line,
             end_line,
+            parent_class: None,
+        }
+    }
+
+    /// Create a method entry belonging to a parent class.
+    pub fn method(name: String, start_line: usize, end_line: usize, parent_class: String) -> Self {
+        Self {
+            name,
+            start_line,
+            end_line,
+            parent_class: Some(parent_class),
         }
     }
 }
@@ -32,9 +47,14 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    /// Convenience: get export names as strings (for backward-compat in tests/comparisons).
+    /// Convenience: get top-level export names as strings.
+    /// Excludes method entries (those with `parent_class` set).
     pub fn export_names(&self) -> Vec<String> {
-        self.exports.iter().map(|e| e.name.clone()).collect()
+        self.exports
+            .iter()
+            .filter(|e| e.parent_class.is_none())
+            .map(|e| e.name.clone())
+            .collect()
     }
 }
 

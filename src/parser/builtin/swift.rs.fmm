@@ -1,9 +1,10 @@
 ---
 file: src/parser/builtin/swift.rs
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 exports:
   SwiftParser: [6, 8]
-  new: [11, 18]
+methods:
+  SwiftParser.new: [11, 18]
 imports: [anyhow, std, tree_sitter]
 dependencies: ['crate::parser']
 loc: 467

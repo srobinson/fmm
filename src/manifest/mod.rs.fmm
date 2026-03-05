@@ -1,32 +1,33 @@
 ---
 file: src/manifest/mod.rs
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 exports:
-  ExportLines: [30, 33]
-  FileEntry: [37, 45]
-  ExportLocation: [70, 73]
-  Manifest: [79, 92]
-  new: [95, 104]
-  load_from_sidecars: [107, 194]
-  add_file: [197, 277]
-  remove_file: [279, 295]
-  touch: [297, 299]
-  has_file: [301, 303]
-  get_file: [305, 307]
-  validate_file: [309, 320]
-  file_count: [322, 324]
-  file_paths: [326, 328]
-  GlossaryMode: [397, 405]
-  GlossaryEntry: [409, 412]
-  GlossarySource: [417, 421]
-  build_glossary: [466, 513]
-  find_dependents: [517, 537]
-  dep_matches: [543, 610]
-  python_dep_matches: [643, 656]
-  dotted_dep_matches: [664, 677]
+  ExportLines: [33, 36]
+  FileEntry: [40, 52]
+  ExportLocation: [97, 100]
+  Manifest: [106, 123]
+  GlossaryMode: [503, 511]
+  GlossaryEntry: [515, 518]
+  GlossarySource: [523, 527]
+  dep_matches: [649, 716]
+  python_dep_matches: [749, 762]
+  dotted_dep_matches: [770, 783]
+methods:
+  Manifest.new: [126, 136]
+  Manifest.load_from_sidecars: [139, 238]
+  Manifest.add_file: [241, 348]
+  Manifest.remove_file: [350, 371]
+  Manifest.touch: [373, 375]
+  Manifest.has_file: [377, 379]
+  Manifest.get_file: [381, 383]
+  Manifest.validate_file: [385, 400]
+  Manifest.file_count: [402, 404]
+  Manifest.file_paths: [406, 408]
+  Manifest.build_glossary: [572, 619]
+  Manifest.find_dependents: [623, 643]
 imports: [anyhow, chrono, ignore, serde, std]
 dependencies: ['crate::parser']
-loc: 1350
+loc: 1590
 modified: 2026-03-05
 rust:
   derives: [Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize]

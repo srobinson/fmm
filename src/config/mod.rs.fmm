@@ -1,11 +1,12 @@
 ---
 file: src/config/mod.rs
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 exports:
   Config: [7, 11]
-  load: [22, 24]
-  load_from_dir: [26, 35]
-  is_supported_language: [37, 39]
+methods:
+  Config.load: [22, 24]
+  Config.load_from_dir: [26, 35]
+  Config.is_supported_language: [37, 39]
 imports: [anyhow, serde, std]
 loc: 192
 modified: 2026-03-05

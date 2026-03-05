@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.kt
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 exports:
   NetworkManager: [15, 21]
   BaseRepository: [23, 25]
@@ -23,6 +23,14 @@ exports:
   ServiceLocator: [110, 117]
   oldMethod: [122, 122]
   asyncOperation: [124, 124]
+methods:
+  NetworkManager.fetchData: [16, 16]
+  NetworkManager.cancelAll: [20, 20]
+  BaseRepository.findById: [24, 24]
+  Repository.findAll: [51, 51]
+  Repository.save: [52, 52]
+  Cacheable.invalidateCache: [56, 56]
+  ServiceLocator.resolve: [116, 116]
 imports: [java.util, kotlin.collections, org.example]
 loc: 124
 modified: 2026-03-05

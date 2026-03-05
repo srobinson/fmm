@@ -14,6 +14,9 @@ struct SidecarData {
     file: String,
     #[serde(default)]
     exports: Option<serde_yaml::Value>,
+    /// Flat map of `ClassName.method: [start, end]` entries (v0.4+).
+    #[serde(default)]
+    methods: Option<serde_yaml::Value>,
     #[serde(default)]
     imports: Option<Vec<String>>,
     #[serde(default)]
@@ -39,6 +42,10 @@ pub struct FileEntry {
     /// Line ranges for exports (parallel to exports vec). None if from v0.2 sidecar.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub export_lines: Option<Vec<ExportLines>>,
+    /// Public class methods: `"ClassName.method"` → line range. Populated from the
+    /// `methods:` sidecar section or from `ExportEntry` entries that have `parent_class` set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub methods: Option<HashMap<String, ExportLines>>,
     pub imports: Vec<String>,
     pub dependencies: Vec<String>,
     pub loc: usize,
@@ -46,18 +53,38 @@ pub struct FileEntry {
 
 impl From<Metadata> for FileEntry {
     fn from(metadata: Metadata) -> Self {
-        let export_lines: Vec<ExportLines> = metadata
-            .exports
-            .iter()
-            .map(|e| ExportLines {
-                start: e.start_line,
-                end: e.end_line,
-            })
-            .collect();
+        let mut exports = Vec::new();
+        let mut export_lines = Vec::new();
+        let mut methods: HashMap<String, ExportLines> = HashMap::new();
+
+        for e in &metadata.exports {
+            if let Some(ref class) = e.parent_class {
+                let key = format!("{}.{}", class, e.name);
+                methods.insert(
+                    key,
+                    ExportLines {
+                        start: e.start_line,
+                        end: e.end_line,
+                    },
+                );
+            } else {
+                exports.push(e.name.clone());
+                export_lines.push(ExportLines {
+                    start: e.start_line,
+                    end: e.end_line,
+                });
+            }
+        }
+
         let has_lines = export_lines.iter().any(|l| l.start > 0);
         Self {
-            exports: metadata.exports.iter().map(|e| e.name.clone()).collect(),
+            exports,
             export_lines: if has_lines { Some(export_lines) } else { None },
+            methods: if methods.is_empty() {
+                None
+            } else {
+                Some(methods)
+            },
             imports: metadata.imports,
             dependencies: metadata.dependencies,
             loc: metadata.loc,
@@ -89,6 +116,10 @@ pub struct Manifest {
     /// Used by the glossary to show all definitions and their dependents.
     #[serde(skip)]
     pub export_all: HashMap<String, Vec<ExportLocation>>,
+    /// Maps `"ClassName.method"` -> location for dotted symbol lookups.
+    /// Built in-memory from `methods:` sidecar sections. Not persisted.
+    #[serde(skip)]
+    pub method_index: HashMap<String, ExportLocation>,
 }
 
 impl Manifest {
@@ -100,6 +131,7 @@ impl Manifest {
             export_index: HashMap::new(),
             export_locations: HashMap::new(),
             export_all: HashMap::new(),
+            method_index: HashMap::new(),
         }
     }
 
@@ -186,6 +218,18 @@ impl Manifest {
                         },
                     );
                 }
+                // Populate method_index from the methods: section
+                if let Some(ref methods) = file_entry.methods {
+                    for (dotted, lines) in methods {
+                        manifest.method_index.insert(
+                            dotted.clone(),
+                            ExportLocation {
+                                file: key.clone(),
+                                lines: Some(lines.clone()),
+                            },
+                        );
+                    }
+                }
                 manifest.files.insert(key, file_entry);
             }
         }
@@ -212,9 +256,36 @@ impl Manifest {
                     self.export_all.remove(old_export);
                 }
             }
+            // Remove old method entries for this file
+            if let Some(ref old_methods) = old_entry.methods {
+                for key in old_methods.keys() {
+                    self.method_index.remove(key);
+                }
+            }
         }
 
         for export_entry in &metadata.exports {
+            // Method entries belong to a class — add to method_index, not export_index.
+            if let Some(ref class) = export_entry.parent_class {
+                let dotted = format!("{}.{}", class, export_entry.name);
+                let lines = if export_entry.start_line > 0 {
+                    Some(ExportLines {
+                        start: export_entry.start_line,
+                        end: export_entry.end_line,
+                    })
+                } else {
+                    None
+                };
+                self.method_index.insert(
+                    dotted,
+                    ExportLocation {
+                        file: path.to_string(),
+                        lines,
+                    },
+                );
+                continue;
+            }
+
             let lines = if export_entry.start_line > 0 {
                 Some(ExportLines {
                     start: export_entry.start_line,
@@ -278,17 +349,22 @@ impl Manifest {
 
     pub fn remove_file(&mut self, path: &str) {
         if let Some(entry) = self.files.remove(path) {
-            for export in entry.exports {
-                self.export_index.remove(&export);
-                self.export_locations.remove(&export);
-                let empty = if let Some(locations) = self.export_all.get_mut(&export) {
+            for export in &entry.exports {
+                self.export_index.remove(export);
+                self.export_locations.remove(export);
+                let empty = if let Some(locations) = self.export_all.get_mut(export) {
                     locations.retain(|loc| loc.file != path);
                     locations.is_empty()
                 } else {
                     false
                 };
                 if empty {
-                    self.export_all.remove(&export);
+                    self.export_all.remove(export);
+                }
+            }
+            if let Some(methods) = entry.methods {
+                for key in methods.keys() {
+                    self.method_index.remove(key);
                 }
             }
         }
@@ -308,8 +384,12 @@ impl Manifest {
 
     pub fn validate_file(&self, path: &str, current: &Metadata) -> bool {
         if let Some(entry) = self.files.get(path) {
-            let current_names: Vec<String> =
-                current.exports.iter().map(|e| e.name.clone()).collect();
+            let current_names: Vec<String> = current
+                .exports
+                .iter()
+                .filter(|e| e.parent_class.is_none())
+                .map(|e| e.name.clone())
+                .collect();
             entry.exports == current_names
                 && entry.imports == current.imports
                 && entry.dependencies == current.dependencies
@@ -380,11 +460,37 @@ fn parse_sidecar(content: &str) -> Option<(String, FileEntry)> {
         _ => (Vec::new(), None),
     };
 
+    // Parse methods: section — flat map of "ClassName.method": [start, end]
+    let methods = match data.methods {
+        Some(serde_yaml::Value::Mapping(map)) => {
+            let mut m = HashMap::new();
+            for (key, value) in map {
+                if let serde_yaml::Value::String(name) = key {
+                    match value {
+                        serde_yaml::Value::Sequence(seq) if seq.len() == 2 => {
+                            let start = seq[0].as_u64().unwrap_or(0) as usize;
+                            let end = seq[1].as_u64().unwrap_or(0) as usize;
+                            m.insert(name, ExportLines { start, end });
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            if m.is_empty() {
+                None
+            } else {
+                Some(m)
+            }
+        }
+        _ => None,
+    };
+
     Some((
         data.file,
         FileEntry {
             exports,
             export_lines,
+            methods,
             imports: data.imports.unwrap_or_default(),
             dependencies: data.dependencies.unwrap_or_default(),
             loc: data.loc.unwrap_or(0),
@@ -744,6 +850,119 @@ modified: 2026-01-30"#;
     }
 
     #[test]
+    fn test_parse_sidecar_methods_section() {
+        let content = "file: src/factory.ts\nexports:\n  NestFactoryStatic: [43, 381]\nmethods:\n  NestFactoryStatic.create: [55, 89]\n  NestFactoryStatic.createApplicationContext: [132, 158]\nloc: 400\nmodified: 2026-03-05";
+
+        let (path, entry) = parse_sidecar(content).unwrap();
+        assert_eq!(path, "src/factory.ts");
+        assert_eq!(entry.exports, vec!["NestFactoryStatic"]);
+        assert!(entry.export_lines.is_some());
+
+        let methods = entry.methods.unwrap();
+        assert_eq!(methods.len(), 2);
+        let create = methods.get("NestFactoryStatic.create").unwrap();
+        assert_eq!(create.start, 55);
+        assert_eq!(create.end, 89);
+        let ctx = methods
+            .get("NestFactoryStatic.createApplicationContext")
+            .unwrap();
+        assert_eq!(ctx.start, 132);
+        assert_eq!(ctx.end, 158);
+    }
+
+    #[test]
+    fn test_parse_sidecar_no_methods_is_backward_compat() {
+        let content = "file: src/auth/session.ts\nexports:\n  createSession: [5, 20]\nloc: 50\nmodified: 2026-03-05";
+        let (_, entry) = parse_sidecar(content).unwrap();
+        assert!(entry.methods.is_none());
+    }
+
+    #[test]
+    fn test_file_entry_from_metadata_separates_methods() {
+        use crate::parser::ExportEntry;
+        let metadata = Metadata {
+            exports: vec![
+                ExportEntry::new("MyClass".to_string(), 10, 100),
+                ExportEntry::method("doThing".to_string(), 20, 30, "MyClass".to_string()),
+                ExportEntry::method("doOther".to_string(), 32, 45, "MyClass".to_string()),
+            ],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 100,
+        };
+        let fe = FileEntry::from(metadata);
+        assert_eq!(fe.exports, vec!["MyClass"]);
+        let methods = fe.methods.unwrap();
+        assert_eq!(methods.len(), 2);
+        assert_eq!(methods["MyClass.doThing"].start, 20);
+        assert_eq!(methods["MyClass.doOther"].end, 45);
+    }
+
+    #[test]
+    fn test_add_file_skips_method_entries_in_export_index() {
+        let mut manifest = Manifest::new();
+        let metadata = Metadata {
+            exports: vec![
+                ExportEntry::new("MyClass".to_string(), 1, 50),
+                ExportEntry::method("run".to_string(), 5, 20, "MyClass".to_string()),
+            ],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 50,
+        };
+        manifest.add_file("src/thing.ts", metadata);
+
+        // Class is in export_index
+        assert!(manifest.export_index.contains_key("MyClass"));
+        // Method is NOT in export_index
+        assert!(!manifest.export_index.contains_key("run"));
+        assert!(!manifest.export_index.contains_key("MyClass.run"));
+    }
+
+    #[test]
+    fn test_method_index_populated_by_add_file() {
+        let mut manifest = Manifest::new();
+        let metadata = Metadata {
+            exports: vec![
+                ExportEntry::new("NestFactoryStatic".to_string(), 43, 381),
+                ExportEntry::method(
+                    "create".to_string(),
+                    55,
+                    89,
+                    "NestFactoryStatic".to_string(),
+                ),
+                ExportEntry::method(
+                    "createApplicationContext".to_string(),
+                    132,
+                    158,
+                    "NestFactoryStatic".to_string(),
+                ),
+            ],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 400,
+        };
+        manifest.add_file("src/factory.ts", metadata);
+
+        let loc = manifest
+            .method_index
+            .get("NestFactoryStatic.createApplicationContext")
+            .unwrap();
+        assert_eq!(loc.file, "src/factory.ts");
+        assert_eq!(loc.lines.as_ref().unwrap().start, 132);
+        assert_eq!(loc.lines.as_ref().unwrap().end, 158);
+
+        let create = manifest
+            .method_index
+            .get("NestFactoryStatic.create")
+            .unwrap();
+        assert_eq!(create.lines.as_ref().unwrap().start, 55);
+
+        // Class itself is still in export_index
+        assert!(manifest.export_index.contains_key("NestFactoryStatic"));
+    }
+
+    #[test]
     fn test_parse_sidecar_empty() {
         assert!(parse_sidecar("").is_none());
         assert!(parse_sidecar("loc: 10").is_none());
@@ -801,6 +1020,27 @@ modified: 2026-01-30"#;
             loc: 50,
         };
         assert!(!manifest.validate_file("file.ts", &different));
+    }
+
+    #[test]
+    fn validate_file_ignores_method_entries() {
+        let mut manifest = Manifest::new();
+
+        let metadata = Metadata {
+            exports: vec![
+                entry("MyClass", 1, 20),
+                ExportEntry::method("doThing".to_string(), 5, 10, "MyClass".to_string()),
+            ],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 20,
+        };
+
+        manifest.add_file("svc.ts", metadata.clone());
+        // Must return true — methods are not top-level exports and should not affect
+        // the comparison. Prior to the fix this would return false because method
+        // names leaked into current_names.
+        assert!(manifest.validate_file("svc.ts", &metadata));
     }
 
     #[test]

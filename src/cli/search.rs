@@ -311,6 +311,7 @@ mod tests {
                     ExportLines { start: 12, end: 45 },
                     ExportLines { start: 47, end: 60 },
                 ]),
+                methods: None,
                 imports: vec!["redux".to_string()],
                 dependencies: vec!["./types".to_string()],
                 loc: 120,
@@ -321,6 +322,7 @@ mod tests {
             FileEntry {
                 exports: vec!["StoreProvider".to_string()],
                 export_lines: Some(vec![ExportLines { start: 8, end: 22 }]),
+                methods: None,
                 imports: vec!["react".to_string(), "redux".to_string()],
                 dependencies: vec!["./index".to_string()],
                 loc: 45,
@@ -331,6 +333,7 @@ mod tests {
             FileEntry {
                 exports: vec!["useStore".to_string()],
                 export_lines: Some(vec![ExportLines { start: 3, end: 15 }]),
+                methods: None,
                 imports: vec!["react".to_string()],
                 dependencies: vec!["../store/index".to_string()],
                 loc: 30,
@@ -344,6 +347,7 @@ mod tests {
                     ExportLines { start: 5, end: 20 },
                     ExportLines { start: 22, end: 35 },
                 ]),
+                methods: None,
                 imports: vec!["crypto".to_string()],
                 dependencies: vec!["./session".to_string()],
                 loc: 80,

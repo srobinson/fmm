@@ -1,9 +1,10 @@
 ---
 file: src/parser/builtin/cpp.rs
-fmm: v0.3+0.1.13
+fmm: v0.3+0.1.15
 exports:
   CppParser: [8, 18]
-  new: [21, 79]
+methods:
+  CppParser.new: [21, 79]
 imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: [../query_helpers/collect_matches, 'crate::parser']
 loc: 351

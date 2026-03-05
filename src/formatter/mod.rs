@@ -57,13 +57,40 @@ impl Frontmatter {
             lines.push(format!("fmm: {}", version));
         }
 
-        // Exports as YAML map with [start, end] line ranges
-        if !self.metadata.exports.is_empty() {
+        // Exports as YAML map with [start, end] line ranges (top-level only — no parent_class)
+        let top_level: Vec<_> = self
+            .metadata
+            .exports
+            .iter()
+            .filter(|e| e.parent_class.is_none())
+            .collect();
+        if !top_level.is_empty() {
             lines.push("exports:".to_string());
-            for entry in &self.metadata.exports {
+            for entry in &top_level {
                 lines.push(format!(
                     "  {}: [{}, {}]",
                     yaml_escape(&entry.name),
+                    entry.start_line,
+                    entry.end_line
+                ));
+            }
+        }
+
+        // Methods as flat map: ClassName.method: [start, end]
+        let methods: Vec<_> = self
+            .metadata
+            .exports
+            .iter()
+            .filter(|e| e.parent_class.is_some())
+            .collect();
+        if !methods.is_empty() {
+            lines.push("methods:".to_string());
+            for entry in &methods {
+                let class = entry.parent_class.as_deref().unwrap_or("");
+                let key = format!("{}.{}", class, entry.name);
+                lines.push(format!(
+                    "  {}: [{}, {}]",
+                    yaml_escape(&key),
                     entry.start_line,
                     entry.end_line
                 ));
@@ -354,6 +381,76 @@ mod tests {
     #[test]
     fn yaml_escape_handles_embedded_single_quotes() {
         assert_eq!(yaml_escape("it's:here"), "'it''s:here'");
+    }
+
+    #[test]
+    fn methods_render_in_separate_section() {
+        let metadata = Metadata {
+            exports: vec![
+                entry("NestFactoryStatic", 43, 381),
+                ExportEntry::method(
+                    "create".to_string(),
+                    55,
+                    89,
+                    "NestFactoryStatic".to_string(),
+                ),
+                ExportEntry::method(
+                    "createApplicationContext".to_string(),
+                    132,
+                    158,
+                    "NestFactoryStatic".to_string(),
+                ),
+            ],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 400,
+        };
+
+        let rendered = Frontmatter::new("src/factory.ts".to_string(), metadata).render();
+
+        // Class appears in exports
+        assert!(rendered.contains("exports:"));
+        assert!(rendered.contains("  NestFactoryStatic: [43, 381]"));
+
+        // Methods appear under methods: section
+        assert!(rendered.contains("methods:"));
+        assert!(rendered.contains("  NestFactoryStatic.create: [55, 89]"));
+        assert!(rendered.contains("  NestFactoryStatic.createApplicationContext: [132, 158]"));
+
+        // Methods must NOT appear in exports section
+        assert!(!rendered.contains("  create: ["));
+        assert!(!rendered.contains("  createApplicationContext: ["));
+    }
+
+    #[test]
+    fn no_methods_section_when_all_top_level() {
+        let metadata = Metadata {
+            exports: vec![entry("foo", 1, 10), entry("bar", 12, 20)],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 25,
+        };
+        let rendered = Frontmatter::new("src/mod.ts".to_string(), metadata).render();
+        assert!(!rendered.contains("methods:"));
+    }
+
+    #[test]
+    fn methods_section_without_top_level_exports() {
+        let metadata = Metadata {
+            exports: vec![ExportEntry::method(
+                "doThing".to_string(),
+                5,
+                15,
+                "MyClass".to_string(),
+            )],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 20,
+        };
+        let rendered = Frontmatter::new("src/thing.ts".to_string(), metadata).render();
+        assert!(!rendered.contains("exports:"));
+        assert!(rendered.contains("methods:"));
+        assert!(rendered.contains("  MyClass.doThing: [5, 15]"));
     }
 
     #[test]
