@@ -196,6 +196,22 @@ impl RustParser {
             }
         }
 
+        // Collect pub use re-exports (always, regardless of binary_crate)
+        let pub_use_exports = self.extract_pub_use_names(source, root_node);
+        for entry in pub_use_exports {
+            if seen.insert(entry.name.clone()) {
+                exports.push(entry);
+            }
+        }
+
+        // Collect #[macro_export] declarative macros and proc-macro functions
+        let macro_exports = self.extract_macro_exports(source, root_node);
+        for entry in macro_exports {
+            if seen.insert(entry.name.clone()) {
+                exports.push(entry);
+            }
+        }
+
         exports.sort_by_key(|e| e.start_line);
         exports.dedup_by(|a, b| a.name == b.name);
         exports
@@ -294,6 +310,15 @@ impl RustParser {
                         }
                     }
                 }
+                "use_wildcard" => {
+                    // e.g. `use crate::parser::*` — strip trailing ::* to get dep path
+                    if let Ok(raw) = child.utf8_text(source_bytes) {
+                        let prefix = raw.strip_suffix("::*").unwrap_or(raw);
+                        if let Some(dep) = rust_use_path_to_dep(prefix) {
+                            results.push(dep);
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -318,7 +343,7 @@ impl RustParser {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             match child.kind() {
-                "scoped_identifier" | "scoped_use_list" => {
+                "scoped_identifier" | "scoped_use_list" | "use_wildcard" => {
                     return self.leftmost_path_leaf(source_bytes, child);
                 }
                 "identifier" => {
@@ -478,6 +503,263 @@ impl RustParser {
         derives.sort();
         derives.dedup();
         derives
+    }
+
+    /// Extract `#[macro_export]` declarative macros and proc-macro function symbols.
+    ///
+    /// Attributes are preceding siblings in the AST, so pure tree-sitter queries cannot
+    /// express the relationship. We walk root children sequentially, accumulating
+    /// attribute_item nodes, then act when we see a macro_definition or function_item.
+    fn extract_macro_exports(
+        &self,
+        source: &str,
+        root_node: tree_sitter::Node,
+    ) -> Vec<ExportEntry> {
+        let source_bytes = source.as_bytes();
+        let mut results = Vec::new();
+        let mut pending_attrs: Vec<tree_sitter::Node> = Vec::new();
+
+        let mut cursor = root_node.walk();
+        for child in root_node.children(&mut cursor) {
+            match child.kind() {
+                "attribute_item" => {
+                    pending_attrs.push(child);
+                }
+                "macro_definition" => {
+                    if self.attrs_contain(source_bytes, &pending_attrs, "macro_export") {
+                        if let Some(name_node) = child.child_by_field_name("name") {
+                            if let Ok(name) = name_node.utf8_text(source_bytes) {
+                                let start_line = pending_attrs
+                                    .first()
+                                    .map(|a| a.start_position().row + 1)
+                                    .unwrap_or(child.start_position().row + 1);
+                                let end_line = child.end_position().row + 1;
+                                results.push(ExportEntry::new(
+                                    format!("{}!", name),
+                                    start_line,
+                                    end_line,
+                                ));
+                            }
+                        }
+                    }
+                    pending_attrs.clear();
+                }
+                "function_item" => {
+                    if let Some(entry) =
+                        self.check_proc_macro_attr(source_bytes, &pending_attrs, child)
+                    {
+                        results.push(entry);
+                    }
+                    pending_attrs.clear();
+                }
+                // Comments are transparent — don't break the attribute chain
+                "line_comment" | "block_comment" => {}
+                _ => {
+                    pending_attrs.clear();
+                }
+            }
+        }
+
+        results
+    }
+
+    /// Check if any of the given attribute_item nodes contain an attribute with `name`.
+    fn attrs_contain(&self, source_bytes: &[u8], attrs: &[tree_sitter::Node], name: &str) -> bool {
+        attrs
+            .iter()
+            .any(|attr| self.attr_item_has_name(source_bytes, *attr, name))
+    }
+
+    /// Return true if the attribute_item node has an attribute whose leading identifier is `name`.
+    fn attr_item_has_name(
+        &self,
+        source_bytes: &[u8],
+        attr_item: tree_sitter::Node,
+        name: &str,
+    ) -> bool {
+        let mut cursor = attr_item.walk();
+        for child in attr_item.children(&mut cursor) {
+            if child.kind() == "attribute" {
+                let mut ac = child.walk();
+                for attr_child in child.children(&mut ac) {
+                    if attr_child.kind() == "identifier" {
+                        return attr_child
+                            .utf8_text(source_bytes)
+                            .map(|t| t == name)
+                            .unwrap_or(false);
+                    }
+                    // Stop at first meaningful child
+                    if attr_child.is_named() {
+                        break;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// If `func_node` is preceded by a proc-macro attribute, return the appropriate ExportEntry.
+    fn check_proc_macro_attr(
+        &self,
+        source_bytes: &[u8],
+        attrs: &[tree_sitter::Node],
+        func_node: tree_sitter::Node,
+    ) -> Option<ExportEntry> {
+        let start_line = attrs
+            .first()
+            .map(|a| a.start_position().row + 1)
+            .unwrap_or(func_node.start_position().row + 1);
+        let end_line = func_node.end_position().row + 1;
+
+        for attr in attrs {
+            if self.attr_item_has_name(source_bytes, *attr, "proc_macro_derive") {
+                // Extract derive name from token_tree argument: #[proc_macro_derive(MyDerive)]
+                if let Some(name) = self.extract_first_token_in_attr(source_bytes, *attr) {
+                    return Some(ExportEntry::new(name, start_line, end_line));
+                }
+            }
+            if self.attr_item_has_name(source_bytes, *attr, "proc_macro_attribute")
+                || self.attr_item_has_name(source_bytes, *attr, "proc_macro")
+            {
+                // Use the function name directly
+                if let Some(name_node) = func_node.child_by_field_name("name") {
+                    if let Ok(name) = name_node.utf8_text(source_bytes) {
+                        return Some(ExportEntry::new(name.to_string(), start_line, end_line));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Extract the first identifier inside the token_tree of an attribute.
+    ///
+    /// For `#[proc_macro_derive(MyDerive, attributes(field))]` this returns `MyDerive`.
+    fn extract_first_token_in_attr(
+        &self,
+        source_bytes: &[u8],
+        attr_item: tree_sitter::Node,
+    ) -> Option<String> {
+        let mut cursor = attr_item.walk();
+        for child in attr_item.children(&mut cursor) {
+            if child.kind() == "attribute" {
+                let mut ac = child.walk();
+                for attr_child in child.children(&mut ac) {
+                    if attr_child.kind() == "token_tree" {
+                        let mut tc = attr_child.walk();
+                        for token in attr_child.children(&mut tc) {
+                            if token.kind() == "identifier" {
+                                if let Ok(name) = token.utf8_text(source_bytes) {
+                                    return Some(name.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Extract exported names from `pub use` declarations in the top-level source.
+    fn extract_pub_use_names(
+        &self,
+        source: &str,
+        root_node: tree_sitter::Node,
+    ) -> Vec<ExportEntry> {
+        let source_bytes = source.as_bytes();
+        let mut results = Vec::new();
+
+        let mut cursor = root_node.walk();
+        for child in root_node.children(&mut cursor) {
+            if child.kind() != "use_declaration" {
+                continue;
+            }
+
+            let mut is_pub = false;
+            let mut content_node: Option<tree_sitter::Node> = None;
+
+            let mut child_cursor = child.walk();
+            for sub in child.children(&mut child_cursor) {
+                match sub.kind() {
+                    "visibility_modifier" => {
+                        if let Ok(text) = sub.utf8_text(source_bytes) {
+                            if text == "pub" {
+                                is_pub = true;
+                            }
+                        }
+                    }
+                    "scoped_identifier" | "use_as_clause" | "scoped_use_list" | "identifier" => {
+                        content_node = Some(sub);
+                    }
+                    _ => {}
+                }
+            }
+
+            if !is_pub {
+                continue;
+            }
+
+            if let Some(node) = content_node {
+                let line = child.start_position().row + 1;
+                Self::collect_use_names(source_bytes, node, line, &mut results);
+            }
+        }
+
+        results
+    }
+
+    /// Recursively collect re-exported names from a use clause node.
+    fn collect_use_names(
+        source_bytes: &[u8],
+        node: tree_sitter::Node,
+        line: usize,
+        results: &mut Vec<ExportEntry>,
+    ) {
+        match node.kind() {
+            "scoped_identifier" => {
+                // `crate::path::Name` — the `name` field is the rightmost identifier
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    if let Ok(name) = name_node.utf8_text(source_bytes) {
+                        results.push(ExportEntry::new(name.to_string(), line, line));
+                    }
+                }
+            }
+            "use_as_clause" => {
+                // `crate::X as Alias` — use the alias field
+                if let Some(alias_node) = node.child_by_field_name("alias") {
+                    if let Ok(name) = alias_node.utf8_text(source_bytes) {
+                        results.push(ExportEntry::new(name.to_string(), line, line));
+                    }
+                }
+            }
+            "scoped_use_list" => {
+                // `crate::path::{A, B}` — recurse into the list field
+                if let Some(list_node) = node.child_by_field_name("list") {
+                    let mut cursor = list_node.walk();
+                    for item in list_node.children(&mut cursor) {
+                        Self::collect_use_names(source_bytes, item, line, results);
+                    }
+                }
+            }
+            "use_list" => {
+                // Bare `{A, B}` — recurse into items
+                let mut cursor = node.walk();
+                for item in node.children(&mut cursor) {
+                    Self::collect_use_names(source_bytes, item, line, results);
+                }
+            }
+            "identifier" => {
+                // Bare name, e.g. `pub use serde`
+                if let Ok(name) = node.utf8_text(source_bytes) {
+                    if !matches!(name, "self" | "crate" | "super") {
+                        results.push(ExportEntry::new(name.to_string(), line, line));
+                    }
+                }
+            }
+            // "use_wildcard", "{", "}", ",", ";", etc. — skip
+            _ => {}
+        }
     }
 }
 
@@ -915,5 +1197,297 @@ const VERSION: &str = "1.0";
                 assert!(!names.contains(&"'_"));
             }
         }
+    }
+
+    #[test]
+    fn pub_use_simple_path_indexes_rightmost_segment() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub use crate::runtime::Runtime;";
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"Runtime".to_string()),
+            "expected Runtime in {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn pub_use_alias_indexes_alias_name() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub use crate::runtime::Runtime as Rt;";
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"Rt".to_string()),
+            "expected Rt in {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"Runtime".to_string()),
+            "Runtime should not appear (aliased)"
+        );
+    }
+
+    #[test]
+    fn pub_use_grouped_indexes_each_name() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub use crate::task::{JoinHandle, LocalSet};";
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"JoinHandle".to_string()),
+            "expected JoinHandle in {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"LocalSet".to_string()),
+            "expected LocalSet in {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn pub_use_grouped_with_alias_indexes_alias() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub use crate::task::{JoinHandle as JH};";
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"JH".to_string()),
+            "expected JH in {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"JoinHandle".to_string()),
+            "JoinHandle should not appear (aliased)"
+        );
+    }
+
+    // ---- ALP-776: wildcard use as dependency ----
+
+    #[test]
+    fn wildcard_use_crate_module_recorded_as_dep() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "use crate::parser::*;";
+        let result = parser.parse(source).unwrap();
+        let deps = &result.metadata.dependencies;
+        assert!(
+            deps.contains(&"crate::parser".to_string()),
+            "expected crate::parser in deps {:?}",
+            deps
+        );
+    }
+
+    #[test]
+    fn wildcard_use_super_module_recorded_as_dep() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "use super::utils::*;";
+        let result = parser.parse(source).unwrap();
+        let deps = &result.metadata.dependencies;
+        assert!(
+            deps.contains(&"../utils".to_string()),
+            "expected ../utils in deps {:?}",
+            deps
+        );
+    }
+
+    #[test]
+    fn wildcard_use_external_crate_not_a_dep() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "use std::io::*;";
+        let result = parser.parse(source).unwrap();
+        let deps = &result.metadata.dependencies;
+        assert!(
+            deps.is_empty(),
+            "std wildcard should produce no local dep, got {:?}",
+            deps
+        );
+        // But it should appear in imports
+        assert!(
+            result.metadata.imports.contains(&"std".to_string()),
+            "std should be in imports"
+        );
+    }
+
+    #[test]
+    fn pub_use_wildcard_skipped() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub use crate::prelude::*;";
+        let result = parser.parse(source).unwrap();
+        // No exports should be emitted for wildcard re-exports
+        assert!(
+            result.metadata.exports.is_empty(),
+            "wildcard pub use should emit no exports, got {:?}",
+            result.metadata.export_names()
+        );
+    }
+
+    #[test]
+    fn non_pub_use_not_indexed() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "use crate::runtime::Runtime;";
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            !names.contains(&"Runtime".to_string()),
+            "non-pub use should not be indexed"
+        );
+    }
+
+    #[test]
+    fn pub_use_external_crate_indexes_rightmost() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub use tokio_util::codec::Framed;";
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"Framed".to_string()),
+            "expected Framed in {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn pub_crate_use_not_indexed() {
+        let mut parser = RustParser::new().unwrap();
+        let source = "pub(crate) use crate::runtime::Runtime;";
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            !names.contains(&"Runtime".to_string()),
+            "pub(crate) use should not be indexed as a public export"
+        );
+    }
+
+    // ---- ALP-775: macro_export and proc-macro indexing ----
+
+    #[test]
+    fn macro_export_indexed_with_bang_suffix() {
+        let mut parser = RustParser::new().unwrap();
+        let source = r#"
+#[macro_export]
+macro_rules! select {
+    ($($t:tt)*) => {};
+}
+"#;
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"select!".to_string()),
+            "expected select! in {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn macro_rules_without_macro_export_not_indexed() {
+        let mut parser = RustParser::new().unwrap();
+        let source = r#"
+macro_rules! internal {
+    () => {};
+}
+"#;
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            !names.contains(&"internal!".to_string()),
+            "internal macro should not be indexed"
+        );
+    }
+
+    #[test]
+    fn macro_export_with_multiple_preceding_attrs() {
+        let mut parser = RustParser::new().unwrap();
+        let source = r#"
+#[doc(hidden)]
+#[macro_export]
+macro_rules! join {
+    () => {};
+}
+"#;
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"join!".to_string()),
+            "expected join! when #[macro_export] is not the first attr: {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn proc_macro_derive_indexes_derive_name() {
+        let mut parser = RustParser::new().unwrap();
+        let source = r#"
+#[proc_macro_derive(Serialize)]
+pub fn derive_serialize(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    todo!()
+}
+"#;
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"Serialize".to_string()),
+            "expected Serialize in {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn proc_macro_derive_with_attributes_arg_indexes_derive_name_only() {
+        let mut parser = RustParser::new().unwrap();
+        let source = r#"
+#[proc_macro_derive(Deserialize, attributes(serde))]
+pub fn derive_deserialize(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    todo!()
+}
+"#;
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"Deserialize".to_string()),
+            "expected Deserialize in {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"serde".to_string()),
+            "attributes argument should not be indexed"
+        );
+    }
+
+    #[test]
+    fn proc_macro_attribute_indexes_function_name() {
+        let mut parser = RustParser::new().unwrap();
+        let source = r#"
+#[proc_macro_attribute]
+pub fn route(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    todo!()
+}
+"#;
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"route".to_string()),
+            "expected route in {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn proc_macro_function_indexes_function_name() {
+        let mut parser = RustParser::new().unwrap();
+        let source = r#"
+#[proc_macro]
+pub fn my_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    todo!()
+}
+"#;
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"my_macro".to_string()),
+            "expected my_macro in {:?}",
+            names
+        );
     }
 }
