@@ -365,6 +365,16 @@ fn try_resolve_local_dep(dep: &str, source_file: &str, manifest: &Manifest) -> O
             .find(|path| dep_matches(dep, path, source_file))
             .cloned();
     }
+    // Domain-qualified paths: Go module paths (github.com/...) and Rust crate:: paths.
+    // dep_matches has suffix-matching fallback for these. Plain external packages like
+    // "anyhow" or "fmt" (no "/" or "::") are left as external.
+    if dep.contains('/') || dep.contains("::") {
+        return manifest
+            .files
+            .keys()
+            .find(|path| dep_matches(dep, path, source_file))
+            .cloned();
+    }
     None
 }
 
