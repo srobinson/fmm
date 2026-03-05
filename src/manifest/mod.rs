@@ -85,6 +85,10 @@ pub struct Manifest {
     /// Maps export name -> full location (file + lines)
     #[serde(skip_serializing_if = "HashMap::is_empty", default)]
     pub export_locations: HashMap<String, ExportLocation>,
+    /// Maps export name -> ALL definitions (no collision logic — every file that exports it).
+    /// Used by the glossary to show all definitions and their dependents.
+    #[serde(skip)]
+    pub export_all: HashMap<String, Vec<ExportLocation>>,
 }
 
 impl Manifest {
@@ -95,6 +99,7 @@ impl Manifest {
             files: HashMap::new(),
             export_index: HashMap::new(),
             export_locations: HashMap::new(),
+            export_all: HashMap::new(),
         }
     }
 
@@ -136,6 +141,22 @@ impl Manifest {
                 };
 
                 for (i, export) in file_entry.exports.iter().enumerate() {
+                    let lines = file_entry
+                        .export_lines
+                        .as_ref()
+                        .and_then(|el| el.get(i))
+                        .cloned();
+
+                    // Unconditionally track all definitions for glossary
+                    manifest
+                        .export_all
+                        .entry(export.clone())
+                        .or_default()
+                        .push(ExportLocation {
+                            file: key.clone(),
+                            lines: lines.clone(),
+                        });
+
                     if let Some(existing) = manifest.export_index.get(export) {
                         if existing != &key {
                             let existing_is_ts =
@@ -157,11 +178,6 @@ impl Manifest {
                         }
                     }
                     manifest.export_index.insert(export.clone(), key.clone());
-                    let lines = file_entry
-                        .export_lines
-                        .as_ref()
-                        .and_then(|el| el.get(i))
-                        .cloned();
                     manifest.export_locations.insert(
                         export.clone(),
                         ExportLocation {
@@ -185,10 +201,38 @@ impl Manifest {
                     self.export_index.remove(old_export);
                     self.export_locations.remove(old_export);
                 }
+                // Remove this file's entry from export_all
+                let empty = if let Some(locations) = self.export_all.get_mut(old_export) {
+                    locations.retain(|loc| loc.file != path);
+                    locations.is_empty()
+                } else {
+                    false
+                };
+                if empty {
+                    self.export_all.remove(old_export);
+                }
             }
         }
 
         for export_entry in &metadata.exports {
+            let lines = if export_entry.start_line > 0 {
+                Some(ExportLines {
+                    start: export_entry.start_line,
+                    end: export_entry.end_line,
+                })
+            } else {
+                None
+            };
+
+            // Unconditionally track all definitions for glossary
+            self.export_all
+                .entry(export_entry.name.clone())
+                .or_default()
+                .push(ExportLocation {
+                    file: path.to_string(),
+                    lines: lines.clone(),
+                });
+
             let (should_insert, should_warn) = match self.export_index.get(&export_entry.name) {
                 None => (true, false),
                 Some(existing) if existing == path => (true, false),
@@ -218,14 +262,6 @@ impl Manifest {
             if should_insert {
                 self.export_index
                     .insert(export_entry.name.clone(), path.to_string());
-                let lines = if export_entry.start_line > 0 {
-                    Some(ExportLines {
-                        start: export_entry.start_line,
-                        end: export_entry.end_line,
-                    })
-                } else {
-                    None
-                };
                 self.export_locations.insert(
                     export_entry.name.clone(),
                     ExportLocation {
@@ -245,6 +281,15 @@ impl Manifest {
             for export in entry.exports {
                 self.export_index.remove(&export);
                 self.export_locations.remove(&export);
+                let empty = if let Some(locations) = self.export_all.get_mut(&export) {
+                    locations.retain(|loc| loc.file != path);
+                    locations.is_empty()
+                } else {
+                    false
+                };
+                if empty {
+                    self.export_all.remove(&export);
+                }
             }
         }
     }
