@@ -181,15 +181,32 @@ pub fn format_list_exports_all(files: &[(&str, &FileEntry)]) -> String {
 // List files formatter
 // ---------------------------------------------------------------------------
 
-/// Format list files result as compact YAML.
-/// Each entry shows: file path, loc, export count.
-pub fn format_list_files(directory: Option<&str>, files: &[(&str, usize, usize)]) -> String {
+/// Format list files result as compact YAML with optional pagination metadata.
+///
+/// - `directory`: directory prefix filter, shown in header
+/// - `files`: the current page of entries (already sliced by offset/limit)
+/// - `total`: total number of matching files before pagination
+/// - `offset`: the page start index (0-based)
+pub fn format_list_files(
+    directory: Option<&str>,
+    files: &[(&str, usize, usize)],
+    total: usize,
+    offset: usize,
+) -> String {
     let mut lines = Vec::new();
     lines.push("---".to_string());
     if let Some(dir) = directory {
         lines.push(format!("directory: {}", yaml_escape(dir)));
     }
-    lines.push(format!("total: {}", files.len()));
+    lines.push(format!("total: {}", total));
+    let showing = files.len();
+    if showing < total {
+        let end = offset + showing;
+        lines.push(format!("showing: {}-{} of {}", offset + 1, end, total,));
+        if end < total {
+            lines.push(format!("next: Use offset={} to continue.", end));
+        }
+    }
     if !files.is_empty() {
         lines.push("files:".to_string());
         // Column width for alignment
