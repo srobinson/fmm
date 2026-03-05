@@ -273,10 +273,12 @@ impl TypeScriptParser {
                     let cleaned = text.trim_matches('\'').trim_matches('"').to_string();
                     // Relative paths go to dependencies; alias matches go to dependencies.
                     // Everything else (external packages) stays here as imports.
-                    if !cleaned.starts_with('.') && !cleaned.starts_with('/')
-                        && (aliases.is_empty() || resolve_alias(&cleaned, aliases).is_none()) {
-                            seen.insert(cleaned);
-                        }
+                    if !cleaned.starts_with('.')
+                        && !cleaned.starts_with('/')
+                        && (aliases.is_empty() || resolve_alias(&cleaned, aliases).is_none())
+                    {
+                        seen.insert(cleaned);
+                    }
                 }
             }
         }
