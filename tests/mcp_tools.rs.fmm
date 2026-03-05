@@ -2,5 +2,5 @@
 file: tests/mcp_tools.rs
 fmm: v0.3+0.1.19
 imports: [serde_json]
-loc: 936
+loc: 923
 modified: 2026-03-05
