@@ -152,7 +152,7 @@ impl McpServer {
         let total_lines = text.lines().count();
         let shown_lines = result.lines().count();
         result.push_str(&format!(
-            "\n\n[Truncated — showing {}/{} lines. Use more specific filters.]",
+            "\n\n[Truncated — showing {}/{} lines. Use truncate: false to get the full source.]",
             shown_lines, total_lines
         ));
         result
@@ -1032,6 +1032,11 @@ mod tests {
         let result = McpServer::cap_response(text, true);
         assert!(result.is_char_boundary(result.len()));
         assert!(result.contains("[Truncated"));
+        assert!(
+            result.contains("truncate: false"),
+            "marker must reference truncate: false, got: {}",
+            result
+        );
     }
 
     #[test]
