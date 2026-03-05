@@ -844,7 +844,31 @@ pub fn dep_matches(dep: &str, target_file: &str, dependent_file: &str) -> bool {
         .map(|(stem, _)| stem)
         .unwrap_or(target_file);
 
-    resolved_stem == target_stem
+    if resolved_stem == target_stem {
+        return true;
+    }
+
+    // Fallback: crate:: paths (Rust internal modules)
+    // e.g. "crate::config" matches "src/config.rs"
+    if let Some(module_path_str) = dep.strip_prefix("crate::") {
+        let module_path = module_path_str.replace("::", "/");
+        return target_stem.ends_with(&module_path);
+    }
+
+    // Fallback: domain-qualified paths (Go module paths, etc.)
+    // e.g. "github.com/user/project/internal/handler" matches "internal/handler/handler.go"
+    // Try progressively shorter path suffixes until one matches.
+    if dep.contains('/') && !dep.starts_with('.') {
+        let segments: Vec<&str> = dep.split('/').collect();
+        for start in 1..segments.len() {
+            let suffix = segments[start..].join("/");
+            if target_stem.ends_with(&suffix) {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 #[cfg(test)]
@@ -904,6 +928,35 @@ mod tests {
     #[test]
     fn dep_matches_without_prefix() {
         assert!(dep_matches("types", "src/types.ts", "src/index.ts"));
+    }
+
+    #[test]
+    fn dep_matches_crate_path() {
+        // Rust crate:: paths resolve via suffix matching
+        assert!(dep_matches("crate::config", "src/config.rs", "src/main.rs"));
+        assert!(dep_matches(
+            "crate::parser::builtin",
+            "src/parser/builtin.rs",
+            "src/main.rs"
+        ));
+        // No false positives
+        assert!(!dep_matches("crate::config", "src/other.rs", "src/main.rs"));
+    }
+
+    #[test]
+    fn dep_matches_go_module_path() {
+        // Go domain-qualified module paths resolve via suffix matching
+        assert!(dep_matches(
+            "github.com/user/project/internal/handler",
+            "internal/handler/handler.go",
+            "cmd/main.go"
+        ));
+        // Stdlib short paths don't match unrelated files
+        assert!(!dep_matches(
+            "fmt",
+            "internal/format/format.go",
+            "cmd/main.go"
+        ));
     }
 
     #[test]
