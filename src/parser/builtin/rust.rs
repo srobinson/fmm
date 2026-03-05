@@ -204,6 +204,14 @@ impl RustParser {
             }
         }
 
+        // Collect #[macro_export] declarative macros and proc-macro functions
+        let macro_exports = self.extract_macro_exports(source, root_node);
+        for entry in macro_exports {
+            if seen.insert(entry.name.clone()) {
+                exports.push(entry);
+            }
+        }
+
         exports.sort_by_key(|e| e.start_line);
         exports.dedup_by(|a, b| a.name == b.name);
         exports
@@ -486,6 +494,162 @@ impl RustParser {
         derives.sort();
         derives.dedup();
         derives
+    }
+
+    /// Extract `#[macro_export]` declarative macros and proc-macro function symbols.
+    ///
+    /// Attributes are preceding siblings in the AST, so pure tree-sitter queries cannot
+    /// express the relationship. We walk root children sequentially, accumulating
+    /// attribute_item nodes, then act when we see a macro_definition or function_item.
+    fn extract_macro_exports(
+        &self,
+        source: &str,
+        root_node: tree_sitter::Node,
+    ) -> Vec<ExportEntry> {
+        let source_bytes = source.as_bytes();
+        let mut results = Vec::new();
+        let mut pending_attrs: Vec<tree_sitter::Node> = Vec::new();
+
+        let mut cursor = root_node.walk();
+        for child in root_node.children(&mut cursor) {
+            match child.kind() {
+                "attribute_item" => {
+                    pending_attrs.push(child);
+                }
+                "macro_definition" => {
+                    if self.attrs_contain(source_bytes, &pending_attrs, "macro_export") {
+                        if let Some(name_node) = child.child_by_field_name("name") {
+                            if let Ok(name) = name_node.utf8_text(source_bytes) {
+                                let start_line = pending_attrs
+                                    .first()
+                                    .map(|a| a.start_position().row + 1)
+                                    .unwrap_or(child.start_position().row + 1);
+                                let end_line = child.end_position().row + 1;
+                                results.push(ExportEntry::new(
+                                    format!("{}!", name),
+                                    start_line,
+                                    end_line,
+                                ));
+                            }
+                        }
+                    }
+                    pending_attrs.clear();
+                }
+                "function_item" => {
+                    if let Some(entry) =
+                        self.check_proc_macro_attr(source_bytes, &pending_attrs, child)
+                    {
+                        results.push(entry);
+                    }
+                    pending_attrs.clear();
+                }
+                // Comments are transparent — don't break the attribute chain
+                "line_comment" | "block_comment" => {}
+                _ => {
+                    pending_attrs.clear();
+                }
+            }
+        }
+
+        results
+    }
+
+    /// Check if any of the given attribute_item nodes contain an attribute with `name`.
+    fn attrs_contain(&self, source_bytes: &[u8], attrs: &[tree_sitter::Node], name: &str) -> bool {
+        attrs
+            .iter()
+            .any(|attr| self.attr_item_has_name(source_bytes, *attr, name))
+    }
+
+    /// Return true if the attribute_item node has an attribute whose leading identifier is `name`.
+    fn attr_item_has_name(
+        &self,
+        source_bytes: &[u8],
+        attr_item: tree_sitter::Node,
+        name: &str,
+    ) -> bool {
+        let mut cursor = attr_item.walk();
+        for child in attr_item.children(&mut cursor) {
+            if child.kind() == "attribute" {
+                let mut ac = child.walk();
+                for attr_child in child.children(&mut ac) {
+                    if attr_child.kind() == "identifier" {
+                        return attr_child
+                            .utf8_text(source_bytes)
+                            .map(|t| t == name)
+                            .unwrap_or(false);
+                    }
+                    // Stop at first meaningful child
+                    if attr_child.is_named() {
+                        break;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// If `func_node` is preceded by a proc-macro attribute, return the appropriate ExportEntry.
+    fn check_proc_macro_attr(
+        &self,
+        source_bytes: &[u8],
+        attrs: &[tree_sitter::Node],
+        func_node: tree_sitter::Node,
+    ) -> Option<ExportEntry> {
+        let start_line = attrs
+            .first()
+            .map(|a| a.start_position().row + 1)
+            .unwrap_or(func_node.start_position().row + 1);
+        let end_line = func_node.end_position().row + 1;
+
+        for attr in attrs {
+            if self.attr_item_has_name(source_bytes, *attr, "proc_macro_derive") {
+                // Extract derive name from token_tree argument: #[proc_macro_derive(MyDerive)]
+                if let Some(name) = self.extract_first_token_in_attr(source_bytes, *attr) {
+                    return Some(ExportEntry::new(name, start_line, end_line));
+                }
+            }
+            if self.attr_item_has_name(source_bytes, *attr, "proc_macro_attribute")
+                || self.attr_item_has_name(source_bytes, *attr, "proc_macro")
+            {
+                // Use the function name directly
+                if let Some(name_node) = func_node.child_by_field_name("name") {
+                    if let Ok(name) = name_node.utf8_text(source_bytes) {
+                        return Some(ExportEntry::new(name.to_string(), start_line, end_line));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Extract the first identifier inside the token_tree of an attribute.
+    ///
+    /// For `#[proc_macro_derive(MyDerive, attributes(field))]` this returns `MyDerive`.
+    fn extract_first_token_in_attr(
+        &self,
+        source_bytes: &[u8],
+        attr_item: tree_sitter::Node,
+    ) -> Option<String> {
+        let mut cursor = attr_item.walk();
+        for child in attr_item.children(&mut cursor) {
+            if child.kind() == "attribute" {
+                let mut ac = child.walk();
+                for attr_child in child.children(&mut ac) {
+                    if attr_child.kind() == "token_tree" {
+                        let mut tc = attr_child.walk();
+                        for token in attr_child.children(&mut tc) {
+                            if token.kind() == "identifier" {
+                                if let Ok(name) = token.utf8_text(source_bytes) {
+                                    return Some(name.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Extract exported names from `pub use` declarations in the top-level source.
@@ -1138,6 +1302,137 @@ const VERSION: &str = "1.0";
         assert!(
             !names.contains(&"Runtime".to_string()),
             "pub(crate) use should not be indexed as a public export"
+        );
+    }
+
+    // ---- ALP-775: macro_export and proc-macro indexing ----
+
+    #[test]
+    fn macro_export_indexed_with_bang_suffix() {
+        let mut parser = RustParser::new().unwrap();
+        let source = r#"
+#[macro_export]
+macro_rules! select {
+    ($($t:tt)*) => {};
+}
+"#;
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"select!".to_string()),
+            "expected select! in {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn macro_rules_without_macro_export_not_indexed() {
+        let mut parser = RustParser::new().unwrap();
+        let source = r#"
+macro_rules! internal {
+    () => {};
+}
+"#;
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            !names.contains(&"internal!".to_string()),
+            "internal macro should not be indexed"
+        );
+    }
+
+    #[test]
+    fn macro_export_with_multiple_preceding_attrs() {
+        let mut parser = RustParser::new().unwrap();
+        let source = r#"
+#[doc(hidden)]
+#[macro_export]
+macro_rules! join {
+    () => {};
+}
+"#;
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"join!".to_string()),
+            "expected join! when #[macro_export] is not the first attr: {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn proc_macro_derive_indexes_derive_name() {
+        let mut parser = RustParser::new().unwrap();
+        let source = r#"
+#[proc_macro_derive(Serialize)]
+pub fn derive_serialize(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    todo!()
+}
+"#;
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"Serialize".to_string()),
+            "expected Serialize in {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn proc_macro_derive_with_attributes_arg_indexes_derive_name_only() {
+        let mut parser = RustParser::new().unwrap();
+        let source = r#"
+#[proc_macro_derive(Deserialize, attributes(serde))]
+pub fn derive_deserialize(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    todo!()
+}
+"#;
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"Deserialize".to_string()),
+            "expected Deserialize in {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"serde".to_string()),
+            "attributes argument should not be indexed"
+        );
+    }
+
+    #[test]
+    fn proc_macro_attribute_indexes_function_name() {
+        let mut parser = RustParser::new().unwrap();
+        let source = r#"
+#[proc_macro_attribute]
+pub fn route(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    todo!()
+}
+"#;
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"route".to_string()),
+            "expected route in {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn proc_macro_function_indexes_function_name() {
+        let mut parser = RustParser::new().unwrap();
+        let source = r#"
+#[proc_macro]
+pub fn my_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    todo!()
+}
+"#;
+        let result = parser.parse(source).unwrap();
+        let names = result.metadata.export_names();
+        assert!(
+            names.contains(&"my_macro".to_string()),
+            "expected my_macro in {:?}",
+            names
         );
     }
 }
