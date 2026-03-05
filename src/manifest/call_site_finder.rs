@@ -26,9 +26,29 @@ pub fn find_call_sites(root: &Path, method_name: &str, candidate_files: &[String
         .collect()
 }
 
+/// Returns true if `s` is a valid identifier in all supported languages: `[a-zA-Z_][a-zA-Z0-9_]*`.
+fn is_valid_identifier(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    let mut chars = s.chars();
+    let first = chars.next().unwrap();
+    if !first.is_ascii_alphabetic() && first != '_' {
+        return false;
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 /// Returns true if the file at `rel_path` (relative to `root`) calls `method_name`.
 /// Returns true on any error (graceful fallback — no false negatives).
 fn file_calls_method(root: &Path, rel_path: &str, method_name: &str) -> bool {
+    // Guard: method_name must be a valid identifier to safely embed in query strings.
+    // Non-identifier input would malform the tree-sitter query and produce false positives;
+    // return true (include file) to preserve the "no false negatives" invariant.
+    if !is_valid_identifier(method_name) {
+        return true;
+    }
+
     let abs = root.join(rel_path);
 
     let source = match std::fs::read(&abs) {
@@ -204,5 +224,33 @@ mod tests {
         let f = write_file(&dir, "module.go", "package main\nfunc main() {}\n");
         let result = find_call_sites(dir.path(), "someMethod", std::slice::from_ref(&f));
         assert!(result.contains(&f), "unsupported ext included by fallback");
+    }
+
+    #[test]
+    fn invalid_identifier_returns_all_candidates() {
+        // method_name with a double-quote would malform the query; guard should include all files.
+        let dir = TempDir::new().unwrap();
+        let f = write_file(&dir, "some.ts", "const x = 1;\n");
+        let result = find_call_sites(dir.path(), "bad\"name", std::slice::from_ref(&f));
+        assert!(
+            result.contains(&f),
+            "invalid identifier falls back to include-all"
+        );
+    }
+
+    #[test]
+    fn is_valid_identifier_accepts_common_names() {
+        assert!(is_valid_identifier("doThing"));
+        assert!(is_valid_identifier("_private"));
+        assert!(is_valid_identifier("camelCase123"));
+    }
+
+    #[test]
+    fn is_valid_identifier_rejects_bad_input() {
+        assert!(!is_valid_identifier(""));
+        assert!(!is_valid_identifier("123abc"));
+        assert!(!is_valid_identifier("has\"quote"));
+        assert!(!is_valid_identifier("has.dot"));
+        assert!(!is_valid_identifier("has space"));
     }
 }

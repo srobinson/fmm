@@ -1,19 +1,20 @@
 ---
 file: src/format.rs
-fmm: v0.3+0.1.17
+fmm: v0.3+0.1.18
 exports:
   format_file_info: [15, 24]
   format_file_outline: [27, 88]
   format_lookup_export: [91, 109]
   format_dependency_graph: [113, 143]
-  format_read_symbol: [146, 155]
-  format_list_exports_pattern: [162, 185]
-  format_list_exports_file: [188, 194]
-  format_list_exports_all: [197, 213]
-  format_list_files: [225, 260]
-  format_bare_search: [269, 350]
-  format_filter_search: [353, 376]
-  format_glossary: [417, 447]
+  format_dependency_graph_transitive: [149, 187]
+  format_read_symbol: [190, 199]
+  format_list_exports_pattern: [210, 245]
+  format_list_exports_file: [248, 254]
+  format_list_exports_all: [261, 292]
+  format_list_files: [304, 339]
+  format_bare_search: [348, 429]
+  format_filter_search: [432, 455]
+  format_glossary: [496, 526]
 dependencies: ['crate::formatter::yaml_escape', 'crate::manifest', 'crate::search']
-loc: 530
+loc: 609
 modified: 2026-03-05

@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/query_helpers.rs
-fmm: v0.3+0.1.17
+fmm: v0.3+0.1.18
 exports:
   collect_matches: [7, 25]
   collect_named_matches: [29, 52]

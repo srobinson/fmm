@@ -1061,9 +1061,18 @@ mod tests {
         let (_up, _ext, downstream) = dependency_graph_transitive(&m, "app/d.py", &entry, -1);
 
         let down_files: Vec<&str> = downstream.iter().map(|(f, _)| f.as_str()).collect();
-        assert!(down_files.contains(&"app/c.py"), "c depends on d at depth 1");
-        assert!(down_files.contains(&"app/b.py"), "b depends on c at depth 2");
-        assert!(down_files.contains(&"app/a.py"), "a depends on b at depth 3");
+        assert!(
+            down_files.contains(&"app/c.py"),
+            "c depends on d at depth 1"
+        );
+        assert!(
+            down_files.contains(&"app/b.py"),
+            "b depends on c at depth 2"
+        );
+        assert!(
+            down_files.contains(&"app/a.py"),
+            "a depends on b at depth 3"
+        );
 
         let c_depth = downstream.iter().find(|(f, _)| f == "app/c.py").unwrap().1;
         let b_depth = downstream.iter().find(|(f, _)| f == "app/b.py").unwrap().1;
@@ -1076,10 +1085,7 @@ mod tests {
     #[test]
     fn transitive_cycle_does_not_loop() {
         // Circular: x depends on y, y depends on x
-        let m = manifest_with(vec![
-            ("app/x.py", vec![".y"]),
-            ("app/y.py", vec![".x"]),
-        ]);
+        let m = manifest_with(vec![("app/x.py", vec![".y"]), ("app/y.py", vec![".x"])]);
         let entry = m.files["app/x.py"].clone();
         // Should terminate without infinite loop
         let (upstream, _ext, downstream) = dependency_graph_transitive(&m, "app/x.py", &entry, -1);
@@ -1087,7 +1093,10 @@ mod tests {
         // x's upstream: y (depth 1). x itself is not revisited.
         let up_files: Vec<&str> = upstream.iter().map(|(f, _)| f.as_str()).collect();
         assert!(up_files.contains(&"app/y.py"), "y is upstream of x");
-        assert!(!up_files.contains(&"app/x.py"), "x must not appear in its own upstream");
+        assert!(
+            !up_files.contains(&"app/x.py"),
+            "x must not appear in its own upstream"
+        );
 
         // x's downstream: y depends on x, so y at depth 1
         let down_files: Vec<&str> = downstream.iter().map(|(f, _)| f.as_str()).collect();
