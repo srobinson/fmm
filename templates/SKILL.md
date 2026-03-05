@@ -14,10 +14,11 @@ This codebase has FMM metadata available via MCP tools. Use them for instant, st
 | `mcp__fmm__fmm_read_symbol` | "Show me the code for X" | `fmm_read_symbol(name: "createPipeline")` |
 | `mcp__fmm__fmm_lookup_export` | "Where is X defined?" | `fmm_lookup_export(name: "createPipeline")` |
 | `mcp__fmm__fmm_file_outline` | "What's in this file?" | `fmm_file_outline(file: "src/core/index.ts")` |
+| `mcp__fmm__fmm_list_files` | "What files are in this module?" | `fmm_list_files(path: "src/agent/")` |
 | `mcp__fmm__fmm_list_exports` | "Find exports matching X" | `fmm_list_exports(pattern: "swarm")` |
-| `mcp__fmm__fmm_dependency_graph` | "What depends on this file?" | `fmm_dependency_graph(file: "src/core/index.ts")` |
+| `mcp__fmm__fmm_dependency_graph` | "Deps and blast radius for this file" | `fmm_dependency_graph(file: "src/core/index.ts")` |
 | `mcp__fmm__fmm_file_info` | "Quick file summary" | `fmm_file_info(file: "src/utils/helpers.ts")` |
-| `mcp__fmm__fmm_search` | Multi-criteria search | `fmm_search(imports: "lodash", min_loc: 100)` |
+| `mcp__fmm__fmm_search` | Multi-criteria search with relevance ranking | `fmm_search(imports: "lodash", min_loc: 100)` |
 
 ## Navigation Protocol
 
@@ -30,6 +31,16 @@ This codebase has FMM metadata available via MCP tools. Use them for instant, st
 ```
 
 **This replaces 3+ tool calls** (search → find file → read file → locate symbol) with ONE call.
+
+Re-export chains are resolved automatically: if `X` is re-exported via `__init__.py` or `index.ts`, the tool follows the chain to the concrete definition.
+
+### "What files are in this module?"
+
+```
+1. Call mcp__fmm__fmm_list_files(path: "src/agent/")
+2. Returns all indexed files under that path with LOC and export count — DONE
+3. Use fmm_file_outline on specific files to understand their shape
+```
 
 ### "Where is X defined?"
 
@@ -48,11 +59,14 @@ This codebase has FMM metadata available via MCP tools. Use them for instant, st
 3. Use this to decide WHAT to read before reading anything
 ```
 
-### "What files depend on this file?"
+### "What files depend on this file?" / "What does this file import?"
 
 ```
 1. Call mcp__fmm__fmm_dependency_graph(file: "src/foo.ts")
-2. Response includes "downstream" array with all dependents — DONE
+2. Response includes three fields:
+   - local_deps: intra-project files it imports, resolved to actual paths
+   - external: third-party packages
+   - downstream: files that import this file (blast radius if it changes)
 ```
 
 ### "Describe the architecture"
@@ -68,13 +82,14 @@ This codebase has FMM metadata available via MCP tools. Use them for instant, st
 
 | Task | Tool | Why |
 |------|------|-----|
-| Read a function's source | `fmm_read_symbol` | Returns exact source code, one call |
+| Read a function's source | `fmm_read_symbol` | Exact source, one call; follows re-exports automatically |
 | Find symbol definition | `fmm_lookup_export` | O(1) lookup, returns file + line range |
 | Understand file structure | `fmm_file_outline` | Shows every export with size, before you read |
+| Explore a directory/module | `fmm_list_files` | All files under a path with LOC and export counts |
 | Find similar exports | `fmm_list_exports` | Pattern search across all files |
-| Impact analysis | `fmm_dependency_graph` | Pre-computed upstream/downstream |
+| Impact analysis | `fmm_dependency_graph` | local_deps, external packages, downstream dependents |
 | Quick file summary | `fmm_file_info` | Exports/imports/LOC without reading |
-| Complex queries | `fmm_search` | Combine filters (imports X, size > N) |
+| Complex queries | `fmm_search` | Combine filters with relevance ranking (imports X, size > N) |
 
 ## When to Fall Back to Grep/Read
 
@@ -90,14 +105,14 @@ If MCP tools are unavailable, sidecar files exist at `filename.ext.fmm`:
 
 ```yaml
 file: src/core/pipeline.ts
-fmm: v0.3
+fmm: v0.3+0.1.11
 exports:
   createPipeline: [10, 45]
   PipelineConfig: [47, 52]
   PipelineError: [54, 58]
-imports: [zod, lodash]
-dependencies: [./engine, ./validators, ../utils/logger]
+imports: [./engine, ./validators, ../utils/logger, lodash, zod]
 loc: 142
+modified: 2026-03-05
 ```
 
 Line ranges let you do surgical reads: `Read(file, offset=10, limit=36)` for just `createPipeline`.

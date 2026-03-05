@@ -304,7 +304,7 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_dependency_graph".to_string(),
-                description: "Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius.".to_string(),
+                description: "Get a file's dependency graph. Returns three fields: local_deps (intra-project files it imports, resolved to actual paths), external (third-party packages), and downstream (files that import this file — blast radius). Use for impact analysis before refactoring.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -318,7 +318,7 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_read_symbol".to_string(),
-                description: "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Requires line-range data from v0.3 sidecars.".to_string(),
+                description: "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Follows re-export chains automatically — if a symbol is re-exported via __init__.py or index.ts, resolves to the concrete definition.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
