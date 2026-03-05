@@ -231,17 +231,15 @@ fn file_outline_shows_all_exports() {
 }
 
 // ---------------------------------------------------------------------------
-// fmm_file_info (alias for fmm_file_outline)
+// fmm_file_outline
 // ---------------------------------------------------------------------------
 
 #[test]
-fn file_info_delegates_to_file_outline() {
-    // fmm_file_info is now an alias for fmm_file_outline — both must return
-    // the same outline format (symbols: key, not exports:).
+fn file_outline_returns_symbols() {
     let (_tmp, server) = setup_mcp_server();
     let text = call_tool_text(
         &server,
-        "fmm_file_info",
+        "fmm_file_outline",
         json!({"file": "src/auth/session.ts"}),
     );
 
@@ -257,17 +255,6 @@ fn file_info_delegates_to_file_outline() {
     assert!(text.contains("imports: [jwt, redis]"));
     assert!(text.contains("dependencies: [./types, ../config]"));
     assert!(text.contains("loc: 12"));
-
-    // Verify it returns identical output to fmm_file_outline
-    let outline_text = call_tool_text(
-        &server,
-        "fmm_file_outline",
-        json!({"file": "src/auth/session.ts"}),
-    );
-    assert_eq!(
-        text, outline_text,
-        "fmm_file_info and fmm_file_outline must return identical output"
-    );
 }
 
 // ---------------------------------------------------------------------------
