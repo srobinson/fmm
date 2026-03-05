@@ -92,6 +92,13 @@ fn setup_glossary_server_with_tests() -> (tempfile::TempDir, fmm::mcp::McpServer
         "file: __tests__/utils.ts\nfmm: v0.3\nexports:\n  mockConfig: [1, 8]\nimports: []\ndependencies: []\nloc: 8\n",
     );
 
+    // A test file that depends on src/agent.py — used to verify used_by filtering in mode=tests
+    write_sidecar(
+        root,
+        "tests/agent_spec.py",
+        "file: tests/agent_spec.py\nfmm: v0.3\nexports:\n  test_dispatch_happy_path: [1, 15]\nimports: []\ndependencies: [../src/agent]\nloc: 15\n",
+    );
+
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
@@ -293,23 +300,30 @@ fn glossary_mode_all_shows_test_functions() {
 }
 
 #[test]
-fn glossary_mode_tests_returns_only_test_exports() {
+fn glossary_mode_tests_shows_source_definitions_with_test_callers() {
     let (_tmp, server) = setup_glossary_server_with_tests();
-    // mode=tests: only test symbols returned
+    // mode=tests: same definition filter as source (non-test files), used_by filtered to test files.
     let text = call_tool_text(
         &server,
         "fmm_glossary",
         json!({"pattern": "dispatch", "mode": "tests"}),
     );
-    // "run_dispatch:" is a substring of "test_run_dispatch:" so check for the full entry line
+    // run_dispatch is a source export — it should appear as a definition
     assert!(
-        !text.contains("\nrun_dispatch:"),
-        "run_dispatch (source) should be excluded in tests mode, got: {}",
+        text.contains("run_dispatch:"),
+        "run_dispatch (source) should appear in tests mode definitions, got: {}",
         text
     );
+    // test_run_dispatch has a test_ prefix — excluded by definition filter (is_test_export)
     assert!(
-        text.contains("test_run_dispatch:"),
-        "test_run_dispatch should appear in tests mode, got: {}",
+        !text.contains("test_run_dispatch:"),
+        "test_run_dispatch should be excluded from tests mode definitions, got: {}",
+        text
+    );
+    // tests/agent_spec.py depends on src/agent.py — it should appear in used_by
+    assert!(
+        text.contains("tests/agent_spec.py"),
+        "tests/agent_spec.py should appear in used_by for tests mode, got: {}",
         text
     );
 }
@@ -334,7 +348,9 @@ fn glossary_mode_source_excludes_test_directory_exports_by_default() {
 }
 
 #[test]
-fn glossary_mode_tests_shows_test_directory_exports() {
+fn glossary_mode_tests_excludes_test_directory_definitions() {
+    // mode=tests uses the SAME definition filter as mode=source: non-test files only.
+    // helper_fixture is exported from tests/helpers.py — a test file. It must not appear.
     let (_tmp, server) = setup_glossary_server_with_tests();
     let text = call_tool_text(
         &server,
@@ -342,8 +358,8 @@ fn glossary_mode_tests_shows_test_directory_exports() {
         json!({"pattern": "helper", "mode": "tests"}),
     );
     assert!(
-        text.contains("helper_fixture:"),
-        "helper_fixture should appear with mode=tests, got: {}",
+        text.contains("(no matching exports)"),
+        "helper_fixture (from tests/ dir) should be excluded from tests mode definitions, got: {}",
         text
     );
 }

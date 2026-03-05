@@ -395,12 +395,12 @@ fn parse_sidecar(content: &str) -> Option<(String, FileEntry)> {
 /// Controls which exports are included when building the glossary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GlossaryMode {
-    /// Exclude test symbols and test files — exact callers for refactoring (default).
+    /// Definitions from non-test files, `used_by` filtered to non-test callers (default).
     #[default]
     Source,
-    /// Include only test exports — what tests exercise this symbol?
+    /// Definitions from non-test files, `used_by` filtered to test callers only — shows coverage.
     Tests,
-    /// Unfiltered — source and test exports combined.
+    /// All definitions, all `used_by` unfiltered.
     All,
 }
 
@@ -420,16 +420,11 @@ pub struct GlossarySource {
     pub used_by: Vec<String>,
 }
 
-/// Returns true if an export should be classified as a test artifact.
+/// Returns true if a file path is a test file (by path conventions only, ignoring symbol name).
 ///
-/// Checks symbol name conventions and file path conventions:
-/// - Symbol starts with `test_` (Python) or `Test` (Go)
 /// - File is under a test directory: `tests/`, `test/`, `__tests__/`
 /// - File matches test file patterns: `_test.go`, `test_*.py`, `*_test.py`
-fn is_test_export(name: &str, file: &str) -> bool {
-    if name.starts_with("test_") || name.starts_with("Test") {
-        return true;
-    }
+fn is_test_file(file: &str) -> bool {
     let filename = file.rsplit('/').next().unwrap_or(file);
     if filename.ends_with("_test.go") {
         return true;
@@ -447,15 +442,27 @@ fn is_test_export(name: &str, file: &str) -> bool {
         || file.contains("/__tests__/")
 }
 
+/// Returns true if an export should be classified as a test artifact.
+///
+/// Checks symbol name conventions and file path conventions:
+/// - Symbol starts with `test_` (Python) or `Test` (Go)
+/// - File path matches test file/directory conventions (see `is_test_file`)
+fn is_test_export(name: &str, file: &str) -> bool {
+    if name.starts_with("test_") || name.starts_with("Test") {
+        return true;
+    }
+    is_test_file(file)
+}
+
 impl Manifest {
     /// Build the glossary: for each export name matching `pattern` (case-insensitive
     /// substring), collect all definitions and their dependents.
     /// Returns entries sorted alphabetically by name (case-insensitive).
     ///
     /// `mode` controls test filtering:
-    /// - `Source` (default): excludes test symbols/files — exact callers for refactoring
-    /// - `Tests`: only test symbols/files — what tests exercise this symbol?
-    /// - `All`: unfiltered
+    /// - `Source` (default): definitions from non-test files, `used_by` filtered to non-test callers
+    /// - `Tests`: definitions from non-test files, `used_by` filtered to test callers — shows coverage
+    /// - `All`: all definitions, all `used_by` unfiltered
     pub fn build_glossary(&self, pattern: &str, mode: GlossaryMode) -> Vec<GlossaryEntry> {
         let pat_lower = pattern.to_lowercase();
         let mut entries: Vec<GlossaryEntry> = self
@@ -466,12 +473,24 @@ impl Manifest {
                 let sources: Vec<GlossarySource> = locations
                     .iter()
                     .filter(|loc| match mode {
-                        GlossaryMode::Source => !is_test_export(name, &loc.file),
-                        GlossaryMode::Tests => is_test_export(name, &loc.file),
+                        GlossaryMode::Source | GlossaryMode::Tests => {
+                            !is_test_export(name, &loc.file)
+                        }
                         GlossaryMode::All => true,
                     })
                     .map(|loc| {
-                        let used_by = self.find_dependents(&loc.file);
+                        let all_used_by = self.find_dependents(&loc.file);
+                        let used_by = match mode {
+                            GlossaryMode::Source => all_used_by
+                                .into_iter()
+                                .filter(|f| !is_test_file(f))
+                                .collect(),
+                            GlossaryMode::Tests => all_used_by
+                                .into_iter()
+                                .filter(|f| is_test_file(f))
+                                .collect(),
+                            GlossaryMode::All => all_used_by,
+                        };
                         GlossarySource {
                             file: loc.file.clone(),
                             lines: loc.lines.clone(),
@@ -1064,16 +1083,50 @@ modified: 2026-01-30"#;
             "tests/ dir export should be excluded"
         );
 
-        // Tests mode: only test artifacts returned
+        // Tests mode: same definition filter as source (non-test files only),
+        // but used_by is filtered to test callers. Add a test file dependent to verify.
+        manifest.add_file(
+            "tests/agent_spec.py",
+            Metadata {
+                exports: vec![],
+                imports: vec![],
+                dependencies: vec!["../src/agent".to_string()],
+                loc: 5,
+            },
+        );
         let entries_tests = manifest.build_glossary("", GlossaryMode::Tests);
         let names_tests: Vec<&str> = entries_tests.iter().map(|e| e.name.as_str()).collect();
+        // Source symbols appear (same definition filter as source mode)
         assert!(
-            !names_tests.contains(&"run_dispatch"),
-            "normal export excluded in tests mode"
+            names_tests.contains(&"run_dispatch"),
+            "run_dispatch should appear in tests mode (source file definition)"
         );
-        assert!(names_tests.contains(&"test_run_dispatch"));
-        assert!(names_tests.contains(&"TestRunDispatch"));
-        assert!(names_tests.contains(&"helper_fixture"));
+        // Test-named symbol from a non-test file is still filtered out (is_test_export)
+        assert!(
+            !names_tests.contains(&"test_run_dispatch"),
+            "test_ prefix excluded from definitions in tests mode"
+        );
+        // Test-file definitions excluded
+        assert!(
+            !names_tests.contains(&"TestRunDispatch"),
+            "agent_test.go exports excluded from tests mode definitions"
+        );
+        assert!(
+            !names_tests.contains(&"helper_fixture"),
+            "tests/ dir exports excluded from tests mode definitions"
+        );
+        // used_by for run_dispatch should contain the test-file dependent
+        let rd_entry = entries_tests
+            .iter()
+            .find(|e| e.name == "run_dispatch")
+            .unwrap();
+        assert!(
+            rd_entry.sources[0]
+                .used_by
+                .iter()
+                .any(|f| f == "tests/agent_spec.py"),
+            "tests/agent_spec.py should appear in used_by for tests mode"
+        );
 
         // All mode: everything returned
         let entries_all = manifest.build_glossary("", GlossaryMode::All);
