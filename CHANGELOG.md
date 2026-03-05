@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.22](https://github.com/srobinson/fmm/compare/v0.1.21...v0.1.22) (2026-03-05)
+
+
+### Performance
+
+* **manifest:** O(1) reverse dependency index for downstream lookups ([519b453](https://github.com/srobinson/fmm/commit/519b453ff6cb9a8871501fe431cbdb8a8bcc95cd))
+
 ## [0.1.21](https://github.com/srobinson/fmm/compare/v0.1.20...v0.1.21) (2026-03-05)
 
 
