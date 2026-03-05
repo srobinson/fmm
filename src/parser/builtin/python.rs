@@ -5,6 +5,26 @@ use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
+/// Convert Python relative import dot-notation to path notation so that
+/// `dep_matches()` can resolve it against manifest file paths.
+///
+/// Examples:
+/// - `.utils`    → `./utils`
+/// - `..models`  → `../models`
+/// - `...deep.sub` → `../../deep/sub`
+/// - `.`         → `./` (bare relative import, e.g. `from . import X`)
+fn dot_import_to_path(raw: &str) -> String {
+    let dots = raw.chars().take_while(|c| *c == '.').count();
+    let rest = &raw[dots..];
+    let module_path = rest.replace('.', "/");
+    if dots <= 1 {
+        format!("./{}", module_path)
+    } else {
+        let ups = "../".repeat(dots - 1);
+        format!("{}{}", ups, module_path)
+    }
+}
+
 pub struct PythonParser {
     parser: TSParser,
     func_query: Query,
@@ -250,6 +270,9 @@ impl PythonParser {
 
     fn extract_dependencies(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
         collect_matches(&self.relative_import_query, root_node, source.as_bytes())
+            .into_iter()
+            .map(|s| dot_import_to_path(&s))
+            .collect()
     }
 
     fn extract_decorators(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
@@ -368,7 +391,25 @@ mod tests {
         let mut parser = PythonParser::new().unwrap();
         let source = "from .utils import helper\nfrom ..models import User\n";
         let result = parser.parse(source).unwrap();
-        assert!(!result.metadata.dependencies.is_empty());
+        let deps = &result.metadata.dependencies;
+        assert!(
+            deps.contains(&"./utils".to_string()),
+            "expected ./utils in {:?}",
+            deps
+        );
+        assert!(
+            deps.contains(&"../models".to_string()),
+            "expected ../models in {:?}",
+            deps
+        );
+    }
+
+    #[test]
+    fn dot_import_to_path_conversions() {
+        assert_eq!(dot_import_to_path(".utils"), "./utils");
+        assert_eq!(dot_import_to_path("..models"), "../models");
+        assert_eq!(dot_import_to_path("...deep.sub"), "../../deep/sub");
+        assert_eq!(dot_import_to_path("."), "./");
     }
 
     #[test]
