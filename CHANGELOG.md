@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.21](https://github.com/srobinson/fmm/compare/v0.1.20...v0.1.21) (2026-03-05)
+
+
+### Features
+
+* MCP improvements and parser fixes — ALP-798 to ALP-803 ([#69](https://github.com/srobinson/fmm/issues/69)) ([3dac27e](https://github.com/srobinson/fmm/commit/3dac27ef6a95f1feb3bc5775889822531e6f4766))
+
 ## [0.1.20](https://github.com/srobinson/fmm/compare/v0.1.19...v0.1.20) (2026-03-05)
 
 
