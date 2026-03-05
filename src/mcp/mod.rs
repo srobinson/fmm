@@ -360,7 +360,7 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_search".to_string(),
-                description: "Universal codebase search. Use 'term' for smart search across exports, files, and imports. Use structured filters (export, imports, depends_on, LOC) for precise queries. Combine 'term' with filters to narrow results with AND semantics — only exports matching the term from files matching the filters are returned.".to_string(),
+                description: "Universal codebase search. Use 'term' for smart search across exports, files, and imports. Use structured filters (export, imports, depends_on, LOC) for precise queries. Combine 'term' with filters to narrow results with AND semantics — only exports matching the term from files matching the filters are returned. Note: depends_on uses transitive matching (full import chain), not direct-only. For direct importers only, use fmm_dependency_graph with depth=1.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -378,7 +378,7 @@ impl McpServer {
                         },
                         "depends_on": {
                             "type": "string",
-                            "description": "Find all files that depend on this local path — use for impact analysis"
+                            "description": "Find all files that transitively depend on this local path (full import chain, not just direct importers) — use for full blast radius before renaming. For direct-only importers, use fmm_dependency_graph with depth=1."
                         },
                         "min_loc": {
                             "type": "integer",
