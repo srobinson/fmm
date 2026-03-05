@@ -142,6 +142,50 @@ pub fn format_dependency_graph(
     lines.join("\n")
 }
 
+/// Format dependency graph for transitive results (depth > 1 or depth = -1).
+///
+/// Renders a flat list with `depth:` annotation per entry. The `local_deps`
+/// and `downstream` vectors contain `(file, depth_discovered_at)` pairs.
+pub fn format_dependency_graph_transitive(
+    file: &str,
+    entry: &FileEntry,
+    upstream: &[(String, i32)],
+    external: &[String],
+    downstream: &[(String, i32)],
+    max_depth: i32,
+) -> String {
+    let mut lines = Vec::new();
+    lines.push("---".to_string());
+    lines.push(format!("file: {}", yaml_escape(file)));
+    if max_depth == -1 {
+        lines.push("depth: full (transitive closure)".to_string());
+    } else {
+        lines.push(format!("depth: {}", max_depth));
+    }
+
+    if !upstream.is_empty() {
+        lines.push("local_deps:".to_string());
+        for (path, d) in upstream {
+            lines.push(format!("  - file: {}  depth: {}", yaml_escape(path), d));
+        }
+    }
+
+    if !external.is_empty() {
+        let items: Vec<String> = external.iter().map(|s| yaml_escape(s)).collect();
+        lines.push(format!("external: [{}]", items.join(", ")));
+    }
+
+    if !downstream.is_empty() {
+        lines.push("downstream:".to_string());
+        for (path, d) in downstream {
+            lines.push(format!("  - file: {}  depth: {}", yaml_escape(path), d));
+        }
+    }
+
+    push_inline_list(&mut lines, "imports", &entry.imports);
+    lines.join("\n")
+}
+
 /// Format read symbol: YAML header + source code.
 pub fn format_read_symbol(symbol: &str, file: &str, el: &ExportLines, source: &str) -> String {
     let mut lines = Vec::new();

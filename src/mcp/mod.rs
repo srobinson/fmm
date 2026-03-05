@@ -36,6 +36,7 @@ struct ListExportsArgs {
 #[derive(Debug, Deserialize)]
 struct DependencyGraphArgs {
     file: String,
+    depth: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -323,13 +324,17 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_dependency_graph".to_string(),
-                description: "Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius.".to_string(),
+                description: "Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius. Add depth>1 for transitive traversal; depth=-1 for full closure.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
                         "file": {
                             "type": "string",
                             "description": "File path to analyze — returns all upstream dependencies and downstream dependents"
+                        },
+                        "depth": {
+                            "type": "integer",
+                            "description": "Traversal depth (default: 1 = direct deps only). depth=2 adds transitive deps. depth=-1 computes the full transitive closure. depth>1 returns flat lists with a depth annotation per entry."
                         }
                     },
                     "required": ["file"]
@@ -663,16 +668,32 @@ impl McpServer {
             )
         })?;
 
-        let (local, external, downstream) =
-            crate::search::dependency_graph(manifest, &args.file, entry);
+        let depth = args.depth.unwrap_or(1);
 
-        Ok(crate::format::format_dependency_graph(
-            &args.file,
-            entry,
-            &local,
-            &external,
-            &downstream,
-        ))
+        if depth == 1 {
+            // depth=1: use existing single-hop implementation for backward compatibility
+            let (local, external, downstream) =
+                crate::search::dependency_graph(manifest, &args.file, entry);
+            Ok(crate::format::format_dependency_graph(
+                &args.file,
+                entry,
+                &local,
+                &external,
+                &downstream,
+            ))
+        } else {
+            // depth>1 or depth=-1: BFS transitive traversal with depth annotations
+            let (upstream, external, downstream) =
+                crate::search::dependency_graph_transitive(manifest, &args.file, entry, depth);
+            Ok(crate::format::format_dependency_graph_transitive(
+                &args.file,
+                entry,
+                &upstream,
+                &external,
+                &downstream,
+                depth,
+            ))
+        }
     }
 
     fn tool_read_symbol(&self, args: &Value) -> Result<String, String> {
@@ -1001,8 +1022,14 @@ mod tests {
         // Build a string larger than MAX_RESPONSE_BYTES
         let large = "x\n".repeat(McpServer::MAX_RESPONSE_BYTES);
         let result = McpServer::cap_response(large.clone(), false);
-        assert_eq!(result, large, "truncate=false must return full text unchanged");
-        assert!(!result.contains("[Truncated"), "no truncation notice with truncate=false");
+        assert_eq!(
+            result, large,
+            "truncate=false must return full text unchanged"
+        );
+        assert!(
+            !result.contains("[Truncated"),
+            "no truncation notice with truncate=false"
+        );
     }
 
     #[test]

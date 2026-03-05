@@ -157,7 +157,10 @@ fn read_symbol_truncate_false_bypasses_cap() {
         "fmm_read_symbol",
         json!({"name": "createSession", "truncate": false}),
     );
-    assert!(text.contains("symbol: createSession"), "symbol header present");
+    assert!(
+        text.contains("symbol: createSession"),
+        "symbol header present"
+    );
     assert!(
         !text.contains("[Truncated"),
         "no truncation notice with truncate=false; got: {text}"
@@ -168,14 +171,16 @@ fn read_symbol_truncate_false_bypasses_cap() {
 fn read_symbol_truncate_true_is_default() {
     let (_tmp, server) = setup_mcp_server();
     // truncate: true (default) — small symbol still returns full content unchanged
-    let text_default =
-        call_tool_text(&server, "fmm_read_symbol", json!({"name": "createSession"}));
+    let text_default = call_tool_text(&server, "fmm_read_symbol", json!({"name": "createSession"}));
     let text_explicit = call_tool_text(
         &server,
         "fmm_read_symbol",
         json!({"name": "createSession", "truncate": true}),
     );
-    assert_eq!(text_default, text_explicit, "truncate: true matches default");
+    assert_eq!(
+        text_default, text_explicit,
+        "truncate: true matches default"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -515,6 +520,56 @@ fn dependency_graph_not_found() {
         json!({"file": "src/nonexistent.ts"}),
     );
     assert!(text.contains("not found"));
+}
+
+#[test]
+fn dependency_graph_depth2_returns_depth_annotations() {
+    let (_tmp, server) = setup_mcp_server();
+    // depth=2 transitive traversal — output includes depth annotations
+    let text = call_tool_text(
+        &server,
+        "fmm_dependency_graph",
+        json!({"file": "src/auth/session.ts", "depth": 2}),
+    );
+    assert!(
+        text.contains("depth: 2"),
+        "output should include depth header; got: {text}"
+    );
+    // local_deps section should appear with depth annotations
+    assert!(
+        text.contains("local_deps:"),
+        "local_deps section present; got: {text}"
+    );
+    // src/auth/types.ts and src/config.ts are direct deps (depth 1)
+    assert!(
+        text.contains("src/auth/types.ts"),
+        "types.ts in upstream; got: {text}"
+    );
+    assert!(
+        text.contains("src/config.ts"),
+        "config.ts in upstream; got: {text}"
+    );
+}
+
+#[test]
+fn dependency_graph_depth1_is_default_format() {
+    let (_tmp, server) = setup_mcp_server();
+    // depth=1 (default) should use backward-compatible format (no depth annotations)
+    let text_default = call_tool_text(
+        &server,
+        "fmm_dependency_graph",
+        json!({"file": "src/config.ts"}),
+    );
+    let text_explicit = call_tool_text(
+        &server,
+        "fmm_dependency_graph",
+        json!({"file": "src/config.ts", "depth": 1}),
+    );
+    assert_eq!(text_default, text_explicit, "depth=1 matches default");
+    assert!(
+        !text_default.contains("depth:"),
+        "depth=1 format has no depth annotation; got: {text_default}"
+    );
 }
 
 // ---------------------------------------------------------------------------
