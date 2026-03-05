@@ -148,6 +148,36 @@ fn read_symbol_not_found() {
     assert!(text.contains("not found"));
 }
 
+#[test]
+fn read_symbol_truncate_false_bypasses_cap() {
+    let (_tmp, server) = setup_mcp_server();
+    // truncate: false — small symbol, same result, no truncation notice
+    let text = call_tool_text(
+        &server,
+        "fmm_read_symbol",
+        json!({"name": "createSession", "truncate": false}),
+    );
+    assert!(text.contains("symbol: createSession"), "symbol header present");
+    assert!(
+        !text.contains("[Truncated"),
+        "no truncation notice with truncate=false; got: {text}"
+    );
+}
+
+#[test]
+fn read_symbol_truncate_true_is_default() {
+    let (_tmp, server) = setup_mcp_server();
+    // truncate: true (default) — small symbol still returns full content unchanged
+    let text_default =
+        call_tool_text(&server, "fmm_read_symbol", json!({"name": "createSession"}));
+    let text_explicit = call_tool_text(
+        &server,
+        "fmm_read_symbol",
+        json!({"name": "createSession", "truncate": true}),
+    );
+    assert_eq!(text_default, text_explicit, "truncate: true matches default");
+}
+
 // ---------------------------------------------------------------------------
 // fmm_file_outline
 // ---------------------------------------------------------------------------

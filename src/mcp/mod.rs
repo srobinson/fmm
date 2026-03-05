@@ -137,8 +137,8 @@ impl McpServer {
     /// Large responses get truncated to disk by Claude, defeating the purpose.
     const MAX_RESPONSE_BYTES: usize = 10_240;
 
-    fn cap_response(text: String) -> String {
-        if text.len() <= Self::MAX_RESPONSE_BYTES {
+    fn cap_response(text: String, truncate: bool) -> String {
+        if !truncate || text.len() <= Self::MAX_RESPONSE_BYTES {
             return text;
         }
         // Find a valid UTF-8 boundary at or before MAX_RESPONSE_BYTES
@@ -337,13 +337,17 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_read_symbol".to_string(),
-                description: "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Requires line-range data from v0.3 sidecars. Use `ClassName.method` notation to read a specific public method: `fmm_read_symbol(name: \"NestFactoryStatic.createApplicationContext\")`.".to_string(),
+                description: "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Requires line-range data from v0.3 sidecars. Use `ClassName.method` notation to read a specific public method: `fmm_read_symbol(name: \"NestFactoryStatic.createApplicationContext\")`. For large symbols (>10KB) use truncate: false to get the full source.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
                         "name": {
                             "type": "string",
                             "description": "Exact export name to read (function, class, type, component), or ClassName.method for a specific public method"
+                        },
+                        "truncate": {
+                            "type": "boolean",
+                            "description": "Whether to apply the 10KB response cap (default: true). Set to false to return the full source for large symbols that would otherwise be truncated."
                         }
                     },
                     "required": ["name"]
@@ -491,9 +495,19 @@ impl McpServer {
             _ => Err(format!("Unknown tool: {}", tool_name)),
         };
 
+        // fmm_read_symbol supports truncate: false to bypass the 10KB cap.
+        let should_truncate = if tool_name == "fmm_read_symbol" {
+            arguments
+                .get("truncate")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true)
+        } else {
+            true
+        };
+
         match result {
             Ok(text) => {
-                let text = Self::cap_response(text);
+                let text = Self::cap_response(text, should_truncate);
                 Ok(json!({
                     "content": [{
                         "type": "text",
@@ -971,7 +985,7 @@ mod tests {
         let prefix = "x".repeat(McpServer::MAX_RESPONSE_BYTES - 1);
         // 4-byte emoji straddles the boundary
         let text = format!("{}🦀 and more text after", prefix);
-        let result = McpServer::cap_response(text);
+        let result = McpServer::cap_response(text, true);
         assert!(result.is_char_boundary(result.len()));
         assert!(result.contains("[Truncated"));
     }
@@ -979,7 +993,16 @@ mod tests {
     #[test]
     fn cap_response_passes_through_short_text() {
         let short = "hello world".to_string();
-        assert_eq!(McpServer::cap_response(short.clone()), short);
+        assert_eq!(McpServer::cap_response(short.clone(), true), short);
+    }
+
+    #[test]
+    fn cap_response_truncate_false_returns_full_text() {
+        // Build a string larger than MAX_RESPONSE_BYTES
+        let large = "x\n".repeat(McpServer::MAX_RESPONSE_BYTES);
+        let result = McpServer::cap_response(large.clone(), false);
+        assert_eq!(result, large, "truncate=false must return full text unchanged");
+        assert!(!result.contains("[Truncated"), "no truncation notice with truncate=false");
     }
 
     #[test]
