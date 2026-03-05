@@ -13,6 +13,7 @@ exports:
   format_list_files: [186, 208]
   format_bare_search: [217, 298]
   format_filter_search: [301, 324]
+  format_glossary: [365, 395]
 dependencies: ['crate::formatter::yaml_escape', 'crate::manifest', 'crate::search']
-loc: 368
+loc: 410
 modified: 2026-03-05

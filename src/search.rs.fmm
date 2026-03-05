@@ -2,23 +2,21 @@
 file: src/search.rs
 fmm: v0.3+0.1.12
 exports:
-  ExportHit: [16, 20]
-  ImportHit: [23, 26]
-  BareSearchResult: [29, 35]
-  FileSearchResult: [38, 44]
-  ExportHitCompact: [47, 50]
-  SearchFilters: [53, 59]
-  DEFAULT_SEARCH_LIMIT: [66, 66]
-  bare_search: [70, 144]
-  export_match_score: [148, 177]
-  filter_search: [180, 267]
-  find_export_matches: [270, 297]
-  dependency_graph: [304, 350]
-  python_dep_matches: [452, 465]
-  dotted_dep_matches: [473, 486]
+  ExportHit: [17, 21]
+  ImportHit: [24, 27]
+  BareSearchResult: [30, 36]
+  FileSearchResult: [39, 45]
+  ExportHitCompact: [48, 51]
+  SearchFilters: [54, 60]
+  DEFAULT_SEARCH_LIMIT: [67, 67]
+  bare_search: [71, 145]
+  export_match_score: [149, 178]
+  filter_search: [181, 268]
+  find_export_matches: [271, 298]
+  dependency_graph: [305, 351]
 imports: [std]
-dependencies: ['crate::manifest', 'crate::mcp::dep_matches']
-loc: 876
+dependencies: ['crate::manifest']
+loc: 839
 modified: 2026-03-05
 rust:
   lifetimes: ['''a']

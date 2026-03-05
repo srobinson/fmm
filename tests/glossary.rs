@@ -179,23 +179,37 @@ fn glossary_no_match_returns_no_matching_exports() {
 #[test]
 fn glossary_limit_respected() {
     let (_tmp, server) = setup_glossary_server();
-    // limit=1 should truncate and add truncation notice
-    let text = call_tool_text(
-        &server,
-        "fmm_glossary",
-        json!({"pattern": "a", "limit": 1}),
+    // The fixture has exactly two exports containing "a": "App" and "formatDate".
+    // With limit=1 we get 1 result and a truncation notice.
+    let text = call_tool_text(&server, "fmm_glossary", json!({"pattern": "a", "limit": 1}));
+    // Truncation notice must appear: "showing 1/2 matches"
+    assert!(
+        text.contains("showing 1/2 matches"),
+        "should show truncation notice, got: {}",
+        text
     );
-    // There are multiple exports containing "a" (formatDate, App, Config...)
-    // With limit=1, we should see the truncation notice if there are >1 matches
-    // (may or may not truncate depending on how many "a" matches there are; at minimum no crash)
-    assert!(!text.is_empty(), "should return non-empty output");
+    // Only one entry rendered (App sorts before formatDate)
+    assert!(
+        text.contains("App:"),
+        "first match should be App (alphabetically first), got: {}",
+        text
+    );
+    assert!(
+        !text.contains("formatDate:"),
+        "formatDate should be truncated by limit=1, got: {}",
+        text
+    );
 }
 
 #[test]
 fn glossary_yaml_format_has_src_and_used_by_keys() {
     let (_tmp, server) = setup_glossary_server();
     let text = call_tool_text(&server, "fmm_glossary", json!({"pattern": "Config"}));
-    assert!(text.contains("- src:"), "should have src: key, got: {}", text);
+    assert!(
+        text.contains("- src:"),
+        "should have src: key, got: {}",
+        text
+    );
     assert!(
         text.contains("used_by:"),
         "should have used_by: key, got: {}",
