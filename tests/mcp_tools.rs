@@ -196,11 +196,13 @@ fn file_outline_shows_all_exports() {
 }
 
 // ---------------------------------------------------------------------------
-// fmm_file_info
+// fmm_file_info (alias for fmm_file_outline)
 // ---------------------------------------------------------------------------
 
 #[test]
-fn file_info_returns_sidecar_yaml() {
+fn file_info_delegates_to_file_outline() {
+    // fmm_file_info is now an alias for fmm_file_outline — both must return
+    // the same outline format (symbols: key, not exports:).
     let (_tmp, server) = setup_mcp_server();
     let text = call_tool_text(
         &server,
@@ -210,12 +212,27 @@ fn file_info_returns_sidecar_yaml() {
 
     assert!(text.starts_with("---"));
     assert!(text.contains("file: src/auth/session.ts"));
-    assert!(text.contains("exports:"));
-    assert!(text.contains("  createSession: [6, 8]"));
-    assert!(text.contains("  validateSession: [10, 12]"));
+    // outline format uses "symbols:" not "exports:"
+    assert!(
+        text.contains("symbols:"),
+        "expected symbols: key; got: {text}"
+    );
+    assert!(text.contains("createSession:"));
+    assert!(text.contains("validateSession:"));
     assert!(text.contains("imports: [jwt, redis]"));
     assert!(text.contains("dependencies: [./types, ../config]"));
     assert!(text.contains("loc: 12"));
+
+    // Verify it returns identical output to fmm_file_outline
+    let outline_text = call_tool_text(
+        &server,
+        "fmm_file_outline",
+        json!({"file": "src/auth/session.ts"}),
+    );
+    assert_eq!(
+        text, outline_text,
+        "fmm_file_info and fmm_file_outline must return identical output"
+    );
 }
 
 // ---------------------------------------------------------------------------

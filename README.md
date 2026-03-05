@@ -101,9 +101,9 @@ fmm includes a built-in MCP server with 9 tools. Configure via `fmm init --mcp` 
 | `fmm_lookup_export`    | Find which file defines a symbol — O(1)                                       |
 | `fmm_read_symbol`      | Extract exact source by symbol name; follows re-export chains automatically   |
 | `fmm_dependency_graph` | Intra-project deps (`local_deps`), external packages, and downstream blast radius |
-| `fmm_file_outline`     | Table of contents with line ranges                                            |
+| `fmm_file_outline`     | Table of contents with line ranges (canonical — prefer over `fmm_file_info`) |
 | `fmm_list_exports`     | Search exports by pattern (fuzzy)                                             |
-| `fmm_file_info`        | Structural profile without reading source                                     |
+| `fmm_file_info`        | Alias for `fmm_file_outline` — kept for backwards compatibility               |
 | `fmm_search`           | Multi-criteria AND queries with relevance scoring                             |
 | `fmm_list_files`       | List all indexed files under a directory path                                 |
 | `fmm_glossary`         | Symbol-level blast radius — all definitions of X + files that import each one |

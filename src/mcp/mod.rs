@@ -32,11 +32,6 @@ struct ListExportsArgs {
 }
 
 #[derive(Debug, Deserialize)]
-struct FileInfoArgs {
-    file: String,
-}
-
-#[derive(Debug, Deserialize)]
 struct DependencyGraphArgs {
     file: String,
 }
@@ -304,7 +299,7 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_file_info".to_string(),
-                description: "Get a file's structural profile from the index: exports, imports, dependencies, LOC. Same data as the file's .fmm sidecar, but from the pre-built index.".to_string(),
+                description: "[Alias for fmm_file_outline — prefer that tool] Get a file's structural profile from the index: exports, imports, dependencies, LOC.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -346,7 +341,7 @@ impl McpServer {
             },
             Tool {
                 name: "fmm_file_outline".to_string(),
-                description: "Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols.".to_string(),
+                description: "Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. This is the canonical tool — fmm_file_info is an alias.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -595,22 +590,9 @@ impl McpServer {
         }
     }
 
+    /// Alias for tool_file_outline — delegates entirely for backwards compatibility.
     fn tool_file_info(&self, args: &Value) -> Result<String, String> {
-        let manifest = self.require_manifest()?;
-
-        let args: FileInfoArgs =
-            serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
-
-        validate_not_directory(&args.file, &self.root)?;
-
-        let entry = manifest.files.get(&args.file).ok_or_else(|| {
-            format!(
-                "File '{}' not found in manifest. Run 'fmm generate' to index the file.",
-                args.file
-            )
-        })?;
-
-        Ok(crate::format::format_file_info(&args.file, entry))
+        self.tool_file_outline(args)
     }
 
     fn tool_dependency_graph(&self, args: &Value) -> Result<String, String> {
