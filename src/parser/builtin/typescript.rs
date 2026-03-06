@@ -6,7 +6,7 @@ use anyhow::Result;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
-use super::query_helpers::collect_matches_with_lines;
+use super::query_helpers::{collect_matches_with_lines, compile_query, make_parser};
 
 /// Walk up from `file_path` looking for `tsconfig.json`. When found, extract
 /// `compilerOptions.paths` as a map of alias pattern → list of target templates.
@@ -172,10 +172,7 @@ impl TypeScriptParser {
     }
 
     fn build(language: Language, is_tsx: bool) -> Result<Self> {
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language)
-            .map_err(|e| anyhow::anyhow!("Failed to set language: {}", e))?;
+        let parser = make_parser(&language, "TypeScript")?;
 
         let export_query_strs = [
             "(export_statement (function_declaration name: (identifier) @name))",
@@ -202,67 +199,64 @@ impl TypeScriptParser {
 
         let export_queries: Vec<Query> = export_query_strs
             .iter()
-            .map(|q| Query::new(&language, q))
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| anyhow::anyhow!("Failed to compile export query: {}", e))?;
+            .map(|q| compile_query(&language, q, "export"))
+            .collect::<Result<Vec<_>>>()?;
 
-        let import_query = Query::new(&language, r#"(import_statement source: (string) @source)"#)
-            .map_err(|e| anyhow::anyhow!("Failed to compile import query: {}", e))?;
-
+        let import_query = compile_query(
+            &language,
+            r#"(import_statement source: (string) @source)"#,
+            "import",
+        )?;
         // ALP-749/750: captures `from '...'` on both `export { X } from` and `export * from`
-        let reexport_source_query =
-            Query::new(&language, r#"(export_statement source: (string) @source)"#)
-                .map_err(|e| anyhow::anyhow!("Failed to compile reexport_source query: {}", e))?;
-
+        let reexport_source_query = compile_query(
+            &language,
+            r#"(export_statement source: (string) @source)"#,
+            "reexport_source",
+        )?;
         // ALP-754: simple decorator `@Foo`
-        let decorator_query = Query::new(&language, "(decorator (identifier) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile decorator query: {}", e))?;
-
+        let decorator_query =
+            compile_query(&language, "(decorator (identifier) @name)", "decorator")?;
         // ALP-754: call-expression decorator `@Foo(...)`
-        let call_decorator_query = Query::new(
+        let call_decorator_query = compile_query(
             &language,
             "(decorator (call_expression function: (identifier) @name))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile call_decorator query: {}", e))?;
-
+            "call_decorator",
+        )?;
         // ALP-768: find class declarations for public method extraction
-        let class_query = Query::new(
+        let class_query = compile_query(
             &language,
             "(class_declaration name: (type_identifier) @class_name) @class",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile class query: {}", e))?;
-
+            "class",
+        )?;
         // ALP-881: named import specifiers — captures original name and source path.
         // Handles `import { foo } from '...'` and `import { foo as bar } from '...'`.
         // `name` = original exported name; ignore `alias` (local binding).
-        let named_import_query = Query::new(
+        let named_import_query = compile_query(
             &language,
             r#"(import_statement
                  (import_clause
                    (named_imports
                      (import_specifier name: (identifier) @original_name)))
                  source: (string) @source)"#,
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile named_import query: {}", e))?;
-
+            "named_import",
+        )?;
         // ALP-881: namespace imports — `import * as X from '...'`
-        let namespace_import_query = Query::new(
+        let namespace_import_query = compile_query(
             &language,
             r#"(import_statement
                  (import_clause (namespace_import))
                  source: (string) @source)"#,
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile namespace_import query: {}", e))?;
-
+            "namespace_import",
+        )?;
         // ALP-881: named re-export specifiers — `export { foo } from '...'` and `export { foo as bar } from '...'`
-        let reexport_named_query = Query::new(
+        let reexport_named_query = compile_query(
             &language,
             r#"(export_statement
                  (export_clause
                    (export_specifier name: (identifier) @original_name))
                  source: (string) @source)"#,
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile reexport_named query: {}", e))?;
+            "reexport_named",
+        )?;
 
         Ok(Self {
             parser,

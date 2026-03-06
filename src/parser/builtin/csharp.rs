@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
-use super::query_helpers::collect_matches;
+use super::query_helpers::{collect_matches, compile_query, make_parser};
 
 pub struct CSharpParser {
     parser: TSParser,
@@ -21,40 +21,48 @@ pub struct CSharpParser {
 impl CSharpParser {
     pub fn new() -> Result<Self> {
         let language: Language = tree_sitter_c_sharp::LANGUAGE.into();
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language)
-            .map_err(|e| anyhow::anyhow!("Failed to set C# language: {}", e))?;
+        let parser = make_parser(&language, "C#")?;
 
-        let class_query = Query::new(&language, "(class_declaration name: (identifier) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile class query: {}", e))?;
-
-        let interface_query = Query::new(
+        let class_query = compile_query(
+            &language,
+            "(class_declaration name: (identifier) @name)",
+            "class",
+        )?;
+        let interface_query = compile_query(
             &language,
             "(interface_declaration name: (identifier) @name)",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile interface query: {}", e))?;
-
-        let struct_query = Query::new(&language, "(struct_declaration name: (identifier) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile struct query: {}", e))?;
-
-        let enum_query = Query::new(&language, "(enum_declaration name: (identifier) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile enum query: {}", e))?;
-
-        let method_query = Query::new(&language, "(method_declaration name: (identifier) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile method query: {}", e))?;
-
-        let using_query = Query::new(
+            "interface",
+        )?;
+        let struct_query = compile_query(
+            &language,
+            "(struct_declaration name: (identifier) @name)",
+            "struct",
+        )?;
+        let enum_query = compile_query(
+            &language,
+            "(enum_declaration name: (identifier) @name)",
+            "enum",
+        )?;
+        let method_query = compile_query(
+            &language,
+            "(method_declaration name: (identifier) @name)",
+            "method",
+        )?;
+        let using_query = compile_query(
             &language,
             "[(using_directive (identifier) @name) (using_directive (qualified_name) @name)]",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile using query: {}", e))?;
-
-        let namespace_query = Query::new(&language, "(namespace_declaration name: (_) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile namespace query: {}", e))?;
-
-        let attribute_query = Query::new(&language, "(attribute name: (identifier) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile attribute query: {}", e))?;
+            "using",
+        )?;
+        let namespace_query = compile_query(
+            &language,
+            "(namespace_declaration name: (_) @name)",
+            "namespace",
+        )?;
+        let attribute_query = compile_query(
+            &language,
+            "(attribute name: (identifier) @name)",
+            "attribute",
+        )?;
 
         Ok(Self {
             parser,

@@ -4,7 +4,9 @@ use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
-use super::query_helpers::{collect_matches, collect_matches_with_lines};
+use super::query_helpers::{
+    collect_matches, collect_matches_with_lines, compile_query, make_parser,
+};
 
 pub struct JavaParser {
     parser: TSParser,
@@ -19,42 +21,39 @@ pub struct JavaParser {
 impl JavaParser {
     pub fn new() -> Result<Self> {
         let language: Language = tree_sitter_java::LANGUAGE.into();
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language)
-            .map_err(|e| anyhow::anyhow!("Failed to set Java language: {}", e))?;
+        let parser = make_parser(&language, "Java")?;
 
-        let class_query = Query::new(
+        let class_query = compile_query(
             &language,
             "(program (class_declaration name: (identifier) @name))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile class query: {}", e))?;
-
-        let interface_query = Query::new(
+            "class",
+        )?;
+        let interface_query = compile_query(
             &language,
             "(program (interface_declaration name: (identifier) @name))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile interface query: {}", e))?;
-
-        let enum_query = Query::new(
+            "interface",
+        )?;
+        let enum_query = compile_query(
             &language,
             "(program (enum_declaration name: (identifier) @name))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile enum query: {}", e))?;
-
+            "enum",
+        )?;
         // ALP-771: capture class_name alongside method_name so methods can be attributed to parent
-        let method_query = Query::new(
+        let method_query = compile_query(
             &language,
             "(class_declaration name: (identifier) @class_name body: (class_body (method_declaration name: (identifier) @method_name)))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile method query: {}", e))?;
-
-        let import_query = Query::new(&language, "(import_declaration (scoped_identifier) @path)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile import query: {}", e))?;
-
-        let annotation_query =
-            Query::new(&language, "(marker_annotation name: (identifier) @name)")
-                .map_err(|e| anyhow::anyhow!("Failed to compile annotation query: {}", e))?;
+            "method",
+        )?;
+        let import_query = compile_query(
+            &language,
+            "(import_declaration (scoped_identifier) @path)",
+            "import",
+        )?;
+        let annotation_query = compile_query(
+            &language,
+            "(marker_annotation name: (identifier) @name)",
+            "annotation",
+        )?;
 
         Ok(Self {
             parser,

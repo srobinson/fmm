@@ -1,4 +1,4 @@
-use super::query_helpers::collect_matches_with_lines;
+use super::query_helpers::{collect_matches_with_lines, compile_query, make_parser};
 use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::HashSet;
@@ -23,60 +23,54 @@ pub struct PhpParser {
 impl PhpParser {
     pub fn new() -> Result<Self> {
         let language: Language = tree_sitter_php::LANGUAGE_PHP.into();
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language)
-            .map_err(|e| anyhow::anyhow!("Failed to set PHP language: {}", e))?;
+        let parser = make_parser(&language, "PHP")?;
 
-        let class_query = Query::new(
+        let class_query = compile_query(
             &language,
             "(program (class_declaration name: (name) @name))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile class query: {}", e))?;
-
-        let interface_query = Query::new(
+            "class",
+        )?;
+        let interface_query = compile_query(
             &language,
             "(program (interface_declaration name: (name) @name))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile interface query: {}", e))?;
-
-        let trait_query = Query::new(
+            "interface",
+        )?;
+        let trait_query = compile_query(
             &language,
             "(program (trait_declaration name: (name) @name))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile trait query: {}", e))?;
-
-        let enum_query = Query::new(&language, "(program (enum_declaration name: (name) @name))")
-            .map_err(|e| anyhow::anyhow!("Failed to compile enum query: {}", e))?;
-
-        let func_query = Query::new(
+            "trait",
+        )?;
+        let enum_query = compile_query(
+            &language,
+            "(program (enum_declaration name: (name) @name))",
+            "enum",
+        )?;
+        let func_query = compile_query(
             &language,
             "(program (function_definition name: (name) @name))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile func query: {}", e))?;
-
-        let const_query = Query::new(
+            "func",
+        )?;
+        let const_query = compile_query(
             &language,
             "(program (const_declaration (const_element (name) @name)))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile const query: {}", e))?;
-
+            "const",
+        )?;
         // Methods inside class/interface/trait declarations (filtered by visibility in code)
-        let public_method_query = Query::new(
+        let public_method_query = compile_query(
             &language,
             "(method_declaration
                 (visibility_modifier) @vis
                 name: (name) @name)",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile public method query: {}", e))?;
-
+            "public method",
+        )?;
         // Namespace use declarations (imports)
-        let namespace_use_query =
-            Query::new(&language, "(program (namespace_use_declaration) @decl)")
-                .map_err(|e| anyhow::anyhow!("Failed to compile namespace use query: {}", e))?;
-
+        let namespace_use_query = compile_query(
+            &language,
+            "(program (namespace_use_declaration) @decl)",
+            "namespace use",
+        )?;
         // require/require_once/include/include_once with string paths
-        let require_query = Query::new(
+        let require_query = compile_query(
             &language,
             r#"[
                 (require_expression (string (string_content) @path))
@@ -84,20 +78,20 @@ impl PhpParser {
                 (include_expression (string (string_content) @path))
                 (include_once_expression (string (string_content) @path))
             ]"#,
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile require query: {}", e))?;
-
+            "require",
+        )?;
         // Namespace definitions
-        let namespace_def_query =
-            Query::new(&language, "(namespace_definition (namespace_name) @name)")
-                .map_err(|e| anyhow::anyhow!("Failed to compile namespace def query: {}", e))?;
-
+        let namespace_def_query = compile_query(
+            &language,
+            "(namespace_definition (namespace_name) @name)",
+            "namespace def",
+        )?;
         // Trait use inside class bodies (use TraitName;)
-        let trait_use_query = Query::new(
+        let trait_use_query = compile_query(
             &language,
             "(declaration_list (use_declaration (name) @name))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile trait use query: {}", e))?;
+            "trait use",
+        )?;
 
         Ok(Self {
             parser,

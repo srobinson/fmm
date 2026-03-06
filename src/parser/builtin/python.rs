@@ -1,4 +1,4 @@
-use super::query_helpers::{collect_matches, top_level_ancestor};
+use super::query_helpers::{collect_matches, compile_query, make_parser, top_level_ancestor};
 use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -43,62 +43,65 @@ pub struct PythonParser {
 impl PythonParser {
     pub fn new() -> Result<Self> {
         let language: Language = tree_sitter_python::LANGUAGE.into();
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language)
-            .map_err(|e| anyhow::anyhow!("Failed to set Python language: {}", e))?;
+        let parser = make_parser(&language, "Python")?;
 
-        let func_query = Query::new(
+        let func_query = compile_query(
             &language,
             "[(module (function_definition name: (identifier) @name))
               (module (decorated_definition (function_definition name: (identifier) @name)))]",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile func query: {}", e))?;
-        let class_query = Query::new(
+            "func",
+        )?;
+        let class_query = compile_query(
             &language,
             "[(module (class_definition name: (identifier) @name))
               (module (decorated_definition (class_definition name: (identifier) @name)))]",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile class query: {}", e))?;
-        let assign_query = Query::new(
+            "class",
+        )?;
+        let assign_query = compile_query(
             &language,
             "(module (expression_statement (assignment left: (identifier) @name)))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile assign query: {}", e))?;
-        let dunder_all_query = Query::new(&language, "(module (expression_statement (assignment left: (identifier) @name right: (list) @values)))")
-            .map_err(|e| anyhow::anyhow!("Failed to compile dunder_all query: {}", e))?;
-
+            "assign",
+        )?;
+        let dunder_all_query = compile_query(
+            &language,
+            "(module (expression_statement (assignment left: (identifier) @name right: (list) @values)))",
+            "dunder_all",
+        )?;
         let import_queries = vec![
-            Query::new(&language, "(import_statement name: (dotted_name) @name)")
-                .map_err(|e| anyhow::anyhow!("Failed to compile import query: {}", e))?,
-            Query::new(
+            compile_query(
+                &language,
+                "(import_statement name: (dotted_name) @name)",
+                "import",
+            )?,
+            compile_query(
                 &language,
                 "(import_statement name: (aliased_import name: (dotted_name) @name))",
-            )
-            .map_err(|e| anyhow::anyhow!("Failed to compile aliased import query: {}", e))?,
+                "aliased import",
+            )?,
         ];
-
-        let from_import_query = Query::new(
+        let from_import_query = compile_query(
             &language,
             "(import_from_statement module_name: (dotted_name) @name)",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile from_import query: {}", e))?;
-        let relative_import_query = Query::new(
+            "from_import",
+        )?;
+        let relative_import_query = compile_query(
             &language,
             "(import_from_statement module_name: (relative_import) @name)",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile relative_import query: {}", e))?;
-        let decorator_query = Query::new(&language, "(decorator (identifier) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile decorator query: {}", e))?;
-        let dotted_decorator_query = Query::new(&language, "(decorator (attribute) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile dotted_decorator query: {}", e))?;
-
+            "relative_import",
+        )?;
+        let decorator_query =
+            compile_query(&language, "(decorator (identifier) @name)", "decorator")?;
+        let dotted_decorator_query = compile_query(
+            &language,
+            "(decorator (attribute) @name)",
+            "dotted_decorator",
+        )?;
         // ALP-769: find class declarations for public method extraction
-        let class_method_query = Query::new(
+        let class_method_query = compile_query(
             &language,
             "(class_definition name: (identifier) @class_name) @class",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile class_method query: {}", e))?;
+            "class_method",
+        )?;
 
         Ok(Self {
             parser,

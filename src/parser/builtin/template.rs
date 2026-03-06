@@ -16,7 +16,7 @@ use std::collections::HashSet;
 use tree_sitter::{Language, Parser as TSParser};
 
 // If using tree-sitter queries (recommended for most languages), also add:
-// use super::query_helpers::{collect_matches_with_lines, collect_named_matches};
+// use super::query_helpers::{collect_matches_with_lines, compile_query, make_parser};
 // use tree_sitter::Query;
 
 // ─── Parser struct ─────────────────────────────────────────────────────────
@@ -39,22 +39,21 @@ impl TemplateParser {
         //     tree_sitter_lua::LANGUAGE.into()
         let language: Language = todo!("Replace with: tree_sitter_LANG::LANGUAGE.into()");
 
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language)
-            .map_err(|e| anyhow::anyhow!("Failed to set LANG language: {}", e))?;
+        // Use make_parser() instead of the raw TSParser::new() + set_language() block.
+        let parser = make_parser(&language, "LANG")?;
 
         // STEP 2 (optional): Compile your S-expression queries here.
+        //   Use compile_query() instead of Query::new().map_err().
         //   See docs/QUERIES.md for capture name conventions.
         //
-        //   let exports_query = Query::new(
+        //   let exports_query = compile_query(
         //       &language,
         //       r#"
         //           (function_definition
         //               name: (identifier) @name)
         //       "#,
-        //   )
-        //   .map_err(|e| anyhow::anyhow!("Invalid exports query: {}", e))?;
+        //       "exports",
+        //   )?;
 
         Ok(Self { parser })
     }

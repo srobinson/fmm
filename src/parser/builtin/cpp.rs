@@ -1,4 +1,4 @@
-use super::query_helpers::collect_matches;
+use super::query_helpers::{collect_matches, compile_query, make_parser};
 use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -20,50 +20,48 @@ pub struct CppParser {
 impl CppParser {
     pub fn new() -> Result<Self> {
         let language: Language = tree_sitter_cpp::LANGUAGE.into();
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language)
-            .map_err(|e| anyhow::anyhow!("Failed to set C++ language: {}", e))?;
+        let parser = make_parser(&language, "C++")?;
 
-        let func_query = Query::new(
+        let func_query = compile_query(
             &language,
             "(function_definition declarator: (function_declarator declarator: (identifier) @name))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile func query: {}", e))?;
-
-        let class_query = Query::new(&language, "(class_specifier name: (type_identifier) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile class query: {}", e))?;
-
-        let struct_query = Query::new(
+            "func",
+        )?;
+        let class_query = compile_query(
+            &language,
+            "(class_specifier name: (type_identifier) @name)",
+            "class",
+        )?;
+        let struct_query = compile_query(
             &language,
             "(struct_specifier name: (type_identifier) @name)",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile struct query: {}", e))?;
-
-        let enum_query = Query::new(&language, "(enum_specifier name: (type_identifier) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile enum query: {}", e))?;
-
-        let namespace_query = Query::new(
+            "struct",
+        )?;
+        let enum_query = compile_query(
+            &language,
+            "(enum_specifier name: (type_identifier) @name)",
+            "enum",
+        )?;
+        let namespace_query = compile_query(
             &language,
             "(namespace_definition name: (namespace_identifier) @name)",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile namespace query: {}", e))?;
-
-        let system_include_query = Query::new(
+            "namespace",
+        )?;
+        let system_include_query = compile_query(
             &language,
             "(preproc_include path: (system_lib_string) @path)",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile system include query: {}", e))?;
-
-        let local_include_query =
-            Query::new(&language, "(preproc_include path: (string_literal) @path)")
-                .map_err(|e| anyhow::anyhow!("Failed to compile local include query: {}", e))?;
-
-        let template_query = Query::new(
+            "system include",
+        )?;
+        let local_include_query = compile_query(
+            &language,
+            "(preproc_include path: (string_literal) @path)",
+            "local include",
+        )?;
+        let template_query = compile_query(
             &language,
             "(template_declaration (class_specifier name: (type_identifier) @name))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile template query: {}", e))?;
+            "template",
+        )?;
 
         Ok(Self {
             parser,

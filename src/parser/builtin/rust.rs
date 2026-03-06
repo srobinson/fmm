@@ -1,3 +1,4 @@
+use super::query_helpers::{compile_query, make_parser};
 use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -62,10 +63,7 @@ pub struct RustParser {
 impl RustParser {
     pub fn new() -> Result<Self> {
         let language: Language = tree_sitter_rust::LANGUAGE.into();
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language)
-            .map_err(|e| anyhow::anyhow!("Failed to set Rust language: {}", e))?;
+        let parser = make_parser(&language, "Rust")?;
 
         let export_query_strs = [
             // Anchored to source_file so that pub fn inside impl blocks are NOT captured here.
@@ -82,9 +80,8 @@ impl RustParser {
 
         let export_queries: Vec<Query> = export_query_strs
             .iter()
-            .map(|q| Query::new(&language, q))
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| anyhow::anyhow!("Failed to compile export query: {}", e))?;
+            .map(|q| compile_query(&language, q, "export"))
+            .collect::<Result<Vec<_>>>()?;
 
         // Queries that match all items regardless of visibility (for binary crates)
         let all_item_query_strs = [
@@ -100,41 +97,37 @@ impl RustParser {
 
         let all_item_queries: Vec<Query> = all_item_query_strs
             .iter()
-            .map(|q| Query::new(&language, q))
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| anyhow::anyhow!("Failed to compile all-item query: {}", e))?;
+            .map(|q| compile_query(&language, q, "all-item"))
+            .collect::<Result<Vec<_>>>()?;
 
-        let unsafe_query = Query::new(&language, "(unsafe_block) @block")
-            .map_err(|e| anyhow::anyhow!("Failed to compile unsafe query: {}", e))?;
+        let unsafe_query = compile_query(&language, "(unsafe_block) @block", "unsafe")?;
 
         let trait_impl_queries = vec![
-            Query::new(
+            compile_query(
                 &language,
                 "(impl_item trait: (type_identifier) @trait type: (type_identifier) @type)",
-            )
-            .map_err(|e| anyhow::anyhow!("Failed to compile trait_impl query: {}", e))?,
-            Query::new(
+                "trait_impl",
+            )?,
+            compile_query(
                 &language,
                 "(impl_item trait: (scoped_type_identifier) @trait type: (type_identifier) @type)",
-            )
-            .map_err(|e| anyhow::anyhow!("Failed to compile scoped trait_impl query: {}", e))?,
+                "scoped trait_impl",
+            )?,
         ];
 
-        let lifetime_query = Query::new(&language, "(lifetime (identifier) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile lifetime query: {}", e))?;
-
-        let async_query = Query::new(&language, "(function_item (function_modifiers) @mods)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile async query: {}", e))?;
-
-        let derive_query = Query::new(
+        let lifetime_query = compile_query(&language, "(lifetime (identifier) @name)", "lifetime")?;
+        let async_query = compile_query(
+            &language,
+            "(function_item (function_modifiers) @mods)",
+            "async",
+        )?;
+        let derive_query = compile_query(
             &language,
             "(attribute_item (attribute (identifier) @attr_name arguments: (token_tree) @args))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile derive query: {}", e))?;
-
+            "derive",
+        )?;
         // ALP-770: match all impl blocks; type extraction done in Rust code
-        let impl_query = Query::new(&language, "(impl_item) @impl")
-            .map_err(|e| anyhow::anyhow!("Failed to compile impl query: {}", e))?;
+        let impl_query = compile_query(&language, "(impl_item) @impl", "impl")?;
 
         Ok(Self {
             parser,
