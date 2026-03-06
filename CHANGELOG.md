@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.25](https://github.com/srobinson/fmm/compare/v0.1.24...v0.1.25) (2026-03-06)
+
+
+### Features
+
+* **mcp+cli:** Round 3 evaluation improvements — 12 issues ([#77](https://github.com/srobinson/fmm/issues/77)) ([980e3a7](https://github.com/srobinson/fmm/commit/980e3a774c9343f8c491b541fd9b7e1ff11fe726))
+
 ## [0.1.24](https://github.com/srobinson/fmm/compare/v0.1.23...v0.1.24) (2026-03-05)
 
 
