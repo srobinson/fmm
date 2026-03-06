@@ -21,10 +21,12 @@
 //! - [`collect_matches_with_lines`] — use for exports; returns [`ExportEntry`] with line ranges.
 //! - [`collect_named_matches`] — use when a query has multiple capture names and you want one.
 //! - [`collect_matches`] — simplest form; returns deduplicated strings from any capture.
+//! - [`collect_captures`] — generic building block; bring your own `T` and extractor closure.
 
 use crate::parser::ExportEntry;
 use anyhow::Result;
 use std::collections::HashSet;
+use std::hash::Hash;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
@@ -53,52 +55,75 @@ pub fn compile_query(language: &Language, pattern: &str, query_name: &str) -> Re
         .map_err(|e| anyhow::anyhow!("Failed to compile {} query: {}", query_name, e))
 }
 
-/// Collect unique text from all captures of a query, returned as a sorted Vec.
-pub fn collect_matches(
+/// Internal: run `query` captures, invoking `f(capture_index, node)` for each.
+fn for_each_capture(
     query: &Query,
-    root_node: tree_sitter::Node,
+    root_node: tree_sitter::Node<'_>,
     source_bytes: &[u8],
-) -> Vec<String> {
-    let mut seen = HashSet::new();
+    mut f: impl for<'n> FnMut(usize, tree_sitter::Node<'n>),
+) {
     let mut cursor = QueryCursor::new();
     let mut iter = cursor.matches(query, root_node, source_bytes);
     while let Some(m) = iter.next() {
         for capture in m.captures {
-            if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                seen.insert(text.to_string());
-            }
+            f(capture.index as usize, capture.node);
         }
     }
-    let mut results: Vec<String> = seen.into_iter().collect();
+}
+
+/// Generic capture collector: run `query`, apply `extract`, deduplicate, and return sorted.
+///
+/// `extract(capture_index, node) -> Option<T>` — return `Some(item)` to include it, `None` to skip.
+/// Items are deduplicated using `T`'s `Hash + Eq` and sorted with `T`'s `Ord`.
+///
+/// Building block for [`collect_matches`] and [`collect_named_matches`].
+pub fn collect_captures<T, F>(
+    query: &Query,
+    root_node: tree_sitter::Node<'_>,
+    source_bytes: &[u8],
+    mut extract: F,
+) -> Vec<T>
+where
+    T: Eq + Hash + Ord,
+    F: for<'n> FnMut(usize, tree_sitter::Node<'n>) -> Option<T>,
+{
+    let mut seen = HashSet::new();
+    for_each_capture(query, root_node, source_bytes, |idx, node| {
+        if let Some(item) = extract(idx, node) {
+            seen.insert(item);
+        }
+    });
+    let mut results: Vec<T> = seen.into_iter().collect();
     results.sort();
     results
 }
 
-/// Collect unique text from captures matching a specific capture name in a query.
-/// Returns None for captures whose index is out of bounds (safe).
+/// Collect unique text from all captures of a query, returned as a sorted Vec.
+pub fn collect_matches(
+    query: &Query,
+    root_node: tree_sitter::Node<'_>,
+    source_bytes: &[u8],
+) -> Vec<String> {
+    collect_captures(query, root_node, source_bytes, |_, node| {
+        node.utf8_text(source_bytes).ok().map(|s| s.to_string())
+    })
+}
+
+/// Collect unique text from captures matching `capture_name`, returned as a sorted Vec.
 pub fn collect_named_matches(
     query: &Query,
     capture_name: &str,
-    root_node: tree_sitter::Node,
+    root_node: tree_sitter::Node<'_>,
     source_bytes: &[u8],
 ) -> Vec<String> {
     let capture_names = query.capture_names();
-    let mut seen = HashSet::new();
-    let mut cursor = QueryCursor::new();
-    let mut iter = cursor.matches(query, root_node, source_bytes);
-    while let Some(m) = iter.next() {
-        for capture in m.captures {
-            let idx = capture.index as usize;
-            if idx < capture_names.len() && capture_names[idx] == capture_name {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    seen.insert(text.to_string());
-                }
-            }
+    collect_captures(query, root_node, source_bytes, |idx, node| {
+        if idx < capture_names.len() && capture_names[idx] == capture_name {
+            node.utf8_text(source_bytes).ok().map(|s| s.to_string())
+        } else {
+            None
         }
-    }
-    let mut results: Vec<String> = seen.into_iter().collect();
-    results.sort();
-    results
+    })
 }
 
 pub fn top_level_ancestor(node: tree_sitter::Node) -> tree_sitter::Node {
@@ -112,30 +137,31 @@ pub fn top_level_ancestor(node: tree_sitter::Node) -> tree_sitter::Node {
     current
 }
 
+/// Collect export entries with line ranges from query captures, deduplicated by name.
+///
+/// Unlike [`collect_captures`], this function deduplicates by symbol name rather than
+/// by the full [`ExportEntry`] value — the same name must not appear twice regardless
+/// of line position. Use this for all export extraction.
 pub fn collect_matches_with_lines(
     query: &Query,
-    root_node: tree_sitter::Node,
+    root_node: tree_sitter::Node<'_>,
     source_bytes: &[u8],
 ) -> Vec<ExportEntry> {
-    let mut seen = HashSet::new();
+    let mut seen: HashSet<String> = HashSet::new();
     let mut results = Vec::new();
-    let mut cursor = QueryCursor::new();
-    let mut iter = cursor.matches(query, root_node, source_bytes);
-    while let Some(m) = iter.next() {
-        for capture in m.captures {
-            if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                let name = text.to_string();
-                if seen.insert(name.clone()) {
-                    let decl = top_level_ancestor(capture.node);
-                    results.push(ExportEntry::new(
-                        name,
-                        decl.start_position().row + 1,
-                        decl.end_position().row + 1,
-                    ));
-                }
+    for_each_capture(query, root_node, source_bytes, |_, node| {
+        if let Ok(text) = node.utf8_text(source_bytes) {
+            let name = text.to_string();
+            if seen.insert(name.clone()) {
+                let decl = top_level_ancestor(node);
+                results.push(ExportEntry::new(
+                    name,
+                    decl.start_position().row + 1,
+                    decl.end_position().row + 1,
+                ));
             }
         }
-    }
+    });
     results.sort_by_key(|e| e.start_line);
     results
 }
