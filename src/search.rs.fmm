@@ -1,6 +1,6 @@
 ---
 file: src/search.rs
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   ExportHit: [18, 22]
   ImportHit: [25, 28]
@@ -11,13 +11,13 @@ exports:
   DEFAULT_SEARCH_LIMIT: [68, 68]
   bare_search: [72, 146]
   export_match_score: [150, 179]
-  filter_search: [186, 259]
-  find_export_matches: [262, 289]
-  dependency_graph: [296, 345]
-  dependency_graph_transitive: [359, 473]
+  filter_search: [186, 273]
+  find_export_matches: [276, 303]
+  dependency_graph: [310, 359]
+  dependency_graph_transitive: [373, 487]
 imports: [std]
 dependencies: ['crate::manifest']
-loc: 1370
-modified: 2026-03-06
+loc: 1539
+modified: 2026-03-07
 rust:
   lifetimes: ['''a']

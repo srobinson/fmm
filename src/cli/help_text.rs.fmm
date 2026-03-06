@@ -1,6 +1,6 @@
 ---
 file: src/cli/help_text.rs
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   LONG_ABOUT: [3, 4]
   SHORT_HELP: [7, 29]
@@ -8,4 +8,4 @@ exports:
   HELP_TEMPLATE: [81, 81]
 imports: [color_print]
 loc: 81
-modified: 2026-03-06
+modified: 2026-03-07

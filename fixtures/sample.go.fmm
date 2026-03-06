@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.go
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   MaxRetries: [13, 13]
   Status: [18, 18]
@@ -13,4 +13,4 @@ exports:
 imports: [encoding/json, fmt, net/http]
 dependencies: [github.com/gin-gonic/gin, github.com/redis/go-redis/v9]
 loc: 68
-modified: 2026-03-06
+modified: 2026-03-07

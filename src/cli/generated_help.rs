@@ -51,7 +51,7 @@ pub const SEARCH_TERM_HELP: &str = "Search term — searches exports, files, and
 #[rustfmt::skip]
 pub const SEARCH_EXPORT_HELP: &str = "Find file by export name (exact O(1) + fuzzy substring)";
 #[rustfmt::skip]
-pub const SEARCH_IMPORTS_HELP: &str = "Find files that import a module";
+pub const SEARCH_IMPORTS_HELP: &str = "Find files that import an external package (use --depends-on for local paths)";
 #[rustfmt::skip]
 pub const SEARCH_DEPENDS_ON_HELP: &str = "Find files that depend on a path";
 #[rustfmt::skip]

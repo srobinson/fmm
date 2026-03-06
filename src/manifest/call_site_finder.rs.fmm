@@ -1,12 +1,12 @@
 ---
 file: src/manifest/call_site_finder.rs
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   find_call_sites: [21, 27]
   BareCallSiteResult: [141, 149]
   find_bare_function_callers: [160, 177]
 imports: [std, streaming_iterator, tree_sitter]
 loc: 599
-modified: 2026-03-06
+modified: 2026-03-07
 rust:
   derives: [Debug, Eq, PartialEq]

@@ -1,6 +1,6 @@
 ---
 file: src/cli/init.rs
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   init: [14, 129]
   init_skill: [149, 175]
@@ -8,4 +8,4 @@ exports:
 imports: [anyhow, colored, std]
 dependencies: [../collect_files, ../resolve_root, ../sidecar, 'crate::config', 'crate::extractor::sidecar_path_for']
 loc: 210
-modified: 2026-03-06
+modified: 2026-03-07

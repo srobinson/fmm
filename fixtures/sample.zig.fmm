@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.zig
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   MAX_RETRIES: [9, 9]
   debug_enabled: [12, 12]
@@ -14,7 +14,7 @@ exports:
 imports: [builtin, std]
 dependencies: [../config.zig, ./utils.zig]
 loc: 122
-modified: 2026-03-06
+modified: 2026-03-07
 zig:
   comptime_blocks: 2
   test_blocks: 3

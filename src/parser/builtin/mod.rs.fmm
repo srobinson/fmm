@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/mod.rs
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   template: [4, 4]
   c: [6, 6]
@@ -22,4 +22,4 @@ exports:
   typescript: [22, 22]
   zig: [23, 23]
 loc: 23
-modified: 2026-03-06
+modified: 2026-03-07

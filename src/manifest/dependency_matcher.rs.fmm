@@ -1,6 +1,6 @@
 ---
 file: src/manifest/dependency_matcher.rs
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   dep_matches: [29, 96]
   python_dep_matches: [129, 142]
@@ -8,4 +8,4 @@ exports:
 imports: [rayon, std]
 dependencies: ['crate::resolver']
 loc: 539
-modified: 2026-03-06
+modified: 2026-03-07
