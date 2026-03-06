@@ -62,7 +62,7 @@ const LONG_HELP: &str = cstr!(
   <bold>deps</bold> FILE           Dependency graph: local_deps, external, downstream
   <bold>outline</bold> FILE        File table-of-contents with line ranges
   <bold>ls</bold> [DIR]           List indexed files under a directory
-  <bold>exports</bold> [PATTERN]  Search exports by pattern (fuzzy, case-insensitive)
+  <bold>exports</bold> [PATTERN]  Search exports by pattern (substring or regex, auto-detected)
   <bold>search</bold>             Smart search — exports, files, imports (just works)
   <bold>glossary</bold>           Symbol-level impact analysis — who uses this export?
 
@@ -588,22 +588,28 @@ pub enum Commands {
         json: bool,
     },
 
-    /// Search exports by pattern (fuzzy, case-insensitive)
+    /// Search exports by pattern (substring or regex, auto-detected)
     #[command(
         long_about = "List exports matching a pattern across the indexed codebase.\n\n\
             Without a pattern, lists all exports grouped by file. \
             Use --dir to scope results to a directory. \
-            Includes dotted method names (ClassName.method).",
+            Includes dotted method names (ClassName.method).\n\n\
+            Pattern matching is auto-detected: plain strings use case-insensitive \
+            substring match; patterns with regex metacharacters (^, $, [, (, \\, \
+            ., *, +, ?, {) are compiled as regex.",
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm exports</bold>                         <dim># All exports (grouped by file)</dim>
-  <dim>$</dim> <bold>fmm exports Module</bold>                  <dim># Fuzzy match "Module"</dim>
-  <dim>$</dim> <bold>fmm exports create</bold>                  <dim># All exports containing "create"</dim>
-  <dim>$</dim> <bold>fmm exports Module --dir packages/core/</bold>  <dim># Scoped to directory</dim>
-  <dim>$</dim> <bold>fmm exports Module --json</bold>           <dim># JSON output</dim>"#),
+  <dim>$</dim> <bold>fmm exports</bold>                              <dim># All exports (grouped by file)</dim>
+  <dim>$</dim> <bold>fmm exports Module</bold>                       <dim># Substring match "Module"</dim>
+  <dim>$</dim> <bold>fmm exports create</bold>                       <dim># All exports containing "create"</dim>
+  <dim>$</dim> <bold>fmm exports '^handle'</bold>                    <dim># Regex: exports starting with "handle"</dim>
+  <dim>$</dim> <bold>fmm exports 'Service$'</bold>                   <dim># Regex: exports ending in "Service"</dim>
+  <dim>$</dim> <bold>fmm exports '^[A-Z]'</bold>                     <dim># Regex: PascalCase exports only</dim>
+  <dim>$</dim> <bold>fmm exports Module --dir packages/core/</bold>   <dim># Scoped to directory</dim>
+  <dim>$</dim> <bold>fmm exports Module --json</bold>                 <dim># JSON output</dim>"#),
     )]
     Exports {
-        /// Pattern to filter exports (case-insensitive substring)
+        /// Pattern to filter exports — substring (case-insensitive) or regex (auto-detected when metacharacters present)
         #[arg(value_name = "PATTERN")]
         pattern: Option<String>,
 

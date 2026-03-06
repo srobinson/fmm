@@ -1452,3 +1452,165 @@ fn list_exports_no_truncation_notice_when_all_fit() {
         text
     );
 }
+
+// --- ALP-837: fmm_list_exports — regex pattern support (auto-detected) ---
+
+fn regex_exports_manifest() -> McpServer {
+    use crate::manifest::Manifest;
+    use crate::parser::{ExportEntry, Metadata};
+    let mut manifest = Manifest::new();
+    // Mix of PascalCase class exports and camelCase function exports
+    for (file, export) in &[
+        ("src/a.ts", "AppModule"),
+        ("src/b.ts", "AuthService"),
+        ("src/c.ts", "handleLogin"),
+        ("src/d.ts", "handleLogout"),
+        ("src/e.ts", "createUser"),
+        ("src/f.ts", "UserController"),
+        ("src/g.ts", "getProfile"),
+    ] {
+        manifest.add_file(
+            file,
+            Metadata {
+                exports: vec![ExportEntry::new((*export).to_string(), 1, 10)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 50,
+            },
+        );
+    }
+    McpServer {
+        manifest: Some(manifest),
+        root: std::path::PathBuf::from("/tmp"),
+    }
+}
+
+#[test]
+fn list_exports_regex_prefix_match() {
+    // ALP-837: "^handle" matches handleLogin and handleLogout, not createUser
+    let server = regex_exports_manifest();
+    let result = server
+        .call_tool(
+            "fmm_list_exports",
+            serde_json::json!({"pattern": "^handle"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("handleLogin"),
+        "should match handleLogin; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("handleLogout"),
+        "should match handleLogout; got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("createUser"),
+        "should not match createUser; got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("AppModule"),
+        "should not match AppModule; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_exports_regex_suffix_match() {
+    // ALP-837: "Service$" matches AuthService only
+    let server = regex_exports_manifest();
+    let result = server
+        .call_tool(
+            "fmm_list_exports",
+            serde_json::json!({"pattern": "Service$"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("AuthService"),
+        "should match AuthService; got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("handleLogin"),
+        "should not match handleLogin; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_exports_regex_pascal_case_filter() {
+    // ALP-837: "^[A-Z]" matches PascalCase exports only
+    let server = regex_exports_manifest();
+    let result = server
+        .call_tool("fmm_list_exports", serde_json::json!({"pattern": "^[A-Z]"}))
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("AppModule"),
+        "should match AppModule; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("AuthService"),
+        "should match AuthService; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("UserController"),
+        "should match UserController; got:\n{}",
+        text
+    );
+    // camelCase must be excluded
+    assert!(
+        !text.contains("handleLogin"),
+        "should not match handleLogin (camelCase); got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("createUser"),
+        "should not match createUser (camelCase); got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_exports_plain_pattern_still_case_insensitive() {
+    // ALP-837: plain patterns (no metacharacters) must remain case-insensitive
+    let server = regex_exports_manifest();
+    let result = server
+        .call_tool("fmm_list_exports", serde_json::json!({"pattern": "module"}))
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("AppModule"),
+        "plain pattern 'module' must match 'AppModule' case-insensitively; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_exports_invalid_regex_returns_error() {
+    // ALP-837: invalid regex must return a clean error, not panic
+    let server = regex_exports_manifest();
+    let result = server
+        .call_tool(
+            "fmm_list_exports",
+            serde_json::json!({"pattern": "[invalid"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.starts_with("ERROR:"),
+        "invalid regex must return ERROR:; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("Invalid pattern"),
+        "error must say 'Invalid pattern'; got:\n{}",
+        text
+    );
+}

@@ -60,7 +60,21 @@ pub(super) fn tool_list_exports(
             .ok_or_else(|| format!("File '{}' not found in manifest", file_path))?;
         Ok(crate::format::format_list_exports_file(file_path, entry))
     } else if let Some(ref pat) = args.pattern {
-        let pat_lower = pat.to_lowercase();
+        // Auto-detect regex: if the pattern contains any metacharacter, compile
+        // it as a case-sensitive regex.  Plain patterns keep the existing
+        // case-insensitive substring match so existing callers are unaffected.
+        const METACHAR: &[char] = &['^', '$', '[', '(', '\\', '.', '*', '+', '?', '{'];
+        let uses_regex = pat.chars().any(|c| METACHAR.contains(&c));
+        let matcher: Box<dyn Fn(&str) -> bool> = if uses_regex {
+            match regex::Regex::new(pat) {
+                Ok(re) => Box::new(move |name: &str| re.is_match(name)),
+                Err(e) => return Err(format!("Invalid pattern: {e}")),
+            }
+        } else {
+            let pat_lower = pat.to_lowercase();
+            Box::new(move |name: &str| name.to_lowercase().contains(&pat_lower))
+        };
+
         let mut matches: Vec<(String, String, Option<[usize; 2]>)> = manifest
             .export_index
             .iter()
@@ -70,7 +84,7 @@ pub(super) fn tool_list_exports(
                         return false;
                     }
                 }
-                name.to_lowercase().contains(&pat_lower)
+                matcher(name)
             })
             .map(|(name, path)| {
                 let lines = manifest
@@ -83,8 +97,7 @@ pub(super) fn tool_list_exports(
             .collect();
         // Also include method_index matches (dotted names like "ClassName.method").
         for (dotted_name, loc) in &manifest.method_index {
-            let lower = dotted_name.to_lowercase();
-            if !lower.contains(&pat_lower) {
+            if !matcher(dotted_name) {
                 continue;
             }
             if let Some(d) = dir {

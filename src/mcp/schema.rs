@@ -27,13 +27,13 @@ pub(super) fn tool_list() -> Value {
         },
         Tool {
             name: "fmm_list_exports".to_string(),
-            description: "Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Use 'directory' to scope results to a path prefix (e.g. 'packages/core/'). Use 'file' to list a specific file's exports. Default limit: 200. Use offset to page through large result sets.".to_string(),
+            description: "Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Patterns with regex metacharacters (^, $, [, (, \\, ., *, +, ?, {) are compiled as regex. Use 'directory' to scope results to a path prefix (e.g. 'packages/core/'). Use 'file' to list a specific file's exports. Default limit: 200. Use offset to page through large result sets.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Substring to match against export names (case-insensitive). E.g. 'auth' finds all auth-related exports."
+                        "description": "Pattern to match against export names. Plain strings use case-insensitive substring match (e.g. 'auth' finds validateAuth, authMiddleware). Patterns containing regex metacharacters (^, $, [, (, \\, ., *, +, ?, {) are compiled as regex: '^handle' = prefix match, 'Service$' = suffix match, '^[A-Z]' = PascalCase only. Invalid regex returns an error."
                     },
                     "file": {
                         "type": "string",

@@ -567,7 +567,18 @@ pub fn exports(pattern: Option<&str>, directory: Option<&str>, json_output: bool
     }
 
     if let Some(pat) = pattern {
-        let pat_lower = pat.to_lowercase();
+        // Auto-detect regex: metacharacters trigger compiled regex (case-sensitive).
+        // Plain patterns keep the existing case-insensitive substring match.
+        const METACHAR: &[char] = &['^', '$', '[', '(', '\\', '.', '*', '+', '?', '{'];
+        let uses_regex = pat.chars().any(|c| METACHAR.contains(&c));
+        let matcher: Box<dyn Fn(&str) -> bool> = if uses_regex {
+            let re = regex::Regex::new(pat).map_err(|e| anyhow::anyhow!("Invalid pattern: {e}"))?;
+            Box::new(move |name: &str| re.is_match(name))
+        } else {
+            let pat_lower = pat.to_lowercase();
+            Box::new(move |name: &str| name.to_lowercase().contains(&pat_lower))
+        };
+
         let mut matches: Vec<(String, String, Option<[usize; 2]>)> = manifest
             .export_index
             .iter()
@@ -577,7 +588,7 @@ pub fn exports(pattern: Option<&str>, directory: Option<&str>, json_output: bool
                         return false;
                     }
                 }
-                name.to_lowercase().contains(&pat_lower)
+                matcher(name)
             })
             .map(|(name, path)| {
                 let lines = manifest
@@ -591,7 +602,7 @@ pub fn exports(pattern: Option<&str>, directory: Option<&str>, json_output: bool
 
         // Include method_index matches (dotted names like "ClassName.method").
         for (dotted_name, loc) in &manifest.method_index {
-            if !dotted_name.to_lowercase().contains(&pat_lower) {
+            if !matcher(dotted_name) {
                 continue;
             }
             if let Some(d) = directory {
