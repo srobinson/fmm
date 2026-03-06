@@ -9,15 +9,15 @@ This codebase has FMM metadata available via MCP tools. Use them for instant, st
 
 ## MCP Tools (ALWAYS USE THESE FIRST)
 
-| Tool | Use Case | Example |
-|------|----------|---------|
-| `mcp__fmm__fmm_read_symbol` | "Show me the code for X" | `fmm_read_symbol(name: "createPipeline")` |
-| `mcp__fmm__fmm_lookup_export` | "Where is X defined?" | `fmm_lookup_export(name: "createPipeline")` |
-| `mcp__fmm__fmm_file_outline` | "What's in this file?" | `fmm_file_outline(file: "src/core/index.ts")` |
-| `mcp__fmm__fmm_list_exports` | "Find exports matching X" | `fmm_list_exports(pattern: "swarm")` |
+| Tool                             | Use Case                     | Example                                           |
+| -------------------------------- | ---------------------------- | ------------------------------------------------- |
+| `mcp__fmm__fmm_read_symbol`      | "Show me the code for X"     | `fmm_read_symbol(name: "createPipeline")`         |
+| `mcp__fmm__fmm_lookup_export`    | "Where is X defined?"        | `fmm_lookup_export(name: "createPipeline")`       |
+| `mcp__fmm__fmm_file_outline`     | "What's in this file?"       | `fmm_file_outline(file: "src/core/index.ts")`     |
+| `mcp__fmm__fmm_list_exports`     | "Find exports matching X"    | `fmm_list_exports(pattern: "swarm")`              |
 | `mcp__fmm__fmm_dependency_graph` | "What depends on this file?" | `fmm_dependency_graph(file: "src/core/index.ts")` |
-| `mcp__fmm__fmm_file_info` | "Quick file summary" | `fmm_file_info(file: "src/utils/helpers.ts")` |
-| `mcp__fmm__fmm_search` | Multi-criteria search | `fmm_search(imports: "lodash", min_loc: 100)` |
+| `mcp__fmm__fmm_file_info`        | "Quick file summary"         | `fmm_file_info(file: "src/utils/helpers.ts")`     |
+| `mcp__fmm__fmm_search`           | Multi-criteria search        | `fmm_search(imports: "lodash", min_loc: 100)`     |
 
 ## Navigation Protocol
 
@@ -66,19 +66,20 @@ This codebase has FMM metadata available via MCP tools. Use them for instant, st
 
 ## When to Use Each Tool
 
-| Task | Tool | Why |
-|------|------|-----|
-| Read a function's source | `fmm_read_symbol` | Returns exact source code, one call |
-| Find symbol definition | `fmm_lookup_export` | O(1) lookup, returns file + line range |
-| Understand file structure | `fmm_file_outline` | Shows every export with size, before you read |
-| Find similar exports | `fmm_list_exports` | Pattern search across all files |
-| Impact analysis | `fmm_dependency_graph` | Pre-computed upstream/downstream |
-| Quick file summary | `fmm_file_info` | Exports/imports/LOC without reading |
-| Complex queries | `fmm_search` | Combine filters (imports X, size > N) |
+| Task                      | Tool                   | Why                                           |
+| ------------------------- | ---------------------- | --------------------------------------------- |
+| Read a function's source  | `fmm_read_symbol`      | Returns exact source code, one call           |
+| Find symbol definition    | `fmm_lookup_export`    | O(1) lookup, returns file + line range        |
+| Understand file structure | `fmm_file_outline`     | Shows every export with size, before you read |
+| Find similar exports      | `fmm_list_exports`     | Pattern search across all files               |
+| Impact analysis           | `fmm_dependency_graph` | Pre-computed upstream/downstream              |
+| Quick file summary        | `fmm_file_info`        | Exports/imports/LOC without reading           |
+| Complex queries           | `fmm_search`           | Combine filters (imports X, size > N)         |
 
 ## When to Fall Back to Grep/Read
 
 Only use Grep/Read when:
+
 - MCP tool returns no results
 - You need to search inside function bodies (not just exports)
 - You need to read non-exported code or private functions
