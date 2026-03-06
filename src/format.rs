@@ -3,6 +3,8 @@
 //! Produces `.fmm`-style sidecar YAML for per-file tools and
 //! CLI-style grouped text for search results.
 
+use std::collections::HashSet;
+
 use crate::formatter::yaml_escape;
 use crate::manifest::{ExportLines, FileEntry, GlossaryEntry};
 use crate::search::{BareSearchResult, ExportHitCompact, FileSearchResult};
@@ -136,9 +138,14 @@ pub fn format_dependency_graph(
     }
 
     if !downstream.is_empty() {
+        let local_set: HashSet<&str> = local.iter().map(|s| s.as_str()).collect();
         lines.push("downstream:".to_string());
         for dep in downstream {
-            lines.push(format!("  - {}", yaml_escape(dep)));
+            if local_set.contains(dep.as_str()) {
+                lines.push(format!("  - {}  # circular", yaml_escape(dep)));
+            } else {
+                lines.push(format!("  - {}", yaml_escape(dep)));
+            }
         }
     }
 
@@ -180,9 +187,18 @@ pub fn format_dependency_graph_transitive(
     }
 
     if !downstream.is_empty() {
+        let upstream_set: HashSet<&str> = upstream.iter().map(|(p, _)| p.as_str()).collect();
         lines.push("downstream:".to_string());
         for (path, d) in downstream {
-            lines.push(format!("  - file: {}  depth: {}", yaml_escape(path), d));
+            if upstream_set.contains(path.as_str()) {
+                lines.push(format!(
+                    "  - file: {}  depth: {}  # circular",
+                    yaml_escape(path),
+                    d
+                ));
+            } else {
+                lines.push(format!("  - file: {}  depth: {}", yaml_escape(path), d));
+            }
         }
     }
 
@@ -885,5 +901,81 @@ mod tests {
         assert!(out.contains("  bar: [12, 20]  # 9 lines"));
         assert!(!out.contains("public methods"));
         assert!(!out.contains("    ")); // no sub-indent
+    }
+
+    fn make_bare_entry() -> FileEntry {
+        FileEntry {
+            exports: vec![],
+            export_lines: None,
+            methods: None,
+            imports: vec![],
+            dependencies: vec![],
+            loc: 50,
+            modified: None,
+        }
+    }
+
+    #[test]
+    fn dependency_graph_no_circular_unchanged() {
+        let entry = make_bare_entry();
+        let local = vec!["src/a.ts".to_string(), "src/b.ts".to_string()];
+        let ds_a = "src/c.ts".to_string();
+        let ds_b = "src/d.ts".to_string();
+        let downstream = vec![&ds_a, &ds_b];
+        let out = format_dependency_graph("src/x.ts", &entry, &local, &[], &downstream);
+        assert!(out.contains("  - src/c.ts"));
+        assert!(out.contains("  - src/d.ts"));
+        assert!(!out.contains("# circular"));
+    }
+
+    #[test]
+    fn dependency_graph_annotates_circular_downstream() {
+        let entry = make_bare_entry();
+        // a.ts and b.ts are local deps; b.ts also appears in downstream
+        let local = vec!["src/a.ts".to_string(), "src/b.ts".to_string()];
+        let ds_b = "src/b.ts".to_string();
+        let ds_c = "src/c.ts".to_string();
+        let downstream = vec![&ds_b, &ds_c];
+        let out = format_dependency_graph("src/x.ts", &entry, &local, &[], &downstream);
+        assert!(
+            out.contains("  - src/b.ts  # circular"),
+            "circular entry missing; got:\n{}",
+            out
+        );
+        assert!(
+            out.contains("  - src/c.ts"),
+            "non-circular entry wrong; got:\n{}",
+            out
+        );
+    }
+
+    #[test]
+    fn dependency_graph_transitive_no_circular_unchanged() {
+        let entry = make_bare_entry();
+        let upstream = vec![("src/a.ts".to_string(), 1)];
+        let downstream = vec![("src/c.ts".to_string(), 1)];
+        let out =
+            format_dependency_graph_transitive("src/x.ts", &entry, &upstream, &[], &downstream, 1);
+        assert!(out.contains("  - file: src/c.ts  depth: 1"));
+        assert!(!out.contains("# circular"));
+    }
+
+    #[test]
+    fn dependency_graph_transitive_annotates_circular_downstream() {
+        let entry = make_bare_entry();
+        let upstream = vec![("src/a.ts".to_string(), 1), ("src/b.ts".to_string(), 2)];
+        let downstream = vec![("src/b.ts".to_string(), 1), ("src/c.ts".to_string(), 1)];
+        let out =
+            format_dependency_graph_transitive("src/x.ts", &entry, &upstream, &[], &downstream, 2);
+        assert!(
+            out.contains("  - file: src/b.ts  depth: 1  # circular"),
+            "circular entry missing; got:\n{}",
+            out
+        );
+        assert!(
+            out.contains("  - file: src/c.ts  depth: 1"),
+            "non-circular entry wrong; got:\n{}",
+            out
+        );
     }
 }
