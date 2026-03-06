@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.java
-fmm: v0.3+0.1.24
+fmm: v0.3+0.1.25
 exports:
   DataProcessor: [8, 39]
   Repository: [41, 45]

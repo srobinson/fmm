@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/ruby.rs
-fmm: v0.3+0.1.24
+fmm: v0.3+0.1.25
 exports:
   RubyParser: [8, 15]
 methods:

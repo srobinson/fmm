@@ -1,6 +1,6 @@
 ---
 file: src/extractor/mod.rs
-fmm: v0.3+0.1.24
+fmm: v0.3+0.1.25
 exports:
   FileProcessor: [17, 20]
   sidecar_path_for: [23, 27]

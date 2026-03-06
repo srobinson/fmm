@@ -1,6 +1,6 @@
 ---
 file: src/manifest/private_members.rs
-fmm: v0.3+0.1.24
+fmm: v0.3+0.1.25
 exports:
   PrivateMember: [16, 25]
   extract_private_members: [31, 59]

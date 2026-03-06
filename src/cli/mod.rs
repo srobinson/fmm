@@ -84,7 +84,7 @@ const LONG_HELP: &str = cstr!(
   <dim>$</dim> <bold>fmm deps src/injector.ts --depth 2</bold>         <dim># Transitive (2 hops)</dim>
   <dim>$</dim> <bold>fmm outline src/injector.ts</bold>                 <dim># Exports with line ranges</dim>
   <dim>$</dim> <bold>fmm ls src/</bold>                                 <dim># Files in src/</dim>
-  <dim>$</dim> <bold>fmm ls --sort-by loc</bold>                        <dim># Heaviest files first</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by downstream</bold>                  <dim># Most-imported files first (pre-refactoring)</dim>
   <dim>$</dim> <bold>fmm exports Module</bold>                          <dim># All exports matching "Module"</dim>
   <dim>$</dim> <bold>fmm exports Module --dir packages/core/</bold>     <dim># Scoped to directory</dim>
   <dim>$</dim> <bold>fmm lookup Injector --json | jq .file</bold>      <dim># Machine-readable output</dim>
@@ -558,16 +558,27 @@ pub enum Commands {
     /// List indexed files under a directory
     #[command(
         long_about = "List all files indexed by fmm under a directory prefix.\n\n\
-            Shows file paths with LOC and export count. Use --sort-by to find the \
-            heaviest files. Defaults to alphabetical sort.",
+            Shows file paths with LOC and export count.\n\n\
+            Sort modes (--sort-by):\n\
+            - loc (default): heaviest files first\n\
+            - name: alphabetical\n\
+            - exports: most exported symbols first\n\
+            - downstream: most depended-upon files first (best for pre-refactoring blast radius)\n\
+            - modified: most recently changed first\n\n\
+            Use --group-by=subdir to collapse into directory buckets.\n\
+            Use --filter=source to exclude test files; --filter=tests for test files only.",
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm ls</bold>                          <dim># All indexed files</dim>
-  <dim>$</dim> <bold>fmm ls src/</bold>                     <dim># Files under src/</dim>
-  <dim>$</dim> <bold>fmm ls --sort-by loc</bold>            <dim># Heaviest files first</dim>
-  <dim>$</dim> <bold>fmm ls --sort-by exports</bold>        <dim># Most exports first</dim>
-  <dim>$</dim> <bold>fmm ls --sort-by modified</bold>       <dim># Most recently changed first</dim>
-  <dim>$</dim> <bold>fmm ls src/ --json</bold>              <dim># JSON output</dim>"#),
+  <dim>$</dim> <bold>fmm ls</bold>                                 <dim># All indexed files (sorted by LOC)</dim>
+  <dim>$</dim> <bold>fmm ls src/</bold>                            <dim># Files under src/</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by loc</bold>                   <dim># Heaviest files first</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by downstream</bold>            <dim># Most-imported files first (pre-refactoring)</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by exports</bold>               <dim># Most exports first</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by name</bold>                  <dim># Alphabetical</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by modified</bold>              <dim># Most recently changed first</dim>
+  <dim>$</dim> <bold>fmm ls --group-by subdir</bold>               <dim># Directory rollup (file count + LOC)</dim>
+  <dim>$</dim> <bold>fmm ls --filter source</bold>                 <dim># Source files only (no tests)</dim>
+  <dim>$</dim> <bold>fmm ls src/ --json</bold>                     <dim># JSON output</dim>"#),
     )]
     Ls {
         /// Directory prefix to filter (e.g. src/, packages/core/)

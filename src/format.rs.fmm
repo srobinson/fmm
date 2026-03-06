@@ -1,6 +1,6 @@
 ---
 file: src/format.rs
-fmm: v0.3+0.1.24
+fmm: v0.3+0.1.25
 exports:
   format_file_info: [18, 27]
   format_file_outline: [32, 190]
@@ -13,12 +13,12 @@ exports:
   format_list_exports_file: [435, 441]
   format_list_exports_all: [448, 479]
   format_list_files: [496, 569]
-  compute_rollup_buckets: [576, 628]
-  format_list_files_rollup: [634, 671]
-  format_bare_search: [680, 761]
-  format_filter_search: [765, 790]
-  format_glossary: [831, 861]
+  compute_rollup_buckets: [576, 640]
+  format_list_files_rollup: [646, 683]
+  format_bare_search: [692, 773]
+  format_filter_search: [777, 802]
+  format_glossary: [843, 873]
 imports: [std]
 dependencies: ['crate::formatter::yaml_escape', 'crate::manifest', 'crate::manifest::private_members', 'crate::search']
-loc: 1191
+loc: 1203
 modified: 2026-03-06

@@ -1,6 +1,6 @@
 ---
 file: examples/demo-project/src/auth/session.ts
-fmm: v0.3+0.1.24
+fmm: v0.3+0.1.25
 exports:
   SessionPayload: [5, 10]
   createSession: [12, 18]
