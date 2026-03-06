@@ -1,0 +1,10 @@
+---
+file: src/cli/commands/lookup.rs
+fmm: v0.4+0.1.29
+exports:
+  lookup: [17, 89]
+imports: [anyhow, colored]
+loc: 89
+modified: 2026-03-06
+rust:
+  derives: ['serde::Serialize']
