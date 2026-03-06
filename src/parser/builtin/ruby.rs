@@ -189,6 +189,7 @@ impl Parser for RubyParser {
                 imports,
                 dependencies,
                 loc,
+                ..Default::default()
             },
             custom_fields,
         })

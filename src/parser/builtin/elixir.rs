@@ -293,6 +293,7 @@ impl Parser for ElixirParser {
                 imports,
                 dependencies,
                 loc,
+                ..Default::default()
             },
             custom_fields,
         })

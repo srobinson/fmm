@@ -150,6 +150,12 @@ pub struct TypeScriptParser {
     call_decorator_query: Query,
     /// ALP-768: captures class declarations for public method extraction
     class_query: Query,
+    /// ALP-881: captures named import specifiers with their source path
+    named_import_query: Query,
+    /// ALP-881: captures namespace import source paths (`import * as X from '...'`)
+    namespace_import_query: Query,
+    /// ALP-881: captures named re-export specifiers (`export { foo } from '...'`)
+    reexport_named_query: Query,
     /// true when built for TSX/JSX (ALP-753)
     is_tsx: bool,
 }
@@ -226,6 +232,38 @@ impl TypeScriptParser {
         )
         .map_err(|e| anyhow::anyhow!("Failed to compile class query: {}", e))?;
 
+        // ALP-881: named import specifiers — captures original name and source path.
+        // Handles `import { foo } from '...'` and `import { foo as bar } from '...'`.
+        // `name` = original exported name; ignore `alias` (local binding).
+        let named_import_query = Query::new(
+            &language,
+            r#"(import_statement
+                 (import_clause
+                   (named_imports
+                     (import_specifier name: (identifier) @original_name)))
+                 source: (string) @source)"#,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to compile named_import query: {}", e))?;
+
+        // ALP-881: namespace imports — `import * as X from '...'`
+        let namespace_import_query = Query::new(
+            &language,
+            r#"(import_statement
+                 (import_clause (namespace_import))
+                 source: (string) @source)"#,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to compile namespace_import query: {}", e))?;
+
+        // ALP-881: named re-export specifiers — `export { foo } from '...'` and `export { foo as bar } from '...'`
+        let reexport_named_query = Query::new(
+            &language,
+            r#"(export_statement
+                 (export_clause
+                   (export_specifier name: (identifier) @original_name))
+                 source: (string) @source)"#,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to compile reexport_named query: {}", e))?;
+
         Ok(Self {
             parser,
             export_queries,
@@ -234,6 +272,9 @@ impl TypeScriptParser {
             decorator_query,
             call_decorator_query,
             class_query,
+            named_import_query,
+            namespace_import_query,
+            reexport_named_query,
             is_tsx,
         })
     }
@@ -453,6 +494,124 @@ impl TypeScriptParser {
         ))
     }
 
+    /// ALP-881: extract named imports per source module and namespace import paths.
+    ///
+    /// Returns `(named_imports, namespace_imports)`:
+    /// - `named_imports`: map of source path → original exported names (alias-resolved).
+    ///   Includes both `import { foo } from '...'` and `export { foo } from '...'`.
+    /// - `namespace_imports`: source paths from `import * as X from '...'` and `export * from '...'`.
+    fn extract_named_imports(
+        &self,
+        source: &str,
+        root_node: tree_sitter::Node,
+    ) -> (HashMap<String, Vec<String>>, Vec<String>) {
+        let source_bytes = source.as_bytes();
+        let mut named: HashMap<String, Vec<String>> = HashMap::new();
+        let mut namespace: Vec<String> = Vec::new();
+        let mut namespace_seen: HashSet<String> = HashSet::new();
+
+        let source_idx = self.named_import_query.capture_index_for_name("source");
+        let name_idx = self
+            .named_import_query
+            .capture_index_for_name("original_name");
+
+        // Named import statements: `import { foo, foo as bar } from './mod'`
+        if let (Some(src_idx), Some(nm_idx)) = (source_idx, name_idx) {
+            let mut cursor = QueryCursor::new();
+            let mut iter = cursor.matches(&self.named_import_query, root_node, source_bytes);
+            while let Some(m) = iter.next() {
+                let mut source_path: Option<String> = None;
+                let mut orig_name: Option<String> = None;
+                for cap in m.captures {
+                    if let Ok(text) = cap.node.utf8_text(source_bytes) {
+                        if cap.index == src_idx {
+                            source_path =
+                                Some(text.trim_matches('\'').trim_matches('"').to_string());
+                        } else if cap.index == nm_idx {
+                            orig_name = Some(text.to_string());
+                        }
+                    }
+                }
+                if let (Some(path), Some(name)) = (source_path, orig_name) {
+                    named.entry(path).or_default().push(name);
+                }
+            }
+        }
+
+        // Named re-export specifiers: `export { foo } from './mod'`
+        let re_source_idx = self.reexport_named_query.capture_index_for_name("source");
+        let re_name_idx = self
+            .reexport_named_query
+            .capture_index_for_name("original_name");
+        if let (Some(src_idx), Some(nm_idx)) = (re_source_idx, re_name_idx) {
+            let mut cursor = QueryCursor::new();
+            let mut iter = cursor.matches(&self.reexport_named_query, root_node, source_bytes);
+            while let Some(m) = iter.next() {
+                let mut source_path: Option<String> = None;
+                let mut orig_name: Option<String> = None;
+                for cap in m.captures {
+                    if let Ok(text) = cap.node.utf8_text(source_bytes) {
+                        if cap.index == src_idx {
+                            source_path =
+                                Some(text.trim_matches('\'').trim_matches('"').to_string());
+                        } else if cap.index == nm_idx {
+                            orig_name = Some(text.to_string());
+                        }
+                    }
+                }
+                if let (Some(path), Some(name)) = (source_path, orig_name) {
+                    named.entry(path).or_default().push(name);
+                }
+            }
+        }
+
+        // Namespace imports: `import * as X from './mod'`
+        {
+            let mut cursor = QueryCursor::new();
+            let mut iter = cursor.matches(&self.namespace_import_query, root_node, source_bytes);
+            while let Some(m) = iter.next() {
+                for cap in m.captures {
+                    if let Ok(text) = cap.node.utf8_text(source_bytes) {
+                        let path = text.trim_matches('\'').trim_matches('"').to_string();
+                        if namespace_seen.insert(path.clone()) {
+                            namespace.push(path);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Wildcard re-exports: `export * from './mod'` and `export * as ns from './mod'`.
+        // Detected as: re-export sources (reexport_source_query) minus named re-export sources.
+        // Any source that appears in reexport_source_query but has no named specifiers is a wildcard.
+        {
+            let named_reexport_sources: HashSet<&String> = named.keys().collect();
+            let mut cursor = QueryCursor::new();
+            let mut iter = cursor.matches(&self.reexport_source_query, root_node, source_bytes);
+            while let Some(m) = iter.next() {
+                for cap in m.captures {
+                    if let Ok(text) = cap.node.utf8_text(source_bytes) {
+                        let path = text.trim_matches('\'').trim_matches('"').to_string();
+                        if !named_reexport_sources.contains(&path)
+                            && namespace_seen.insert(path.clone())
+                        {
+                            namespace.push(path);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Deduplicate names within each source entry and sort for stable output.
+        for names in named.values_mut() {
+            names.sort();
+            names.dedup();
+        }
+        namespace.sort();
+
+        (named, namespace)
+    }
+
     /// ALP-754: extract unique decorator names from the file.
     fn extract_decorators(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
         let source_bytes = source.as_bytes();
@@ -523,6 +682,7 @@ impl TypeScriptParser {
         let (mut exports, function_names) = self.extract_exports(source, root_node);
         let imports = self.extract_imports(source, root_node, aliases);
         let dependencies = self.extract_dependencies(source, root_node, aliases);
+        let (named_imports, namespace_imports) = self.extract_named_imports(source, root_node);
         let loc = source.lines().count();
 
         // ALP-768: extract public methods from exported classes
@@ -573,6 +733,8 @@ impl TypeScriptParser {
                 imports,
                 dependencies,
                 loc,
+                named_imports,
+                namespace_imports,
             },
             custom_fields,
         })
@@ -1402,6 +1564,107 @@ export default Main;
             "exact alias should resolve, got: {:?}",
             result.metadata.dependencies
         );
+    }
+
+    // --- ALP-881: named_imports and namespace_imports ---
+
+    #[test]
+    fn named_imports_basic() {
+        let result = parse("import { foo, bar } from './mod';");
+        let ni = &result.metadata.named_imports;
+        assert_eq!(ni.get("./mod").unwrap(), &vec!["bar", "foo"]);
+    }
+
+    #[test]
+    fn named_imports_aliased_stores_original_name() {
+        // `import { foo as bar }` → store `foo`, not `bar`
+        let result =
+            parse("import { scheduleUpdateOnFiber as schedule } from './ReactFiberWorkLoop';");
+        let ni = &result.metadata.named_imports;
+        let names = ni.get("./ReactFiberWorkLoop").unwrap();
+        assert!(
+            names.contains(&"scheduleUpdateOnFiber".to_string()),
+            "should store original name"
+        );
+        assert!(
+            !names.contains(&"schedule".to_string()),
+            "should not store alias"
+        );
+    }
+
+    #[test]
+    fn named_imports_default_import_not_included() {
+        // Default imports do not name a specific export by key
+        let result = parse("import React from 'react';");
+        assert!(
+            result.metadata.named_imports.is_empty(),
+            "default imports should not appear in named_imports"
+        );
+    }
+
+    #[test]
+    fn namespace_imports_captured() {
+        let result = parse("import * as NS from './module';");
+        assert!(result
+            .metadata
+            .namespace_imports
+            .contains(&"./module".to_string()));
+        assert!(
+            result.metadata.named_imports.is_empty(),
+            "namespace import should not populate named_imports"
+        );
+    }
+
+    #[test]
+    fn named_reexports_captured() {
+        // `export { foo } from './mod'` — captured in named_imports for the source module
+        let result = parse("export { scheduleUpdateOnFiber } from './ReactFiberWorkLoop';");
+        let ni = &result.metadata.named_imports;
+        let names = ni.get("./ReactFiberWorkLoop").unwrap();
+        assert!(names.contains(&"scheduleUpdateOnFiber".to_string()));
+    }
+
+    #[test]
+    fn wildcard_reexport_goes_to_namespace_imports() {
+        let result = parse("export * from './utils';");
+        assert!(result
+            .metadata
+            .namespace_imports
+            .contains(&"./utils".to_string()));
+    }
+
+    #[test]
+    fn type_only_import_included_in_named_imports() {
+        let result = parse("import type { Foo } from './types';");
+        let ni = &result.metadata.named_imports;
+        assert!(
+            ni.contains_key("./types"),
+            "type-only import should be included"
+        );
+        assert!(ni["./types"].contains(&"Foo".to_string()));
+    }
+
+    #[test]
+    fn named_imports_multiple_sources() {
+        let source = r#"
+import { a, b } from './mod-a';
+import { c } from './mod-b';
+"#;
+        let result = parse(source);
+        let ni = &result.metadata.named_imports;
+        assert_eq!(ni["./mod-a"], vec!["a", "b"]);
+        assert_eq!(ni["./mod-b"], vec!["c"]);
+    }
+
+    #[test]
+    fn named_reexport_aliased_stores_original_name() {
+        // `export { foo as bar } from './mod'` → store `foo`
+        let result =
+            parse("export { scheduleUpdateOnFiber as schedule } from './ReactFiberWorkLoop';");
+        let ni = &result.metadata.named_imports;
+        let names = ni.get("./ReactFiberWorkLoop").unwrap();
+        assert!(names.contains(&"scheduleUpdateOnFiber".to_string()));
+        assert!(!names.contains(&"schedule".to_string()));
     }
 
     #[test]

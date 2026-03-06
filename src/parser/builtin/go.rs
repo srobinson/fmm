@@ -210,6 +210,7 @@ impl Parser for GoParser {
                 imports,
                 dependencies,
                 loc,
+                ..Default::default()
             },
             custom_fields: None,
         })

@@ -227,6 +227,7 @@ impl Parser for JavaParser {
                 imports,
                 dependencies,
                 loc,
+                ..Default::default()
             },
             custom_fields,
         })

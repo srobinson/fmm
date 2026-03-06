@@ -212,6 +212,7 @@ impl Parser for CppParser {
                 imports,
                 dependencies,
                 loc,
+                ..Default::default()
             },
             custom_fields,
         })

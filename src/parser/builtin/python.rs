@@ -462,6 +462,7 @@ impl Parser for PythonParser {
                 imports,
                 dependencies,
                 loc,
+                ..Default::default()
             },
             custom_fields,
         })

@@ -128,7 +128,7 @@ impl FileProcessor {
 
         let language_id = self.registry.language_id_for(extension);
 
-        let version = format!("v0.3+{}", env!("CARGO_PKG_VERSION"));
+        let version = format!("v0.4+{}", env!("CARGO_PKG_VERSION"));
         let frontmatter = Frontmatter::new(relative_path.display().to_string(), metadata.clone())
             .with_version(&version)
             .with_custom_fields(language_id, custom_fields);

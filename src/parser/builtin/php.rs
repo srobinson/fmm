@@ -302,6 +302,7 @@ impl Parser for PhpParser {
                 imports,
                 dependencies,
                 loc,
+                ..Default::default()
             },
             custom_fields,
         })

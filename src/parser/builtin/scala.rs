@@ -366,6 +366,7 @@ impl Parser for ScalaParser {
                 imports,
                 dependencies,
                 loc,
+                ..Default::default()
             },
             custom_fields: if custom_fields.is_empty() {
                 None

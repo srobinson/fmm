@@ -19,5 +19,5 @@ exports:
   format_glossary: [855, 898]
 imports: [std]
 dependencies: ['crate::formatter::yaml_escape', 'crate::manifest', 'crate::manifest::private_members', 'crate::search']
-loc: 1230
+loc: 1232
 modified: 2026-03-06

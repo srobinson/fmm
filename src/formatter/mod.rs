@@ -131,6 +131,31 @@ impl Frontmatter {
         // Modified date
         lines.push(format!("modified: {}", self.modified));
 
+        // Named imports per source module (TS/JS — ALP-881)
+        if !self.metadata.named_imports.is_empty() {
+            lines.push("named_imports:".to_string());
+            let mut paths: Vec<&String> = self.metadata.named_imports.keys().collect();
+            paths.sort();
+            for path in paths {
+                lines.push(format!("  {}:", yaml_escape(path)));
+                let mut names = self.metadata.named_imports[path].clone();
+                names.sort();
+                for name in names {
+                    lines.push(format!("    - {}", yaml_escape(&name)));
+                }
+            }
+        }
+
+        // Namespace imports (ALP-881)
+        if !self.metadata.namespace_imports.is_empty() {
+            lines.push("namespace_imports:".to_string());
+            let mut ns = self.metadata.namespace_imports.clone();
+            ns.sort();
+            for path in ns {
+                lines.push(format!("  - {}", yaml_escape(&path)));
+            }
+        }
+
         // Language-specific section
         if let Some((ref lang_id, ref fields)) = self.custom_fields {
             lines.push(format!("{}:", lang_id));
@@ -205,6 +230,7 @@ mod tests {
             imports: vec!["jwt".to_string(), "redis".to_string()],
             dependencies: vec!["./types".to_string(), "./config".to_string()],
             loc: 234,
+            ..Default::default()
         };
 
         let fm = Frontmatter::new("src/auth/session.ts".to_string(), metadata);
@@ -230,6 +256,7 @@ mod tests {
             imports: vec![],
             dependencies: vec![],
             loc: 10,
+            ..Default::default()
         };
 
         let fm = Frontmatter::new("test.ts".to_string(), metadata).with_version("v0.3");
@@ -249,6 +276,7 @@ mod tests {
             imports: vec![],
             dependencies: vec![],
             loc: 10,
+            ..Default::default()
         };
 
         let fm = Frontmatter::new("test.ts".to_string(), metadata);
@@ -263,6 +291,7 @@ mod tests {
             imports: vec!["std".to_string()],
             dependencies: vec![],
             loc: 50,
+            ..Default::default()
         };
 
         let mut custom = HashMap::new();
@@ -295,6 +324,7 @@ mod tests {
             imports: vec!["flask".to_string()],
             dependencies: vec![],
             loc: 100,
+            ..Default::default()
         };
 
         let mut custom = HashMap::new();
@@ -322,6 +352,7 @@ mod tests {
             imports: vec![],
             dependencies: vec![],
             loc: 10,
+            ..Default::default()
         };
 
         let fm = Frontmatter::new("test.ts".to_string(), metadata).with_custom_fields(None, None);
@@ -337,6 +368,7 @@ mod tests {
             imports: vec![],
             dependencies: vec![],
             loc: 10,
+            ..Default::default()
         };
 
         let empty: HashMap<String, serde_json::Value> = HashMap::new();
@@ -410,6 +442,7 @@ mod tests {
             imports: vec![],
             dependencies: vec![],
             loc: 400,
+            ..Default::default()
         };
 
         let rendered = Frontmatter::new("src/factory.ts".to_string(), metadata).render();
@@ -435,6 +468,7 @@ mod tests {
             imports: vec![],
             dependencies: vec![],
             loc: 25,
+            ..Default::default()
         };
         let rendered = Frontmatter::new("src/mod.ts".to_string(), metadata).render();
         assert!(!rendered.contains("methods:"));
@@ -452,11 +486,45 @@ mod tests {
             imports: vec![],
             dependencies: vec![],
             loc: 20,
+            ..Default::default()
         };
         let rendered = Frontmatter::new("src/thing.ts".to_string(), metadata).render();
         assert!(!rendered.contains("exports:"));
         assert!(rendered.contains("methods:"));
         assert!(rendered.contains("  MyClass.doThing: [5, 15]"));
+    }
+
+    #[test]
+    fn named_imports_renders_sorted_nested_yaml() {
+        let mut ni = HashMap::new();
+        ni.insert(
+            "./ReactFiberWorkLoop".to_string(),
+            vec![
+                "scheduleUpdateOnFiber".to_string(),
+                "requestUpdateLane".to_string(),
+            ],
+        );
+        ni.insert("./ReactFiberLane".to_string(), vec!["NoLane".to_string()]);
+        let metadata = Metadata {
+            exports: vec![],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 10,
+            named_imports: ni,
+            namespace_imports: vec!["./SomeModule".to_string()],
+        };
+        let rendered = Frontmatter::new("src/app.ts".to_string(), metadata).render();
+        assert!(
+            rendered.contains("named_imports:"),
+            "should have named_imports section"
+        );
+        assert!(rendered.contains("  ./ReactFiberWorkLoop:"));
+        assert!(rendered.contains("    - requestUpdateLane"));
+        assert!(rendered.contains("    - scheduleUpdateOnFiber"));
+        assert!(rendered.contains("  ./ReactFiberLane:"));
+        assert!(rendered.contains("    - NoLane"));
+        assert!(rendered.contains("namespace_imports:"));
+        assert!(rendered.contains("  - ./SomeModule"));
     }
 
     #[test]
@@ -466,6 +534,7 @@ mod tests {
             imports: vec![],
             dependencies: vec![],
             loc: 1,
+            ..Default::default()
         };
         let fm = Frontmatter::new("test.ts".to_string(), metadata);
         assert!(fm.render().starts_with("---\n"));
@@ -478,6 +547,7 @@ mod tests {
             imports: vec!["@scope/pkg".to_string()],
             dependencies: vec![],
             loc: 20,
+            ..Default::default()
         };
         let fm =
             Frontmatter::new("src/utils/key:value.ts".to_string(), metadata).with_version("v0.3");

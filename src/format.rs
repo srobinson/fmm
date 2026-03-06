@@ -957,6 +957,7 @@ mod tests {
             loc: 400,
             modified: None,
             function_names: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -1068,6 +1069,7 @@ mod tests {
             loc: 50,
             modified: None,
             function_names: Vec::new(),
+            ..Default::default()
         }
     }
 

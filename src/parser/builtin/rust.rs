@@ -956,6 +956,7 @@ impl RustParser {
                 imports,
                 dependencies,
                 loc,
+                ..Default::default()
             },
             custom_fields,
         })

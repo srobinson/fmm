@@ -141,6 +141,7 @@ fn read_symbol_dotted_notation_returns_method_source() {
             imports: vec![],
             dependencies: vec![],
             loc: 5,
+            ..Default::default()
         },
     );
 
@@ -249,6 +250,7 @@ fn read_symbol_follows_reexport_to_concrete_definition() {
             imports: vec!["agno.agent.agent".to_string()],
             dependencies: vec![],
             loc: 2,
+            ..Default::default()
         },
     );
     // Concrete definition with proper line range
@@ -259,6 +261,7 @@ fn read_symbol_follows_reexport_to_concrete_definition() {
             imports: vec![],
             dependencies: vec![],
             loc: 5,
+            ..Default::default()
         },
     );
 
@@ -331,6 +334,7 @@ fn list_files_tool_no_args() {
             imports: vec![],
             dependencies: vec![],
             loc: 50,
+            ..Default::default()
         },
     );
     manifest.add_file(
@@ -340,6 +344,7 @@ fn list_files_tool_no_args() {
             imports: vec![],
             dependencies: vec![],
             loc: 20,
+            ..Default::default()
         },
     );
 
@@ -374,6 +379,7 @@ fn list_files_tool_with_directory() {
             imports: vec![],
             dependencies: vec![],
             loc: 30,
+            ..Default::default()
         },
     );
     manifest.add_file(
@@ -383,6 +389,7 @@ fn list_files_tool_with_directory() {
             imports: vec![],
             dependencies: vec![],
             loc: 100,
+            ..Default::default()
         },
     );
 
@@ -417,6 +424,7 @@ fn list_files_tool_pagination_limit_and_offset() {
                 imports: vec![],
                 dependencies: vec![],
                 loc: 10,
+                ..Default::default()
             },
         );
     }
@@ -512,6 +520,7 @@ fn dependency_filter_manifest() -> McpServer {
             imports: vec![],
             dependencies: vec![],
             loc: 100,
+            ..Default::default()
         },
     );
     // Source file that depends on core (relative dep so reverse_deps resolves correctly)
@@ -522,6 +531,7 @@ fn dependency_filter_manifest() -> McpServer {
             imports: vec![],
             dependencies: vec!["./core".to_string()],
             loc: 80,
+            ..Default::default()
         },
     );
     // Spec file that depends on core
@@ -532,6 +542,7 @@ fn dependency_filter_manifest() -> McpServer {
             imports: vec![],
             dependencies: vec!["./core".to_string()],
             loc: 50,
+            ..Default::default()
         },
     );
     manifest.rebuild_reverse_deps();
@@ -643,6 +654,7 @@ fn list_files_sort_manifest() -> McpServer {
             imports: vec![],
             dependencies: vec![],
             loc: 100,
+            ..Default::default()
         },
     );
     manifest.add_file(
@@ -652,6 +664,7 @@ fn list_files_sort_manifest() -> McpServer {
             imports: vec![],
             dependencies: vec![],
             loc: 30,
+            ..Default::default()
         },
     );
     manifest.add_file(
@@ -665,6 +678,7 @@ fn list_files_sort_manifest() -> McpServer {
             imports: vec![],
             dependencies: vec![],
             loc: 60,
+            ..Default::default()
         },
     );
     McpServer {
@@ -927,6 +941,7 @@ fn group_by_directory_manifest() -> McpServer {
                 imports: vec![],
                 dependencies: vec![],
                 loc: *loc,
+                ..Default::default()
             },
         );
     }
@@ -1033,6 +1048,7 @@ fn list_files_filter_source_excludes_test_files() {
             imports: vec![],
             dependencies: vec![],
             loc: 20,
+            ..Default::default()
         },
     );
     manifest.add_file(
@@ -1042,6 +1058,7 @@ fn list_files_filter_source_excludes_test_files() {
             imports: vec![],
             dependencies: vec![],
             loc: 15,
+            ..Default::default()
         },
     );
 
@@ -1084,6 +1101,7 @@ fn list_files_filter_tests_returns_only_test_files() {
             imports: vec![],
             dependencies: vec![],
             loc: 20,
+            ..Default::default()
         },
     );
     manifest.add_file(
@@ -1093,6 +1111,7 @@ fn list_files_filter_tests_returns_only_test_files() {
             imports: vec![],
             dependencies: vec![],
             loc: 15,
+            ..Default::default()
         },
     );
 
@@ -1153,6 +1172,7 @@ fn list_files_modified_manifest() -> McpServer {
             loc: 100,
             modified: Some("2026-03-01".to_string()),
             function_names: Vec::new(),
+            ..Default::default()
         },
     );
     manifest.files.insert(
@@ -1166,6 +1186,7 @@ fn list_files_modified_manifest() -> McpServer {
             loc: 30,
             modified: Some("2026-03-05".to_string()),
             function_names: Vec::new(),
+            ..Default::default()
         },
     );
     manifest.files.insert(
@@ -1179,6 +1200,7 @@ fn list_files_modified_manifest() -> McpServer {
             loc: 60,
             modified: Some("2026-02-20".to_string()),
             function_names: Vec::new(),
+            ..Default::default()
         },
     );
     McpServer {
@@ -1266,6 +1288,7 @@ fn lookup_export_dotted_name_resolves_via_method_index() {
             imports: vec![],
             dependencies: vec![],
             loc: 200,
+            ..Default::default()
         },
     );
 
@@ -1317,6 +1340,7 @@ fn lookup_export_flat_name_still_works_after_method_index_added() {
             imports: vec![],
             dependencies: vec![],
             loc: 200,
+            ..Default::default()
         },
     );
 
@@ -1386,6 +1410,7 @@ fn list_exports_pattern_includes_method_index_matches() {
             imports: vec![],
             dependencies: vec![],
             loc: 200,
+            ..Default::default()
         },
     );
 
@@ -1433,6 +1458,7 @@ fn list_exports_pattern_directory_filter_applies_to_methods() {
             imports: vec![],
             dependencies: vec![],
             loc: 113,
+            ..Default::default()
         },
     );
     manifest.add_file(
@@ -1447,6 +1473,7 @@ fn list_exports_pattern_directory_filter_applies_to_methods() {
             imports: vec![],
             dependencies: vec![],
             loc: 5,
+            ..Default::default()
         },
     );
 
@@ -1492,6 +1519,7 @@ fn list_exports_truncation_notice_shown_when_limit_reached() {
                 imports: vec![],
                 dependencies: vec![],
                 loc: 10,
+                ..Default::default()
             },
         );
     }
@@ -1539,6 +1567,7 @@ fn list_exports_no_truncation_notice_when_all_fit() {
                 imports: vec![],
                 dependencies: vec![],
                 loc: 10,
+                ..Default::default()
             },
         );
     }
@@ -1585,6 +1614,7 @@ fn regex_exports_manifest() -> McpServer {
                 imports: vec![],
                 dependencies: vec![],
                 loc: 50,
+                ..Default::default()
             },
         );
     }
