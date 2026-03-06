@@ -166,6 +166,51 @@ pub fn collect_matches_with_lines(
     results
 }
 
+/// Check whether a node has a modifier child matching `modifier_node_kind` whose
+/// whitespace-split text contains any of the supplied `keywords`.
+///
+/// Two conventions appear across parsers:
+/// - `"modifiers"` (Swift, Kotlin): a single aggregate child whose full text is split
+///   by whitespace to find individual modifiers (e.g. `"@objc public"`).
+/// - `"modifier"` (C#): multiple individual children, each a single modifier word.
+///
+/// Both work with this helper. For an aggregate `"modifiers"` node the text is split
+/// by whitespace; for individual `"modifier"` nodes each single-word text splits to itself.
+pub fn has_modifier(
+    node: &tree_sitter::Node,
+    source_bytes: &[u8],
+    modifier_node_kind: &str,
+    keywords: &[&str],
+) -> bool {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == modifier_node_kind {
+            if let Ok(text) = child.utf8_text(source_bytes) {
+                if text.split_whitespace().any(|w| keywords.contains(&w)) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Push an export entry if `name` has not already been seen.
+///
+/// Encapsulates the `seen.insert` + `ExportEntry::new` pattern repeated across
+/// the builtin parsers.
+pub fn push_export(
+    exports: &mut Vec<ExportEntry>,
+    seen: &mut HashSet<String>,
+    name: String,
+    start_line: usize,
+    end_line: usize,
+) {
+    if seen.insert(name.clone()) {
+        exports.push(ExportEntry::new(name, start_line, end_line));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

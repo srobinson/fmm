@@ -3,7 +3,7 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Language, Parser as TSParser};
 
-use super::query_helpers::make_parser;
+use super::query_helpers::{has_modifier, make_parser, push_export};
 
 pub struct KotlinParser {
     parser: TSParser,
@@ -14,22 +14,6 @@ impl KotlinParser {
         let language: Language = tree_sitter_kotlin_ng::LANGUAGE.into();
         let parser = make_parser(&language, "Kotlin")?;
         Ok(Self { parser })
-    }
-
-    /// Check if a node has `private` or `internal` modifiers (which exclude from export).
-    /// In Kotlin, default visibility is public, so absence of modifiers = exported.
-    fn is_private_or_internal(node: &tree_sitter::Node, source_bytes: &[u8]) -> bool {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "modifiers" {
-                if let Ok(text) = child.utf8_text(source_bytes) {
-                    return text
-                        .split_whitespace()
-                        .any(|w| w == "private" || w == "internal" || w == "protected");
-                }
-            }
-        }
-        false
     }
 
     /// Extract name from `identifier` child.
@@ -52,19 +36,6 @@ impl KotlinParser {
             }
         }
         None
-    }
-
-    /// Check if modifiers contain a specific keyword.
-    fn has_modifier(node: &tree_sitter::Node, source_bytes: &[u8], modifier: &str) -> bool {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "modifiers" {
-                if let Ok(text) = child.utf8_text(source_bytes) {
-                    return text.split_whitespace().any(|w| w == modifier);
-                }
-            }
-        }
-        false
     }
 
     /// Count companion objects inside class bodies (recursive walk).
@@ -92,15 +63,20 @@ impl KotlinParser {
         for child in root_node.children(&mut cursor) {
             match child.kind() {
                 "class_declaration" => {
-                    if !Self::is_private_or_internal(&child, source_bytes) {
+                    if !has_modifier(
+                        &child,
+                        source_bytes,
+                        "modifiers",
+                        &["private", "internal", "protected"],
+                    ) {
                         if let Some(class_name) = Self::get_identifier(&child, source_bytes) {
-                            if seen.insert(class_name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    class_name.clone(),
-                                    child.start_position().row + 1,
-                                    child.end_position().row + 1,
-                                ));
-                            }
+                            push_export(
+                                &mut exports,
+                                &mut seen,
+                                class_name.clone(),
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            );
                             // ALP-771: extract public methods from the class body
                             let mut class_cursor = child.walk();
                             for class_child in child.children(&mut class_cursor) {
@@ -108,9 +84,11 @@ impl KotlinParser {
                                     let mut body_cursor = class_child.walk();
                                     for body_child in class_child.children(&mut body_cursor) {
                                         if body_child.kind() == "function_declaration"
-                                            && !Self::is_private_or_internal(
+                                            && !has_modifier(
                                                 &body_child,
                                                 source_bytes,
+                                                "modifiers",
+                                                &["private", "internal", "protected"],
                                             )
                                         {
                                             if let Some(method_name) =
@@ -134,54 +112,74 @@ impl KotlinParser {
                     }
                 }
                 "object_declaration" => {
-                    if !Self::is_private_or_internal(&child, source_bytes) {
+                    if !has_modifier(
+                        &child,
+                        source_bytes,
+                        "modifiers",
+                        &["private", "internal", "protected"],
+                    ) {
                         if let Some(name) = Self::get_identifier(&child, source_bytes) {
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    child.start_position().row + 1,
-                                    child.end_position().row + 1,
-                                ));
-                            }
+                            push_export(
+                                &mut exports,
+                                &mut seen,
+                                name,
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            );
                         }
                     }
                 }
                 "function_declaration" => {
-                    if !Self::is_private_or_internal(&child, source_bytes) {
+                    if !has_modifier(
+                        &child,
+                        source_bytes,
+                        "modifiers",
+                        &["private", "internal", "protected"],
+                    ) {
                         if let Some(name) = Self::get_identifier(&child, source_bytes) {
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    child.start_position().row + 1,
-                                    child.end_position().row + 1,
-                                ));
-                            }
+                            push_export(
+                                &mut exports,
+                                &mut seen,
+                                name,
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            );
                         }
                     }
                 }
                 "property_declaration" => {
-                    if !Self::is_private_or_internal(&child, source_bytes) {
+                    if !has_modifier(
+                        &child,
+                        source_bytes,
+                        "modifiers",
+                        &["private", "internal", "protected"],
+                    ) {
                         if let Some(name) = Self::get_variable_name(&child, source_bytes) {
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    child.start_position().row + 1,
-                                    child.end_position().row + 1,
-                                ));
-                            }
+                            push_export(
+                                &mut exports,
+                                &mut seen,
+                                name,
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            );
                         }
                     }
                 }
                 "type_alias" => {
-                    if !Self::is_private_or_internal(&child, source_bytes) {
+                    if !has_modifier(
+                        &child,
+                        source_bytes,
+                        "modifiers",
+                        &["private", "internal", "protected"],
+                    ) {
                         if let Some(name) = Self::get_identifier(&child, source_bytes) {
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    child.start_position().row + 1,
-                                    child.end_position().row + 1,
-                                ));
-                            }
+                            push_export(
+                                &mut exports,
+                                &mut seen,
+                                name,
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            );
                         }
                     }
                 }
@@ -241,10 +239,10 @@ impl KotlinParser {
 
         for child in root_node.children(&mut cursor) {
             if child.kind() == "class_declaration" {
-                if Self::has_modifier(&child, source_bytes, "data") {
+                if has_modifier(&child, source_bytes, "modifiers", &["data"]) {
                     data_classes += 1;
                 }
-                if Self::has_modifier(&child, source_bytes, "sealed") {
+                if has_modifier(&child, source_bytes, "modifiers", &["sealed"]) {
                     sealed_classes += 1;
                 }
                 // Look for companion objects inside class body

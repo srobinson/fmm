@@ -4,7 +4,9 @@ use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
-use super::query_helpers::{collect_matches, compile_query, make_parser};
+use super::query_helpers::{
+    collect_matches, compile_query, has_modifier, make_parser, push_export,
+};
 
 pub struct CSharpParser {
     parser: TSParser,
@@ -77,20 +79,6 @@ impl CSharpParser {
         })
     }
 
-    fn has_public_modifier(node: tree_sitter::Node, source_bytes: &[u8]) -> bool {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "modifier" {
-                if let Ok(text) = child.utf8_text(source_bytes) {
-                    if text == "public" {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
-    }
-
     fn collect_public_declarations(
         query: &Query,
         root_node: tree_sitter::Node,
@@ -103,16 +91,15 @@ impl CSharpParser {
         while let Some(m) = iter.next() {
             for capture in m.captures {
                 if let Some(parent) = capture.node.parent() {
-                    if Self::has_public_modifier(parent, source_bytes) {
+                    if has_modifier(&parent, source_bytes, "modifier", &["public"]) {
                         if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                            let name = text.to_string();
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    parent.start_position().row + 1,
-                                    parent.end_position().row + 1,
-                                ));
-                            }
+                            push_export(
+                                exports,
+                                seen,
+                                text.to_string(),
+                                parent.start_position().row + 1,
+                                parent.end_position().row + 1,
+                            );
                         }
                     }
                 }
