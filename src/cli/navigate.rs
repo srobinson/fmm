@@ -222,7 +222,7 @@ pub fn read_symbol(name: &str, no_truncate: bool, json_output: bool) -> Result<(
     } else {
         println!(
             "{}",
-            crate::format::format_read_symbol(name, &resolved_file, &lines, &symbol_source)
+            crate::format::format_read_symbol(name, &resolved_file, &lines, &symbol_source, false)
         );
     }
 
@@ -379,7 +379,7 @@ pub fn outline(file: &str, json_output: bool) -> Result<()> {
         };
         println!("{}", serde_json::to_string_pretty(&json)?);
     } else {
-        println!("{}", crate::format::format_file_outline(file, entry));
+        println!("{}", crate::format::format_file_outline(file, entry, None));
     }
 
     Ok(())

@@ -185,15 +185,48 @@ pub(super) fn tool_read_symbol(
         );
     }
 
-    // Dotted notation: ClassName.method — look up in method_index directly.
+    // Dotted notation: ClassName.method — look up in method_index first.
+    // If not found (private method), fall back to on-demand tree-sitter extraction.
     let (resolved_file, resolved_lines) = if args.name.contains('.') {
-        let loc = manifest.method_index.get(&args.name).ok_or_else(|| {
-            format!(
-                "Method '{}' not found. Use fmm_file_outline to see available methods.",
-                args.name
+        if let Some(loc) = manifest.method_index.get(&args.name) {
+            (loc.file.clone(), loc.lines.clone())
+        } else {
+            // ALP-827: private method fallback — parse the file on demand.
+            let dot = args.name.rfind('.').unwrap();
+            let class_name = &args.name[..dot];
+            let method_name = &args.name[dot + 1..];
+
+            let class_file = manifest
+                .export_locations
+                .get(class_name)
+                .map(|loc| loc.file.clone())
+                .ok_or_else(|| {
+                    format!(
+                        "Method '{}' not found. Class '{}' is not a known export. \
+                         Use fmm_file_outline to inspect the file.",
+                        args.name, class_name
+                    )
+                })?;
+
+            let (start, end) = crate::manifest::private_members::find_private_method_range(
+                root,
+                &class_file,
+                class_name,
+                method_name,
             )
-        })?;
-        (loc.file.clone(), loc.lines.clone())
+            .ok_or_else(|| {
+                format!(
+                    "Method '{}' not found. '{}' is not a public or private method of \
+                         '{}'. Use fmm_file_outline(include_private: true) to see all members.",
+                    args.name, method_name, class_name
+                )
+            })?;
+
+            (
+                class_file,
+                Some(crate::manifest::ExportLines { start, end }),
+            )
+        }
     } else {
         let location = manifest
             .export_locations
@@ -282,6 +315,7 @@ pub(super) fn tool_read_symbol(
         &resolved_file,
         &lines,
         &symbol_source,
+        args.line_numbers.unwrap_or(false),
     ))
 }
 
@@ -302,7 +336,23 @@ pub(super) fn tool_file_outline(
         )
     })?;
 
-    Ok(crate::format::format_file_outline(&args.file, entry))
+    let include_private = args.include_private.unwrap_or(false);
+    let private_by_class = if include_private {
+        let class_names: Vec<&str> = entry.exports.iter().map(|s| s.as_str()).collect();
+        Some(crate::manifest::private_members::extract_private_members(
+            root,
+            &args.file,
+            &class_names,
+        ))
+    } else {
+        None
+    };
+
+    Ok(crate::format::format_file_outline(
+        &args.file,
+        entry,
+        private_by_class.as_ref(),
+    ))
 }
 
 pub(super) fn tool_list_files(

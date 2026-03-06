@@ -8,6 +8,7 @@ use std::path::Path;
 use crate::parser::Metadata;
 
 pub mod call_site_finder;
+pub mod private_members;
 
 /// Typed representation of a `.fmm` sidecar file for serde_yaml deserialization.
 /// Handles both v0.2 (exports as list) and v0.3 (exports as map with line ranges).

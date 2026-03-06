@@ -3,9 +3,10 @@
 //! Produces `.fmm`-style sidecar YAML for per-file tools and
 //! CLI-style grouped text for search results.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::formatter::yaml_escape;
+use crate::manifest::private_members::PrivateMember;
 use crate::manifest::{ExportLines, FileEntry, GlossaryEntry};
 use crate::search::{BareSearchResult, ExportHitCompact, FileSearchResult};
 
@@ -26,7 +27,13 @@ pub fn format_file_info(file: &str, entry: &FileEntry) -> String {
 }
 
 /// Format file outline: sidecar YAML with symbol sizes and method sub-entries.
-pub fn format_file_outline(file: &str, entry: &FileEntry) -> String {
+/// `private_by_class` is populated only when `include_private: true` is requested.
+/// When `Some`, private members are merged with public methods and annotated `# private`.
+pub fn format_file_outline(
+    file: &str,
+    entry: &FileEntry,
+    private_by_class: Option<&HashMap<String, Vec<PrivateMember>>>,
+) -> String {
     let mut lines = Vec::new();
     lines.push("---".to_string());
     lines.push(format!("file: {}", yaml_escape(file)));
@@ -37,7 +44,7 @@ pub fn format_file_outline(file: &str, entry: &FileEntry) -> String {
     if !entry.exports.is_empty() {
         lines.push("symbols:".to_string());
         for (i, name) in entry.exports.iter().enumerate() {
-            // Collect methods belonging to this class (prefix "ClassName.")
+            // Collect public methods belonging to this class (prefix "ClassName.")
             let class_methods: Vec<_> = entry
                 .methods
                 .as_ref()
@@ -57,32 +64,117 @@ pub fn format_file_outline(file: &str, entry: &FileEntry) -> String {
                 })
                 .unwrap_or_default();
 
+            // Private members for this class (only when include_private requested)
+            let private_members: &[PrivateMember] = private_by_class
+                .and_then(|m| m.get(name.as_str()))
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
+
             if let Some(el) = entry.export_lines.as_ref().and_then(|els| els.get(i)) {
                 let size = el.end.saturating_sub(el.start) + 1;
-                if class_methods.is_empty() {
-                    lines.push(format!(
-                        "  {}: [{}, {}]  # {} lines",
-                        yaml_escape(name),
-                        el.start,
-                        el.end,
-                        size
-                    ));
-                } else {
-                    lines.push(format!(
-                        "  {}: [{}, {}]  # {} lines, {} public methods",
-                        yaml_escape(name),
-                        el.start,
-                        el.end,
-                        size,
-                        class_methods.len()
-                    ));
-                    for (method_name, method_lines) in &class_methods {
+                let private_count = private_members.len();
+
+                match (class_methods.is_empty(), private_count) {
+                    (true, 0) => {
                         lines.push(format!(
-                            "    {}: [{}, {}]",
-                            yaml_escape(method_name),
-                            method_lines.start,
-                            method_lines.end
+                            "  {}: [{}, {}]  # {} lines",
+                            yaml_escape(name),
+                            el.start,
+                            el.end,
+                            size
                         ));
+                    }
+                    (false, 0) => {
+                        lines.push(format!(
+                            "  {}: [{}, {}]  # {} lines, {} public methods",
+                            yaml_escape(name),
+                            el.start,
+                            el.end,
+                            size,
+                            class_methods.len()
+                        ));
+                        for (method_name, method_lines) in &class_methods {
+                            lines.push(format!(
+                                "    {}: [{}, {}]",
+                                yaml_escape(method_name),
+                                method_lines.start,
+                                method_lines.end
+                            ));
+                        }
+                    }
+                    (true, _) => {
+                        lines.push(format!(
+                            "  {}: [{}, {}]  # {} lines, {} private members",
+                            yaml_escape(name),
+                            el.start,
+                            el.end,
+                            size,
+                            private_count
+                        ));
+                        for pm in private_members {
+                            let suffix = if pm.is_method {
+                                "  # private"
+                            } else {
+                                "  # private field"
+                            };
+                            lines.push(format!(
+                                "    {}: [{}, {}]{}",
+                                yaml_escape(&pm.name),
+                                pm.start,
+                                pm.end,
+                                suffix
+                            ));
+                        }
+                    }
+                    (false, _) => {
+                        let private_method_count =
+                            private_members.iter().filter(|m| m.is_method).count();
+                        let private_field_count = private_count - private_method_count;
+                        let mut summary = format!(
+                            "  {}: [{}, {}]  # {} lines, {} public methods, {} private methods",
+                            yaml_escape(name),
+                            el.start,
+                            el.end,
+                            size,
+                            class_methods.len(),
+                            private_method_count
+                        );
+                        if private_field_count > 0 {
+                            summary.push_str(&format!(", {} private fields", private_field_count));
+                        }
+                        lines.push(summary);
+
+                        // Merge public (by start line) and private, interleaved by line number.
+                        // Public methods are sorted by size desc by the collector above; re-sort
+                        // by start line for interleaved display.
+                        let mut public_sorted = class_methods.clone();
+                        public_sorted.sort_by_key(|(_, el)| el.start);
+
+                        // Build a combined list of (start, label, end, is_private)
+                        let mut combined: Vec<(usize, String, usize, bool)> = Vec::new();
+                        for (method_name, method_lines) in &public_sorted {
+                            combined.push((
+                                method_lines.start,
+                                method_name.clone(),
+                                method_lines.end,
+                                false,
+                            ));
+                        }
+                        for pm in private_members {
+                            combined.push((pm.start, pm.name.clone(), pm.end, true));
+                        }
+                        combined.sort_by_key(|(start, _, _, _)| *start);
+
+                        for (start, method_name, end, is_private) in &combined {
+                            let private_label = if *is_private { "  # private" } else { "" };
+                            lines.push(format!(
+                                "    {}: [{}, {}]{}",
+                                yaml_escape(method_name),
+                                start,
+                                end,
+                                private_label
+                            ));
+                        }
                     }
                 }
             } else {
@@ -207,14 +299,35 @@ pub fn format_dependency_graph_transitive(
 }
 
 /// Format read symbol: YAML header + source code.
-pub fn format_read_symbol(symbol: &str, file: &str, el: &ExportLines, source: &str) -> String {
+///
+/// When `line_numbers` is true, each source line is prefixed with its absolute
+/// line number (right-aligned to the width of the last line number). Default: false.
+pub fn format_read_symbol(
+    symbol: &str,
+    file: &str,
+    el: &ExportLines,
+    source: &str,
+    line_numbers: bool,
+) -> String {
     let mut lines = Vec::new();
     lines.push("---".to_string());
     lines.push(format!("symbol: {}", yaml_escape(symbol)));
     lines.push(format!("file: {}", yaml_escape(file)));
     lines.push(format!("lines: [{}, {}]", el.start, el.end));
     lines.push("---".to_string());
-    lines.push(source.to_string());
+
+    if line_numbers {
+        let source_lines: Vec<&str> = source.lines().collect();
+        let last_line = el.start + source_lines.len().saturating_sub(1);
+        let width = last_line.to_string().len();
+        for (i, line) in source_lines.iter().enumerate() {
+            let lineno = el.start + i;
+            lines.push(format!("{:>width$}  {}", lineno, line));
+        }
+    } else {
+        lines.push(source.to_string());
+    }
+
     lines.join("\n")
 }
 
@@ -814,7 +927,7 @@ mod tests {
                 ("NestFactoryStatic.createApplicationContext", 132, 158),
             ],
         );
-        let out = format_file_outline("src/factory.ts", &entry);
+        let out = format_file_outline("src/factory.ts", &entry, None);
 
         // Class line shows method count
         assert!(out.contains("NestFactoryStatic: [43, 381]"));
@@ -839,7 +952,7 @@ mod tests {
                 ("MyClass.medium", 160, 189), // 29 lines
             ],
         );
-        let out = format_file_outline("src/my.ts", &entry);
+        let out = format_file_outline("src/my.ts", &entry, None);
         let large_pos = out.find("large:").unwrap();
         let medium_pos = out.find("medium:").unwrap();
         let small_pos = out.find("small:").unwrap();
@@ -896,7 +1009,7 @@ mod tests {
     #[test]
     fn file_outline_no_methods_unchanged() {
         let entry = make_entry_with_methods(vec![("foo", 1, 10), ("bar", 12, 20)], vec![]);
-        let out = format_file_outline("src/mod.ts", &entry);
+        let out = format_file_outline("src/mod.ts", &entry, None);
         assert!(out.contains("  foo: [1, 10]  # 10 lines"));
         assert!(out.contains("  bar: [12, 20]  # 9 lines"));
         assert!(!out.contains("public methods"));
@@ -977,5 +1090,51 @@ mod tests {
             "non-circular entry wrong; got:\n{}",
             out
         );
+    }
+
+    // ALP-829: format_read_symbol line_numbers
+    #[test]
+    fn read_symbol_line_numbers_false_unchanged() {
+        let el = ExportLines { start: 10, end: 12 };
+        let source = "fn foo() {\n  bar();\n}";
+        let out = format_read_symbol("foo", "src/x.rs", &el, source, false);
+        assert!(out.contains("fn foo() {"), "source should appear verbatim");
+        assert!(!out.contains("10  "), "no line numbers when flag=false");
+    }
+
+    #[test]
+    fn read_symbol_line_numbers_true_prepends_numbers() {
+        let el = ExportLines { start: 10, end: 12 };
+        let source = "fn foo() {\n  bar();\n}";
+        let out = format_read_symbol("foo", "src/x.rs", &el, source, true);
+        assert!(
+            out.contains("10  fn foo() {"),
+            "line 10 missing; got:\n{}",
+            out
+        );
+        assert!(
+            out.contains("11    bar();"),
+            "line 11 missing; got:\n{}",
+            out
+        );
+        assert!(out.contains("12  }"), "line 12 missing; got:\n{}", out);
+    }
+
+    #[test]
+    fn read_symbol_line_numbers_aligned_to_max_width() {
+        // Lines 99-101: width=3, so numbers should be right-aligned
+        let el = ExportLines {
+            start: 99,
+            end: 101,
+        };
+        let source = "a\nb\nc";
+        let out = format_read_symbol("x", "f.ts", &el, source, true);
+        assert!(
+            out.contains(" 99  a"),
+            "line 99 not right-aligned; got:\n{}",
+            out
+        );
+        assert!(out.contains("100  b"), "line 100 missing; got:\n{}", out);
+        assert!(out.contains("101  c"), "line 101 missing; got:\n{}", out);
     }
 }
