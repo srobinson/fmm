@@ -66,4 +66,6 @@ pub(super) struct GlossaryArgs {
     pub(super) pattern: Option<String>,
     pub(super) limit: Option<usize>,
     pub(super) mode: Option<String>,
+    /// ALP-883: "named" (default) = Layer 2 only; "call-site" = Layer 2 + Layer 3 tree-sitter.
+    pub(super) precision: Option<String>,
 }

@@ -605,11 +605,12 @@ fn setup_bare_fn_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
 
 #[test]
 fn glossary_bare_function_call_site_precision_filters_non_callers() {
+    // ALP-883: Layer 3 (call-site verification) is opt-in via precision: "call-site".
     let (_tmp, server) = setup_bare_fn_server();
     let text = call_tool_text(
         &server,
         "fmm_glossary",
-        json!({"pattern": "scheduleUpdate"}),
+        json!({"pattern": "scheduleUpdate", "precision": "call-site"}),
     );
     // Direct and aliased callers must appear
     assert!(
@@ -622,10 +623,10 @@ fn glossary_bare_function_call_site_precision_filters_non_callers() {
         "aliased caller should appear; got:\n{}",
         text
     );
-    // Importer-only should be excluded
+    // Importer-only should be excluded by Layer 3
     assert!(
         !text.contains("importer_only.ts"),
-        "importer-only should be excluded; got:\n{}",
+        "importer-only should be excluded by Layer 3; got:\n{}",
         text
     );
 }

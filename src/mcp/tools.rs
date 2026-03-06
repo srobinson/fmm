@@ -714,6 +714,8 @@ pub(super) fn tool_glossary(
         "all" => crate::manifest::GlossaryMode::All,
         _ => crate::manifest::GlossaryMode::Source,
     };
+    // ALP-883: "named" (default) = Layer 2 only; "call-site" = Layer 2 + Layer 3 tree-sitter.
+    let run_layer3 = args.precision.as_deref() == Some("call-site");
 
     let all_entries = manifest.build_glossary(pattern, mode);
     let total_matched = all_entries.len();
@@ -833,16 +835,43 @@ pub(super) fn tool_glossary(
                     source.layer2_excluded_count = l2_excluded;
                     source.layer2_namespace_callers = l2_ns;
 
-                    // Layer 3: call-site verification (tree-sitter) on the Layer 2 survivors.
-                    // Removes dead imports and annotates re-exports.
-                    let (confirmed, ns_callers) =
-                        crate::manifest::call_site_finder::find_bare_function_callers(
-                            root,
-                            pattern,
-                            &source.used_by,
-                        );
-                    source.used_by = confirmed;
-                    source.namespace_callers = ns_callers;
+                    // Layer 3: call-site verification (tree-sitter) — opt-in via precision: "call-site".
+                    // Removes dead imports and annotates re-exports. Runs on the smaller Layer 2
+                    // set, making tree-sitter cheaper on large codebases.
+                    if run_layer3 {
+                        let l2_survivors = source.used_by.clone();
+                        let (confirmed, ns_callers) =
+                            crate::manifest::call_site_finder::find_bare_function_callers(
+                                root,
+                                pattern,
+                                &l2_survivors,
+                            );
+
+                        // Detect re-exports: files excluded by Layer 3 that also export the symbol.
+                        // These are NOT callers but they ARE impacted by a rename.
+                        let confirmed_set: std::collections::HashSet<&str> =
+                            confirmed.iter().map(|s| s.as_str()).collect();
+                        let ns_set: std::collections::HashSet<&str> =
+                            ns_callers.iter().map(|(s, _)| s.as_str()).collect();
+                        let reexports: Vec<String> = l2_survivors
+                            .iter()
+                            .filter(|c| {
+                                !confirmed_set.contains(c.as_str()) && !ns_set.contains(c.as_str())
+                            })
+                            .filter(|c| {
+                                manifest
+                                    .export_all
+                                    .get(pattern)
+                                    .map(|locs| locs.iter().any(|loc| &loc.file == *c))
+                                    .unwrap_or(false)
+                            })
+                            .cloned()
+                            .collect();
+
+                        source.used_by = confirmed;
+                        source.namespace_callers = ns_callers;
+                        source.reexport_files = reexports;
+                    }
                 }
             }
         }

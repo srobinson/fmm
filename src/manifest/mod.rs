@@ -742,6 +742,10 @@ pub struct GlossarySource {
     /// Symbol use cannot be verified without call-site analysis; disclosed separately.
     #[serde(skip)]
     pub layer2_namespace_callers: Vec<String>,
+    /// ALP-883: files that re-export the symbol but have no call site (Layer 3 detection).
+    /// These ARE impacted by a rename — disclosed separately as "re-exports only".
+    #[serde(skip)]
+    pub reexport_files: Vec<String>,
 }
 
 /// Returns true if a file path is a test file (by path conventions only, ignoring symbol name).
@@ -822,6 +826,7 @@ impl Manifest {
                             namespace_callers: Vec::new(),
                             layer2_excluded_count: 0,
                             layer2_namespace_callers: Vec::new(),
+                            reexport_files: Vec::new(),
                         }
                     })
                     .collect();
@@ -869,6 +874,7 @@ impl Manifest {
                     namespace_callers: Vec::new(),
                     layer2_excluded_count: 0,
                     layer2_namespace_callers: Vec::new(),
+                    reexport_files: Vec::new(),
                 }],
             });
         }

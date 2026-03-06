@@ -910,6 +910,21 @@ pub fn format_glossary(entries: &[GlossaryEntry], total_matched: usize, limit: u
                     src_basename,
                 ));
             }
+            // ALP-883: re-export-only files — impacted by rename but not callers.
+            if !src.reexport_files.is_empty() {
+                lines.push(format!(
+                    "    # re-exports only ({} {} — rename required but no call site):",
+                    src.reexport_files.len(),
+                    if src.reexport_files.len() == 1 {
+                        "file"
+                    } else {
+                        "files"
+                    },
+                ));
+                for f in &src.reexport_files {
+                    lines.push(format!("    #   {}", yaml_escape(f)));
+                }
+            }
         }
     }
     if total_matched > limit {
