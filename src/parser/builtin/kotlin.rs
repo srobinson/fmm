@@ -3,7 +3,7 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Language, Parser as TSParser};
 
-use super::query_helpers::{has_modifier, make_parser, push_export};
+use super::query_helpers::{extract_child_text, has_modifier, make_parser, push_export};
 
 pub struct KotlinParser {
     parser: TSParser,
@@ -14,28 +14,6 @@ impl KotlinParser {
         let language: Language = tree_sitter_kotlin_ng::LANGUAGE.into();
         let parser = make_parser(&language, "Kotlin")?;
         Ok(Self { parser })
-    }
-
-    /// Extract name from `identifier` child.
-    fn get_identifier(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "identifier" {
-                return child.utf8_text(source_bytes).ok().map(|s| s.to_string());
-            }
-        }
-        None
-    }
-
-    /// Extract name from `variable_declaration` child.
-    fn get_variable_name(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "variable_declaration" {
-                return child.utf8_text(source_bytes).ok().map(|s| s.to_string());
-            }
-        }
-        None
     }
 
     /// Count companion objects inside class bodies (recursive walk).
@@ -69,7 +47,9 @@ impl KotlinParser {
                         "modifiers",
                         &["private", "internal", "protected"],
                     ) {
-                        if let Some(class_name) = Self::get_identifier(&child, source_bytes) {
+                        if let Some(class_name) =
+                            extract_child_text(&child, source_bytes, "identifier")
+                        {
                             push_export(
                                 &mut exports,
                                 &mut seen,
@@ -91,9 +71,11 @@ impl KotlinParser {
                                                 &["private", "internal", "protected"],
                                             )
                                         {
-                                            if let Some(method_name) =
-                                                Self::get_identifier(&body_child, source_bytes)
-                                            {
+                                            if let Some(method_name) = extract_child_text(
+                                                &body_child,
+                                                source_bytes,
+                                                "identifier",
+                                            ) {
                                                 let key = format!("{}.{}", class_name, method_name);
                                                 if seen.insert(key) {
                                                     exports.push(ExportEntry::method(
@@ -118,7 +100,7 @@ impl KotlinParser {
                         "modifiers",
                         &["private", "internal", "protected"],
                     ) {
-                        if let Some(name) = Self::get_identifier(&child, source_bytes) {
+                        if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
                             push_export(
                                 &mut exports,
                                 &mut seen,
@@ -136,7 +118,7 @@ impl KotlinParser {
                         "modifiers",
                         &["private", "internal", "protected"],
                     ) {
-                        if let Some(name) = Self::get_identifier(&child, source_bytes) {
+                        if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
                             push_export(
                                 &mut exports,
                                 &mut seen,
@@ -154,7 +136,9 @@ impl KotlinParser {
                         "modifiers",
                         &["private", "internal", "protected"],
                     ) {
-                        if let Some(name) = Self::get_variable_name(&child, source_bytes) {
+                        if let Some(name) =
+                            extract_child_text(&child, source_bytes, "variable_declaration")
+                        {
                             push_export(
                                 &mut exports,
                                 &mut seen,
@@ -172,7 +156,7 @@ impl KotlinParser {
                         "modifiers",
                         &["private", "internal", "protected"],
                     ) {
-                        if let Some(name) = Self::get_identifier(&child, source_bytes) {
+                        if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
                             push_export(
                                 &mut exports,
                                 &mut seen,

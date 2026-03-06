@@ -3,7 +3,7 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Language, Parser as TSParser};
 
-use super::query_helpers::{has_modifier, make_parser, push_export};
+use super::query_helpers::{extract_child_text, has_modifier, make_parser, push_export};
 
 pub struct SwiftParser {
     parser: TSParser,
@@ -26,28 +26,6 @@ impl SwiftParser {
                 "enum" => return Some("enum"),
                 "extension" => return Some("extension"),
                 _ => {}
-            }
-        }
-        None
-    }
-
-    /// Extract the type name from a class_declaration (type_identifier child).
-    fn get_type_name(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "type_identifier" {
-                return child.utf8_text(source_bytes).ok().map(|s| s.to_string());
-            }
-        }
-        None
-    }
-
-    /// Extract function name (simple_identifier child).
-    fn get_func_name(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "simple_identifier" {
-                return child.utf8_text(source_bytes).ok().map(|s| s.to_string());
             }
         }
         None
@@ -89,7 +67,9 @@ impl SwiftParser {
                 for body_child in child.children(&mut body_cursor) {
                     match body_child.kind() {
                         "function_declaration" => {
-                            if let Some(name) = Self::get_func_name(&body_child, source_bytes) {
+                            if let Some(name) =
+                                extract_child_text(&body_child, source_bytes, "simple_identifier")
+                            {
                                 push_export(
                                     exports,
                                     seen,
@@ -144,7 +124,9 @@ impl SwiftParser {
                         }
                         Some("class") | Some("struct") | Some("enum") => {
                             if is_public {
-                                if let Some(name) = Self::get_type_name(&child, source_bytes) {
+                                if let Some(name) =
+                                    extract_child_text(&child, source_bytes, "type_identifier")
+                                {
                                     push_export(
                                         &mut exports,
                                         &mut seen,
@@ -160,7 +142,9 @@ impl SwiftParser {
                 }
                 "protocol_declaration" => {
                     if has_modifier(&child, source_bytes, "modifiers", &["public", "open"]) {
-                        if let Some(name) = Self::get_type_name(&child, source_bytes) {
+                        if let Some(name) =
+                            extract_child_text(&child, source_bytes, "type_identifier")
+                        {
                             push_export(
                                 &mut exports,
                                 &mut seen,
@@ -173,7 +157,9 @@ impl SwiftParser {
                 }
                 "function_declaration" => {
                     if has_modifier(&child, source_bytes, "modifiers", &["public", "open"]) {
-                        if let Some(name) = Self::get_func_name(&child, source_bytes) {
+                        if let Some(name) =
+                            extract_child_text(&child, source_bytes, "simple_identifier")
+                        {
                             push_export(
                                 &mut exports,
                                 &mut seen,
@@ -199,7 +185,9 @@ impl SwiftParser {
                 }
                 "typealias_declaration" => {
                     if has_modifier(&child, source_bytes, "modifiers", &["public", "open"]) {
-                        if let Some(name) = Self::get_type_name(&child, source_bytes) {
+                        if let Some(name) =
+                            extract_child_text(&child, source_bytes, "type_identifier")
+                        {
                             push_export(
                                 &mut exports,
                                 &mut seen,

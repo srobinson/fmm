@@ -195,6 +195,44 @@ pub fn has_modifier(
     false
 }
 
+/// Return the text of the first direct child of `node` whose kind equals `target_kind`.
+///
+/// This is the single-level child search that appears across 10+ parsers under names
+/// like `get_identifier`, `get_type_name`, `extract_name`, and `get_func_name`.
+/// Use it directly at call sites rather than wrapping it in a private helper per parser.
+///
+/// For multi-level walks (e.g. `pattern → simple_identifier`) keep a bespoke function.
+pub fn extract_child_text(
+    node: &tree_sitter::Node,
+    source_bytes: &[u8],
+    target_kind: &str,
+) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == target_kind {
+            return child.utf8_text(source_bytes).ok().map(|s| s.to_string());
+        }
+    }
+    None
+}
+
+/// Return the text of the named field `field_name` on `node`.
+///
+/// Shorthand for the common pattern:
+/// ```ignore
+/// node.child_by_field_name(field_name)?.utf8_text(source_bytes).ok().map(|s| s.to_string())
+/// ```
+pub fn extract_field_text(
+    node: &tree_sitter::Node,
+    source_bytes: &[u8],
+    field_name: &str,
+) -> Option<String> {
+    node.child_by_field_name(field_name)?
+        .utf8_text(source_bytes)
+        .ok()
+        .map(|s| s.to_string())
+}
+
 /// Push an export entry if `name` has not already been seen.
 ///
 /// Encapsulates the `seen.insert` + `ExportEntry::new` pattern repeated across

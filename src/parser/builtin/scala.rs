@@ -3,7 +3,7 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Language, Parser as TSParser};
 
-use super::query_helpers::make_parser;
+use super::query_helpers::{extract_child_text, make_parser};
 
 pub struct ScalaParser {
     parser: TSParser,
@@ -78,17 +78,6 @@ impl ScalaParser {
         false
     }
 
-    /// Extract the name identifier from a definition node.
-    fn extract_name(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "identifier" {
-                return child.utf8_text(source_bytes).ok().map(|s| s.to_string());
-            }
-        }
-        None
-    }
-
     fn extract_exports(
         &self,
         source: &str,
@@ -123,7 +112,7 @@ impl ScalaParser {
             match child.kind() {
                 "class_definition" => {
                     if !Self::is_private_or_protected(&child, source_bytes) {
-                        if let Some(name) = Self::extract_name(&child, source_bytes) {
+                        if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
                             if Self::is_case_class(&child) {
                                 case_classes.push(name.clone());
                             }
@@ -140,7 +129,7 @@ impl ScalaParser {
                 }
                 "trait_definition" => {
                     if !Self::is_private_or_protected(&child, source_bytes) {
-                        if let Some(name) = Self::extract_name(&child, source_bytes) {
+                        if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
                             exports.push(ExportEntry::new(
                                 name,
                                 child.start_position().row + 1,
@@ -151,7 +140,7 @@ impl ScalaParser {
                 }
                 "object_definition" => {
                     if !Self::is_private_or_protected(&child, source_bytes) {
-                        if let Some(name) = Self::extract_name(&child, source_bytes) {
+                        if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
                             exports.push(ExportEntry::new(
                                 name,
                                 child.start_position().row + 1,
@@ -165,7 +154,7 @@ impl ScalaParser {
                         if Self::has_implicit(&child, source_bytes) {
                             implicit_count += 1;
                         }
-                        if let Some(name) = Self::extract_name(&child, source_bytes) {
+                        if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
                             exports.push(ExportEntry::new(
                                 name,
                                 child.start_position().row + 1,
@@ -179,7 +168,7 @@ impl ScalaParser {
                         if Self::has_implicit(&child, source_bytes) {
                             implicit_count += 1;
                         }
-                        if let Some(name) = Self::extract_name(&child, source_bytes) {
+                        if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
                             exports.push(ExportEntry::new(
                                 name,
                                 child.start_position().row + 1,

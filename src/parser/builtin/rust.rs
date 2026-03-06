@@ -1,4 +1,4 @@
-use super::query_helpers::{compile_query, make_parser};
+use super::query_helpers::{compile_query, extract_field_text, make_parser};
 use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -292,15 +292,13 @@ impl RustParser {
                         continue;
                     }
 
-                    if let Some(name_node) = child.child_by_field_name("name") {
-                        if let Ok(method_name) = name_node.utf8_text(source_bytes) {
-                            entries.push(ExportEntry::method(
-                                method_name.to_string(),
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                                type_name.clone(),
-                            ));
-                        }
+                    if let Some(method_name) = extract_field_text(&child, source_bytes, "name") {
+                        entries.push(ExportEntry::method(
+                            method_name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                            type_name.clone(),
+                        ));
                     }
                 }
             }
@@ -619,19 +617,17 @@ impl RustParser {
                 }
                 "macro_definition" => {
                     if self.attrs_contain(source_bytes, &pending_attrs, "macro_export") {
-                        if let Some(name_node) = child.child_by_field_name("name") {
-                            if let Ok(name) = name_node.utf8_text(source_bytes) {
-                                let start_line = pending_attrs
-                                    .first()
-                                    .map(|a| a.start_position().row + 1)
-                                    .unwrap_or(child.start_position().row + 1);
-                                let end_line = child.end_position().row + 1;
-                                results.push(ExportEntry::new(
-                                    format!("{}!", name),
-                                    start_line,
-                                    end_line,
-                                ));
-                            }
+                        if let Some(name) = extract_field_text(&child, source_bytes, "name") {
+                            let start_line = pending_attrs
+                                .first()
+                                .map(|a| a.start_position().row + 1)
+                                .unwrap_or(child.start_position().row + 1);
+                            let end_line = child.end_position().row + 1;
+                            results.push(ExportEntry::new(
+                                format!("{}!", name),
+                                start_line,
+                                end_line,
+                            ));
                         }
                     }
                     pending_attrs.clear();
@@ -714,10 +710,8 @@ impl RustParser {
                 || self.attr_item_has_name(source_bytes, *attr, "proc_macro")
             {
                 // Use the function name directly
-                if let Some(name_node) = func_node.child_by_field_name("name") {
-                    if let Ok(name) = name_node.utf8_text(source_bytes) {
-                        return Some(ExportEntry::new(name.to_string(), start_line, end_line));
-                    }
+                if let Some(name) = extract_field_text(&func_node, source_bytes, "name") {
+                    return Some(ExportEntry::new(name, start_line, end_line));
                 }
             }
         }
@@ -811,18 +805,14 @@ impl RustParser {
         match node.kind() {
             "scoped_identifier" => {
                 // `crate::path::Name` — the `name` field is the rightmost identifier
-                if let Some(name_node) = node.child_by_field_name("name") {
-                    if let Ok(name) = name_node.utf8_text(source_bytes) {
-                        results.push(ExportEntry::new(name.to_string(), line, line));
-                    }
+                if let Some(name) = extract_field_text(&node, source_bytes, "name") {
+                    results.push(ExportEntry::new(name, line, line));
                 }
             }
             "use_as_clause" => {
                 // `crate::X as Alias` — use the alias field
-                if let Some(alias_node) = node.child_by_field_name("alias") {
-                    if let Ok(name) = alias_node.utf8_text(source_bytes) {
-                        results.push(ExportEntry::new(name.to_string(), line, line));
-                    }
+                if let Some(name) = extract_field_text(&node, source_bytes, "alias") {
+                    results.push(ExportEntry::new(name, line, line));
                 }
             }
             "scoped_use_list" => {
