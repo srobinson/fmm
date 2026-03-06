@@ -559,6 +559,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm ls src/</bold>                     <dim># Files under src/</dim>
   <dim>$</dim> <bold>fmm ls --sort-by loc</bold>            <dim># Heaviest files first</dim>
   <dim>$</dim> <bold>fmm ls --sort-by exports</bold>        <dim># Most exports first</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by modified</bold>       <dim># Most recently changed first</dim>
   <dim>$</dim> <bold>fmm ls src/ --json</bold>              <dim># JSON output</dim>"#),
     )]
     Ls {
@@ -566,8 +567,8 @@ pub enum Commands {
         #[arg(value_name = "DIR")]
         directory: Option<String>,
 
-        /// Sort field: loc (default), name, exports, downstream
-        #[arg(long = "sort-by", default_value = "loc", value_parser = ["name", "loc", "exports", "downstream"])]
+        /// Sort field: loc (default), name, exports, downstream, modified
+        #[arg(long = "sort-by", default_value = "loc", value_parser = ["name", "loc", "exports", "downstream", "modified"])]
         sort_by: String,
 
         /// Sort order: asc or desc (default depends on sort-by)

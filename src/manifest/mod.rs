@@ -51,6 +51,9 @@ pub struct FileEntry {
     pub imports: Vec<String>,
     pub dependencies: Vec<String>,
     pub loc: usize,
+    /// Last-modified date from the sidecar `modified:` field (YYYY-MM-DD). None if absent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modified: Option<String>,
 }
 
 impl From<Metadata> for FileEntry {
@@ -90,6 +93,7 @@ impl From<Metadata> for FileEntry {
             imports: metadata.imports,
             dependencies: metadata.dependencies,
             loc: metadata.loc,
+            modified: None,
         }
     }
 }
@@ -560,6 +564,12 @@ fn parse_sidecar(content: &str) -> Option<(String, FileEntry)> {
         _ => None,
     };
 
+    let modified = data
+        ._extra
+        .get("modified")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
     Some((
         data.file,
         FileEntry {
@@ -569,6 +579,7 @@ fn parse_sidecar(content: &str) -> Option<(String, FileEntry)> {
             imports: data.imports.unwrap_or_default(),
             dependencies: data.dependencies.unwrap_or_default(),
             loc: data.loc.unwrap_or(0),
+            modified,
         },
     ))
 }

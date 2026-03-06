@@ -18,10 +18,10 @@ exports:
   status: [24, 24]
   watch: [25, 25]
   Cli: [121, 132]
-  Commands: [135, 661]
+  Commands: [135, 670]
 imports: [anyhow, clap, clap_complete, color_print, glossary, ignore, init, navigate, search, sidecar, status, std, watch]
 dependencies: ['crate::config']
-loc: 856
-modified: 2026-03-05
+loc: 865
+modified: 2026-03-06
 rust:
   derives: [Parser, Subcommand]

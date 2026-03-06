@@ -301,21 +301,23 @@ pub fn format_list_exports_all(
 
 /// Format list files result as compact YAML with optional pagination metadata.
 ///
+/// Entry tuple: `(path, loc, exports, downstream_count, modified)`.
+///
 /// - `directory`: directory prefix filter, shown in header
 /// - `files`: the current page of entries (already sliced by offset/limit)
 /// - `total`: total number of matching files before pagination
 /// - `total_loc`: sum of LOC across all matching files (full set, not page)
 /// - `largest`: path and LOC of the largest file in the full set
 /// - `offset`: the page start index (0-based)
-/// Entry tuple for format_list_files: (path, loc, exports, downstream_count).
-/// `downstream_count` is the number of direct importers from the reverse_deps index.
+/// - `show_modified`: when true, include the modified date in each file row
 pub fn format_list_files(
     directory: Option<&str>,
-    files: &[(&str, usize, usize, usize)],
+    files: &[(&str, usize, usize, usize, Option<&str>)],
     total: usize,
     total_loc: usize,
     largest: Option<(&str, usize)>,
     offset: usize,
+    show_modified: bool,
 ) -> String {
     let mut lines = Vec::new();
     lines.push("---".to_string());
@@ -350,19 +352,32 @@ pub fn format_list_files(
     if !files.is_empty() {
         lines.push("files:".to_string());
         // Column width for alignment
-        let path_width = files.iter().map(|(p, _, _, _)| p.len()).max().unwrap_or(0);
-        for (path, loc, exports, downstream) in files {
+        let path_width = files
+            .iter()
+            .map(|(p, _, _, _, _)| p.len())
+            .max()
+            .unwrap_or(0);
+        for (path, loc, exports, downstream, modified) in files {
             let downstream_str = if *downstream > 0 {
                 format!(", ↓ {} downstream", downstream)
             } else {
                 String::new()
             };
+            let modified_str = if show_modified {
+                match modified {
+                    Some(d) => format!(", modified: {}", d),
+                    None => String::new(),
+                }
+            } else {
+                String::new()
+            };
             lines.push(format!(
-                "  - {:<pw$}  # loc: {}, exports: {}{}",
+                "  - {:<pw$}  # loc: {}, exports: {}{}{}",
                 path,
                 loc,
                 exports,
                 downstream_str,
+                modified_str,
                 pw = path_width,
             ));
         }
@@ -720,6 +735,7 @@ mod tests {
             imports: vec![],
             dependencies: vec![],
             loc: 400,
+            modified: None,
         }
     }
 
@@ -780,10 +796,10 @@ mod tests {
     fn list_files_summary_header_included() {
         // Two files: alpha (100 LOC, 2 exports, 5 downstream) and beta (30 LOC, 1 export, 0 downstream)
         let files = vec![
-            ("src/alpha.ts", 100usize, 2usize, 5usize),
-            ("src/beta.ts", 30, 1, 0),
+            ("src/alpha.ts", 100usize, 2usize, 5usize, None),
+            ("src/beta.ts", 30, 1, 0, None),
         ];
-        let out = format_list_files(None, &files, 2, 130, Some(("src/alpha.ts", 100)), 0);
+        let out = format_list_files(None, &files, 2, 130, Some(("src/alpha.ts", 100)), 0, false);
         assert!(
             out.contains("summary:"),
             "summary line should appear; got:\n{}",

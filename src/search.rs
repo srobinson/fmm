@@ -558,6 +558,7 @@ mod tests {
             imports: vec![],
             dependencies: deps.iter().map(|s| s.to_string()).collect(),
             loc,
+            modified: None,
         }
     }
 

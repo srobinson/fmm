@@ -774,10 +774,7 @@ fn list_files_filter_source_excludes_test_files() {
     };
 
     let result = server
-        .call_tool(
-            "fmm_list_files",
-            serde_json::json!({"filter": "source"}),
-        )
+        .call_tool("fmm_list_files", serde_json::json!({"filter": "source"}))
         .unwrap();
     let text = result["content"][0]["text"].as_str().unwrap();
     assert!(
@@ -828,10 +825,7 @@ fn list_files_filter_tests_returns_only_test_files() {
     };
 
     let result = server
-        .call_tool(
-            "fmm_list_files",
-            serde_json::json!({"filter": "tests"}),
-        )
+        .call_tool("fmm_list_files", serde_json::json!({"filter": "tests"}))
         .unwrap();
     let text = result["content"][0]["text"].as_str().unwrap();
     assert!(
@@ -855,16 +849,117 @@ fn list_files_filter_tests_returns_only_test_files() {
 fn list_files_filter_invalid_returns_error() {
     let server = list_files_sort_manifest();
     let result = server
-        .call_tool(
-            "fmm_list_files",
-            serde_json::json!({"filter": "bogus"}),
-        )
+        .call_tool("fmm_list_files", serde_json::json!({"filter": "bogus"}))
         .unwrap();
     let text = result["content"][0]["text"].as_str().unwrap();
     assert!(
         text.starts_with("ERROR:"),
         "invalid filter must return ERROR:; got: {}",
         text
+    );
+}
+
+// --- ALP-821: fmm_list_files sort_by=modified ---
+
+fn list_files_modified_manifest() -> McpServer {
+    use crate::manifest::{FileEntry, Manifest};
+    let mut manifest = Manifest::new();
+    // Insert directly so we can set modified dates
+    manifest.files.insert(
+        "src/alpha.ts".to_string(),
+        FileEntry {
+            exports: vec!["A".to_string()],
+            export_lines: None,
+            methods: None,
+            imports: vec![],
+            dependencies: vec![],
+            loc: 100,
+            modified: Some("2026-03-01".to_string()),
+        },
+    );
+    manifest.files.insert(
+        "src/beta.ts".to_string(),
+        FileEntry {
+            exports: vec!["B".to_string()],
+            export_lines: None,
+            methods: None,
+            imports: vec![],
+            dependencies: vec![],
+            loc: 30,
+            modified: Some("2026-03-05".to_string()),
+        },
+    );
+    manifest.files.insert(
+        "src/gamma.ts".to_string(),
+        FileEntry {
+            exports: vec!["C".to_string()],
+            export_lines: None,
+            methods: None,
+            imports: vec![],
+            dependencies: vec![],
+            loc: 60,
+            modified: Some("2026-02-20".to_string()),
+        },
+    );
+    McpServer {
+        manifest: Some(manifest),
+        root: std::path::PathBuf::from("/tmp"),
+    }
+}
+
+#[test]
+fn list_files_sort_by_modified_defaults_to_desc() {
+    let server = list_files_modified_manifest();
+    let order = list_files_order(&server, serde_json::json!({"sort_by": "modified"}));
+    assert_eq!(
+        order,
+        vec!["src/beta.ts", "src/alpha.ts", "src/gamma.ts"],
+        "sort_by=modified should default to desc (most recent first), got: {:?}",
+        order
+    );
+}
+
+#[test]
+fn list_files_sort_by_modified_asc() {
+    let server = list_files_modified_manifest();
+    let order = list_files_order(
+        &server,
+        serde_json::json!({"sort_by": "modified", "order": "asc"}),
+    );
+    assert_eq!(
+        order,
+        vec!["src/gamma.ts", "src/alpha.ts", "src/beta.ts"],
+        "sort_by=modified order=asc should return oldest first, got: {:?}",
+        order
+    );
+}
+
+#[test]
+fn list_files_sort_by_modified_shows_date_in_output() {
+    let server = list_files_modified_manifest();
+    let result = server
+        .call_tool("fmm_list_files", serde_json::json!({"sort_by": "modified"}))
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("modified: 2026-03-05"),
+        "output should show modified date, got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_files_sort_by_modified_composable_with_filter() {
+    let server = list_files_modified_manifest();
+    let order = list_files_order(
+        &server,
+        serde_json::json!({"sort_by": "modified", "directory": "src/"}),
+    );
+    assert_eq!(
+        order,
+        vec!["src/beta.ts", "src/alpha.ts", "src/gamma.ts"],
+        "sort_by=modified + directory filter should work, got: {:?}",
+        order
     );
 }
 

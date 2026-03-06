@@ -2,7 +2,7 @@
 file: src/mcp/args.rs
 fmm: v0.3+0.1.24
 imports: [serde]
-loc: 59
-modified: 2026-03-05
+loc: 61
+modified: 2026-03-06
 rust:
   derives: [Debug, Deserialize]
