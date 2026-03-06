@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.swift
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   NetworkManager: [11, 27]
   BaseViewController: [29, 37]
@@ -20,7 +20,7 @@ exports:
   uniqueElements: [142, 150]
 imports: [Foundation, MyTestModule, UIKit]
 loc: 151
-modified: 2026-03-05
+modified: 2026-03-06
 swift:
   extensions: 3
   protocols: 2

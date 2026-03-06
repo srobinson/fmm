@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.cs
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   DataService: [8, 29]
   Transform: [18, 22]
@@ -9,7 +9,7 @@ exports:
   ProcessConfig: [49, 54]
 imports: [System]
 loc: 60
-modified: 2026-03-05
+modified: 2026-03-06
 csharp:
   attributes: [Obsolete, Required, Serializable]
   namespaces: [MyApp.Models, MyApp.Services]

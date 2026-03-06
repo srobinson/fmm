@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.java
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   DataProcessor: [8, 39]
   Repository: [41, 45]
@@ -13,6 +13,6 @@ methods:
 imports: [java.util, org.springframework]
 dependencies: [java.util.List, java.util.Map, java.util.Optional, org.springframework.stereotype.Service]
 loc: 57
-modified: 2026-03-05
+modified: 2026-03-06
 java:
   annotations: [Deprecated, FunctionalInterface, Override, Service]

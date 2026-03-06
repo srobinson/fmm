@@ -1,10 +1,10 @@
 ---
 file: examples/demo-project/src/auth/middleware.ts
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   AuthenticatedRequest: [5, 8]
   requireAuth: [10, 26]
 imports: [express]
 dependencies: [../config, ./session]
 loc: 26
-modified: 2026-03-05
+modified: 2026-03-06

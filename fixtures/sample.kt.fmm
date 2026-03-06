@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.kt
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   NetworkManager: [15, 21]
   BaseRepository: [23, 25]
@@ -33,7 +33,7 @@ methods:
   ServiceLocator.resolve: [116, 116]
 imports: [java.util, kotlin.collections, org.example]
 loc: 124
-modified: 2026-03-05
+modified: 2026-03-06
 kotlin:
   companion_objects: 1
   data_classes: 2

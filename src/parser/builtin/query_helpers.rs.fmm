@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/query_helpers.rs
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   collect_matches: [7, 25]
   collect_named_matches: [29, 52]
@@ -9,4 +9,4 @@ exports:
 imports: [std, streaming_iterator, tree_sitter]
 dependencies: ['crate::parser']
 loc: 211
-modified: 2026-03-05
+modified: 2026-03-06

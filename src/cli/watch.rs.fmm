@@ -1,9 +1,9 @@
 ---
 file: src/cli/watch.rs
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   watch: [16, 80]
 imports: [anyhow, colored, notify, notify_debouncer_full, std]
 dependencies: ['crate::config', 'crate::extractor']
 loc: 413
-modified: 2026-03-05
+modified: 2026-03-06

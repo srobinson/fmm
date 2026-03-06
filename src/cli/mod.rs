@@ -559,6 +559,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm ls src/</bold>                     <dim># Files under src/</dim>
   <dim>$</dim> <bold>fmm ls --sort-by loc</bold>            <dim># Heaviest files first</dim>
   <dim>$</dim> <bold>fmm ls --sort-by exports</bold>        <dim># Most exports first</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by modified</bold>       <dim># Most recently changed first</dim>
   <dim>$</dim> <bold>fmm ls src/ --json</bold>              <dim># JSON output</dim>"#),
     )]
     Ls {
@@ -566,13 +567,21 @@ pub enum Commands {
         #[arg(value_name = "DIR")]
         directory: Option<String>,
 
-        /// Sort field: name (default), loc, exports
-        #[arg(long = "sort-by", default_value = "name", value_parser = ["name", "loc", "exports"])]
+        /// Sort field: loc (default), name, exports, downstream, modified
+        #[arg(long = "sort-by", default_value = "loc", value_parser = ["name", "loc", "exports", "downstream", "modified"])]
         sort_by: String,
 
         /// Sort order: asc or desc (default depends on sort-by)
         #[arg(long, value_parser = ["asc", "desc"])]
         order: Option<String>,
+
+        /// Collapse files into directory buckets (subdir: group by immediate subdirectory)
+        #[arg(long = "group-by", value_parser = ["subdir"])]
+        group_by: Option<String>,
+
+        /// File type filter: all (default), source (exclude tests), tests (only tests)
+        #[arg(long, default_value = "all", value_parser = ["all", "source", "tests"])]
+        filter: String,
 
         /// Output as JSON
         #[arg(short = 'j', long = "json")]

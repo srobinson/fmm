@@ -450,10 +450,11 @@ fn list_files_tool_pagination_limit_and_offset() {
     };
 
     // First page: limit=2, offset=0 — should show src/mod1.rs and src/mod2.rs
+    // Use sort_by=name to get deterministic order (all files have equal LOC).
     let result = server
         .call_tool(
             "fmm_list_files",
-            serde_json::json!({"limit": 2, "offset": 0}),
+            serde_json::json!({"limit": 2, "offset": 0, "sort_by": "name"}),
         )
         .unwrap();
     let text = result["content"][0]["text"].as_str().unwrap();
@@ -476,7 +477,7 @@ fn list_files_tool_pagination_limit_and_offset() {
     let result2 = server
         .call_tool(
             "fmm_list_files",
-            serde_json::json!({"limit": 2, "offset": 2}),
+            serde_json::json!({"limit": 2, "offset": 2, "sort_by": "name"}),
         )
         .unwrap();
     let text2 = result2["content"][0]["text"].as_str().unwrap();
@@ -489,7 +490,7 @@ fn list_files_tool_pagination_limit_and_offset() {
     let result3 = server
         .call_tool(
             "fmm_list_files",
-            serde_json::json!({"limit": 2, "offset": 4}),
+            serde_json::json!({"limit": 2, "offset": 4, "sort_by": "name"}),
         )
         .unwrap();
     let text3 = result3["content"][0]["text"].as_str().unwrap();
@@ -585,13 +586,13 @@ fn list_files_order(server: &McpServer, args: serde_json::Value) -> Vec<String> 
 }
 
 #[test]
-fn list_files_default_sort_is_alphabetical_asc() {
+fn list_files_default_sort_is_loc_desc() {
     let server = list_files_sort_manifest();
     let order = list_files_order(&server, serde_json::json!({}));
     assert_eq!(
         order,
-        vec!["src/alpha.ts", "src/beta.ts", "src/gamma.ts"],
-        "default sort should be alphabetical ascending, got: {:?}",
+        vec!["src/alpha.ts", "src/gamma.ts", "src/beta.ts"],
+        "default sort should be LOC descending (largest first), got: {:?}",
         order
     );
 }
@@ -690,6 +691,275 @@ fn list_files_invalid_order_returns_error() {
         text.contains("order"),
         "error message should mention order, got: {}",
         text
+    );
+}
+
+// --- ALP-818: fmm_list_files group_by=subdir rollup ---
+
+#[test]
+fn list_files_group_by_subdir_buckets_files_by_immediate_dir() {
+    let server = list_files_sort_manifest(); // alpha(100), beta(30), gamma(60) all under src/
+    let result = server
+        .call_tool("fmm_list_files", serde_json::json!({"group_by": "subdir"}))
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    // All three files are directly under src/ — one bucket "src/"
+    assert!(
+        text.contains("src/"),
+        "should show src/ bucket; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("3 files"),
+        "bucket should show 3 files; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("190 LOC"),
+        "bucket should show 190 total LOC; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("summary:"),
+        "summary line should appear; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_files_group_by_invalid_returns_error() {
+    let server = list_files_sort_manifest();
+    let result = server.call_tool("fmm_list_files", serde_json::json!({"group_by": "unknown"}));
+    let text = result.unwrap()["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        text.starts_with("ERROR:"),
+        "invalid group_by must return ERROR:; got: {}",
+        text
+    );
+}
+
+// --- ALP-819: fmm_list_files filter=source / filter=tests ---
+
+#[test]
+fn list_files_filter_source_excludes_test_files() {
+    use crate::manifest::Manifest;
+    use crate::parser::{ExportEntry, Metadata};
+
+    let mut manifest = Manifest::new();
+    manifest.add_file(
+        "src/app.service.ts",
+        Metadata {
+            exports: vec![ExportEntry::new("AppService".to_string(), 1, 20)],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 20,
+        },
+    );
+    manifest.add_file(
+        "src/app.spec.ts",
+        Metadata {
+            exports: vec![],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 15,
+        },
+    );
+
+    let server = McpServer {
+        manifest: Some(manifest),
+        root: std::path::PathBuf::from("/tmp"),
+    };
+
+    let result = server
+        .call_tool("fmm_list_files", serde_json::json!({"filter": "source"}))
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("src/app.service.ts"),
+        "source filter should include service file; got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("src/app.spec.ts"),
+        "source filter should exclude spec file; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("total: 1"),
+        "total should be 1; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_files_filter_tests_returns_only_test_files() {
+    use crate::manifest::Manifest;
+    use crate::parser::{ExportEntry, Metadata};
+
+    let mut manifest = Manifest::new();
+    manifest.add_file(
+        "src/app.service.ts",
+        Metadata {
+            exports: vec![ExportEntry::new("AppService".to_string(), 1, 20)],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 20,
+        },
+    );
+    manifest.add_file(
+        "src/app.spec.ts",
+        Metadata {
+            exports: vec![],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 15,
+        },
+    );
+
+    let server = McpServer {
+        manifest: Some(manifest),
+        root: std::path::PathBuf::from("/tmp"),
+    };
+
+    let result = server
+        .call_tool("fmm_list_files", serde_json::json!({"filter": "tests"}))
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("src/app.spec.ts"),
+        "tests filter should include spec file; got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("src/app.service.ts"),
+        "tests filter should exclude service file; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("total: 1"),
+        "total should be 1; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_files_filter_invalid_returns_error() {
+    let server = list_files_sort_manifest();
+    let result = server
+        .call_tool("fmm_list_files", serde_json::json!({"filter": "bogus"}))
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.starts_with("ERROR:"),
+        "invalid filter must return ERROR:; got: {}",
+        text
+    );
+}
+
+// --- ALP-821: fmm_list_files sort_by=modified ---
+
+fn list_files_modified_manifest() -> McpServer {
+    use crate::manifest::{FileEntry, Manifest};
+    let mut manifest = Manifest::new();
+    // Insert directly so we can set modified dates
+    manifest.files.insert(
+        "src/alpha.ts".to_string(),
+        FileEntry {
+            exports: vec!["A".to_string()],
+            export_lines: None,
+            methods: None,
+            imports: vec![],
+            dependencies: vec![],
+            loc: 100,
+            modified: Some("2026-03-01".to_string()),
+        },
+    );
+    manifest.files.insert(
+        "src/beta.ts".to_string(),
+        FileEntry {
+            exports: vec!["B".to_string()],
+            export_lines: None,
+            methods: None,
+            imports: vec![],
+            dependencies: vec![],
+            loc: 30,
+            modified: Some("2026-03-05".to_string()),
+        },
+    );
+    manifest.files.insert(
+        "src/gamma.ts".to_string(),
+        FileEntry {
+            exports: vec!["C".to_string()],
+            export_lines: None,
+            methods: None,
+            imports: vec![],
+            dependencies: vec![],
+            loc: 60,
+            modified: Some("2026-02-20".to_string()),
+        },
+    );
+    McpServer {
+        manifest: Some(manifest),
+        root: std::path::PathBuf::from("/tmp"),
+    }
+}
+
+#[test]
+fn list_files_sort_by_modified_defaults_to_desc() {
+    let server = list_files_modified_manifest();
+    let order = list_files_order(&server, serde_json::json!({"sort_by": "modified"}));
+    assert_eq!(
+        order,
+        vec!["src/beta.ts", "src/alpha.ts", "src/gamma.ts"],
+        "sort_by=modified should default to desc (most recent first), got: {:?}",
+        order
+    );
+}
+
+#[test]
+fn list_files_sort_by_modified_asc() {
+    let server = list_files_modified_manifest();
+    let order = list_files_order(
+        &server,
+        serde_json::json!({"sort_by": "modified", "order": "asc"}),
+    );
+    assert_eq!(
+        order,
+        vec!["src/gamma.ts", "src/alpha.ts", "src/beta.ts"],
+        "sort_by=modified order=asc should return oldest first, got: {:?}",
+        order
+    );
+}
+
+#[test]
+fn list_files_sort_by_modified_shows_date_in_output() {
+    let server = list_files_modified_manifest();
+    let result = server
+        .call_tool("fmm_list_files", serde_json::json!({"sort_by": "modified"}))
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("modified: 2026-03-05"),
+        "output should show modified date, got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_files_sort_by_modified_composable_with_filter() {
+    let server = list_files_modified_manifest();
+    let order = list_files_order(
+        &server,
+        serde_json::json!({"sort_by": "modified", "directory": "src/"}),
+    );
+    assert_eq!(
+        order,
+        vec!["src/beta.ts", "src/alpha.ts", "src/gamma.ts"],
+        "sort_by=modified + directory filter should work, got: {:?}",
+        order
     );
 }
 
@@ -921,6 +1191,93 @@ fn list_exports_pattern_directory_filter_applies_to_methods() {
     assert!(
         !text.contains("OtherFactory.create"),
         "should not contain lib method, got: {}",
+        text
+    );
+}
+
+// --- ALP-824: fmm_list_exports — truncation notice when results exceed limit ---
+
+#[test]
+fn list_exports_truncation_notice_shown_when_limit_reached() {
+    use crate::manifest::Manifest;
+    use crate::parser::{ExportEntry, Metadata};
+
+    let mut manifest = Manifest::new();
+    // Add 5 exports across multiple files
+    for i in 0..5usize {
+        manifest.add_file(
+            &format!("src/file{}.ts", i),
+            Metadata {
+                exports: vec![ExportEntry::new(format!("export{}", i), 1, 5)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 10,
+            },
+        );
+    }
+    let server = McpServer {
+        manifest: Some(manifest),
+        root: std::path::PathBuf::from("/tmp"),
+    };
+
+    // Request only 2 of 5 — truncation notice must appear
+    let result = server
+        .call_tool(
+            "fmm_list_exports",
+            serde_json::json!({"pattern": "export", "limit": 2}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("showing:") || text.contains("# showing:"),
+        "truncation notice must appear when limit < total; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("of 5"),
+        "notice should state total (5); got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("offset="),
+        "notice should hint at offset pagination; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_exports_no_truncation_notice_when_all_fit() {
+    use crate::manifest::Manifest;
+    use crate::parser::{ExportEntry, Metadata};
+
+    let mut manifest = Manifest::new();
+    for i in 0..3usize {
+        manifest.add_file(
+            &format!("src/file{}.ts", i),
+            Metadata {
+                exports: vec![ExportEntry::new(format!("export{}", i), 1, 5)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 10,
+            },
+        );
+    }
+    let server = McpServer {
+        manifest: Some(manifest),
+        root: std::path::PathBuf::from("/tmp"),
+    };
+
+    // limit=10 > total=3 — no truncation notice
+    let result = server
+        .call_tool(
+            "fmm_list_exports",
+            serde_json::json!({"pattern": "export", "limit": 10}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        !text.contains("showing:") && !text.contains("# showing:"),
+        "no truncation notice when all results fit; got:\n{}",
         text
     );
 }

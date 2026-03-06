@@ -1,6 +1,6 @@
 ---
 file: src/parser/mod.rs
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   builtin: [1, 1]
   ExportEntry: [10, 18]
@@ -21,7 +21,7 @@ methods:
   ParserRegistry.extensions: [248, 252]
 imports: [anyhow, serde, std]
 loc: 384
-modified: 2026-03-05
+modified: 2026-03-06
 rust:
   derives: [Clone, Debug, Deserialize, Eq, PartialEq, Serialize]
   lifetimes: ['''static']

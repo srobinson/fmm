@@ -1,6 +1,6 @@
 ---
 file: examples/sample.ts
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   SessionConfig: [12, 15]
   SessionManager: [17, 46]
@@ -12,4 +12,4 @@ methods:
   SessionManager.destroySession: [43, 45]
 imports: [jsonwebtoken, redis]
 loc: 51
-modified: 2026-03-05
+modified: 2026-03-06

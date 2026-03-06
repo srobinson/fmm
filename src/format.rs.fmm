@@ -1,20 +1,24 @@
 ---
 file: src/format.rs
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
-  format_file_info: [15, 24]
-  format_file_outline: [27, 88]
-  format_lookup_export: [91, 109]
-  format_dependency_graph: [113, 143]
-  format_dependency_graph_transitive: [149, 187]
-  format_read_symbol: [190, 199]
-  format_list_exports_pattern: [210, 245]
-  format_list_exports_file: [248, 254]
-  format_list_exports_all: [261, 292]
-  format_list_files: [304, 339]
-  format_bare_search: [348, 429]
-  format_filter_search: [432, 455]
-  format_glossary: [496, 526]
-dependencies: ['crate::formatter::yaml_escape', 'crate::manifest', 'crate::search']
-loc: 609
-modified: 2026-03-05
+  format_file_info: [18, 27]
+  format_file_outline: [32, 190]
+  format_lookup_export: [193, 211]
+  format_dependency_graph: [215, 250]
+  format_dependency_graph_transitive: [256, 303]
+  format_read_symbol: [309, 336]
+  format_class_redirect: [341, 386]
+  format_list_exports_pattern: [397, 432]
+  format_list_exports_file: [435, 441]
+  format_list_exports_all: [448, 479]
+  format_list_files: [496, 569]
+  compute_rollup_buckets: [576, 628]
+  format_list_files_rollup: [634, 671]
+  format_bare_search: [680, 761]
+  format_filter_search: [765, 790]
+  format_glossary: [831, 861]
+imports: [std]
+dependencies: ['crate::formatter::yaml_escape', 'crate::manifest', 'crate::manifest::private_members', 'crate::search']
+loc: 1191
+modified: 2026-03-06

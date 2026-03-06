@@ -179,94 +179,76 @@ pub fn export_match_score(name: &str, term_lower: &str) -> u32 {
 }
 
 /// Structured filter search: export, imports, depends_on, LOC range.
+///
+/// All active filters are combined with AND semantics — results must satisfy every
+/// specified constraint. Previously filters used OR (union) semantics which caused
+/// silent result pollution when multiple filters were combined (ALP-823).
 pub fn filter_search(manifest: &Manifest, filters: &SearchFilters) -> Vec<FileSearchResult> {
     let has_export = filters.export.is_some();
     let has_imports = filters.imports.is_some();
     let has_depends_on = filters.depends_on.is_some();
+    let has_loc = filters.min_loc.is_some() || filters.max_loc.is_some();
 
-    let mut file_set: Vec<(&String, &FileEntry)> = Vec::new();
+    // No filters at all → return everything.
+    if !has_export && !has_imports && !has_depends_on && !has_loc {
+        let mut results: Vec<FileSearchResult> = manifest
+            .files
+            .iter()
+            .map(|(path, entry)| file_entry_to_result(path, entry))
+            .collect();
+        results.sort_by(|a, b| a.file.cmp(&b.file));
+        return results;
+    }
 
-    // Search by export — exact first, then fuzzy fallback
+    // Start with all files; each active filter narrows with retain (AND semantics).
+    let mut file_set: Vec<(&String, &FileEntry)> = manifest.files.iter().collect();
+
+    // Export filter — exact O(1) first, then case-insensitive substring fallback.
     if let Some(ref export) = filters.export {
         if let Some(file_path) = manifest.export_index.get(export.as_str()) {
-            if let Some(entry) = manifest.files.get(file_path) {
-                file_set.push((file_path, entry));
-            }
+            file_set.retain(|(f, _)| *f == file_path);
         } else {
             let export_lower = export.to_lowercase();
-            for (name, file_path) in &manifest.export_index {
-                if name.to_lowercase().contains(&export_lower) {
-                    if let Some(entry) = manifest.files.get(file_path) {
-                        if !file_set.iter().any(|(f, _)| *f == file_path) {
-                            file_set.push((file_path, entry));
-                        }
-                    }
-                }
-            }
+            let matching: HashSet<&String> = manifest
+                .export_index
+                .iter()
+                .filter(|(n, _)| n.to_lowercase().contains(&export_lower))
+                .map(|(_, fp)| fp)
+                .collect();
+            file_set.retain(|(f, _)| matching.contains(*f));
         }
     }
 
-    // Search by imports
+    // Imports filter — file must import the given package/module name.
     if let Some(ref import_name) = filters.imports {
-        for (file_path, entry) in &manifest.files {
-            if entry
+        file_set.retain(|(_, entry)| {
+            entry
                 .imports
                 .iter()
                 .any(|i| i.contains(import_name.as_str()))
-                && !file_set.iter().any(|(f, _)| *f == file_path)
-            {
-                file_set.push((file_path, entry));
-            }
-        }
+        });
     }
 
-    // Search by depends_on — use the same resolution logic as dependency_graph's downstream
-    // computation so that relative paths (./ ../), extension variants (.ts/.js), Python
-    // dot-imports and Go/Rust module paths all resolve correctly.
-    //
-    // Full manifest paths (e.g. "src/config.ts") are resolved via dep_matches so that
-    // a dep string like "../config" correctly maps to "src/config.ts".
-    // Short fragments (e.g. "config") are also matched via substring fallback so that
-    // callers can pass a bare name without knowing the full path.
+    // depends_on filter — same resolution logic as dependency_graph downstream computation.
+    // Relative paths (./ ../), extension variants (.ts/.js), Python dot-imports and
+    // Go/Rust module paths all resolve via dep_targets_file; substring fallback handles
+    // bare fragment queries (e.g. "config" matches "../config").
     if let Some(ref dep_path) = filters.depends_on {
-        for (file_path, entry) in &manifest.files {
-            let matches = entry.dependencies.iter().any(|d| {
+        file_set.retain(|(file_path, entry)| {
+            entry.dependencies.iter().any(|d| {
                 dep_targets_file(d, dep_path, file_path, manifest) || d.contains(dep_path.as_str())
             }) || entry
                 .imports
                 .iter()
-                .any(|i| dotted_dep_matches(i, dep_path));
-            if matches && !file_set.iter().any(|(f, _)| *f == file_path) {
-                file_set.push((file_path, entry));
-            }
-        }
-    }
-
-    // LOC filtering
-    if filters.min_loc.is_some() || filters.max_loc.is_some() {
-        if file_set.is_empty() && !has_export && !has_imports && !has_depends_on {
-            for (file_path, entry) in &manifest.files {
-                file_set.push((file_path, entry));
-            }
-        }
-        file_set.retain(|(_, entry)| {
-            let passes_min = filters.min_loc.is_none_or(|min| entry.loc >= min);
-            let passes_max = filters.max_loc.is_none_or(|max| entry.loc <= max);
-            passes_min && passes_max
+                .any(|i| dotted_dep_matches(i, dep_path))
         });
     }
 
-    // If no filters at all, return everything
-    if !has_export
-        && !has_imports
-        && !has_depends_on
-        && filters.min_loc.is_none()
-        && filters.max_loc.is_none()
-    {
-        for (file_path, entry) in &manifest.files {
-            file_set.push((file_path, entry));
-        }
-    }
+    // LOC range filter.
+    file_set.retain(|(_, entry)| {
+        filters.min_loc.is_none_or(|min| entry.loc >= min)
+            && filters.max_loc.is_none_or(|max| entry.loc <= max)
+    });
 
     let mut results: Vec<FileSearchResult> = file_set
         .into_iter()
@@ -558,6 +540,7 @@ mod tests {
             imports: vec![],
             dependencies: deps.iter().map(|s| s.to_string()).collect(),
             loc,
+            modified: None,
         }
     }
 

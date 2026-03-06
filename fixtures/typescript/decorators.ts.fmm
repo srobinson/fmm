@@ -1,6 +1,6 @@
 ---
 file: fixtures/typescript/decorators.ts
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   UserService: [1, 6]
   UserController: [8, 15]
@@ -12,6 +12,6 @@ methods:
   UserController.getAll: [12, 14]
   PlainService.execute: [24, 24]
 loc: 25
-modified: 2026-03-05
+modified: 2026-03-06
 typescript:
   decorators: [Controller, Injectable, Module]

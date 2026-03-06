@@ -8,6 +8,7 @@ use std::path::Path;
 use crate::parser::Metadata;
 
 pub mod call_site_finder;
+pub mod private_members;
 
 /// Typed representation of a `.fmm` sidecar file for serde_yaml deserialization.
 /// Handles both v0.2 (exports as list) and v0.3 (exports as map with line ranges).
@@ -51,6 +52,9 @@ pub struct FileEntry {
     pub imports: Vec<String>,
     pub dependencies: Vec<String>,
     pub loc: usize,
+    /// Last-modified date from the sidecar `modified:` field (YYYY-MM-DD). None if absent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modified: Option<String>,
 }
 
 impl From<Metadata> for FileEntry {
@@ -90,6 +94,7 @@ impl From<Metadata> for FileEntry {
             imports: metadata.imports,
             dependencies: metadata.dependencies,
             loc: metadata.loc,
+            modified: None,
         }
     }
 }
@@ -560,6 +565,12 @@ fn parse_sidecar(content: &str) -> Option<(String, FileEntry)> {
         _ => None,
     };
 
+    let modified = data
+        ._extra
+        .get("modified")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
     Some((
         data.file,
         FileEntry {
@@ -569,6 +580,7 @@ fn parse_sidecar(content: &str) -> Option<(String, FileEntry)> {
             imports: data.imports.unwrap_or_default(),
             dependencies: data.dependencies.unwrap_or_default(),
             loc: data.loc.unwrap_or(0),
+            modified,
         },
     ))
 }
@@ -749,6 +761,17 @@ impl Manifest {
             .collect();
         dependents.sort();
         dependents
+    }
+
+    /// Count how many test files depend on `target_file`.
+    ///
+    /// Used by the MCP glossary tool to surface a test-caller hint when
+    /// a dotted query returns empty results in source mode.
+    pub fn count_test_dependents(&self, target_file: &str) -> usize {
+        self.find_dependents(target_file)
+            .into_iter()
+            .filter(|f| is_test_file(f))
+            .count()
     }
 }
 

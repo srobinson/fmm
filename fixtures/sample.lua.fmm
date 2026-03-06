@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.lua
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   init: [24, 28]
   process: [33, 42]
@@ -12,4 +12,4 @@ exports:
 imports: [cjson, log, socket]
 dependencies: [../lib/utils, ./config]
 loc: 97
-modified: 2026-03-05
+modified: 2026-03-06

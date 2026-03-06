@@ -185,15 +185,48 @@ pub(super) fn tool_read_symbol(
         );
     }
 
-    // Dotted notation: ClassName.method — look up in method_index directly.
+    // Dotted notation: ClassName.method — look up in method_index first.
+    // If not found (private method), fall back to on-demand tree-sitter extraction.
     let (resolved_file, resolved_lines) = if args.name.contains('.') {
-        let loc = manifest.method_index.get(&args.name).ok_or_else(|| {
-            format!(
-                "Method '{}' not found. Use fmm_file_outline to see available methods.",
-                args.name
+        if let Some(loc) = manifest.method_index.get(&args.name) {
+            (loc.file.clone(), loc.lines.clone())
+        } else {
+            // ALP-827: private method fallback — parse the file on demand.
+            let dot = args.name.rfind('.').unwrap();
+            let class_name = &args.name[..dot];
+            let method_name = &args.name[dot + 1..];
+
+            let class_file = manifest
+                .export_locations
+                .get(class_name)
+                .map(|loc| loc.file.clone())
+                .ok_or_else(|| {
+                    format!(
+                        "Method '{}' not found. Class '{}' is not a known export. \
+                         Use fmm_file_outline to inspect the file.",
+                        args.name, class_name
+                    )
+                })?;
+
+            let (start, end) = crate::manifest::private_members::find_private_method_range(
+                root,
+                &class_file,
+                class_name,
+                method_name,
             )
-        })?;
-        (loc.file.clone(), loc.lines.clone())
+            .ok_or_else(|| {
+                format!(
+                    "Method '{}' not found. '{}' is not a public or private method of \
+                         '{}'. Use fmm_file_outline(include_private: true) to see all members.",
+                    args.name, method_name, class_name
+                )
+            })?;
+
+            (
+                class_file,
+                Some(crate::manifest::ExportLines { start, end }),
+            )
+        }
     } else {
         let location = manifest
             .export_locations
@@ -242,11 +275,47 @@ pub(super) fn tool_read_symbol(
 
     let symbol_source = source_lines[start..end].join("\n");
 
+    // Bare class redirect: when a bare class name (no dot) would exceed the 10KB cap
+    // and truncate was not explicitly disabled, return an outline with redirect hints
+    // instead of a misleading partial view of the class body.
+    let is_bare_name = !args.name.contains('.');
+    let should_truncate = args.truncate.unwrap_or(true);
+    if is_bare_name
+        && should_truncate
+        && symbol_source.len() > crate::mcp::McpServer::MAX_RESPONSE_BYTES
+    {
+        // Check if this class has methods registered in the file entry.
+        if let Some(file_entry) = manifest.files.get(&resolved_file) {
+            let prefix = format!("{}.", args.name);
+            let mut class_methods: Vec<(&str, &crate::manifest::ExportLines)> = file_entry
+                .methods
+                .as_ref()
+                .map(|m| {
+                    m.iter()
+                        .filter(|(k, _)| k.starts_with(&prefix))
+                        .map(|(k, v)| (k.trim_start_matches(&prefix), v))
+                        .collect()
+                })
+                .unwrap_or_default();
+            if !class_methods.is_empty() {
+                // Sort by line start order for readability.
+                class_methods.sort_by_key(|(_, el)| el.start);
+                return Ok(crate::format::format_class_redirect(
+                    &args.name,
+                    &resolved_file,
+                    &lines,
+                    &class_methods,
+                ));
+            }
+        }
+    }
+
     Ok(crate::format::format_read_symbol(
         &args.name,
         &resolved_file,
         &lines,
         &symbol_source,
+        args.line_numbers.unwrap_or(false),
     ))
 }
 
@@ -267,7 +336,23 @@ pub(super) fn tool_file_outline(
         )
     })?;
 
-    Ok(crate::format::format_file_outline(&args.file, entry))
+    let include_private = args.include_private.unwrap_or(false);
+    let private_by_class = if include_private {
+        let class_names: Vec<&str> = entry.exports.iter().map(|s| s.as_str()).collect();
+        Some(crate::manifest::private_members::extract_private_members(
+            root,
+            &args.file,
+            &class_names,
+        ))
+    } else {
+        None
+    };
+
+    Ok(crate::format::format_file_outline(
+        &args.file,
+        entry,
+        private_by_class.as_ref(),
+    ))
 }
 
 pub(super) fn tool_list_files(
@@ -284,12 +369,17 @@ pub(super) fn tool_list_files(
     let pat = args.pattern.as_deref();
     let limit = args.limit.unwrap_or(DEFAULT_LIMIT);
     let offset = args.offset.unwrap_or(0);
-    let sort_by = args.sort_by.as_deref().unwrap_or("name");
+    let sort_by = args.sort_by.as_deref().unwrap_or("loc");
     let order = args.order.as_deref();
+    let group_by = args.group_by.as_deref();
+    let filter = args.filter.as_deref().unwrap_or("all");
 
-    if !matches!(sort_by, "name" | "loc" | "exports") {
+    if !matches!(
+        sort_by,
+        "name" | "loc" | "exports" | "downstream" | "modified"
+    ) {
         return Err(format!(
-            "Invalid sort_by '{}'. Valid values: name, loc, exports.",
+            "Invalid sort_by '{}'. Valid values: name, loc, exports, downstream, modified.",
             sort_by
         ));
     }
@@ -298,8 +388,22 @@ pub(super) fn tool_list_files(
             return Err(format!("Invalid order '{}'. Valid values: asc, desc.", o));
         }
     }
+    if let Some(g) = group_by {
+        if g != "subdir" {
+            return Err(format!("Invalid group_by '{}'. Valid values: subdir.", g));
+        }
+    }
+    if !matches!(filter, "all" | "source" | "tests") {
+        return Err(format!(
+            "Invalid filter '{}'. Valid values: all, source, tests.",
+            filter
+        ));
+    }
 
-    let mut entries: Vec<(&str, usize, usize)> = manifest
+    // Load config for test-file detection (used when filter != "all").
+    let config = crate::config::Config::load_from_dir(_root).unwrap_or_default();
+
+    let mut entries: Vec<(&str, usize, usize, usize, Option<&str>)> = manifest
         .files
         .iter()
         .filter(|(path, _)| {
@@ -307,6 +411,20 @@ pub(super) fn tool_list_files(
                 if !path.starts_with(d) {
                     return false;
                 }
+            }
+            // Apply source/test filter
+            match filter {
+                "tests" => {
+                    if !config.is_test_file(path) {
+                        return false;
+                    }
+                }
+                "source" => {
+                    if config.is_test_file(path) {
+                        return false;
+                    }
+                }
+                _ => {} // "all": no filter
             }
             if let Some(p) = pat {
                 let filename = path.rsplit('/').next().unwrap_or(path.as_str());
@@ -316,44 +434,111 @@ pub(super) fn tool_list_files(
             }
             true
         })
-        .map(|(path, entry)| (path.as_str(), entry.loc, entry.exports.len()))
+        .map(|(path, entry)| {
+            let downstream = manifest
+                .reverse_deps
+                .get(path.as_str())
+                .map(|v| v.len())
+                .unwrap_or(0);
+            let modified = entry.modified.as_deref();
+            (
+                path.as_str(),
+                entry.loc,
+                entry.exports.len(),
+                downstream,
+                modified,
+            )
+        })
         .collect();
 
-    // Smart defaults: loc/exports sort descending unless explicitly overridden.
-    // name sorts ascending by default.
+    // Rollup mode: group by immediate subdirectory.
+    if group_by == Some("subdir") {
+        // Rollup only uses (path, loc, exports) — strip downstream/modified before passing
+        let stripped: Vec<(&str, usize, usize)> =
+            entries.iter().map(|(p, l, e, _, _)| (*p, *l, *e)).collect();
+        return Ok(build_rollup(stripped, dir, sort_by, order));
+    }
+
+    // Smart defaults: loc/exports/downstream/modified sort descending; name sorts ascending.
     let desc = match sort_by {
-        "loc" | "exports" => order != Some("asc"),
+        "loc" | "exports" | "downstream" | "modified" => order != Some("asc"),
         _ => order == Some("desc"),
     };
 
     match sort_by {
         "loc" => {
             if desc {
-                entries.sort_by(|(_, a, _), (_, b, _)| b.cmp(a));
+                entries.sort_by(|(_, a, _, _, _), (_, b, _, _, _)| b.cmp(a));
             } else {
-                entries.sort_by(|(_, a, _), (_, b, _)| a.cmp(b));
+                entries.sort_by(|(_, a, _, _, _), (_, b, _, _, _)| a.cmp(b));
             }
         }
         "exports" => {
             if desc {
-                entries.sort_by(|(_, _, a), (_, _, b)| b.cmp(a));
+                entries.sort_by(|(_, _, a, _, _), (_, _, b, _, _)| b.cmp(a));
             } else {
-                entries.sort_by(|(_, _, a), (_, _, b)| a.cmp(b));
+                entries.sort_by(|(_, _, a, _, _), (_, _, b, _, _)| a.cmp(b));
+            }
+        }
+        "downstream" => {
+            if desc {
+                entries.sort_by(|(_, _, _, a, _), (_, _, _, b, _)| b.cmp(a));
+            } else {
+                entries.sort_by(|(_, _, _, a, _), (_, _, _, b, _)| a.cmp(b));
+            }
+        }
+        "modified" => {
+            // Lexicographic sort on YYYY-MM-DD strings works correctly for date ordering.
+            // Files with no modified date sort last.
+            if desc {
+                entries.sort_by(|(_, _, _, _, a), (_, _, _, _, b)| b.cmp(a));
+            } else {
+                entries.sort_by(|(_, _, _, _, a), (_, _, _, _, b)| a.cmp(b));
             }
         }
         _ => {
             if desc {
-                entries.sort_by(|(a, _, _), (b, _, _)| b.to_lowercase().cmp(&a.to_lowercase()));
+                entries.sort_by(|(a, _, _, _, _), (b, _, _, _, _)| {
+                    b.to_lowercase().cmp(&a.to_lowercase())
+                });
             } else {
-                entries.sort_by_key(|(path, _, _)| path.to_lowercase());
+                entries.sort_by_key(|(path, _, _, _, _)| path.to_lowercase());
             }
         }
     }
 
     let total = entries.len();
-    let page: Vec<(&str, usize, usize)> = entries.into_iter().skip(offset).take(limit).collect();
+    let total_loc: usize = entries.iter().map(|(_, loc, _, _, _)| loc).sum();
+    let largest = entries
+        .iter()
+        .max_by_key(|(_, loc, _, _, _)| loc)
+        .map(|(path, loc, _, _, _)| (*path, *loc));
+    let show_modified = sort_by == "modified";
+    let page: Vec<(&str, usize, usize, usize, Option<&str>)> =
+        entries.into_iter().skip(offset).take(limit).collect();
 
-    Ok(crate::format::format_list_files(dir, &page, total, offset))
+    Ok(crate::format::format_list_files(
+        dir,
+        &page,
+        total,
+        total_loc,
+        largest,
+        offset,
+        show_modified,
+    ))
+}
+
+/// Compute directory rollup for group_by="subdir" and format the result.
+fn build_rollup(
+    entries: Vec<(&str, usize, usize)>,
+    prefix: Option<&str>,
+    sort_by: &str,
+    order: Option<&str>,
+) -> String {
+    let total_files = entries.len();
+    let total_loc: usize = entries.iter().map(|(_, loc, _)| loc).sum();
+    let bucket_vec = crate::format::compute_rollup_buckets(&entries, prefix, sort_by, order);
+    crate::format::format_list_files_rollup(prefix, &bucket_vec, total_files, total_loc)
 }
 
 pub(super) fn tool_search(
@@ -441,6 +626,13 @@ pub(super) fn tool_glossary(
     if let Some(dot_pos) = pattern.rfind('.') {
         let method_name = &pattern[dot_pos + 1..];
         if !method_name.is_empty() {
+            // ALP-826: capture pre-refinement importer counts for contextual
+            // messaging when call-site search returns zero callers.
+            let pre_counts: Vec<Vec<usize>> = entries
+                .iter()
+                .map(|e| e.sources.iter().map(|s| s.used_by.len()).collect())
+                .collect();
+
             for entry in &mut entries {
                 for source in &mut entry.sources {
                     let refined = crate::manifest::call_site_finder::find_call_sites(
@@ -451,14 +643,80 @@ pub(super) fn tool_glossary(
                     source.used_by = refined;
                 }
             }
+
+            // ALP-826: when all used_by are empty after refinement, return a
+            // contextual message instead of a list of `used_by: []` lines.
+            if entries
+                .iter()
+                .all(|e| e.sources.iter().all(|s| s.used_by.is_empty()))
+            {
+                let mode_label = match mode {
+                    crate::manifest::GlossaryMode::Tests => "test",
+                    crate::manifest::GlossaryMode::All => "all",
+                    _ => "source",
+                };
+                let mut lines = vec!["---".to_string()];
+                for (entry, src_counts) in entries.iter().zip(pre_counts.iter()) {
+                    lines.push(format!("{}:", crate::formatter::yaml_escape(&entry.name)));
+                    for (source, &importer_count) in entry.sources.iter().zip(src_counts.iter()) {
+                        let basename = source.file.rsplit('/').next().unwrap_or(&source.file);
+                        lines.push(format!("  (no external {} callers)", mode_label));
+                        lines.push(format!(
+                            "  # {} {} import {} — none call {} directly",
+                            importer_count,
+                            if importer_count == 1 { "file" } else { "files" },
+                            basename,
+                            method_name
+                        ));
+                        if matches!(mode, crate::manifest::GlossaryMode::Source) {
+                            let test_count = manifest.count_test_dependents(&source.file);
+                            if test_count > 0 {
+                                lines.push(format!(
+                                    "  # {} test {} found (rerun with mode: tests)",
+                                    test_count,
+                                    if test_count == 1 { "caller" } else { "callers" }
+                                ));
+                            }
+                        }
+                    }
+                }
+                return Ok(lines.join("\n"));
+            }
         }
     }
 
-    Ok(crate::format::format_glossary(
-        &entries,
-        total_matched,
-        limit,
-    ))
+    // ALP-826: for bare-name queries, append a nudge when the results include
+    // a dotted method-index entry — the used_by list is file-level importers,
+    // not confirmed call-site callers, and agents benefit from knowing this.
+    let nudge = if !pattern.contains('.') && !entries.is_empty() {
+        entries
+            .iter()
+            .find(|e| e.name.contains('.'))
+            .map(|dotted_entry| {
+                let total_importers: usize =
+                    dotted_entry.sources.iter().map(|s| s.used_by.len()).sum();
+                let basename = dotted_entry
+                    .sources
+                    .first()
+                    .map(|s| s.file.rsplit('/').next().unwrap_or(&s.file))
+                    .unwrap_or("the file");
+                format!(
+                    "\n# Showing file-level importers ({} {} import {}).\n# For call-site precision: pattern \"{}\"",
+                    total_importers,
+                    if total_importers == 1 { "file" } else { "files" },
+                    basename,
+                    dotted_entry.name
+                )
+            })
+    } else {
+        None
+    };
+
+    let mut out = crate::format::format_glossary(&entries, total_matched, limit);
+    if let Some(n) = nudge {
+        out.push_str(&n);
+    }
+    Ok(out)
 }
 
 /// Return true if a file path is a conventional re-export hub (index/init file).

@@ -828,6 +828,101 @@ fn search_filter_only_regression() {
 }
 
 // ---------------------------------------------------------------------------
+// ALP-823: fmm_search — multi-filter AND semantics
+// ---------------------------------------------------------------------------
+
+#[test]
+fn search_export_and_imports_both_required() {
+    // export="Pool" AND imports="pg" — only src/db/pool.ts matches both.
+    // src/auth/session.ts imports jwt (not pg) and doesn't export Pool.
+    let (_tmp, server) = setup_mcp_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_search",
+        json!({"export": "Pool", "imports": "pg"}),
+    );
+    assert!(
+        text.contains("src/db/pool.ts"),
+        "pool.ts exports Pool AND imports pg; got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("src/auth"),
+        "session.ts should not appear (no Pool export); got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn search_export_and_min_loc_both_required() {
+    // export="Pool" AND min_loc=50 — pool.ts is only 10 LOC, so nothing matches.
+    let (_tmp, server) = setup_mcp_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_search",
+        json!({"export": "Pool", "min_loc": 50}),
+    );
+    assert!(
+        !text.contains("src/db/pool.ts"),
+        "pool.ts (10 LOC) must not appear when min_loc=50; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn search_imports_and_min_loc_both_required() {
+    // imports="jwt" AND min_loc=10 — session.ts (12 LOC, imports jwt) matches.
+    let (_tmp, server) = setup_mcp_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_search",
+        json!({"imports": "jwt", "min_loc": 10}),
+    );
+    assert!(
+        text.contains("src/auth/session.ts"),
+        "session.ts matches imports=jwt AND min_loc>=10; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn search_three_filters_and_semantics() {
+    // imports="jwt" AND min_loc=10 AND export="createSession" → session.ts only.
+    let (_tmp, server) = setup_mcp_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_search",
+        json!({"imports": "jwt", "min_loc": 10, "export": "createSession"}),
+    );
+    assert!(
+        text.contains("src/auth/session.ts"),
+        "session.ts matches all three filters; got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("src/db"),
+        "db files must not appear; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn search_three_filters_one_mismatch_returns_empty() {
+    // imports="jwt" AND min_loc=10 AND export="Pool" — Pool is not in session.ts.
+    let (_tmp, server) = setup_mcp_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_search",
+        json!({"imports": "jwt", "min_loc": 10, "export": "Pool"}),
+    );
+    assert!(
+        !text.contains("src/"),
+        "no file satisfies all three filters; got:\n{}",
+        text
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Go module path resolution (ALP-738)
 // ---------------------------------------------------------------------------
 
@@ -900,6 +995,122 @@ fn go_internal_import_resolves_downstream() {
     assert!(
         text.contains("cmd/main.go"),
         "expected cmd/main.go as downstream dependent, got: {}",
+        text
+    );
+}
+
+// ---------------------------------------------------------------------------
+// ALP-822: fmm_read_symbol — redirect bare class reads to outline
+// ---------------------------------------------------------------------------
+
+/// Build an MCP server with a large class (> 10KB) that has methods.
+fn setup_large_class_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let src = tmp.path().join("src");
+    std::fs::create_dir_all(&src).unwrap();
+
+    // Generate a class body that is definitely > 10KB.
+    // Each method body is ~80 bytes; 150 methods ≈ 12KB.
+    let mut source = String::from("export class BigService {\n");
+    let mut sidecar_methods = String::new();
+    let mut line = 2usize;
+    for i in 0..150usize {
+        let method_start = line;
+        source.push_str(&format!(
+            "  doWork{i:03}(input: string): string {{\n    // perform operation {i:03}\n    return input;\n  }}\n"
+        ));
+        let method_end = line + 3;
+        sidecar_methods.push_str(&format!(
+            "  BigService.doWork{i:03}: [{method_start}, {method_end}]\n"
+        ));
+        line = method_end + 1;
+    }
+    let class_end = line;
+    source.push_str("}\n");
+
+    assert!(
+        source.len() > 10_240,
+        "test source must exceed 10KB, got {} bytes",
+        source.len()
+    );
+
+    let sidecar = format!(
+        "file: src/service.ts\nfmm: v0.3\nexports:\n  BigService: [1, {class_end}]\nmethods:\n{sidecar_methods}imports: []\ndependencies: []\nloc: {class_end}\n"
+    );
+
+    write_source_and_sidecar(&src.join("service.ts"), &source, &sidecar);
+
+    let server = fmm::mcp::McpServer::with_root(tmp.path().to_path_buf());
+    (tmp, server)
+}
+
+#[test]
+fn read_symbol_bare_class_over_cap_returns_redirect() {
+    let (_tmp, server) = setup_large_class_server();
+    let text = call_tool_text(&server, "fmm_read_symbol", json!({"name": "BigService"}));
+    assert!(
+        text.contains("would exceed the 10KB response cap"),
+        "redirect message missing; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("methods:"),
+        "method list missing in redirect; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("fmm_read_symbol(\"BigService.doWork"),
+        "redirect hint missing; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("truncate: false"),
+        "truncate: false hint missing; got:\n{}",
+        text
+    );
+    // Must NOT contain actual source code
+    assert!(
+        !text.contains("return input"),
+        "source code leaked into redirect; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn read_symbol_bare_class_truncate_false_bypasses_redirect() {
+    let (_tmp, server) = setup_large_class_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_read_symbol",
+        json!({"name": "BigService", "truncate": false}),
+    );
+    // With truncate: false we get full source, not the redirect
+    assert!(
+        !text.contains("would exceed"),
+        "redirect should not fire with truncate: false; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("return input"),
+        "full source expected with truncate: false; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn read_symbol_small_class_no_redirect() {
+    // A class small enough to fit under 10KB returns normal source
+    let (_tmp, server) = setup_mcp_server();
+    let text = call_tool_text(&server, "fmm_read_symbol", json!({"name": "Pool"}));
+    // Pool is a small class — should return source, not redirect
+    assert!(
+        !text.contains("would exceed"),
+        "small class should not trigger redirect; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("Pool"),
+        "class name should appear in source output; got:\n{}",
         text
     );
 }

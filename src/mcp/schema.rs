@@ -74,17 +74,21 @@ pub(super) fn tool_list() -> Value {
         },
         Tool {
             name: "fmm_read_symbol".to_string(),
-            description: "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Requires line-range data from v0.3 sidecars. Use `ClassName.method` notation to read a specific public method: `fmm_read_symbol(name: \"NestFactoryStatic.createApplicationContext\")`. For large symbols (>10KB) use truncate: false to get the full source.".to_string(),
+            description: "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Requires line-range data from v0.3 sidecars. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "Exact export name to read (function, class, type, component), or ClassName.method for a specific public method"
+                        "description": "Exact export name to read (function, class, type, component), or ClassName.method for a specific public or private method"
                     },
                     "truncate": {
                         "type": "boolean",
                         "description": "Whether to apply the 10KB response cap (default: true). Set to false to return the full source for large symbols that would otherwise be truncated."
+                    },
+                    "line_numbers": {
+                        "type": "boolean",
+                        "description": "When true, prepend absolute line numbers (right-aligned) to each source line. Useful when referencing specific lines in follow-up questions. Default: false."
                     }
                 },
                 "required": ["name"]
@@ -92,13 +96,17 @@ pub(super) fn tool_list() -> Value {
         },
         Tool {
             name: "fmm_file_outline".to_string(),
-            description: "Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols.".to_string(),
+            description: "Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. Set include_private: true to also show private/protected members under each class (TypeScript and Python; on-demand tree-sitter parse).".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "file": {
                         "type": "string",
                         "description": "File path to outline — returns all exports with line ranges and sizes"
+                    },
+                    "include_private": {
+                        "type": "boolean",
+                        "description": "When true, include private/protected methods and fields under each class, annotated with '# private'. On-demand tree-sitter parse — no index rebuild needed. Supported: TypeScript, JavaScript, Python. Default: false."
                     }
                 },
                 "required": ["file"]
@@ -143,7 +151,7 @@ pub(super) fn tool_list() -> Value {
         },
         Tool {
             name: "fmm_list_files".to_string(),
-            description: "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC and export count. Default sort: alphabetical by name. Use sort_by=loc or sort_by=exports (default desc) to find the heaviest files. Default limit: 200. Use offset to page through large directories.".to_string(),
+            description: "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC, export count, and downstream dependent count. Default sort: LOC descending (largest files first). sort_by options: loc (default), name, exports, downstream (blast-radius sort), modified (most recently changed first). Default limit: 200. Use offset to page through large directories.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -165,13 +173,23 @@ pub(super) fn tool_list() -> Value {
                     },
                     "sort_by": {
                         "type": "string",
-                        "enum": ["name", "loc", "exports"],
-                        "description": "Sort field. 'name' (default): alphabetical. 'loc': lines of code. 'exports': export count. 'loc' and 'exports' default to descending order (largest first)."
+                        "enum": ["name", "loc", "exports", "downstream", "modified"],
+                        "description": "Sort field. 'loc' (default): lines of code descending. 'name': alphabetical. 'exports': export count descending. 'downstream': direct dependent count descending (blast-radius sort — highest-risk files first). 'modified': most recently changed files first (date shown in output). 'loc', 'exports', 'downstream', and 'modified' default to descending order."
                     },
                     "order": {
                         "type": "string",
                         "enum": ["asc", "desc"],
-                        "description": "Sort order. Defaults: 'name' → asc, 'loc'/'exports' → desc. Explicit 'asc'/'desc' overrides the default."
+                        "description": "Sort order. Defaults: 'name' → asc, 'loc'/'exports'/'downstream' → desc. Explicit 'asc'/'desc' overrides the default."
+                    },
+                    "group_by": {
+                        "type": "string",
+                        "enum": ["subdir"],
+                        "description": "Collapse files into directory buckets. 'subdir': group by immediate subdirectory, showing file count and total LOC per bucket. Best for initial orientation of large codebases. sort_by applies to bucket-level LOC."
+                    },
+                    "filter": {
+                        "type": "string",
+                        "enum": ["all", "source", "tests"],
+                        "description": "File type filter. 'all' (default): no filtering. 'source': exclude test files. 'tests': return only test files. Detection heuristic uses path segments (/test/, /e2e/, /__tests__/) and filename suffixes (.spec.ts, .test.ts, _test.go, etc.), configurable via test_patterns in .fmmrc.json."
                     }
                 }
             }),

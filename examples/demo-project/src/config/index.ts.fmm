@@ -1,10 +1,10 @@
 ---
 file: examples/demo-project/src/config/index.ts
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   AppConfig: [3, 8]
   loadConfig: [10, 18]
   DEFAULT_CONFIG: [20, 20]
 imports: [dotenv]
 loc: 20
-modified: 2026-03-05
+modified: 2026-03-06

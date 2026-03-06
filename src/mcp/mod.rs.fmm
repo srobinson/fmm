@@ -1,6 +1,6 @@
 ---
 file: src/mcp/mod.rs
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   JsonRpcError: [37, 42]
   McpServer: [44, 47]
@@ -12,7 +12,7 @@ methods:
 imports: [anyhow, serde, serde_json, std]
 dependencies: ['crate::manifest']
 loc: 296
-modified: 2026-03-05
+modified: 2026-03-06
 rust:
   derives: [Debug, Deserialize, Serialize]
   trait_impls: [Default for McpServer]

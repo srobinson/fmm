@@ -34,11 +34,17 @@ pub(super) struct SearchArgs {
 #[derive(Debug, Deserialize)]
 pub(super) struct ReadSymbolArgs {
     pub(super) name: String,
+    /// When false, bypasses the 10KB response cap (default: true).
+    pub(super) truncate: Option<bool>,
+    /// When true, prepend absolute line numbers to each source line (ALP-829).
+    pub(super) line_numbers: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
 pub(super) struct FileOutlineArgs {
     pub(super) file: String,
+    /// When true, include private/protected members in the outline (ALP-827).
+    pub(super) include_private: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -49,6 +55,8 @@ pub(super) struct ListFilesArgs {
     pub(super) offset: Option<usize>,
     pub(super) sort_by: Option<String>,
     pub(super) order: Option<String>,
+    pub(super) group_by: Option<String>,
+    pub(super) filter: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

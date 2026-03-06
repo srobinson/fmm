@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/ruby.rs
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   RubyParser: [8, 15]
 methods:
@@ -8,7 +8,7 @@ methods:
 imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: [../query_helpers, 'crate::parser']
 loc: 326
-modified: 2026-03-05
+modified: 2026-03-06
 rust:
   lifetimes: ['''static']
   trait_impls: [Parser for RubyParser]

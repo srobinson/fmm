@@ -380,6 +380,7 @@ mod tests {
                 imports: vec!["redux".to_string()],
                 dependencies: vec!["./types".to_string()],
                 loc: 120,
+                modified: None,
             },
         );
         m.files.insert(
@@ -391,6 +392,7 @@ mod tests {
                 imports: vec!["react".to_string(), "redux".to_string()],
                 dependencies: vec!["./index".to_string()],
                 loc: 45,
+                modified: None,
             },
         );
         m.files.insert(
@@ -402,6 +404,7 @@ mod tests {
                 imports: vec!["react".to_string()],
                 dependencies: vec!["../store/index".to_string()],
                 loc: 30,
+                modified: None,
             },
         );
         m.files.insert(
@@ -416,6 +419,7 @@ mod tests {
                 imports: vec!["crypto".to_string()],
                 dependencies: vec!["./session".to_string()],
                 loc: 80,
+                modified: None,
             },
         );
 

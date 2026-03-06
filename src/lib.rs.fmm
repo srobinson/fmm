@@ -1,6 +1,6 @@
 ---
 file: src/lib.rs
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   cli: [1, 1]
   config: [2, 2]
@@ -12,4 +12,4 @@ exports:
   parser: [8, 8]
   search: [9, 9]
 loc: 9
-modified: 2026-03-05
+modified: 2026-03-06

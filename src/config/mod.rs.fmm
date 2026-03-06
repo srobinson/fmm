@@ -1,15 +1,17 @@
 ---
 file: src/config/mod.rs
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
-  Config: [7, 11]
+  TestPatterns: [11, 18]
+  Config: [30, 37]
 methods:
-  Config.load: [22, 24]
-  Config.load_from_dir: [26, 35]
-  Config.is_supported_language: [37, 39]
+  Config.load: [49, 51]
+  Config.load_from_dir: [53, 62]
+  Config.is_supported_language: [64, 66]
+  Config.is_test_file: [69, 85]
 imports: [anyhow, serde, std]
-loc: 192
-modified: 2026-03-05
+loc: 300
+modified: 2026-03-06
 rust:
   derives: [Clone, Debug, Deserialize, Serialize]
-  trait_impls: [Default for Config]
+  trait_impls: [Default for Config, Default for TestPatterns]

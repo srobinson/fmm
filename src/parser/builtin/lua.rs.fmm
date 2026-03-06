@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/lua.rs
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   LuaParser: [6, 8]
 methods:
@@ -8,7 +8,7 @@ methods:
 imports: [anyhow, std, tree_sitter]
 dependencies: ['crate::parser']
 loc: 274
-modified: 2026-03-05
+modified: 2026-03-06
 rust:
   lifetimes: ['''static']
   trait_impls: [Parser for LuaParser]

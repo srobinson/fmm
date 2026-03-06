@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.c
-fmm: v0.3+0.1.23
+fmm: v0.3+0.1.24
 exports:
   MAX_BUFFER_SIZE: [13, 14]
   MIN: [14, 15]
@@ -19,7 +19,7 @@ exports:
 imports: [stdio.h, stdlib.h, string.h]
 dependencies: [config.h, utils/helpers.h]
 loc: 102
-modified: 2026-03-05
+modified: 2026-03-06
 c:
   macros: [API_VERSION, MAX_BUFFER_SIZE, MIN]
   typedefs: [Callback, HashValue]
