@@ -391,7 +391,7 @@ impl TypeScriptParser {
             };
 
             for i in 0..body.child_count() {
-                if let Some(child) = body.child(i) {
+                if let Some(child) = body.child(i as u32) {
                     if child.kind() == "method_definition" {
                         if let Some(entry) =
                             Self::extract_method_entry(&class_name, child, source_bytes)
@@ -415,7 +415,7 @@ impl TypeScriptParser {
     ) -> Option<ExportEntry> {
         // Check accessibility_modifier — skip private and protected
         for i in 0..method_node.child_count() {
-            if let Some(child) = method_node.child(i) {
+            if let Some(child) = method_node.child(i as u32) {
                 if child.kind() == "accessibility_modifier" {
                     let text = child.utf8_text(source_bytes).unwrap_or("");
                     if text == "private" || text == "protected" {

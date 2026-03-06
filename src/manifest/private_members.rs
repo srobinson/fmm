@@ -115,7 +115,7 @@ fn walk_ts_node(
         }
     }
     for i in 0..node.child_count() {
-        if let Some(child) = node.child(i) {
+        if let Some(child) = node.child(i as u32) {
             walk_ts_node(child, source, class_names, result);
         }
     }
@@ -125,7 +125,7 @@ fn collect_ts_private_members(body: tree_sitter::Node, source: &[u8]) -> Vec<Pri
     let mut members = Vec::new();
 
     for i in 0..body.child_count() {
-        let child = match body.child(i) {
+        let child = match body.child(i as u32) {
             Some(c) => c,
             None => continue,
         };
@@ -154,7 +154,7 @@ fn collect_ts_private_members(body: tree_sitter::Node, source: &[u8]) -> Vec<Pri
 fn ts_private_method(node: tree_sitter::Node, source: &[u8]) -> Option<PrivateMember> {
     let mut is_private = false;
     for i in 0..node.child_count() {
-        if let Some(child) = node.child(i) {
+        if let Some(child) = node.child(i as u32) {
             if child.kind() == "accessibility_modifier" {
                 let text = child.utf8_text(source).unwrap_or("");
                 if text == "private" || text == "protected" {
@@ -187,7 +187,7 @@ fn ts_private_method(node: tree_sitter::Node, source: &[u8]) -> Option<PrivateMe
 fn ts_private_field(node: tree_sitter::Node, source: &[u8]) -> Option<PrivateMember> {
     let mut is_private = false;
     for i in 0..node.child_count() {
-        if let Some(child) = node.child(i) {
+        if let Some(child) = node.child(i as u32) {
             if child.kind() == "accessibility_modifier" {
                 let text = child.utf8_text(source).unwrap_or("");
                 if text == "private" || text == "protected" {
@@ -254,7 +254,7 @@ fn walk_py_node(
         }
     }
     for i in 0..node.child_count() {
-        if let Some(child) = node.child(i) {
+        if let Some(child) = node.child(i as u32) {
             walk_py_node(child, source, class_names, result);
         }
     }
@@ -264,7 +264,7 @@ fn collect_py_private_members(body: tree_sitter::Node, source: &[u8]) -> Vec<Pri
     let mut members = Vec::new();
 
     for i in 0..body.child_count() {
-        let child = match body.child(i) {
+        let child = match body.child(i as u32) {
             Some(c) => c,
             None => continue,
         };

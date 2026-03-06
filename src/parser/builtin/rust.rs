@@ -282,7 +282,7 @@ impl RustParser {
             };
 
             for i in 0..body.child_count() {
-                if let Some(child) = body.child(i) {
+                if let Some(child) = body.child(i as u32) {
                     if child.kind() != "function_item" {
                         continue;
                     }
@@ -290,7 +290,7 @@ impl RustParser {
                     // Check for `pub` visibility modifier
                     let is_pub = (0..child.child_count()).any(|j| {
                         child
-                            .child(j)
+                            .child(j as u32)
                             .filter(|c| c.kind() == "visibility_modifier")
                             .and_then(|c| c.utf8_text(source_bytes).ok())
                             .is_some_and(|t| t == "pub")
