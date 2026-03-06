@@ -1,6 +1,6 @@
 ---
 file: src/cli/glossary.rs
-fmm: v0.4+0.1.28
+fmm: v0.4+0.1.29
 exports:
   glossary: [6, 100]
 imports: [anyhow, colored]

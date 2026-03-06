@@ -1,13 +1,13 @@
 ---
 file: src/parser/builtin/dart.rs
-fmm: v0.4+0.1.28
+fmm: v0.4+0.1.29
 exports:
-  DartParser: [6, 8]
+  DartParser: [8, 10]
 methods:
-  DartParser.new: [11, 18]
+  DartParser.new: [13, 17]
 imports: [anyhow, std, tree_sitter]
-dependencies: ['crate::parser']
-loc: 425
+dependencies: [../query_helpers, 'crate::parser']
+loc: 404
 modified: 2026-03-06
 rust:
   lifetimes: ['''static']

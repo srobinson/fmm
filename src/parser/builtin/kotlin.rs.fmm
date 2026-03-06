@@ -1,13 +1,13 @@
 ---
 file: src/parser/builtin/kotlin.rs
-fmm: v0.4+0.1.28
+fmm: v0.4+0.1.29
 exports:
-  KotlinParser: [6, 8]
+  KotlinParser: [8, 10]
 methods:
-  KotlinParser.new: [11, 18]
+  KotlinParser.new: [13, 17]
 imports: [anyhow, std, tree_sitter]
-dependencies: ['crate::parser']
-loc: 514
+dependencies: [../query_helpers, 'crate::parser']
+loc: 495
 modified: 2026-03-06
 rust:
   lifetimes: ['''a', '''static']

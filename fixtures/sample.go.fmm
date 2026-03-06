@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.go
-fmm: v0.4+0.1.28
+fmm: v0.4+0.1.29
 exports:
   MaxRetries: [13, 13]
   Status: [18, 18]

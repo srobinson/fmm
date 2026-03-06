@@ -1,6 +1,6 @@
 ---
 file: fixtures/python/decorated.py
-fmm: v0.4+0.1.28
+fmm: v0.4+0.1.29
 exports:
   SimpleDecorated: [7, 10]
   DecoratedWithArgs: [13, 17]

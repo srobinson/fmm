@@ -1,0 +1,6 @@
+---
+file: src/manifest/tests.rs
+fmm: v0.4+0.1.29
+dependencies: ['crate::manifest', 'crate::parser']
+loc: 434
+modified: 2026-03-06

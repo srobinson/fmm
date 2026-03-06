@@ -1,13 +1,13 @@
 ---
 file: src/parser/builtin/c.rs
-fmm: v0.4+0.1.28
+fmm: v0.4+0.1.29
 exports:
-  CParser: [7, 13]
+  CParser: [8, 14]
 methods:
-  CParser.new: [16, 47]
+  CParser.new: [17, 46]
 imports: [anyhow, std, streaming_iterator, tree_sitter]
-dependencies: ['crate::parser']
-loc: 419
+dependencies: [../query_helpers, 'crate::parser']
+loc: 418
 modified: 2026-03-06
 rust:
   lifetimes: ['''static']
