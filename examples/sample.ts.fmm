@@ -13,3 +13,5 @@ methods:
 imports: [jsonwebtoken, redis]
 loc: 51
 modified: 2026-03-06
+typescript:
+  function_names: [refreshToken]

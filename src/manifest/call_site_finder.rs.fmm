@@ -3,6 +3,10 @@ file: src/manifest/call_site_finder.rs
 fmm: v0.3+0.1.25
 exports:
   find_call_sites: [21, 27]
+  BareCallSiteResult: [141, 149]
+  find_bare_function_callers: [160, 177]
 imports: [std, streaming_iterator, tree_sitter]
-loc: 256
+loc: 587
 modified: 2026-03-06
+rust:
+  derives: [Debug, Eq, PartialEq]

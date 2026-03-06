@@ -55,6 +55,11 @@ pub struct FileEntry {
     /// Last-modified date from the sidecar `modified:` field (YYYY-MM-DD). None if absent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub modified: Option<String>,
+    /// Names of exported module-level function declarations (TS/JS only).
+    /// Populated from sidecar typescript.function_names section. Not persisted.
+    /// Used to build function_index for call-site precision in fmm_glossary.
+    #[serde(skip)]
+    pub function_names: Vec<String>,
 }
 
 impl From<Metadata> for FileEntry {
@@ -95,6 +100,7 @@ impl From<Metadata> for FileEntry {
             dependencies: metadata.dependencies,
             loc: metadata.loc,
             modified: None,
+            function_names: Vec::new(),
         }
     }
 }
@@ -132,6 +138,12 @@ pub struct Manifest {
     /// Not persisted — rebuilt on each load.
     #[serde(skip)]
     pub reverse_deps: HashMap<String, Vec<String>>,
+    /// Maps export name → file location for confirmed module-level function declarations (TS/JS).
+    /// Enables O(1) "is this a bare function?" check at glossary query time.
+    /// Only populated for exports listed in a file's `function_names` sidecar section.
+    /// Not persisted — rebuilt on each load.
+    #[serde(skip)]
+    pub function_index: HashMap<String, ExportLocation>,
 }
 
 impl Manifest {
@@ -145,6 +157,7 @@ impl Manifest {
             export_all: HashMap::new(),
             method_index: HashMap::new(),
             reverse_deps: HashMap::new(),
+            function_index: HashMap::new(),
         }
     }
 
@@ -241,6 +254,25 @@ impl Manifest {
                                 lines: Some(lines.clone()),
                             },
                         );
+                    }
+                }
+                // ALP-863: populate function_index for confirmed module-level function declarations.
+                if !file_entry.function_names.is_empty() {
+                    for (i, export) in file_entry.exports.iter().enumerate() {
+                        if file_entry.function_names.contains(export) {
+                            let lines = file_entry
+                                .export_lines
+                                .as_ref()
+                                .and_then(|el| el.get(i))
+                                .cloned();
+                            // First definition wins (consistent with export_locations).
+                            manifest.function_index.entry(export.clone()).or_insert(
+                                ExportLocation {
+                                    file: key.clone(),
+                                    lines,
+                                },
+                            );
+                        }
                     }
                 }
                 manifest.files.insert(key, file_entry);
@@ -571,6 +603,36 @@ fn parse_sidecar(content: &str) -> Option<(String, FileEntry)> {
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
+    // ALP-862: extract function_names from typescript.function_names sidecar section.
+    let function_names: Vec<String> = data
+        ._extra
+        .get("typescript")
+        .and_then(|v| {
+            if let serde_yaml::Value::Mapping(m) = v {
+                m.get(serde_yaml::Value::String("function_names".to_string()))
+            } else {
+                None
+            }
+        })
+        .and_then(|v| {
+            if let serde_yaml::Value::Sequence(seq) = v {
+                Some(
+                    seq.iter()
+                        .filter_map(|item| {
+                            if let serde_yaml::Value::String(s) = item {
+                                Some(s.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect(),
+                )
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default();
+
     Some((
         data.file,
         FileEntry {
@@ -581,6 +643,7 @@ fn parse_sidecar(content: &str) -> Option<(String, FileEntry)> {
             dependencies: data.dependencies.unwrap_or_default(),
             loc: data.loc.unwrap_or(0),
             modified,
+            function_names,
         },
     ))
 }
@@ -611,6 +674,11 @@ pub struct GlossarySource {
     pub file: String,
     pub lines: Option<ExportLines>,
     pub used_by: Vec<String>,
+    /// ALP-865: files that import via a namespace (`import * as ns`) — call-site precision
+    /// unavailable for these; they are reported separately with a disclosure note.
+    /// Each entry is `(file_path, namespace_name)`.
+    #[serde(skip)]
+    pub namespace_callers: Vec<(String, String)>,
 }
 
 /// Returns true if a file path is a test file (by path conventions only, ignoring symbol name).
@@ -688,6 +756,7 @@ impl Manifest {
                             file: loc.file.clone(),
                             lines: loc.lines.clone(),
                             used_by,
+                            namespace_callers: Vec::new(),
                         }
                     })
                     .collect();
@@ -732,6 +801,7 @@ impl Manifest {
                     file: loc.file.clone(),
                     lines: loc.lines.clone(),
                     used_by,
+                    namespace_callers: Vec::new(),
                 }],
             });
         }

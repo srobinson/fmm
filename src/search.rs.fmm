@@ -17,7 +17,7 @@ exports:
   dependency_graph_transitive: [359, 473]
 imports: [std]
 dependencies: ['crate::manifest']
-loc: 1365
+loc: 1366
 modified: 2026-03-06
 rust:
   lifetimes: ['''a']

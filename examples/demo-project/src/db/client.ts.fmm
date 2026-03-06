@@ -12,3 +12,5 @@ imports: [pg]
 dependencies: [../config]
 loc: 23
 modified: 2026-03-06
+typescript:
+  function_names: [createClient]

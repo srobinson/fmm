@@ -733,6 +733,28 @@ pub(super) fn tool_glossary(
         }
     }
 
+    // ALP-865: for bare-name queries that match a module-level function declaration,
+    // apply call-site precision (analogous to the dotted method refinement above).
+    if !pattern.contains('.') && !entries.is_empty() {
+        if let Some(_fn_loc) = manifest.function_index.get(pattern) {
+            for entry in &mut entries {
+                for source in &mut entry.sources {
+                    let (confirmed, ns_callers) =
+                        crate::manifest::call_site_finder::find_bare_function_callers(
+                            root,
+                            pattern,
+                            &source.used_by,
+                        );
+                    // Rebuild used_by: confirmed callers first, then namespace-import files
+                    // annotated inline in the output footer.
+                    source.used_by = confirmed;
+                    // Attach namespace callers so the formatter can disclose them.
+                    source.namespace_callers = ns_callers;
+                }
+            }
+        }
+    }
+
     // ALP-826: for bare-name queries, append a nudge when the results include
     // a dotted method-index entry — the used_by list is file-level importers,
     // not confirmed call-site callers, and agents benefit from knowing this.

@@ -8,3 +8,5 @@ exports:
 imports: [dotenv]
 loc: 20
 modified: 2026-03-06
+typescript:
+  function_names: [loadConfig]

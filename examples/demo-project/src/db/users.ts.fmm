@@ -9,3 +9,5 @@ exports:
 dependencies: [./client]
 loc: 26
 modified: 2026-03-06
+typescript:
+  function_names: [findUserByEmail, createUser, deleteUser]

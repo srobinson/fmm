@@ -10,3 +10,5 @@ imports: [jsonwebtoken]
 dependencies: [../config, ../db/users]
 loc: 30
 modified: 2026-03-06
+typescript:
+  function_names: [createSession, validateSession, destroySession]

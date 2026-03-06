@@ -5,7 +5,7 @@ exports:
   search: [49, 153]
 imports: [anyhow, colored]
 dependencies: ['crate::manifest']
-loc: 536
+loc: 540
 modified: 2026-03-06
 rust:
   derives: ['serde::Serialize']

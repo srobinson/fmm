@@ -1152,6 +1152,7 @@ fn list_files_modified_manifest() -> McpServer {
             dependencies: vec![],
             loc: 100,
             modified: Some("2026-03-01".to_string()),
+            function_names: Vec::new(),
         },
     );
     manifest.files.insert(
@@ -1164,6 +1165,7 @@ fn list_files_modified_manifest() -> McpServer {
             dependencies: vec![],
             loc: 30,
             modified: Some("2026-03-05".to_string()),
+            function_names: Vec::new(),
         },
     );
     manifest.files.insert(
@@ -1176,6 +1178,7 @@ fn list_files_modified_manifest() -> McpServer {
             dependencies: vec![],
             loc: 60,
             modified: Some("2026-02-20".to_string()),
+            function_names: Vec::new(),
         },
     );
     McpServer {

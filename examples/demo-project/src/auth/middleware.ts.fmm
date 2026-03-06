@@ -8,3 +8,5 @@ imports: [express]
 dependencies: [../config, ./session]
 loc: 26
 modified: 2026-03-06
+typescript:
+  function_names: [requireAuth]

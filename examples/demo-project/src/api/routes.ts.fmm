@@ -7,3 +7,5 @@ imports: [bcrypt, express]
 dependencies: [../auth/middleware, ../auth/session, ../config, ../db/client, ../db/users]
 loc: 36
 modified: 2026-03-06
+typescript:
+  function_names: [createRouter]

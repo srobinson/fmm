@@ -16,3 +16,5 @@ imports: [events, fs/promises]
 dependencies: [../config, ./helper]
 loc: 42
 modified: 2026-03-06
+typescript:
+  function_names: [createApp]

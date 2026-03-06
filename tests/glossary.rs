@@ -541,3 +541,91 @@ fn glossary_bare_name_no_nudge_when_no_method_entry() {
         text
     );
 }
+
+// ---------------------------------------------------------------------------
+// ALP-847: bare function call-site precision tests
+// ---------------------------------------------------------------------------
+
+fn setup_bare_fn_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path();
+
+    // The source file: exports scheduleUpdate as a function
+    let src_file = root.join("src/scheduler.ts");
+    std::fs::create_dir_all(src_file.parent().unwrap()).unwrap();
+    std::fs::write(&src_file, "export function scheduleUpdate() {}\n").unwrap();
+    std::fs::write(
+        src_file.with_extension("ts.fmm"),
+        "file: src/scheduler.ts\nfmm: v0.3\nexports:\n  scheduleUpdate: [1, 1]\ntypescript:\n  function_names: [scheduleUpdate]\nimports: []\ndependencies: []\nloc: 1\n",
+    )
+    .unwrap();
+
+    // Caller 1: direct call
+    let caller1 = root.join("src/direct_caller.ts");
+    std::fs::write(
+        &caller1,
+        "import { scheduleUpdate } from './scheduler';\nscheduleUpdate();\n",
+    )
+    .unwrap();
+    std::fs::write(
+        caller1.with_extension("ts.fmm"),
+        "file: src/direct_caller.ts\nfmm: v0.3\nexports: {}\nimports: []\ndependencies: [./scheduler]\nloc: 2\n",
+    )
+    .unwrap();
+
+    // Caller 2: aliased import
+    let caller2 = root.join("src/aliased_caller.ts");
+    std::fs::write(
+        &caller2,
+        "import { scheduleUpdate as su } from './scheduler';\nsu();\n",
+    )
+    .unwrap();
+    std::fs::write(
+        caller2.with_extension("ts.fmm"),
+        "file: src/aliased_caller.ts\nfmm: v0.3\nexports: {}\nimports: []\ndependencies: [./scheduler]\nloc: 2\n",
+    )
+    .unwrap();
+
+    // Importer-only: imports but never calls
+    let importer_only = root.join("src/importer_only.ts");
+    std::fs::write(
+        &importer_only,
+        "import { scheduleUpdate } from './scheduler';\n// never calls it\n",
+    )
+    .unwrap();
+    std::fs::write(
+        importer_only.with_extension("ts.fmm"),
+        "file: src/importer_only.ts\nfmm: v0.3\nexports: {}\nimports: []\ndependencies: [./scheduler]\nloc: 2\n",
+    )
+    .unwrap();
+
+    let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
+    (tmp, server)
+}
+
+#[test]
+fn glossary_bare_function_call_site_precision_filters_non_callers() {
+    let (_tmp, server) = setup_bare_fn_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_glossary",
+        json!({"pattern": "scheduleUpdate"}),
+    );
+    // Direct and aliased callers must appear
+    assert!(
+        text.contains("direct_caller.ts"),
+        "direct caller should appear; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("aliased_caller.ts"),
+        "aliased caller should appear; got:\n{}",
+        text
+    );
+    // Importer-only should be excluded
+    assert!(
+        !text.contains("importer_only.ts"),
+        "importer-only should be excluded; got:\n{}",
+        text
+    );
+}

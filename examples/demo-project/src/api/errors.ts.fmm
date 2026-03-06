@@ -11,3 +11,5 @@ methods:
 imports: [express]
 loc: 28
 modified: 2026-03-06
+typescript:
+  function_names: [notFound, unauthorized, errorHandler]
