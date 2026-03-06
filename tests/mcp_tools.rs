@@ -709,9 +709,14 @@ fn search_depends_on_full_manifest_path() {
         text.contains("src/db/pool.ts"),
         "pool.ts should appear; got: {text}"
     );
-    // config.ts itself has no dependency on config.ts — it should not appear
+    // config.ts itself has no dependency on config.ts — it should not appear as a result file.
+    // Note: the header line may mention src/config.ts as the query target, so we check
+    // specifically for it appearing as a result entry (at line start or after newline).
+    let result_lines: Vec<&str> = text.lines().filter(|l| !l.starts_with('#')).collect();
     assert!(
-        !text.contains("src/config.ts\n") && !text.contains("src/config.ts "),
+        !result_lines
+            .iter()
+            .any(|l| l.trim_start().starts_with("src/config.ts")),
         "config.ts should not appear as a dependent of itself; got: {text}"
     );
 }
@@ -1111,6 +1116,90 @@ fn read_symbol_small_class_no_redirect() {
     assert!(
         text.contains("Pool"),
         "class name should appear in source output; got:\n{}",
+        text
+    );
+}
+
+// ---------------------------------------------------------------------------
+// ALP-845: fmm_lookup_export — collision disclosure
+// ---------------------------------------------------------------------------
+
+/// Build a server with two packages that both export `DispatchConfig`.
+fn setup_collision_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let pkg_a = tmp.path().join("packages/renderer");
+    let pkg_b = tmp.path().join("packages/native");
+    std::fs::create_dir_all(&pkg_a).unwrap();
+    std::fs::create_dir_all(&pkg_b).unwrap();
+
+    write_source_and_sidecar(
+        &pkg_a.join("dispatch.ts"),
+        "export interface DispatchConfig { timeout: number; }\n",
+        "file: packages/renderer/dispatch.ts\nfmm: v0.3\nexports:\n  DispatchConfig: [1, 1]\nimports: []\ndependencies: []\nloc: 1\n",
+    );
+
+    write_source_and_sidecar(
+        &pkg_b.join("dispatch.ts"),
+        "export interface DispatchConfig { retries: number; }\n",
+        "file: packages/native/dispatch.ts\nfmm: v0.3\nexports:\n  DispatchConfig: [1, 1]\nimports: []\ndependencies: []\nloc: 1\n",
+    );
+
+    // Unique export — should produce no disclosure note.
+    write_source_and_sidecar(
+        &pkg_a.join("session.ts"),
+        "export function createSession() {}\n",
+        "file: packages/renderer/session.ts\nfmm: v0.3\nexports:\n  createSession: [1, 1]\nimports: []\ndependencies: []\nloc: 1\n",
+    );
+
+    let server = fmm::mcp::McpServer::with_root(tmp.path().to_path_buf());
+    (tmp, server)
+}
+
+#[test]
+fn lookup_export_collision_emits_disclosure_note() {
+    let (_tmp, server) = setup_collision_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_lookup_export",
+        json!({"name": "DispatchConfig"}),
+    );
+
+    // Primary result is present
+    assert!(
+        text.contains("symbol: DispatchConfig"),
+        "primary symbol missing:\n{}",
+        text
+    );
+    // Disclosure note must appear
+    assert!(
+        text.contains("1 additional definition(s) found"),
+        "collision disclosure missing:\n{}",
+        text
+    );
+    assert!(
+        text.contains("fmm_glossary"),
+        "fmm_glossary reference missing from disclosure:\n{}",
+        text
+    );
+}
+
+#[test]
+fn lookup_export_no_collision_no_disclosure() {
+    let (_tmp, server) = setup_collision_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_lookup_export",
+        json!({"name": "createSession"}),
+    );
+
+    assert!(
+        text.contains("symbol: createSession"),
+        "symbol missing:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("additional definition"),
+        "unexpected collision note for unique export:\n{}",
         text
     );
 }

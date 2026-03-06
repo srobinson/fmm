@@ -381,6 +381,7 @@ mod tests {
                 dependencies: vec!["./types".to_string()],
                 loc: 120,
                 modified: None,
+                function_names: Vec::new(),
             },
         );
         m.files.insert(
@@ -393,6 +394,7 @@ mod tests {
                 dependencies: vec!["./index".to_string()],
                 loc: 45,
                 modified: None,
+                function_names: Vec::new(),
             },
         );
         m.files.insert(
@@ -405,6 +407,7 @@ mod tests {
                 dependencies: vec!["../store/index".to_string()],
                 loc: 30,
                 modified: None,
+                function_names: Vec::new(),
             },
         );
         m.files.insert(
@@ -420,6 +423,7 @@ mod tests {
                 dependencies: vec!["./session".to_string()],
                 loc: 80,
                 modified: None,
+                function_names: Vec::new(),
             },
         );
 

@@ -238,21 +238,32 @@ impl TypeScriptParser {
         })
     }
 
-    fn extract_exports(&self, source: &str, root_node: tree_sitter::Node) -> Vec<ExportEntry> {
+    /// Extract exports. The first return value is all exports; the second is the set of names
+    /// that come from `function_declaration` nodes (ALP-863: used for function_index).
+    fn extract_exports(
+        &self,
+        source: &str,
+        root_node: tree_sitter::Node,
+    ) -> (Vec<ExportEntry>, Vec<String>) {
         let source_bytes = source.as_bytes();
         let mut seen: HashSet<String> = HashSet::new();
         let mut exports = Vec::new();
+        let mut function_names: Vec<String> = Vec::new();
 
-        for query in &self.export_queries {
+        for (qi, query) in self.export_queries.iter().enumerate() {
             for entry in collect_matches_with_lines(query, root_node, source_bytes) {
                 if seen.insert(entry.name.clone()) {
+                    // Query index 0 matches `export function foo()` — confirmed function decls.
+                    if qi == 0 {
+                        function_names.push(entry.name.clone());
+                    }
                     exports.push(entry);
                 }
             }
         }
 
         exports.sort_by_key(|e| e.start_line);
-        exports
+        (exports, function_names)
     }
 
     fn extract_imports(
@@ -509,7 +520,7 @@ impl TypeScriptParser {
 
         let root_node = tree.root_node();
 
-        let mut exports = self.extract_exports(source, root_node);
+        let (mut exports, function_names) = self.extract_exports(source, root_node);
         let imports = self.extract_imports(source, root_node, aliases);
         let dependencies = self.extract_dependencies(source, root_node, aliases);
         let loc = source.lines().count();
@@ -525,19 +536,34 @@ impl TypeScriptParser {
         exports.sort_by_key(|e| e.start_line);
 
         let decorators = self.extract_decorators(source, root_node);
-        let custom_fields = if decorators.is_empty() {
+        let custom_fields = if decorators.is_empty() && function_names.is_empty() {
             None
         } else {
             let mut fields = HashMap::new();
-            fields.insert(
-                "decorators".to_string(),
-                serde_json::Value::Array(
-                    decorators
-                        .into_iter()
-                        .map(serde_json::Value::String)
-                        .collect(),
-                ),
-            );
+            if !decorators.is_empty() {
+                fields.insert(
+                    "decorators".to_string(),
+                    serde_json::Value::Array(
+                        decorators
+                            .into_iter()
+                            .map(serde_json::Value::String)
+                            .collect(),
+                    ),
+                );
+            }
+            // ALP-863: store confirmed function declaration names so the manifest can build
+            // function_index for call-site precision in fmm_glossary.
+            if !function_names.is_empty() {
+                fields.insert(
+                    "function_names".to_string(),
+                    serde_json::Value::Array(
+                        function_names
+                            .into_iter()
+                            .map(serde_json::Value::String)
+                            .collect(),
+                    ),
+                );
+            }
             Some(fields)
         };
 

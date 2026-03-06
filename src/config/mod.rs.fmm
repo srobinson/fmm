@@ -1,6 +1,6 @@
 ---
 file: src/config/mod.rs
-fmm: v0.3+0.1.25
+fmm: v0.3+0.1.26
 exports:
   TestPatterns: [11, 18]
   Config: [30, 37]

@@ -653,7 +653,6 @@ pub enum Commands {
   <bold>fmm_dependency_graph</bold>  local_deps, external packages, and downstream blast radius
   <bold>fmm_file_outline</bold>     Table of contents with line ranges
   <bold>fmm_list_exports</bold>     Search exports by pattern (fuzzy)
-  <bold>fmm_file_info</bold>        Structural profile without reading source
   <bold>fmm_search</bold>           Multi-criteria AND queries with relevance scoring
   <bold>fmm_list_files</bold>       List all indexed files under a directory path
   <bold>fmm_glossary</bold>         Symbol-level blast radius — all definitions + who imports each

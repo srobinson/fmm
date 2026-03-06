@@ -103,7 +103,6 @@ fmm includes a built-in MCP server with 9 tools. Configure via `fmm init --mcp` 
 | `fmm_dependency_graph` | Intra-project deps (`local_deps`), external packages, and downstream blast radius. `filter: "source"` excludes test files; `filter: "tests"` shows test coverage |
 | `fmm_file_outline`     | Table of contents with line ranges; `include_private: true` shows private/protected members |
 | `fmm_list_exports`     | Search exports by pattern — substring (case-insensitive) or regex (auto-detected: `^handle`, `Service$`, `^[A-Z]`) |
-| `fmm_file_info`        | Alias for `fmm_file_outline` — kept for backwards compatibility               |
 | `fmm_search`           | Multi-criteria AND queries with relevance scoring                             |
 | `fmm_list_files`       | List all indexed files under a directory path                                 |
 | `fmm_glossary`         | Symbol-level blast radius — all definitions of X + files that import each one |
@@ -118,7 +117,6 @@ fmm includes a built-in MCP server with 9 tools. Configure via `fmm init --mcp` 
   ─────────────────────►│   │  Parser   │───►│ Extractor │───►│  Sidecar   │   │◄──────────────────
   .ts .py .rs .go .c    │   │(tree-sit) │    │           │    │  Writer    │   │   fmm_lookup_export
   .java .cpp .cs .rb    │   └────────-──┘    └───────────┘    └─────┬──────┘   │   fmm_read_symbol
-  .php .swift .kt .ex   │                                          │           │   fmm_file_info
   .dart .lua .zig .sc   │                                     ┌─────▼──────┐   │   fmm_dependency_graph
                         │                                     │   .fmm     │   │   fmm_file_outline
                         │                                     │  sidecars  │   │   fmm_list_exports

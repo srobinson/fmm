@@ -31,11 +31,33 @@ pub(super) fn tool_lookup_export(
         .get(&file)
         .ok_or_else(|| format!("File '{}' not found in manifest", file))?;
 
+    // Check export_all for additional definitions (collision detection).
+    let collision_note = if let Some(all) = manifest.export_all.get(&args.name) {
+        let others: Vec<&str> = all
+            .iter()
+            .map(|loc| loc.file.as_str())
+            .filter(|f| *f != file.as_str())
+            .collect();
+        if others.is_empty() {
+            None
+        } else {
+            let file_list = others.join(", ");
+            Some(format!(
+                "⚠ {} additional definition(s) found: [{}] — use fmm_glossary for full collision analysis",
+                others.len(),
+                file_list
+            ))
+        }
+    } else {
+        None
+    };
+
     Ok(crate::format::format_lookup_export(
         &args.name,
         &file,
         symbol_lines.as_ref(),
         entry,
+        collision_note.as_deref(),
     ))
 }
 
@@ -635,7 +657,36 @@ pub(super) fn tool_search(
 
     // Structured filter search (no term)
     let results = crate::search::filter_search(manifest, &filters);
-    Ok(crate::format::format_filter_search(&results, false))
+    let total_count = results.len();
+    let formatted = crate::format::format_filter_search(&results, false);
+
+    // ALP-861: when depends_on is used, add a count header and transitive/direct clarification.
+    if let Some(ref dep_path) = filters.depends_on {
+        let limit_note = if total_count > 0 {
+            format!(
+                "{} file{} depend on {} (transitive — includes indirect dependents).",
+                total_count,
+                if total_count == 1 { "" } else { "s" },
+                dep_path,
+            )
+        } else {
+            format!("0 files depend on {} (transitive).", dep_path)
+        };
+        let footer = format!(
+            "# For direct dependents only: fmm_dependency_graph({})",
+            dep_path
+        );
+        return Ok(format!(
+            "# {}
+
+{}
+
+{}",
+            limit_note, formatted, footer
+        ));
+    }
+
+    Ok(formatted)
 }
 
 pub(super) fn tool_glossary(
@@ -729,6 +780,28 @@ pub(super) fn tool_glossary(
                     }
                 }
                 return Ok(lines.join("\n"));
+            }
+        }
+    }
+
+    // ALP-865: for bare-name queries that match a module-level function declaration,
+    // apply call-site precision (analogous to the dotted method refinement above).
+    if !pattern.contains('.') && !entries.is_empty() {
+        if let Some(_fn_loc) = manifest.function_index.get(pattern) {
+            for entry in &mut entries {
+                for source in &mut entry.sources {
+                    let (confirmed, ns_callers) =
+                        crate::manifest::call_site_finder::find_bare_function_callers(
+                            root,
+                            pattern,
+                            &source.used_by,
+                        );
+                    // Rebuild used_by: confirmed callers first, then namespace-import files
+                    // annotated inline in the output footer.
+                    source.used_by = confirmed;
+                    // Attach namespace callers so the formatter can disclose them.
+                    source.namespace_callers = ns_callers;
+                }
             }
         }
     }

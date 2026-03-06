@@ -1,6 +1,6 @@
 ---
 file: src/cli/status.rs
-fmm: v0.3+0.1.25
+fmm: v0.3+0.1.26
 exports:
   status: [9, 59]
 imports: [anyhow, colored]

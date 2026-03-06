@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/swift.rs
-fmm: v0.3+0.1.25
+fmm: v0.3+0.1.26
 exports:
   SwiftParser: [6, 8]
 methods:

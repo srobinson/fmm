@@ -14,18 +14,6 @@ use crate::search::{BareSearchResult, ExportHitCompact, FileSearchResult};
 // Per-file sidecar YAML formatters
 // ---------------------------------------------------------------------------
 
-/// Format file info as sidecar YAML (exact .fmm format without version/modified).
-pub fn format_file_info(file: &str, entry: &FileEntry) -> String {
-    let mut lines = Vec::new();
-    lines.push("---".to_string());
-    lines.push(format!("file: {}", yaml_escape(file)));
-    push_exports_map(&mut lines, &entry.exports, entry.export_lines.as_ref());
-    push_inline_list(&mut lines, "imports", &entry.imports);
-    push_inline_list(&mut lines, "dependencies", &entry.dependencies);
-    lines.push(format!("loc: {}", entry.loc));
-    lines.join("\n")
-}
-
 /// Format file outline: sidecar YAML with symbol sizes and method sub-entries.
 /// `private_by_class` is populated only when `include_private: true` is requested.
 /// When `Some`, private members are merged with public methods and annotated `# private`.
@@ -195,6 +183,7 @@ pub fn format_lookup_export(
     file: &str,
     symbol_lines: Option<&ExportLines>,
     entry: &FileEntry,
+    collision_note: Option<&str>,
 ) -> String {
     let mut lines = Vec::new();
     lines.push("---".to_string());
@@ -207,6 +196,10 @@ pub fn format_lookup_export(
     push_inline_list(&mut lines, "imports", &entry.imports);
     push_inline_list(&mut lines, "dependencies", &entry.dependencies);
     lines.push(format!("loc: {}", entry.loc));
+    if let Some(note) = collision_note {
+        lines.push(String::new());
+        lines.push(format!("# {}", note));
+    }
     lines.join("\n")
 }
 
@@ -246,6 +239,17 @@ pub fn format_dependency_graph(
     }
 
     push_inline_list(&mut lines, "imports", &entry.imports);
+
+    // ALP-859: when external imports are present, disclose that they are excluded from
+    // the downstream count so the analyst knows to use fmm_search for full reach.
+    if !external.is_empty() {
+        lines.push("# ℹ Cross-package imports are excluded from the downstream count.".to_string());
+        lines.push(
+            "#   To find all files that import this path, use: fmm_search(imports=\"<path>\")"
+                .to_string(),
+        );
+    }
+
     lines.join("\n")
 }
 
@@ -565,6 +569,14 @@ pub fn format_list_files(
             ));
         }
     }
+    // ALP-860: disclose that downstream count is local-only (cross-package importers excluded).
+    if !files.is_empty() {
+        lines.push(
+            "# ↓ N = local relative-import dependents only. Cross-package importers not included."
+                .to_string(),
+        );
+    }
+
     lines.join("\n")
 }
 
@@ -855,11 +867,24 @@ pub fn format_glossary(entries: &[GlossaryEntry], total_matched: usize, limit: u
                 _ => String::new(),
             };
             lines.push(format!("  - src: {}{}", src.file, loc_str));
-            if src.used_by.is_empty() {
+            if src.used_by.is_empty() && src.namespace_callers.is_empty() {
                 lines.push("    used_by: []".to_string());
             } else {
-                let items: Vec<String> = src.used_by.iter().map(|s| yaml_escape(s)).collect();
-                lines.push(format!("    used_by: [{}]", items.join(", ")));
+                if !src.used_by.is_empty() {
+                    let items: Vec<String> = src.used_by.iter().map(|s| yaml_escape(s)).collect();
+                    lines.push(format!("    used_by: [{}]", items.join(", ")));
+                } else {
+                    lines.push("    used_by: []".to_string());
+                }
+                // ALP-865: disclose each namespace-import caller individually so each gets
+                // its own namespace alias (files may import under different namespace names).
+                for (f, ns) in &src.namespace_callers {
+                    lines.push(format!(
+                        "    # {} via namespace import ({}.…) — call-site precision unavailable",
+                        yaml_escape(f),
+                        ns,
+                    ));
+                }
             }
         }
     }
@@ -931,6 +956,7 @@ mod tests {
             dependencies: vec![],
             loc: 400,
             modified: None,
+            function_names: Vec::new(),
         }
     }
 
@@ -1041,6 +1067,7 @@ mod tests {
             dependencies: vec![],
             loc: 50,
             modified: None,
+            function_names: Vec::new(),
         }
     }
 

@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/java.rs
-fmm: v0.3+0.1.25
+fmm: v0.3+0.1.26
 exports:
   JavaParser: [9, 17]
 imports: [anyhow, std, streaming_iterator, tree_sitter]

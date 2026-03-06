@@ -1,6 +1,6 @@
 ---
 file: examples/sample.ts
-fmm: v0.3+0.1.25
+fmm: v0.3+0.1.26
 exports:
   SessionConfig: [12, 15]
   SessionManager: [17, 46]
@@ -13,3 +13,5 @@ methods:
 imports: [jsonwebtoken, redis]
 loc: 51
 modified: 2026-03-06
+typescript:
+  function_names: [refreshToken]

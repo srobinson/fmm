@@ -1,6 +1,6 @@
 ---
 file: tests/cross_language_validation.rs
-fmm: v0.3+0.1.25
+fmm: v0.3+0.1.26
 imports: [fmm]
 loc: 2754
 modified: 2026-03-06
