@@ -106,6 +106,27 @@ pub fn lookup(symbol: &str, json_output: bool) -> Result<()> {
         .get(&file)
         .with_context(|| format!("File '{}' not found in manifest", file))?;
 
+    // Check export_all for additional definitions (collision detection).
+    let collision_note = if let Some(all) = manifest.export_all.get(symbol) {
+        let others: Vec<&str> = all
+            .iter()
+            .map(|loc| loc.file.as_str())
+            .filter(|f| *f != file.as_str())
+            .collect();
+        if others.is_empty() {
+            None
+        } else {
+            let file_list = others.join(", ");
+            Some(format!(
+                "⚠ {} additional definition(s) found: [{}] — use fmm_glossary for full collision analysis",
+                others.len(),
+                file_list
+            ))
+        }
+    } else {
+        None
+    };
+
     if json_output {
         let json = LookupJson {
             symbol: symbol.to_string(),
@@ -119,7 +140,13 @@ pub fn lookup(symbol: &str, json_output: bool) -> Result<()> {
     } else {
         println!(
             "{}",
-            crate::format::format_lookup_export(symbol, &file, symbol_lines.as_ref(), entry)
+            crate::format::format_lookup_export(
+                symbol,
+                &file,
+                symbol_lines.as_ref(),
+                entry,
+                collision_note.as_deref(),
+            )
         );
     }
 

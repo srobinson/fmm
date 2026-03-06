@@ -2,15 +2,15 @@
 file: src/cli/navigate.rs
 fmm: v0.3+0.1.25
 exports:
-  lookup: [82, 127]
-  read_symbol: [131, 230]
-  deps: [234, 358]
-  outline: [362, 414]
-  ls: [418, 585]
-  exports: [589, 728]
+  lookup: [82, 154]
+  read_symbol: [158, 257]
+  deps: [261, 385]
+  outline: [389, 441]
+  ls: [445, 612]
+  exports: [616, 755]
 imports: [anyhow, colored]
 dependencies: ['crate::manifest']
-loc: 728
+loc: 755
 modified: 2026-03-06
 rust:
   derives: ['serde::Serialize']

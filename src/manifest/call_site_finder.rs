@@ -495,8 +495,11 @@ mod tests {
             "aliased.ts",
             "import { scheduleUpdate as su } from './scheduler';\nsu();\n",
         );
-        let (confirmed, ns) =
-            find_bare_function_callers(dir.path(), "scheduleUpdate", &[aliased.clone()]);
+        let (confirmed, ns) = find_bare_function_callers(
+            dir.path(),
+            "scheduleUpdate",
+            std::slice::from_ref(&aliased),
+        );
         assert!(
             confirmed.contains(&aliased),
             "aliased caller should be confirmed"
@@ -513,8 +516,11 @@ mod tests {
             "ns_user.ts",
             "import * as wl from './scheduler';\nwl.scheduleUpdate();\n",
         );
-        let (confirmed, ns) =
-            find_bare_function_callers(dir.path(), "scheduleUpdate", &[ns_file.clone()]);
+        let (confirmed, ns) = find_bare_function_callers(
+            dir.path(),
+            "scheduleUpdate",
+            std::slice::from_ref(&ns_file),
+        );
         assert!(
             !confirmed.contains(&ns_file),
             "namespace user should NOT be in confirmed"
@@ -540,8 +546,11 @@ mod tests {
             "importer.ts",
             "import { scheduleUpdate } from './scheduler';\n// never calls scheduleUpdate\nconst x = 42;\n",
         );
-        let (confirmed, ns) =
-            find_bare_function_callers(dir.path(), "scheduleUpdate", &[importer.clone()]);
+        let (confirmed, ns) = find_bare_function_callers(
+            dir.path(),
+            "scheduleUpdate",
+            std::slice::from_ref(&importer),
+        );
         assert!(
             !confirmed.contains(&importer),
             "importer-without-call should be excluded"
@@ -558,8 +567,11 @@ mod tests {
             "index.ts",
             "export { scheduleUpdate } from './scheduler';\n",
         );
-        let (confirmed, ns) =
-            find_bare_function_callers(dir.path(), "scheduleUpdate", &[reexporter.clone()]);
+        let (confirmed, ns) = find_bare_function_callers(
+            dir.path(),
+            "scheduleUpdate",
+            std::slice::from_ref(&reexporter),
+        );
         assert!(
             !confirmed.contains(&reexporter),
             "re-exporter should be excluded"
@@ -577,7 +589,7 @@ mod tests {
             "import { otherFn } from './scheduler';\notherFn();\n",
         );
         let (confirmed, ns) =
-            find_bare_function_callers(dir.path(), "scheduleUpdate", &[other.clone()]);
+            find_bare_function_callers(dir.path(), "scheduleUpdate", std::slice::from_ref(&other));
         assert!(
             !confirmed.contains(&other),
             "unrelated importer should be excluded"

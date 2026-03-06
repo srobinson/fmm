@@ -183,6 +183,7 @@ pub fn format_lookup_export(
     file: &str,
     symbol_lines: Option<&ExportLines>,
     entry: &FileEntry,
+    collision_note: Option<&str>,
 ) -> String {
     let mut lines = Vec::new();
     lines.push("---".to_string());
@@ -195,6 +196,10 @@ pub fn format_lookup_export(
     push_inline_list(&mut lines, "imports", &entry.imports);
     push_inline_list(&mut lines, "dependencies", &entry.dependencies);
     lines.push(format!("loc: {}", entry.loc));
+    if let Some(note) = collision_note {
+        lines.push(String::new());
+        lines.push(format!("# {}", note));
+    }
     lines.join("\n")
 }
 
