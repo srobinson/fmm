@@ -735,6 +735,13 @@ pub struct GlossarySource {
     /// Each entry is `(file_path, namespace_name)`.
     #[serde(skip)]
     pub namespace_callers: Vec<(String, String)>,
+    /// ALP-882: count of files excluded by Layer 2 (import the module but not this specific symbol).
+    #[serde(skip)]
+    pub layer2_excluded_count: usize,
+    /// ALP-882: files that use a namespace import from the source module, detected at Layer 2.
+    /// Symbol use cannot be verified without call-site analysis; disclosed separately.
+    #[serde(skip)]
+    pub layer2_namespace_callers: Vec<String>,
 }
 
 /// Returns true if a file path is a test file (by path conventions only, ignoring symbol name).
@@ -813,6 +820,8 @@ impl Manifest {
                             lines: loc.lines.clone(),
                             used_by,
                             namespace_callers: Vec::new(),
+                            layer2_excluded_count: 0,
+                            layer2_namespace_callers: Vec::new(),
                         }
                     })
                     .collect();
@@ -858,6 +867,8 @@ impl Manifest {
                     lines: loc.lines.clone(),
                     used_by,
                     namespace_callers: Vec::new(),
+                    layer2_excluded_count: 0,
+                    layer2_namespace_callers: Vec::new(),
                 }],
             });
         }

@@ -784,22 +784,64 @@ pub(super) fn tool_glossary(
         }
     }
 
-    // ALP-865: for bare-name queries that match a module-level function declaration,
-    // apply call-site precision (analogous to the dotted method refinement above).
+    // ALP-882 + ALP-865: for bare-name queries that match a module-level function declaration,
+    // apply Layer 2 (named import filter) then Layer 3 (call-site verification).
     if !pattern.contains('.') && !entries.is_empty() {
         if let Some(_fn_loc) = manifest.function_index.get(pattern) {
             for entry in &mut entries {
                 for source in &mut entry.sources {
+                    // Layer 2: named import filter — index-only, no tree-sitter.
+                    // Shrinks used_by from all module importers (~24) to named-import callers (~10).
+                    let source_file = source.file.clone();
+                    let mut named_callers: Vec<String> = Vec::new();
+                    let mut l2_ns: Vec<String> = Vec::new();
+                    let mut l2_excluded: usize = 0;
+
+                    for candidate in source.used_by.drain(..) {
+                        match manifest.files.get(&candidate) {
+                            None => {
+                                // No FileEntry — include to avoid false negatives.
+                                named_callers.push(candidate);
+                            }
+                            Some(fe) => {
+                                // If the file has no named_imports data (non-TS/JS or pre-v0.4
+                                // sidecar), fall through: include to avoid false negatives.
+                                if fe.named_imports.is_empty() && fe.namespace_imports.is_empty() {
+                                    named_callers.push(candidate);
+                                    continue;
+                                }
+                                let specifiers =
+                                    compute_import_specifiers(&candidate, &source_file);
+
+                                if specifiers.iter().any(|s| fe.namespace_imports.contains(s)) {
+                                    l2_ns.push(candidate);
+                                } else if specifiers.iter().any(|s| {
+                                    fe.named_imports
+                                        .get(s)
+                                        .map(|names| names.iter().any(|n| n == pattern))
+                                        .unwrap_or(false)
+                                }) {
+                                    named_callers.push(candidate);
+                                } else {
+                                    l2_excluded += 1;
+                                }
+                            }
+                        }
+                    }
+
+                    source.used_by = named_callers;
+                    source.layer2_excluded_count = l2_excluded;
+                    source.layer2_namespace_callers = l2_ns;
+
+                    // Layer 3: call-site verification (tree-sitter) on the Layer 2 survivors.
+                    // Removes dead imports and annotates re-exports.
                     let (confirmed, ns_callers) =
                         crate::manifest::call_site_finder::find_bare_function_callers(
                             root,
                             pattern,
                             &source.used_by,
                         );
-                    // Rebuild used_by: confirmed callers first, then namespace-import files
-                    // annotated inline in the output footer.
                     source.used_by = confirmed;
-                    // Attach namespace callers so the formatter can disclose them.
                     source.namespace_callers = ns_callers;
                 }
             }
@@ -911,6 +953,68 @@ pub(super) fn validate_not_directory(path: &str, root: &std::path::Path) -> Resu
         ));
     }
     Ok(())
+}
+
+/// Compute the possible import path specifiers that a file at `candidate_path` would use
+/// when importing from `source_file`. Both paths are manifest-relative (e.g.
+/// `packages/react-reconciler/src/ReactFiberHooks.js`).
+///
+/// Returns up to two forms: without extension (the common TS/JS convention) and with extension.
+/// Same-directory imports get a `./` prefix; cross-directory ones use `../` traversal.
+///
+/// These specifiers are compared against keys in `FileEntry::named_imports` and
+/// `FileEntry::namespace_imports`, which store paths as written in the import statement.
+pub(super) fn compute_import_specifiers(candidate_path: &str, source_file: &str) -> Vec<String> {
+    let candidate_dir = candidate_path
+        .rsplit_once('/')
+        .map(|(d, _)| d)
+        .unwrap_or("");
+    let (source_dir, source_filename) = source_file.rsplit_once('/').unwrap_or(("", source_file));
+    let source_base = source_filename
+        .rsplit_once('.')
+        .map(|(b, _)| b)
+        .unwrap_or(source_filename);
+
+    let candidate_segs: Vec<&str> = if candidate_dir.is_empty() {
+        vec![]
+    } else {
+        candidate_dir.split('/').collect()
+    };
+    let source_segs: Vec<&str> = if source_dir.is_empty() {
+        vec![]
+    } else {
+        source_dir.split('/').collect()
+    };
+
+    let common = candidate_segs
+        .iter()
+        .zip(source_segs.iter())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let up = candidate_segs.len() - common;
+    let down = &source_segs[common..];
+
+    let mut parts: Vec<&str> = std::iter::repeat_n("..", up).collect();
+    parts.extend(down.iter().copied());
+
+    let (base_specifier, ext_specifier) = if parts.is_empty() {
+        (
+            format!("./{}", source_base),
+            format!("./{}", source_filename),
+        )
+    } else {
+        let prefix = parts.join("/");
+        (
+            format!("{}/{}", prefix, source_base),
+            format!("{}/{}", prefix, source_filename),
+        )
+    };
+
+    if base_specifier == ext_specifier {
+        vec![base_specifier]
+    } else {
+        vec![base_specifier, ext_specifier]
+    }
 }
 
 /// Match a glob pattern against a filename (last path component).

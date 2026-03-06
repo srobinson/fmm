@@ -1,4 +1,4 @@
-use super::tools::{glob_filename_matches, is_reexport_file};
+use super::tools::{compute_import_specifiers, glob_filename_matches, is_reexport_file};
 use super::*;
 
 #[test]
@@ -1750,6 +1750,183 @@ fn list_exports_invalid_regex_returns_error() {
     assert!(
         text.contains("Invalid pattern"),
         "error must say 'Invalid pattern'; got:\n{}",
+        text
+    );
+}
+
+// ALP-882: compute_import_specifiers unit tests
+
+#[test]
+fn compute_import_specifiers_same_directory() {
+    // Two files in the same directory — should produce `./BaseName` and `./BaseName.js`
+    let specs = compute_import_specifiers("src/ReactFiberHooks.js", "src/ReactFiberWorkLoop.js");
+    assert!(
+        specs.contains(&"./ReactFiberWorkLoop".to_string()),
+        "expected ./ReactFiberWorkLoop in {:?}",
+        specs
+    );
+    assert!(
+        specs.contains(&"./ReactFiberWorkLoop.js".to_string()),
+        "expected ./ReactFiberWorkLoop.js in {:?}",
+        specs
+    );
+}
+
+#[test]
+fn compute_import_specifiers_cross_directory() {
+    // Cross-directory: react-dom importing from react-reconciler
+    let specs = compute_import_specifiers(
+        "packages/react-dom/src/ReactDOMRenderer.js",
+        "packages/react-reconciler/src/ReactFiberWorkLoop.js",
+    );
+    assert!(
+        specs.contains(&"../../react-reconciler/src/ReactFiberWorkLoop".to_string()),
+        "expected cross-dir specifier without ext in {:?}",
+        specs
+    );
+    assert!(
+        specs.contains(&"../../react-reconciler/src/ReactFiberWorkLoop.js".to_string()),
+        "expected cross-dir specifier with ext in {:?}",
+        specs
+    );
+}
+
+#[test]
+fn compute_import_specifiers_file_in_root() {
+    // Candidate in repo root importing from a subdirectory file
+    let specs = compute_import_specifiers("index.js", "src/utils.js");
+    assert!(
+        specs.contains(&"src/utils".to_string()),
+        "expected src/utils in {:?}",
+        specs
+    );
+}
+
+#[test]
+fn compute_import_specifiers_no_extension() {
+    // Source file with no extension — base and ext forms should be identical
+    let specs = compute_import_specifiers("src/foo.js", "src/bar");
+    assert_eq!(
+        specs,
+        vec!["./bar".to_string()],
+        "no-ext: single form expected"
+    );
+}
+
+#[test]
+fn glossary_layer2_filters_non_symbol_importers() {
+    use crate::manifest::{ExportLines, ExportLocation, FileEntry, Manifest};
+    use std::collections::HashMap;
+
+    // Build a minimal manifest:
+    //   source.js — exports `myFunc` as a module-level function
+    //   caller.js — named-imports `myFunc` from `./source`
+    //   bystander.js — imports `./source` but NOT `myFunc`
+    let mut manifest = Manifest::new();
+
+    let source_entry = FileEntry {
+        exports: vec!["myFunc".to_string()],
+        export_lines: Some(vec![ExportLines { start: 1, end: 5 }]),
+        methods: None,
+        imports: vec![],
+        dependencies: vec![],
+        loc: 10,
+        modified: None,
+        function_names: vec!["myFunc".to_string()],
+        named_imports: HashMap::new(),
+        namespace_imports: vec![],
+    };
+
+    let mut caller_named = HashMap::new();
+    caller_named.insert("./source".to_string(), vec!["myFunc".to_string()]);
+    let caller_entry = FileEntry {
+        exports: vec![],
+        export_lines: None,
+        methods: None,
+        imports: vec!["./source".to_string()],
+        dependencies: vec!["source.js".to_string()],
+        loc: 5,
+        modified: None,
+        function_names: vec![],
+        named_imports: caller_named,
+        namespace_imports: vec![],
+    };
+
+    let mut bystander_named = HashMap::new();
+    // bystander imports `otherThing` from `./source`, not `myFunc`
+    bystander_named.insert("./source".to_string(), vec!["otherThing".to_string()]);
+    let bystander_entry = FileEntry {
+        exports: vec![],
+        export_lines: None,
+        methods: None,
+        imports: vec!["./source".to_string()],
+        dependencies: vec!["source.js".to_string()],
+        loc: 3,
+        modified: None,
+        function_names: vec![],
+        named_imports: bystander_named,
+        namespace_imports: vec![],
+    };
+
+    manifest.files.insert("source.js".to_string(), source_entry);
+    manifest.files.insert("caller.js".to_string(), caller_entry);
+    manifest
+        .files
+        .insert("bystander.js".to_string(), bystander_entry);
+
+    manifest
+        .export_index
+        .insert("myFunc".to_string(), "source.js".to_string());
+    manifest.export_locations.insert(
+        "myFunc".to_string(),
+        ExportLocation {
+            file: "source.js".to_string(),
+            lines: Some(ExportLines { start: 1, end: 5 }),
+        },
+    );
+    // export_all is iterated by build_glossary — must be populated.
+    manifest
+        .export_all
+        .entry("myFunc".to_string())
+        .or_default()
+        .push(ExportLocation {
+            file: "source.js".to_string(),
+            lines: Some(ExportLines { start: 1, end: 5 }),
+        });
+    // function_index triggers the Layer 2 + Layer 3 guard in tool_glossary.
+    manifest.function_index.insert(
+        "myFunc".to_string(),
+        ExportLocation {
+            file: "source.js".to_string(),
+            lines: Some(ExportLines { start: 1, end: 5 }),
+        },
+    );
+
+    let server = McpServer {
+        manifest: Some(manifest),
+        root: std::path::PathBuf::from("/tmp"),
+    };
+    let result = server
+        .call_tool("fmm_glossary", serde_json::json!({"pattern": "myFunc"}))
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap_or("");
+
+    // caller.js must appear in used_by
+    assert!(
+        text.contains("caller.js"),
+        "caller.js must be in used_by; got:\n{}",
+        text
+    );
+    // bystander.js must NOT appear (Layer 2 filtered it)
+    assert!(
+        !text.contains("bystander.js"),
+        "bystander.js must be filtered by Layer 2; got:\n{}",
+        text
+    );
+    // Layer 2 disclosure note must be present
+    assert!(
+        text.contains("additional"),
+        "disclosure note must mention 'additional'; got:\n{}",
         text
     );
 }
