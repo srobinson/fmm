@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.29](https://github.com/srobinson/fmm/compare/v0.1.28...v0.1.29) (2026-03-06)
+
+
+### Features
+
+* **glossary:** layered call-site precision — named import tracking + used_by filtering ([#85](https://github.com/srobinson/fmm/issues/85)) ([678d16b](https://github.com/srobinson/fmm/commit/678d16b2b4f9a89fcbc4a9753fb73126c67925d7))
+
 ## [0.1.28](https://github.com/srobinson/fmm/compare/v0.1.27...v0.1.28) (2026-03-06)
 
 
