@@ -1,11 +1,11 @@
 ---
 file: src/parser/builtin/csharp.rs
-fmm: v0.3+0.1.27
+fmm: v0.4+0.1.28
 exports:
   CSharpParser: [9, 19]
 imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: [../query_helpers/collect_matches, 'crate::parser']
-loc: 344
+loc: 345
 modified: 2026-03-06
 rust:
   lifetimes: ['''static']

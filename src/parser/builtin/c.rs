@@ -309,6 +309,7 @@ impl Parser for CParser {
                 imports,
                 dependencies,
                 loc,
+                ..Default::default()
             },
             custom_fields: if custom_fields.is_empty() {
                 None

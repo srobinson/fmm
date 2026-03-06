@@ -382,6 +382,7 @@ mod tests {
                 loc: 120,
                 modified: None,
                 function_names: Vec::new(),
+                ..Default::default()
             },
         );
         m.files.insert(
@@ -395,6 +396,7 @@ mod tests {
                 loc: 45,
                 modified: None,
                 function_names: Vec::new(),
+                ..Default::default()
             },
         );
         m.files.insert(
@@ -408,6 +410,7 @@ mod tests {
                 loc: 30,
                 modified: None,
                 function_names: Vec::new(),
+                ..Default::default()
             },
         );
         m.files.insert(
@@ -424,6 +427,7 @@ mod tests {
                 loc: 80,
                 modified: None,
                 function_names: Vec::new(),
+                ..Default::default()
             },
         );
 

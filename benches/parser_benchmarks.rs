@@ -317,6 +317,7 @@ fn make_large_manifest(n: usize) -> (Manifest, String) {
             imports: vec![],
             dependencies: vec![],
             loc: 10,
+            ..Default::default()
         },
     );
 
@@ -330,6 +331,7 @@ fn make_large_manifest(n: usize) -> (Manifest, String) {
                 imports: vec![],
                 dependencies: vec!["../core/base".to_string()],
                 loc: 5,
+                ..Default::default()
             },
         );
     }

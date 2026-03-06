@@ -542,6 +542,7 @@ mod tests {
             loc,
             modified: None,
             function_names: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -555,6 +556,7 @@ mod tests {
                     imports: vec![],
                     dependencies: deps.iter().map(|s| s.to_string()).collect(),
                     loc: 10,
+                    ..Default::default()
                 },
             );
         }
@@ -734,6 +736,7 @@ mod tests {
                     imports: imps.iter().map(|s| s.to_string()).collect(),
                     dependencies: deps.iter().map(|s| s.to_string()).collect(),
                     loc: 10,
+                    ..Default::default()
                 },
             );
         }
@@ -900,6 +903,7 @@ mod tests {
                     imports: vec![],
                     dependencies: vec![],
                     loc: 10,
+                    ..Default::default()
                 },
             );
         }

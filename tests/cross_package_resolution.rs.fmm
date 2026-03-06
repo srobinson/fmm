@@ -1,6 +1,6 @@
 ---
 file: tests/cross_package_resolution.rs
-fmm: v0.3+0.1.27
+fmm: v0.4+0.1.28
 imports: [std]
 loc: 400
 modified: 2026-03-06

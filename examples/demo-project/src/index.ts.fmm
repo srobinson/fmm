@@ -1,7 +1,16 @@
 ---
 file: examples/demo-project/src/index.ts
-fmm: v0.3+0.1.27
+fmm: v0.4+0.1.28
 imports: [express]
 dependencies: [./api/errors, ./api/routes, ./config, ./db/client]
 loc: 21
 modified: 2026-03-06
+named_imports:
+  ./api/errors:
+    - errorHandler
+  ./api/routes:
+    - createRouter
+  ./config:
+    - loadConfig
+  ./db/client:
+    - createClient

@@ -201,13 +201,13 @@ pub(super) fn tool_list() -> Value {
         },
         Tool {
             name: "fmm_glossary".to_string(),
-            description: "Symbol-level impact analysis. Given a symbol name or pattern, returns all definitions and exactly which files import each one. Two modes controlled by the pattern: bare name (e.g. 'loadInstance') returns file-level used_by — all files that import the symbol's file; dotted name (e.g. 'Injector.loadInstance') adds call-site precision — a second tree-sitter pass filters to files that actually call that method. Use before renaming or changing a signature to get a precise blast radius — more surgical than fmm_dependency_graph which only gives file-level downstream.".to_string(),
+            description: "Symbol-level impact analysis. Given a symbol name or pattern, returns all definitions and exactly which files import each one. Three-layer precision: bare name returns named-import filtered callers (Layer 2, default); dotted name (e.g. 'Injector.loadInstance') adds call-site precision; precision: 'call-site' adds Layer 3 tree-sitter to remove dead imports and annotate re-exports. Use before renaming or changing a signature.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Required. Case-insensitive substring filter on export name. Bare name (e.g. 'loadInstance') → file-level used_by. Dotted name (e.g. 'Injector.loadInstance') → call-site precision, filtered to actual callers."
+                        "description": "Required. Case-insensitive substring filter on export name. Bare name (e.g. 'loadInstance') returns named-import filtered used_by (Layer 2). Dotted name (e.g. 'Injector.loadInstance') adds call-site precision, filtered to actual callers."
                     },
                     "limit": {
                         "type": "integer",
@@ -216,7 +216,12 @@ pub(super) fn tool_list() -> Value {
                     "mode": {
                         "type": "string",
                         "enum": ["source", "tests", "all"],
-                        "description": "source (default): excludes test symbols and test files — exact callers for refactoring. tests: only test exports — what tests exercise this symbol? all: unfiltered."
+                        "description": "source (default): excludes test symbols and test files. tests: only test exports. all: unfiltered."
+                    },
+                    "precision": {
+                        "type": "string",
+                        "enum": ["named", "call-site"],
+                        "description": "named (default): Layer 2 only, fast index lookup with no file reads. call-site: adds Layer 3 tree-sitter verification to remove dead imports and annotate re-export-only files."
                     }
                 },
                 "required": ["pattern"]

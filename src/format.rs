@@ -867,7 +867,10 @@ pub fn format_glossary(entries: &[GlossaryEntry], total_matched: usize, limit: u
                 _ => String::new(),
             };
             lines.push(format!("  - src: {}{}", src.file, loc_str));
-            if src.used_by.is_empty() && src.namespace_callers.is_empty() {
+            let has_any_callers = !src.used_by.is_empty()
+                || !src.namespace_callers.is_empty()
+                || !src.layer2_namespace_callers.is_empty();
+            if !has_any_callers {
                 lines.push("    used_by: []".to_string());
             } else {
                 if !src.used_by.is_empty() {
@@ -884,6 +887,42 @@ pub fn format_glossary(entries: &[GlossaryEntry], total_matched: usize, limit: u
                         yaml_escape(f),
                         ns,
                     ));
+                }
+                // ALP-882: Layer 2 namespace callers (alias unknown at index time).
+                for f in &src.layer2_namespace_callers {
+                    lines.push(format!(
+                        "    # {} — via namespace import (symbol use unverifiable)",
+                        yaml_escape(f),
+                    ));
+                }
+            }
+            // ALP-882: disclose how many files were filtered out by Layer 2.
+            if src.layer2_excluded_count > 0 {
+                let src_basename = src.file.rsplit('/').next().unwrap_or(&src.file);
+                lines.push(format!(
+                    "    # {} additional {} import {} but not this specific symbol",
+                    src.layer2_excluded_count,
+                    if src.layer2_excluded_count == 1 {
+                        "file imports"
+                    } else {
+                        "files import"
+                    },
+                    src_basename,
+                ));
+            }
+            // ALP-883: re-export-only files — impacted by rename but not callers.
+            if !src.reexport_files.is_empty() {
+                lines.push(format!(
+                    "    # re-exports only ({} {} — rename required but no call site):",
+                    src.reexport_files.len(),
+                    if src.reexport_files.len() == 1 {
+                        "file"
+                    } else {
+                        "files"
+                    },
+                ));
+                for f in &src.reexport_files {
+                    lines.push(format!("    #   {}", yaml_escape(f)));
                 }
             }
         }
@@ -957,6 +996,7 @@ mod tests {
             loc: 400,
             modified: None,
             function_names: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -1068,6 +1108,7 @@ mod tests {
             loc: 50,
             modified: None,
             function_names: Vec::new(),
+            ..Default::default()
         }
     }
 

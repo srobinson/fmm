@@ -1,6 +1,6 @@
 ---
 file: fixtures/python/heuristic.py
-fmm: v0.3+0.1.27
+fmm: v0.4+0.1.28
 exports:
   Agent: [7, 11]
   Router: [14, 16]

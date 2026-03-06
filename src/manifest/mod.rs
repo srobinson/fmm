@@ -13,13 +13,13 @@ pub mod call_site_finder;
 pub mod private_members;
 
 /// Typed representation of a `.fmm` sidecar file for serde_yaml deserialization.
-/// Handles both v0.2 (exports as list) and v0.3 (exports as map with line ranges).
+/// v0.4: exports as map with line ranges, named_imports and namespace_imports top-level.
 #[derive(Debug, Deserialize)]
 struct SidecarData {
     file: String,
     #[serde(default)]
     exports: Option<serde_yaml::Value>,
-    /// Flat map of `ClassName.method: [start, end]` entries (v0.4+).
+    /// Flat map of `ClassName.method: [start, end]` entries.
     #[serde(default)]
     methods: Option<serde_yaml::Value>,
     #[serde(default)]
@@ -28,6 +28,12 @@ struct SidecarData {
     dependencies: Option<Vec<String>>,
     #[serde(default)]
     loc: Option<usize>,
+    /// Named imports per source module: path → [original_name, ...].
+    #[serde(default)]
+    named_imports: Option<serde_yaml::Value>,
+    /// Source paths of namespace/wildcard imports.
+    #[serde(default)]
+    namespace_imports: Option<Vec<String>>,
     /// Captures all other fields (fmm version, modified, language-specific sections)
     #[serde(flatten)]
     _extra: HashMap<String, serde_yaml::Value>,
@@ -41,10 +47,10 @@ pub struct ExportLines {
 }
 
 /// Entry for a single file in the in-memory index
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FileEntry {
     pub exports: Vec<String>,
-    /// Line ranges for exports (parallel to exports vec). None if from v0.2 sidecar.
+    /// Line ranges for exports (parallel to exports vec).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub export_lines: Option<Vec<ExportLines>>,
     /// Public class methods: `"ClassName.method"` → line range. Populated from the
@@ -62,6 +68,14 @@ pub struct FileEntry {
     /// Used to build function_index for call-site precision in fmm_glossary.
     #[serde(skip)]
     pub function_names: Vec<String>,
+    /// Named imports per source module (TS/JS only). Key = import path as written in source.
+    /// Value = original exported names (alias-resolved). Populated from sidecar named_imports section.
+    /// Used by Layer 2 filtering in fmm_glossary.
+    #[serde(skip)]
+    pub named_imports: HashMap<String, Vec<String>>,
+    /// Source paths of namespace imports and wildcard re-exports. Populated from sidecar.
+    #[serde(skip)]
+    pub namespace_imports: Vec<String>,
 }
 
 impl From<Metadata> for FileEntry {
@@ -103,6 +117,8 @@ impl From<Metadata> for FileEntry {
             loc: metadata.loc,
             modified: None,
             function_names: Vec::new(),
+            named_imports: metadata.named_imports,
+            namespace_imports: metadata.namespace_imports,
         }
     }
 }
@@ -521,7 +537,7 @@ fn dedup_yaml_mapping_keys(content: &str) -> String {
 }
 
 /// Parse a sidecar YAML file into (file_path, FileEntry).
-/// Handles both v0.2 (exports as list) and v0.3 (exports as map with line ranges).
+/// Parses a v0.4 sidecar file into a `(file_path, FileEntry)` pair.
 /// If serde_yaml rejects the document due to duplicate mapping keys (TypeScript overloads in
 /// sidecars generated before the dedup fix), deduplicates and retries with a warning.
 fn parse_sidecar(content: &str) -> Option<(String, FileEntry)> {
@@ -556,19 +572,8 @@ fn parse_sidecar(content: &str) -> Option<(String, FileEntry)> {
     }
 
     let (exports, export_lines) = match data.exports {
-        Some(serde_yaml::Value::Sequence(seq)) => {
-            // v0.2 format: exports: [foo, bar]
-            let names: Vec<String> = seq
-                .into_iter()
-                .filter_map(|v| match v {
-                    serde_yaml::Value::String(s) => Some(s),
-                    _ => None,
-                })
-                .collect();
-            (names, None)
-        }
         Some(serde_yaml::Value::Mapping(map)) => {
-            // v0.3 format: exports:\n  foo: [1, 10]\n  bar: [12, 25]
+            // v0.4 format: exports:\n  foo: [1, 10]\n  bar: [12, 25]
             let mut names = Vec::new();
             let mut lines = Vec::new();
             for (key, value) in map {
@@ -653,6 +658,35 @@ fn parse_sidecar(content: &str) -> Option<(String, FileEntry)> {
         })
         .unwrap_or_default();
 
+    // Parse named_imports: mapping of source path → [name, ...]
+    let named_imports: HashMap<String, Vec<String>> = match data.named_imports {
+        Some(serde_yaml::Value::Mapping(map)) => {
+            let mut result = HashMap::new();
+            for (key, value) in map {
+                if let serde_yaml::Value::String(path) = key {
+                    let names: Vec<String> = match value {
+                        serde_yaml::Value::Sequence(seq) => seq
+                            .into_iter()
+                            .filter_map(|v| {
+                                if let serde_yaml::Value::String(s) = v {
+                                    Some(s)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect(),
+                        _ => Vec::new(),
+                    };
+                    if !names.is_empty() {
+                        result.insert(path, names);
+                    }
+                }
+            }
+            result
+        }
+        _ => HashMap::new(),
+    };
+
     Some((
         data.file,
         FileEntry {
@@ -664,6 +698,8 @@ fn parse_sidecar(content: &str) -> Option<(String, FileEntry)> {
             loc: data.loc.unwrap_or(0),
             modified,
             function_names,
+            named_imports,
+            namespace_imports: data.namespace_imports.unwrap_or_default(),
         },
     ))
 }
@@ -699,6 +735,17 @@ pub struct GlossarySource {
     /// Each entry is `(file_path, namespace_name)`.
     #[serde(skip)]
     pub namespace_callers: Vec<(String, String)>,
+    /// ALP-882: count of files excluded by Layer 2 (import the module but not this specific symbol).
+    #[serde(skip)]
+    pub layer2_excluded_count: usize,
+    /// ALP-882: files that use a namespace import from the source module, detected at Layer 2.
+    /// Symbol use cannot be verified without call-site analysis; disclosed separately.
+    #[serde(skip)]
+    pub layer2_namespace_callers: Vec<String>,
+    /// ALP-883: files that re-export the symbol but have no call site (Layer 3 detection).
+    /// These ARE impacted by a rename — disclosed separately as "re-exports only".
+    #[serde(skip)]
+    pub reexport_files: Vec<String>,
 }
 
 /// Returns true if a file path is a test file (by path conventions only, ignoring symbol name).
@@ -777,6 +824,9 @@ impl Manifest {
                             lines: loc.lines.clone(),
                             used_by,
                             namespace_callers: Vec::new(),
+                            layer2_excluded_count: 0,
+                            layer2_namespace_callers: Vec::new(),
+                            reexport_files: Vec::new(),
                         }
                     })
                     .collect();
@@ -822,6 +872,9 @@ impl Manifest {
                     lines: loc.lines.clone(),
                     used_by,
                     namespace_callers: Vec::new(),
+                    layer2_excluded_count: 0,
+                    layer2_namespace_callers: Vec::new(),
+                    reexport_files: Vec::new(),
                 }],
             });
         }
@@ -1278,6 +1331,7 @@ mod tests {
             imports: vec!["crypto".to_string()],
             dependencies: vec!["./database".to_string()],
             loc: 234,
+            ..Default::default()
         };
 
         manifest.add_file("src/auth.ts", metadata);
@@ -1297,6 +1351,20 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_sidecar_named_imports() {
+        let content = "file: src/app.ts\nfmm: v0.4\nexports:\n  App: [1, 20]\nloc: 20\nnamed_imports:\n  ./ReactFiberWorkLoop:\n    - scheduleUpdateOnFiber\n    - requestUpdateLane\n  ./ReactFiberLane:\n    - NoLane\nnamespace_imports:\n  - ./SomeModule\n";
+        let (path, entry) = parse_sidecar(content).unwrap();
+        assert_eq!(path, "src/app.ts");
+        let ni = &entry.named_imports;
+        assert_eq!(
+            ni["./ReactFiberWorkLoop"],
+            vec!["scheduleUpdateOnFiber", "requestUpdateLane"]
+        );
+        assert_eq!(ni["./ReactFiberLane"], vec!["NoLane"]);
+        assert_eq!(entry.namespace_imports, vec!["./SomeModule"]);
+    }
+
+    #[test]
     fn test_parse_sidecar_v03() {
         let content = "file: src/auth/session.ts\nfmm: v0.3\nexports:\n  createSession: [5, 20]\n  validateSession: [22, 45]\nimports: [jwt, redis]\ndependencies: [./types, ./config]\nloc: 234\nmodified: 2026-01-30";
 
@@ -1306,25 +1374,6 @@ mod tests {
         let lines = entry.export_lines.unwrap();
         assert_eq!(lines[0], ExportLines { start: 5, end: 20 });
         assert_eq!(lines[1], ExportLines { start: 22, end: 45 });
-    }
-
-    #[test]
-    fn test_parse_sidecar_v02_backward_compat() {
-        let content = r#"file: src/auth/session.ts
-fmm: v0.2
-exports: [createSession, validateSession]
-imports: [jwt, redis]
-dependencies: [./types, ./config]
-loc: 234
-modified: 2026-01-30"#;
-
-        let (path, entry) = parse_sidecar(content).unwrap();
-        assert_eq!(path, "src/auth/session.ts");
-        assert_eq!(entry.exports, vec!["createSession", "validateSession"]);
-        assert!(entry.export_lines.is_none());
-        assert_eq!(entry.imports, vec!["jwt", "redis"]);
-        assert_eq!(entry.dependencies, vec!["./types", "./config"]);
-        assert_eq!(entry.loc, 234);
     }
 
     #[test]
@@ -1367,6 +1416,7 @@ modified: 2026-01-30"#;
             imports: vec![],
             dependencies: vec![],
             loc: 100,
+            ..Default::default()
         };
         let fe = FileEntry::from(metadata);
         assert_eq!(fe.exports, vec!["MyClass"]);
@@ -1387,6 +1437,7 @@ modified: 2026-01-30"#;
             imports: vec![],
             dependencies: vec![],
             loc: 50,
+            ..Default::default()
         };
         manifest.add_file("src/thing.ts", metadata);
 
@@ -1419,6 +1470,7 @@ modified: 2026-01-30"#;
             imports: vec![],
             dependencies: vec![],
             loc: 400,
+            ..Default::default()
         };
         manifest.add_file("src/factory.ts", metadata);
 
@@ -1486,6 +1538,7 @@ modified: 2026-01-30"#;
             imports: vec![],
             dependencies: vec![],
             loc: 50,
+            ..Default::default()
         };
 
         manifest.add_file("file.ts", metadata.clone());
@@ -1496,6 +1549,7 @@ modified: 2026-01-30"#;
             imports: vec![],
             dependencies: vec![],
             loc: 50,
+            ..Default::default()
         };
         assert!(!manifest.validate_file("file.ts", &different));
     }
@@ -1512,6 +1566,7 @@ modified: 2026-01-30"#;
             imports: vec![],
             dependencies: vec![],
             loc: 20,
+            ..Default::default()
         };
 
         manifest.add_file("svc.ts", metadata.clone());
@@ -1530,6 +1585,7 @@ modified: 2026-01-30"#;
             imports: vec![],
             dependencies: vec![],
             loc: 10,
+            ..Default::default()
         };
 
         manifest.add_file("remove.ts", metadata);
@@ -1551,12 +1607,14 @@ modified: 2026-01-30"#;
             imports: vec![],
             dependencies: vec![],
             loc: 20,
+            ..Default::default()
         };
         let meta_b = Metadata {
             exports: vec![entry("Config", 5, 15)],
             imports: vec![],
             dependencies: vec![],
             loc: 30,
+            ..Default::default()
         };
 
         manifest.add_file("src/config/types.rs", meta_a);
@@ -1578,12 +1636,14 @@ modified: 2026-01-30"#;
             imports: vec![],
             dependencies: vec![],
             loc: 50,
+            ..Default::default()
         };
         let meta_js = Metadata {
             exports: vec![entry("App", 1, 50)],
             imports: vec![],
             dependencies: vec![],
             loc: 50,
+            ..Default::default()
         };
 
         manifest.add_file("src/app.ts", meta_ts);
@@ -1605,12 +1665,14 @@ modified: 2026-01-30"#;
             imports: vec![],
             dependencies: vec![],
             loc: 50,
+            ..Default::default()
         };
         let meta_ts = Metadata {
             exports: vec![entry("App", 1, 50)],
             imports: vec![],
             dependencies: vec![],
             loc: 50,
+            ..Default::default()
         };
 
         // JS added first, then TS — TS should still win
@@ -1632,6 +1694,7 @@ modified: 2026-01-30"#;
             imports: vec![],
             dependencies: vec![],
             loc: 10,
+            ..Default::default()
         };
 
         manifest.add_file("file.ts", metadata1);
@@ -1641,6 +1704,7 @@ modified: 2026-01-30"#;
             imports: vec![],
             dependencies: vec![],
             loc: 15,
+            ..Default::default()
         };
 
         manifest.add_file("file.ts", metadata2);
@@ -1668,12 +1732,14 @@ modified: 2026-01-30"#;
             imports: vec![],
             dependencies: vec![],
             loc: 20,
+            ..Default::default()
         };
         let meta_b = Metadata {
             exports: vec![entry("Config", 5, 15)],
             imports: vec![],
             dependencies: vec![],
             loc: 30,
+            ..Default::default()
         };
 
         manifest.add_file("src/config/types.rs", meta_a);
@@ -1708,6 +1774,7 @@ modified: 2026-01-30"#;
                     imports: vec![],
                     dependencies: vec![],
                     loc: 10,
+                    ..Default::default()
                 },
             );
         }
@@ -1735,6 +1802,7 @@ modified: 2026-01-30"#;
                 imports: vec![],
                 dependencies: vec![],
                 loc: 20,
+                ..Default::default()
             },
         );
 
@@ -1758,6 +1826,7 @@ modified: 2026-01-30"#;
                 imports: vec![],
                 dependencies: vec![],
                 loc: 80,
+                ..Default::default()
             },
         );
         // Go test function (Test prefix) in a _test.go file
@@ -1768,6 +1837,7 @@ modified: 2026-01-30"#;
                 imports: vec![],
                 dependencies: vec![],
                 loc: 20,
+                ..Default::default()
             },
         );
         // Export under tests/ directory
@@ -1778,6 +1848,7 @@ modified: 2026-01-30"#;
                 imports: vec![],
                 dependencies: vec![],
                 loc: 10,
+                ..Default::default()
             },
         );
 
@@ -1810,6 +1881,7 @@ modified: 2026-01-30"#;
                 imports: vec![],
                 dependencies: vec!["../src/agent".to_string()],
                 loc: 5,
+                ..Default::default()
             },
         );
         let entries_tests = manifest.build_glossary("", GlossaryMode::Tests);
@@ -1886,6 +1958,7 @@ modified: 2026-01-30"#;
                 imports: vec![],
                 dependencies: vec![],
                 loc: 10,
+                ..Default::default()
             },
         );
         manifest.add_file(
@@ -1895,6 +1968,7 @@ modified: 2026-01-30"#;
                 imports: vec![],
                 dependencies: vec!["./config".to_string()],
                 loc: 20,
+                ..Default::default()
             },
         );
         manifest.add_file(
@@ -1904,6 +1978,7 @@ modified: 2026-01-30"#;
                 imports: vec![],
                 dependencies: vec!["./utils".to_string()],
                 loc: 5,
+                ..Default::default()
             },
         );
 
@@ -1922,6 +1997,7 @@ modified: 2026-01-30"#;
                 imports: vec![],
                 dependencies: vec![],
                 loc: 10,
+                ..Default::default()
             },
         );
         manifest.add_file(
@@ -1931,6 +2007,7 @@ modified: 2026-01-30"#;
                 imports: vec![],
                 dependencies: vec![],
                 loc: 10,
+                ..Default::default()
             },
         );
 
@@ -1952,6 +2029,7 @@ modified: 2026-01-30"#;
                 imports: vec![],
                 dependencies: vec![],
                 loc: 10,
+                ..Default::default()
             },
         );
         manifest.remove_file("src/only.ts");
@@ -2108,6 +2186,7 @@ modified: 2026-01-30"#;
                 imports: vec![],
                 dependencies: vec![],
                 loc: 381,
+                ..Default::default()
             },
         );
 
@@ -2146,6 +2225,7 @@ modified: 2026-01-30"#;
                 imports: vec![],
                 dependencies: vec![],
                 loc: 200,
+                ..Default::default()
             },
         );
         // Test file that depends on the class file
@@ -2156,6 +2236,7 @@ modified: 2026-01-30"#;
                 imports: vec![],
                 dependencies: vec!["../src/factory".to_string()],
                 loc: 10,
+                ..Default::default()
             },
         );
 
@@ -2188,6 +2269,7 @@ modified: 2026-01-30"#;
                 imports: vec![],
                 dependencies: vec![],
                 loc: 20,
+                ..Default::default()
             },
         );
 

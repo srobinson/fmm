@@ -1,6 +1,6 @@
 ---
 file: examples/demo-project/src/db/client.ts
-fmm: v0.3+0.1.27
+fmm: v0.4+0.1.28
 exports:
   DatabaseClient: [4, 18]
   createClient: [20, 23]
@@ -12,5 +12,11 @@ imports: [pg]
 dependencies: [../config]
 loc: 23
 modified: 2026-03-06
+named_imports:
+  ../config:
+    - AppConfig
+  pg:
+    - Pool
+    - QueryResult
 typescript:
   function_names: [createClient]

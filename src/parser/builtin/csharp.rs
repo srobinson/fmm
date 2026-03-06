@@ -213,6 +213,7 @@ impl Parser for CSharpParser {
                 imports,
                 dependencies: Vec::new(),
                 loc,
+                ..Default::default()
             },
             custom_fields,
         })

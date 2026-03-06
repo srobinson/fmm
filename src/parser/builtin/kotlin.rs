@@ -306,6 +306,7 @@ impl Parser for KotlinParser {
                 imports,
                 dependencies,
                 loc,
+                ..Default::default()
             },
             custom_fields,
         })

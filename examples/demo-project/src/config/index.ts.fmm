@@ -1,6 +1,6 @@
 ---
 file: examples/demo-project/src/config/index.ts
-fmm: v0.3+0.1.27
+fmm: v0.4+0.1.28
 exports:
   AppConfig: [3, 8]
   loadConfig: [10, 18]
@@ -8,5 +8,8 @@ exports:
 imports: [dotenv]
 loc: 20
 modified: 2026-03-06
+named_imports:
+  dotenv:
+    - config
 typescript:
   function_names: [loadConfig]

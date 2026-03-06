@@ -38,12 +38,22 @@ impl ExportEntry {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Metadata {
     pub exports: Vec<ExportEntry>,
     pub imports: Vec<String>,
     pub dependencies: Vec<String>,
     pub loc: usize,
+    /// Named imports per source module (TS/JS only).
+    /// Key = import path as written in source (`"./ReactFiberWorkLoop"`).
+    /// Value = original exported names (alias-resolved: store `foo`, not `bar`, for `import { foo as bar }`).
+    /// Also captures named re-exports (`export { foo } from './mod'`).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub named_imports: HashMap<String, Vec<String>>,
+    /// Source paths of namespace imports (`import * as X from '...'`) and
+    /// wildcard re-exports (`export * from '...'`). Stored as written in source.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub namespace_imports: Vec<String>,
 }
 
 impl Metadata {

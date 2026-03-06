@@ -1,11 +1,28 @@
 ---
 file: examples/demo-project/src/api/routes.ts
-fmm: v0.3+0.1.27
+fmm: v0.4+0.1.28
 exports:
   createRouter: [9, 36]
 imports: [bcrypt, express]
 dependencies: [../auth/middleware, ../auth/session, ../config, ../db/client, ../db/users]
 loc: 36
 modified: 2026-03-06
+named_imports:
+  ../auth/middleware:
+    - AuthenticatedRequest
+    - requireAuth
+  ../auth/session:
+    - createSession
+  ../config:
+    - DEFAULT_CONFIG
+  ../db/client:
+    - DatabaseClient
+  ../db/users:
+    - createUser
+    - findUserByEmail
+  express:
+    - Request
+    - Response
+    - Router
 typescript:
   function_names: [createRouter]

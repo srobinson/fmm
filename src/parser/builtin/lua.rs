@@ -205,6 +205,7 @@ impl Parser for LuaParser {
                 imports,
                 dependencies,
                 loc,
+                ..Default::default()
             },
             custom_fields: None,
         })

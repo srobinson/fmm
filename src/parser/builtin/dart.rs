@@ -294,6 +294,7 @@ impl Parser for DartParser {
                 imports,
                 dependencies,
                 loc,
+                ..Default::default()
             },
             custom_fields,
         })

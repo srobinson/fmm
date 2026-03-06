@@ -1,6 +1,6 @@
 ---
 file: src/main.rs
-fmm: v0.3+0.1.27
+fmm: v0.4+0.1.28
 exports:
   main: [6, 11]
   print_error: [13, 34]
