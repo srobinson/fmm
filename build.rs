@@ -174,7 +174,7 @@ fn generate_cli_help(tools: &IndexMap<String, ToolDef>) -> String {
 
         // Command-level about constant.
         let escaped = rust_escape(&tool.cli_about);
-        lines.push(format!("#[rustfmt::skip]"));
+        lines.push("#[rustfmt::skip]".to_string());
         lines.push(format!("pub const {prefix}_ABOUT: &str = \"{escaped}\";"));
 
         // Per-param help constants.
@@ -182,7 +182,7 @@ fn generate_cli_help(tools: &IndexMap<String, ToolDef>) -> String {
             if let Some(help) = &param.cli_help {
                 let param_upper = param.name.to_uppercase().replace('-', "_");
                 let escaped = rust_escape(help);
-                lines.push(format!("#[rustfmt::skip]"));
+                lines.push("#[rustfmt::skip]".to_string());
                 lines.push(format!(
                     "pub const {prefix}_{param_upper}_HELP: &str = \"{escaped}\";"
                 ));
