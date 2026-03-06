@@ -1,6 +1,6 @@
 ---
 file: src/mcp/schema.rs
-fmm: v0.3+0.1.26
+fmm: v0.3+0.1.27
 imports: [serde, serde_json]
 loc: 228
 modified: 2026-03-06

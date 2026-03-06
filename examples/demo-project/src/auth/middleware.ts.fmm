@@ -1,6 +1,6 @@
 ---
 file: examples/demo-project/src/auth/middleware.ts
-fmm: v0.3+0.1.26
+fmm: v0.3+0.1.27
 exports:
   AuthenticatedRequest: [5, 8]
   requireAuth: [10, 26]

@@ -1,6 +1,6 @@
 ---
 file: src/manifest/call_site_finder.rs
-fmm: v0.3+0.1.26
+fmm: v0.3+0.1.27
 exports:
   find_call_sites: [21, 27]
   BareCallSiteResult: [141, 149]

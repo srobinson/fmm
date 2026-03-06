@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/csharp.rs
-fmm: v0.3+0.1.26
+fmm: v0.3+0.1.27
 exports:
   CSharpParser: [9, 19]
 imports: [anyhow, std, streaming_iterator, tree_sitter]
