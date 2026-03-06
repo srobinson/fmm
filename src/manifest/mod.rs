@@ -761,6 +761,17 @@ impl Manifest {
         dependents.sort();
         dependents
     }
+
+    /// Count how many test files depend on `target_file`.
+    ///
+    /// Used by the MCP glossary tool to surface a test-caller hint when
+    /// a dotted query returns empty results in source mode.
+    pub fn count_test_dependents(&self, target_file: &str) -> usize {
+        self.find_dependents(target_file)
+            .into_iter()
+            .filter(|f| is_test_file(f))
+            .count()
+    }
 }
 
 /// Attempt to resolve a dependency string to a file path present in the manifest.

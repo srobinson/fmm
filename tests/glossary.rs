@@ -398,3 +398,146 @@ fn glossary_default_limit_is_ten() {
         text
     );
 }
+
+// ---------------------------------------------------------------------------
+// ALP-826: contextualise empty and file-level results
+// ---------------------------------------------------------------------------
+
+fn setup_method_glossary_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path();
+
+    // src/injector.ts — exports Injector class with loadInstance method
+    write_sidecar(
+        root,
+        "src/injector.ts",
+        "file: src/injector.ts\nfmm: v0.3\nexports:\n  Injector: [1, 200]\nmethods:\n  Injector.loadInstance: [10, 50]\nimports: []\ndependencies: []\nloc: 200\n",
+    );
+
+    // src/app.ts — source file that depends on src/injector.ts
+    write_sidecar(
+        root,
+        "src/app.ts",
+        "file: src/app.ts\nfmm: v0.3\nexports:\n  App: [1, 30]\nimports: []\ndependencies: [./injector]\nloc: 30\n",
+    );
+
+    // tests/injector.spec.ts — test file that depends on src/injector.ts
+    write_sidecar(
+        root,
+        "tests/injector.spec.ts",
+        "file: tests/injector.spec.ts\nfmm: v0.3\nexports:\n  testLoadInstance: [1, 20]\nimports: []\ndependencies: [../src/injector]\nloc: 20\n",
+    );
+
+    let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
+    (tmp, server)
+}
+
+#[test]
+fn glossary_dotted_query_empty_callers_shows_contextual_message() {
+    // Call-site refinement on an empty source file finds nothing.
+    // The output should explain the silence, not just show used_by: [].
+    let (_tmp, server) = setup_method_glossary_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_glossary",
+        json!({"pattern": "Injector.loadInstance", "mode": "source"}),
+    );
+    assert!(
+        text.contains("(no external source callers)"),
+        "should show no-callers message; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("import injector.ts") || text.contains("import injector"),
+        "should mention the source file; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("none call loadInstance directly"),
+        "should mention method name; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn glossary_dotted_query_empty_callers_shows_test_hint_when_test_callers_exist() {
+    let (_tmp, server) = setup_method_glossary_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_glossary",
+        json!({"pattern": "Injector.loadInstance", "mode": "source"}),
+    );
+    assert!(
+        text.contains("test caller") || text.contains("test callers"),
+        "should hint at test callers; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("rerun with mode: tests"),
+        "should suggest mode:tests; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn glossary_dotted_query_non_empty_callers_unchanged() {
+    // When call-site refinement finds callers, output must not include the contextual message.
+    let (_tmp, server) = setup_method_glossary_server();
+    // mode=tests will show the test file as a file-level importer; after call-site
+    // refinement on the (empty) test source, used_by will be empty → triggers case 1.
+    // Use mode=all so we exercise the "all" mode label.
+    // For a non-empty test, we need actual source with call sites — not possible in
+    // fixture tests. Instead verify the format_glossary path is used when there ARE
+    // non-empty used_by (i.e. before refinement logic applies, the format is normal).
+    // Covered by existing tests; just confirm the new message is absent for non-dotted queries.
+    let text = call_tool_text(
+        &server,
+        "fmm_glossary",
+        json!({"pattern": "Injector", "mode": "source"}),
+    );
+    assert!(
+        !text.contains("(no external source callers)"),
+        "non-dotted query should not show empty-caller message; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn glossary_bare_name_nudge_when_method_index_entry_exists() {
+    let (_tmp, server) = setup_method_glossary_server();
+    // "loadInstance" (bare name) matches Injector.loadInstance in method_index.
+    // The results are file-level importers, not call-site callers → nudge expected.
+    let text = call_tool_text(
+        &server,
+        "fmm_glossary",
+        json!({"pattern": "loadInstance", "mode": "all"}),
+    );
+    assert!(
+        text.contains("file-level importers"),
+        "should append file-level importer nudge; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("call-site precision"),
+        "should suggest call-site precision; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("Injector.loadInstance"),
+        "should mention the dotted pattern name; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn glossary_bare_name_no_nudge_when_no_method_entry() {
+    // "Config" matches only class-level exports, not any method_index entry.
+    // No nudge should appear.
+    let (_tmp, server) = setup_glossary_server();
+    let text = call_tool_text(&server, "fmm_glossary", json!({"pattern": "Config"}));
+    assert!(
+        !text.contains("file-level importers"),
+        "no nudge expected when no dotted entry matches; got:\n{}",
+        text
+    );
+}

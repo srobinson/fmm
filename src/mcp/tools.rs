@@ -576,6 +576,13 @@ pub(super) fn tool_glossary(
     if let Some(dot_pos) = pattern.rfind('.') {
         let method_name = &pattern[dot_pos + 1..];
         if !method_name.is_empty() {
+            // ALP-826: capture pre-refinement importer counts for contextual
+            // messaging when call-site search returns zero callers.
+            let pre_counts: Vec<Vec<usize>> = entries
+                .iter()
+                .map(|e| e.sources.iter().map(|s| s.used_by.len()).collect())
+                .collect();
+
             for entry in &mut entries {
                 for source in &mut entry.sources {
                     let refined = crate::manifest::call_site_finder::find_call_sites(
@@ -586,14 +593,80 @@ pub(super) fn tool_glossary(
                     source.used_by = refined;
                 }
             }
+
+            // ALP-826: when all used_by are empty after refinement, return a
+            // contextual message instead of a list of `used_by: []` lines.
+            if entries
+                .iter()
+                .all(|e| e.sources.iter().all(|s| s.used_by.is_empty()))
+            {
+                let mode_label = match mode {
+                    crate::manifest::GlossaryMode::Tests => "test",
+                    crate::manifest::GlossaryMode::All => "all",
+                    _ => "source",
+                };
+                let mut lines = vec!["---".to_string()];
+                for (entry, src_counts) in entries.iter().zip(pre_counts.iter()) {
+                    lines.push(format!("{}:", crate::formatter::yaml_escape(&entry.name)));
+                    for (source, &importer_count) in entry.sources.iter().zip(src_counts.iter()) {
+                        let basename = source.file.rsplit('/').next().unwrap_or(&source.file);
+                        lines.push(format!("  (no external {} callers)", mode_label));
+                        lines.push(format!(
+                            "  # {} {} import {} — none call {} directly",
+                            importer_count,
+                            if importer_count == 1 { "file" } else { "files" },
+                            basename,
+                            method_name
+                        ));
+                        if matches!(mode, crate::manifest::GlossaryMode::Source) {
+                            let test_count = manifest.count_test_dependents(&source.file);
+                            if test_count > 0 {
+                                lines.push(format!(
+                                    "  # {} test {} found (rerun with mode: tests)",
+                                    test_count,
+                                    if test_count == 1 { "caller" } else { "callers" }
+                                ));
+                            }
+                        }
+                    }
+                }
+                return Ok(lines.join("\n"));
+            }
         }
     }
 
-    Ok(crate::format::format_glossary(
-        &entries,
-        total_matched,
-        limit,
-    ))
+    // ALP-826: for bare-name queries, append a nudge when the results include
+    // a dotted method-index entry — the used_by list is file-level importers,
+    // not confirmed call-site callers, and agents benefit from knowing this.
+    let nudge = if !pattern.contains('.') && !entries.is_empty() {
+        entries
+            .iter()
+            .find(|e| e.name.contains('.'))
+            .map(|dotted_entry| {
+                let total_importers: usize =
+                    dotted_entry.sources.iter().map(|s| s.used_by.len()).sum();
+                let basename = dotted_entry
+                    .sources
+                    .first()
+                    .map(|s| s.file.rsplit('/').next().unwrap_or(&s.file))
+                    .unwrap_or("the file");
+                format!(
+                    "\n# Showing file-level importers ({} {} import {}).\n# For call-site precision: pattern \"{}\"",
+                    total_importers,
+                    if total_importers == 1 { "file" } else { "files" },
+                    basename,
+                    dotted_entry.name
+                )
+            })
+    } else {
+        None
+    };
+
+    let mut out = crate::format::format_glossary(&entries, total_matched, limit);
+    if let Some(n) = nudge {
+        out.push_str(&n);
+    }
+    Ok(out)
 }
 
 /// Return true if a file path is a conventional re-export hub (index/init file).
