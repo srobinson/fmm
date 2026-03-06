@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.27](https://github.com/srobinson/fmm/compare/v0.1.26...v0.1.27) (2026-03-06)
+
+
+### Features
+
+* **mcp+cli:** Round 5 evaluation improvements — 5 fixes + 13 enhancements ([#81](https://github.com/srobinson/fmm/issues/81)) ([e1e0953](https://github.com/srobinson/fmm/commit/e1e095379fa1773c9d5236773b620ae03cf82492))
+
 ## [0.1.26](https://github.com/srobinson/fmm/compare/v0.1.25...v0.1.26) (2026-03-06)
 
 
