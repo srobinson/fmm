@@ -566,8 +566,8 @@ pub enum Commands {
         #[arg(value_name = "DIR")]
         directory: Option<String>,
 
-        /// Sort field: name (default), loc, exports
-        #[arg(long = "sort-by", default_value = "name", value_parser = ["name", "loc", "exports"])]
+        /// Sort field: loc (default), name, exports
+        #[arg(long = "sort-by", default_value = "loc", value_parser = ["name", "loc", "exports"])]
         sort_by: String,
 
         /// Sort order: asc or desc (default depends on sort-by)

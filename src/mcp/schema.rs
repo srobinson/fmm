@@ -143,7 +143,7 @@ pub(super) fn tool_list() -> Value {
         },
         Tool {
             name: "fmm_list_files".to_string(),
-            description: "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC and export count. Default sort: alphabetical by name. Use sort_by=loc or sort_by=exports (default desc) to find the heaviest files. Default limit: 200. Use offset to page through large directories.".to_string(),
+            description: "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC and export count. Default sort: LOC descending (largest files first). Use sort_by=name for alphabetical or sort_by=exports for export count. Default limit: 200. Use offset to page through large directories.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -166,7 +166,7 @@ pub(super) fn tool_list() -> Value {
                     "sort_by": {
                         "type": "string",
                         "enum": ["name", "loc", "exports"],
-                        "description": "Sort field. 'name' (default): alphabetical. 'loc': lines of code. 'exports': export count. 'loc' and 'exports' default to descending order (largest first)."
+                        "description": "Sort field. 'loc' (default): lines of code descending. 'name': alphabetical. 'exports': export count descending. 'loc' and 'exports' default to descending order (largest first)."
                     },
                     "order": {
                         "type": "string",

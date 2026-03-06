@@ -450,10 +450,11 @@ fn list_files_tool_pagination_limit_and_offset() {
     };
 
     // First page: limit=2, offset=0 — should show src/mod1.rs and src/mod2.rs
+    // Use sort_by=name to get deterministic order (all files have equal LOC).
     let result = server
         .call_tool(
             "fmm_list_files",
-            serde_json::json!({"limit": 2, "offset": 0}),
+            serde_json::json!({"limit": 2, "offset": 0, "sort_by": "name"}),
         )
         .unwrap();
     let text = result["content"][0]["text"].as_str().unwrap();
@@ -476,7 +477,7 @@ fn list_files_tool_pagination_limit_and_offset() {
     let result2 = server
         .call_tool(
             "fmm_list_files",
-            serde_json::json!({"limit": 2, "offset": 2}),
+            serde_json::json!({"limit": 2, "offset": 2, "sort_by": "name"}),
         )
         .unwrap();
     let text2 = result2["content"][0]["text"].as_str().unwrap();
@@ -489,7 +490,7 @@ fn list_files_tool_pagination_limit_and_offset() {
     let result3 = server
         .call_tool(
             "fmm_list_files",
-            serde_json::json!({"limit": 2, "offset": 4}),
+            serde_json::json!({"limit": 2, "offset": 4, "sort_by": "name"}),
         )
         .unwrap();
     let text3 = result3["content"][0]["text"].as_str().unwrap();
@@ -585,13 +586,13 @@ fn list_files_order(server: &McpServer, args: serde_json::Value) -> Vec<String> 
 }
 
 #[test]
-fn list_files_default_sort_is_alphabetical_asc() {
+fn list_files_default_sort_is_loc_desc() {
     let server = list_files_sort_manifest();
     let order = list_files_order(&server, serde_json::json!({}));
     assert_eq!(
         order,
-        vec!["src/alpha.ts", "src/beta.ts", "src/gamma.ts"],
-        "default sort should be alphabetical ascending, got: {:?}",
+        vec!["src/alpha.ts", "src/gamma.ts", "src/beta.ts"],
+        "default sort should be LOC descending (largest first), got: {:?}",
         order
     );
 }

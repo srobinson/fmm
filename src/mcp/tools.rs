@@ -284,7 +284,7 @@ pub(super) fn tool_list_files(
     let pat = args.pattern.as_deref();
     let limit = args.limit.unwrap_or(DEFAULT_LIMIT);
     let offset = args.offset.unwrap_or(0);
-    let sort_by = args.sort_by.as_deref().unwrap_or("name");
+    let sort_by = args.sort_by.as_deref().unwrap_or("loc");
     let order = args.order.as_deref();
 
     if !matches!(sort_by, "name" | "loc" | "exports") {

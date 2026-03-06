@@ -46,7 +46,11 @@ pub fn format_file_outline(file: &str, entry: &FileEntry) -> String {
                         .filter(|(k, _)| k.starts_with(&prefix))
                         .map(|(k, v)| (k.trim_start_matches(&prefix).to_string(), v))
                         .collect();
-                    v.sort_by(|a, b| a.0.cmp(&b.0));
+                    v.sort_by(|a, b| {
+                        let a_size = a.1.end.saturating_sub(a.1.start);
+                        let b_size = b.1.end.saturating_sub(b.1.start);
+                        b_size.cmp(&a_size)
+                    });
                     v
                 })
                 .unwrap_or_default();
@@ -429,9 +433,12 @@ pub fn format_bare_search(result: &BareSearchResult, colored: bool) -> String {
 }
 
 /// Format filter search results as CLI per-file detail text.
+/// Results are sorted by LOC descending (largest files first).
 pub fn format_filter_search(results: &[FileSearchResult], colored: bool) -> String {
+    let mut sorted: Vec<&FileSearchResult> = results.iter().collect();
+    sorted.sort_by(|a, b| b.loc.cmp(&a.loc));
     let mut out = Vec::new();
-    for r in results {
+    for r in sorted {
         let file_line = if colored {
             format!("\x1b[1m{}\x1b[0m", r.file)
         } else {
@@ -595,6 +602,26 @@ mod tests {
         // Class without methods has no method count annotation
         assert!(out.contains("NestFactory: [396, 396]"));
         assert!(!out.contains("NestFactory.*public methods"));
+    }
+
+    #[test]
+    fn file_outline_methods_sorted_by_size_descending() {
+        let entry = make_entry_with_methods(
+            vec![("MyClass", 1, 200)],
+            vec![
+                ("MyClass.small", 10, 19),    // 9 lines
+                ("MyClass.large", 50, 149),   // 99 lines
+                ("MyClass.medium", 160, 189), // 29 lines
+            ],
+        );
+        let out = format_file_outline("src/my.ts", &entry);
+        let large_pos = out.find("large:").unwrap();
+        let medium_pos = out.find("medium:").unwrap();
+        let small_pos = out.find("small:").unwrap();
+        assert!(
+            large_pos < medium_pos && medium_pos < small_pos,
+            "methods should be sorted by size descending: large > medium > small"
+        );
     }
 
     #[test]
