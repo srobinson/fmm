@@ -135,9 +135,16 @@ fn run() -> anyhow::Result<()> {
             directory,
             sort_by,
             order,
+            group_by,
             json,
         } => {
-            cli::ls(directory.as_deref(), &sort_by, order.as_deref(), json)?;
+            cli::ls(
+                directory.as_deref(),
+                &sort_by,
+                order.as_deref(),
+                group_by.as_deref(),
+                json,
+            )?;
         }
         Commands::Exports { pattern, dir, json } => {
             cli::exports(pattern.as_deref(), dir.as_deref(), json)?;

@@ -49,6 +49,7 @@ pub(super) struct ListFilesArgs {
     pub(super) offset: Option<usize>,
     pub(super) sort_by: Option<String>,
     pub(super) order: Option<String>,
+    pub(super) group_by: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

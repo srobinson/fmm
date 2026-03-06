@@ -391,6 +391,7 @@ pub fn ls(
     directory: Option<&str>,
     sort_by: &str,
     order: Option<&str>,
+    group_by: Option<&str>,
     json_output: bool,
 ) -> Result<()> {
     let (_, manifest) = load_manifest()?;
@@ -424,6 +425,18 @@ pub fn ls(
         })
         .map(|(path, entry)| (path.as_str(), entry.loc, entry.exports.len()))
         .collect();
+
+    // Rollup mode: group by immediate subdirectory.
+    if group_by == Some("subdir") {
+        let total_files = entries.len();
+        let total_loc: usize = entries.iter().map(|(_, loc, _)| loc).sum();
+        let buckets = crate::format::compute_rollup_buckets(&entries, directory, sort_by, order);
+        println!(
+            "{}",
+            crate::format::format_list_files_rollup(directory, &buckets, total_files, total_loc)
+        );
+        return Ok(());
+    }
 
     let desc = match sort_by {
         "loc" | "exports" => order != Some("asc"),

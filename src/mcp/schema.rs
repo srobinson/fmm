@@ -172,6 +172,11 @@ pub(super) fn tool_list() -> Value {
                         "type": "string",
                         "enum": ["asc", "desc"],
                         "description": "Sort order. Defaults: 'name' → asc, 'loc'/'exports' → desc. Explicit 'asc'/'desc' overrides the default."
+                    },
+                    "group_by": {
+                        "type": "string",
+                        "enum": ["subdir"],
+                        "description": "Collapse files into directory buckets. 'subdir': group by immediate subdirectory, showing file count and total LOC per bucket. Best for initial orientation of large codebases. sort_by applies to bucket-level LOC."
                     }
                 }
             }),

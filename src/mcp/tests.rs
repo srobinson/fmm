@@ -694,6 +694,59 @@ fn list_files_invalid_order_returns_error() {
     );
 }
 
+// --- ALP-818: fmm_list_files group_by=subdir rollup ---
+
+#[test]
+fn list_files_group_by_subdir_buckets_files_by_immediate_dir() {
+    let server = list_files_sort_manifest(); // alpha(100), beta(30), gamma(60) all under src/
+    let result = server
+        .call_tool(
+            "fmm_list_files",
+            serde_json::json!({"group_by": "subdir"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    // All three files are directly under src/ — one bucket "src/"
+    assert!(
+        text.contains("src/"),
+        "should show src/ bucket; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("3 files"),
+        "bucket should show 3 files; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("190 LOC"),
+        "bucket should show 190 total LOC; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("summary:"),
+        "summary line should appear; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_files_group_by_invalid_returns_error() {
+    let server = list_files_sort_manifest();
+    let result = server.call_tool(
+        "fmm_list_files",
+        serde_json::json!({"group_by": "unknown"}),
+    );
+    let text = result.unwrap()["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        text.starts_with("ERROR:"),
+        "invalid group_by must return ERROR:; got: {}",
+        text
+    );
+}
+
 // --- ALP-778: fmm_lookup_export dotted name fallback ---
 
 #[test]

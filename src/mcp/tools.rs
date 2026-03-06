@@ -286,6 +286,7 @@ pub(super) fn tool_list_files(
     let offset = args.offset.unwrap_or(0);
     let sort_by = args.sort_by.as_deref().unwrap_or("loc");
     let order = args.order.as_deref();
+    let group_by = args.group_by.as_deref();
 
     if !matches!(sort_by, "name" | "loc" | "exports") {
         return Err(format!(
@@ -296,6 +297,11 @@ pub(super) fn tool_list_files(
     if let Some(o) = order {
         if !matches!(o, "asc" | "desc") {
             return Err(format!("Invalid order '{}'. Valid values: asc, desc.", o));
+        }
+    }
+    if let Some(g) = group_by {
+        if g != "subdir" {
+            return Err(format!("Invalid group_by '{}'. Valid values: subdir.", g));
         }
     }
 
@@ -318,6 +324,11 @@ pub(super) fn tool_list_files(
         })
         .map(|(path, entry)| (path.as_str(), entry.loc, entry.exports.len()))
         .collect();
+
+    // Rollup mode: group by immediate subdirectory.
+    if group_by == Some("subdir") {
+        return Ok(build_rollup(entries, dir, sort_by, order));
+    }
 
     // Smart defaults: loc/exports sort descending unless explicitly overridden.
     // name sorts ascending by default.
@@ -361,6 +372,19 @@ pub(super) fn tool_list_files(
     Ok(crate::format::format_list_files(
         dir, &page, total, total_loc, largest, offset,
     ))
+}
+
+/// Compute directory rollup for group_by="subdir" and format the result.
+fn build_rollup(
+    entries: Vec<(&str, usize, usize)>,
+    prefix: Option<&str>,
+    sort_by: &str,
+    order: Option<&str>,
+) -> String {
+    let total_files = entries.len();
+    let total_loc: usize = entries.iter().map(|(_, loc, _)| loc).sum();
+    let bucket_vec = crate::format::compute_rollup_buckets(&entries, prefix, sort_by, order);
+    crate::format::format_list_files_rollup(prefix, &bucket_vec, total_files, total_loc)
 }
 
 pub(super) fn tool_search(

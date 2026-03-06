@@ -574,6 +574,10 @@ pub enum Commands {
         #[arg(long, value_parser = ["asc", "desc"])]
         order: Option<String>,
 
+        /// Collapse files into directory buckets (subdir: group by immediate subdirectory)
+        #[arg(long = "group-by", value_parser = ["subdir"])]
+        group_by: Option<String>,
+
         /// Output as JSON
         #[arg(short = 'j', long = "json")]
         json: bool,

@@ -362,6 +362,108 @@ pub fn format_list_files(
     lines.join("\n")
 }
 
+/// Compute directory-rollup buckets from a flat file list.
+///
+/// Groups entries by their immediate subdirectory relative to `prefix`,
+/// sums file counts and LOC, and returns sorted `(dir, file_count, total_loc)` triples.
+/// `sort_by` can be `"loc"` (default desc) or `"name"` (default asc); `order` overrides.
+pub fn compute_rollup_buckets(
+    entries: &[(&str, usize, usize)],
+    prefix: Option<&str>,
+    sort_by: &str,
+    order: Option<&str>,
+) -> Vec<(String, usize, usize)> {
+    use std::collections::HashMap;
+    let prefix = prefix.unwrap_or("");
+    let mut buckets: HashMap<String, (usize, usize)> = HashMap::new();
+
+    for (path, loc, _) in entries {
+        let rel = path.strip_prefix(prefix).unwrap_or(path);
+        let bucket = if let Some(idx) = rel.find('/') {
+            format!("{}{}/", prefix, &rel[..idx])
+        } else if prefix.is_empty() {
+            "(root)".to_string()
+        } else {
+            prefix.to_string()
+        };
+        let e = buckets.entry(bucket).or_insert((0, 0));
+        e.0 += 1;
+        e.1 += loc;
+    }
+
+    let mut bucket_vec: Vec<(String, usize, usize)> = buckets
+        .into_iter()
+        .map(|(dir, (count, loc))| (dir, count, loc))
+        .collect();
+
+    let desc = match sort_by {
+        "name" => order == Some("desc"),
+        _ => order != Some("asc"),
+    };
+
+    match sort_by {
+        "name" => {
+            if desc {
+                bucket_vec.sort_by(|(a, _, _), (b, _, _)| b.cmp(a));
+            } else {
+                bucket_vec.sort_by(|(a, _, _), (b, _, _)| a.cmp(b));
+            }
+        }
+        _ => {
+            if desc {
+                bucket_vec.sort_by(|(_, _, a), (_, _, b)| b.cmp(a));
+            } else {
+                bucket_vec.sort_by(|(_, _, a), (_, _, b)| a.cmp(b));
+            }
+        }
+    }
+
+    bucket_vec
+}
+
+/// Format list files in directory-rollup mode (group_by="subdir").
+///
+/// Each bucket row shows: directory path, file count, total LOC.
+/// `buckets` is a sorted slice of `(dir_path, file_count, total_loc)`.
+pub fn format_list_files_rollup(
+    directory: Option<&str>,
+    buckets: &[(String, usize, usize)],
+    total_files: usize,
+    total_loc: usize,
+) -> String {
+    let mut lines = Vec::new();
+    lines.push("---".to_string());
+    if let Some(dir) = directory {
+        lines.push(format!("directory: {}", yaml_escape(dir)));
+    }
+    lines.push(format!(
+        "summary: {} files · {} LOC",
+        format_count(total_files),
+        format_count(total_loc),
+    ));
+    lines.push(format!("buckets: {}", buckets.len()));
+
+    if !buckets.is_empty() {
+        let dir_width = buckets.iter().map(|(d, _, _)| d.len()).max().unwrap_or(0);
+        let count_width = buckets
+            .iter()
+            .map(|(_, n, _)| format_count(*n).len())
+            .max()
+            .unwrap_or(0);
+        for (dir, count, loc) in buckets {
+            lines.push(format!(
+                "  {:<dw$}  {:>cw$} files  · {} LOC",
+                dir,
+                format_count(*count),
+                format_count(*loc),
+                dw = dir_width,
+                cw = count_width,
+            ));
+        }
+    }
+    lines.join("\n")
+}
+
 // ---------------------------------------------------------------------------
 // Search formatters
 // ---------------------------------------------------------------------------
