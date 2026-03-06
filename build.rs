@@ -210,64 +210,74 @@ fn generate_skill_md(skill: Option<&SkillConfig>, tools: &IndexMap<String, ToolD
     let mut out = String::new();
 
     out.push_str("---\n");
-    out.push_str("name: fmm-navigate\n");
-    out.push_str("description: \"This project uses fmm (.fmmrc.json) for code metadata. INVOKE THIS SKILL before reading or searching source files — it provides the MCP-first navigation protocol that replaces grep/read with O(1) lookups.\"\n");
+    out.push_str("name: fmm\n");
+    out.push_str("description: >\n");
+    out.push_str("  MCP-first code navigation for this codebase. Use before any symbol lookup,\n");
+    out.push_str("  file search, dependency trace, impact analysis, or codebase evaluation —\n");
+    out.push_str("  replaces grep/glob/read with O(1) fmm_* tool calls. Trigger when: starting\n");
+    out.push_str(
+        "  any task involving unfamiliar code, navigating code structure, finding where\n",
+    );
+    out.push_str("  a symbol is defined, checking what imports a file, tracing blast radius\n");
+    out.push_str("  before a rename, mapping test coverage, or evaluating/auditing a codebase.\n");
     out.push_str("---\n\n");
-    out.push_str("# fmm — MCP-First Code Navigation\n\n");
-    out.push_str("This codebase has FMM metadata available via MCP tools. Use them for instant, structured lookups instead of grep/read.\n\n");
+    out.push_str("# FMM — MCP-First Code Navigation\n\n");
+    out.push_str("This codebase has FMM metadata available via the **`fmm` MCP server**. All tools are prefixed `fmm_*`. Use them for instant, structured lookups instead of grep/read.\n\n");
+    out.push_str("The index stays current throughout your session — a hook re-indexes any file you edit immediately after the write. You can trust fmm data at every point in your task.\n\n");
+    out.push_str("## Before You Touch Any Code\n\n");
+    out.push_str("If you are about to call `Read`, `Grep`, or `Glob` on a source file — stop. Ask: does fmm answer this? It answers structural questions at O(1): file topology, symbol locations, export maps, dependency graphs, blast radius. Reading files to derive those answers costs 10-50x more tokens and is less complete.\n\n");
+    out.push_str("Reserve `Read` for two cases only: editing a specific symbol, or understanding logic that `fmm_read_symbol` cannot provide.\n\n");
 
     // MCP tools reference table.
     out.push_str("## MCP Tools (ALWAYS USE THESE FIRST)\n\n");
-    out.push_str("| Tool | Use Case | When to Use |\n");
-    out.push_str("|------|----------|-------------|\n");
+    out.push_str("| Tool                   | Use Case                                                                                                                          | Example                                                              |\n");
+    out.push_str("| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |\n");
 
     let use_cases = [
         (
             "fmm_list_files",
-            "Orient to codebase structure",
-            "Start here — highest blast-radius first with sort_by: \"downstream\"",
-        ),
-        (
-            "fmm_lookup_export",
-            "Find where a symbol is defined",
-            "O(1) lookup — replaces grep for symbol location",
+            "Orient in an unknown codebase. sort_by: loc (heaviest), downstream (most-imported, best pre-refactoring), name, exports, modified",
+            r#"`fmm_list_files(directory: "src/", sort_by: "downstream")`"#,
         ),
         (
             "fmm_file_outline",
-            "Understand file structure",
-            "Table-of-contents before reading anything",
+            "Full structural profile — exports, public/private (include_private) methods, line ranges",
+            r#"`fmm_file_outline(file: "src/core/index.ts", include_private: true)`"#,
         ),
         (
-            "fmm_read_symbol",
-            "Read source for a symbol",
-            "Surgical extraction — one call, exact lines",
+            "fmm_lookup_export",
+            "O(1) exact lookup → file, line range, full file profile",
+            r#"`fmm_lookup_export(name: "createPipeline")`"#,
         ),
         (
             "fmm_list_exports",
-            "Fuzzy export discovery",
-            "Find exports matching a pattern or in a directory",
+            r#"Export search: substring or regex (auto-detected). `^handle`, `Service$`, `^[A-Z]` for regex; plain text for substring"#,
+            r#"`fmm_list_exports(pattern: "^[A-Z]", directory: "packages/core/")`"#,
         ),
         (
-            "fmm_dependency_graph",
-            "Impact analysis",
-            "Upstream deps + downstream blast radius",
+            "fmm_read_symbol",
+            "Exact source for a named export or specific method",
+            r#"`fmm_read_symbol(name: "Injector.loadInstance")`"#,
         ),
         (
             "fmm_search",
-            "Multi-criteria search",
-            "AND queries: imports X, size > N, exports Y",
+            "Cross-cutting queries: imports, LOC range, depends_on, term",
+            r#"`fmm_search(imports: "rxjs", min_loc: 500)`"#,
+        ),
+        (
+            "fmm_dependency_graph",
+            r#"Upstream deps + downstream blast radius. filter: "source" strips test files, filter: "tests" shows only test coverage"#,
+            r#"`fmm_dependency_graph(file: "src/core/index.ts", filter: "source")`"#,
         ),
         (
             "fmm_glossary",
-            "Symbol-level blast radius",
-            "All definitions + who imports each — before renaming",
+            "Symbol impact — call-site callers or test coverage by method",
+            r#"`fmm_glossary(pattern: "Injector.loadInstance", mode: "source")`"#,
         ),
     ];
 
-    for (tool_name, use_case, when) in &use_cases {
-        out.push_str(&format!(
-            "| `mcp__fmm__{tool_name}` | {use_case} | {when} |\n"
-        ));
+    for (tool_name, use_case, example) in &use_cases {
+        out.push_str(&format!("| `{tool_name}` | {use_case} | {example} |\n"));
     }
     out.push('\n');
 
@@ -314,29 +324,36 @@ fn generate_skill_md(skill: Option<&SkillConfig>, tools: &IndexMap<String, ToolD
 
     // Rules section.
     out.push_str("## Rules\n\n");
-    out.push_str("1. **`fmm_list_files(sort_by: \"downstream\")` IS YOUR STARTING POINT** — always orient before diving in.\n");
-    out.push_str("2. **`fmm_read_symbol` IS YOUR DEFAULT** — need to see code? Use it. One call, exact lines, zero waste.\n");
-    out.push_str("3. **`fmm_file_outline` BEFORE READING** — see the shape of a file before deciding what to read.\n");
-    out.push_str("4. **MCP TOOLS ARE PRIMARY** — always call `fmm_*` tools before grep/read.\n");
+    out.push_str("1. **Never use `Read` to understand structure** — use `fmm_file_outline`\n");
     out.push_str(
-        "5. **STRUCTURED > UNSTRUCTURED** — MCP returns parsed data, grep returns text.\n",
+        "2. **Never use `Grep` to find a symbol** — use `fmm_lookup_export` or `fmm_glossary`\n",
     );
-    out.push_str("6. **READ SOURCE ONLY WHEN EDITING** — sidecars/MCP tell you what you need for navigation.\n\n");
+    out.push_str("3. **Never use `Glob` to explore a directory** — use `fmm_list_files`\n");
+    out.push_str("4. **`fmm_list_files` first** — orient before navigating\n");
+    out.push_str(
+        "5. **`fmm_file_outline` before reading** — see the shape, then decide what to read\n",
+    );
+    out.push_str("6. **`fmm_read_symbol(\"ClassName.method\")`** — never read a full class to find one method\n");
+    out.push_str("7. **Dotted pattern for rename safety** — `fmm_glossary(\"ClassName.method\")` for call-site precision\n");
+    out.push_str("8. **Read source only when editing** — MCP tools tell you everything you need for navigation\n");
+    out.push_str("9. **Trust the index** — it updates automatically after every file write\n\n");
 
     // Fallback section.
     out.push_str("## Sidecar Fallback\n\n");
-    out.push_str("If MCP tools are unavailable, sidecar files exist at `filename.ext.fmm`:\n\n");
+    out.push_str(
+        "If MCP tools are unavailable, `.fmm` sidecar files exist alongside source files:\n\n",
+    );
     out.push_str("```yaml\n");
     out.push_str("file: src/core/pipeline.ts\n");
-    out.push_str("fmm: v0.3\n");
+    out.push_str("fmm: v0.3+0.1.11\n");
     out.push_str("exports:\n");
     out.push_str("  createPipeline: [10, 45]\n");
     out.push_str("  PipelineConfig: [47, 52]\n");
-    out.push_str("imports: [zod, lodash]\n");
-    out.push_str("dependencies: [./engine, ./validators, ../utils/logger]\n");
+    out.push_str("imports: [./engine, ./validators, lodash, zod]\n");
     out.push_str("loc: 142\n");
+    out.push_str("modified: 2026-03-06\n");
     out.push_str("```\n\n");
-    out.push_str("Use `Grep \"exports:\" **/*.fmm` as fallback when MCP is not available.\n");
+    out.push_str("Line ranges enable surgical reads: `Read(file, offset=10, limit=36)`.\n");
 
     out
 }
