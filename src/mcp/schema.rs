@@ -171,7 +171,7 @@ pub(super) fn tool_list() -> Value {
                     "order": {
                         "type": "string",
                         "enum": ["asc", "desc"],
-                        "description": "Sort order. Defaults: 'name' → asc, 'loc'/'exports' → desc. Explicit 'asc'/'desc' overrides the default."
+                        "description": "Sort order. Defaults: 'name' → asc, 'loc'/'exports'/'downstream' → desc. Explicit 'asc'/'desc' overrides the default."
                     },
                     "group_by": {
                         "type": "string",

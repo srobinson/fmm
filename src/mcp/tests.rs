@@ -700,10 +700,7 @@ fn list_files_invalid_order_returns_error() {
 fn list_files_group_by_subdir_buckets_files_by_immediate_dir() {
     let server = list_files_sort_manifest(); // alpha(100), beta(30), gamma(60) all under src/
     let result = server
-        .call_tool(
-            "fmm_list_files",
-            serde_json::json!({"group_by": "subdir"}),
-        )
+        .call_tool("fmm_list_files", serde_json::json!({"group_by": "subdir"}))
         .unwrap();
     let text = result["content"][0]["text"].as_str().unwrap();
     // All three files are directly under src/ — one bucket "src/"
@@ -732,10 +729,7 @@ fn list_files_group_by_subdir_buckets_files_by_immediate_dir() {
 #[test]
 fn list_files_group_by_invalid_returns_error() {
     let server = list_files_sort_manifest();
-    let result = server.call_tool(
-        "fmm_list_files",
-        serde_json::json!({"group_by": "unknown"}),
-    );
+    let result = server.call_tool("fmm_list_files", serde_json::json!({"group_by": "unknown"}));
     let text = result.unwrap()["content"][0]["text"]
         .as_str()
         .unwrap()
@@ -743,6 +737,133 @@ fn list_files_group_by_invalid_returns_error() {
     assert!(
         text.starts_with("ERROR:"),
         "invalid group_by must return ERROR:; got: {}",
+        text
+    );
+}
+
+// --- ALP-819: fmm_list_files filter=source / filter=tests ---
+
+#[test]
+fn list_files_filter_source_excludes_test_files() {
+    use crate::manifest::Manifest;
+    use crate::parser::{ExportEntry, Metadata};
+
+    let mut manifest = Manifest::new();
+    manifest.add_file(
+        "src/app.service.ts",
+        Metadata {
+            exports: vec![ExportEntry::new("AppService".to_string(), 1, 20)],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 20,
+        },
+    );
+    manifest.add_file(
+        "src/app.spec.ts",
+        Metadata {
+            exports: vec![],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 15,
+        },
+    );
+
+    let server = McpServer {
+        manifest: Some(manifest),
+        root: std::path::PathBuf::from("/tmp"),
+    };
+
+    let result = server
+        .call_tool(
+            "fmm_list_files",
+            serde_json::json!({"filter": "source"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("src/app.service.ts"),
+        "source filter should include service file; got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("src/app.spec.ts"),
+        "source filter should exclude spec file; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("total: 1"),
+        "total should be 1; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_files_filter_tests_returns_only_test_files() {
+    use crate::manifest::Manifest;
+    use crate::parser::{ExportEntry, Metadata};
+
+    let mut manifest = Manifest::new();
+    manifest.add_file(
+        "src/app.service.ts",
+        Metadata {
+            exports: vec![ExportEntry::new("AppService".to_string(), 1, 20)],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 20,
+        },
+    );
+    manifest.add_file(
+        "src/app.spec.ts",
+        Metadata {
+            exports: vec![],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 15,
+        },
+    );
+
+    let server = McpServer {
+        manifest: Some(manifest),
+        root: std::path::PathBuf::from("/tmp"),
+    };
+
+    let result = server
+        .call_tool(
+            "fmm_list_files",
+            serde_json::json!({"filter": "tests"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("src/app.spec.ts"),
+        "tests filter should include spec file; got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("src/app.service.ts"),
+        "tests filter should exclude service file; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("total: 1"),
+        "total should be 1; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_files_filter_invalid_returns_error() {
+    let server = list_files_sort_manifest();
+    let result = server
+        .call_tool(
+            "fmm_list_files",
+            serde_json::json!({"filter": "bogus"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.starts_with("ERROR:"),
+        "invalid filter must return ERROR:; got: {}",
         text
     );
 }
