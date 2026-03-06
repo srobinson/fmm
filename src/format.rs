@@ -385,56 +385,6 @@ pub fn format_class_redirect(
     lines.join("\n")
 }
 
-/// Format a class-redirect response when a bare class read would exceed the 10KB cap.
-///
-/// Shows the class name, file, line range, size, method count, method list, and redirect hints.
-pub fn format_class_redirect(
-    symbol: &str,
-    file: &str,
-    el: &ExportLines,
-    methods: &[(&str, &ExportLines)],
-) -> String {
-    let size = el.end.saturating_sub(el.start) + 1;
-    let mut lines = Vec::new();
-    lines.push("---".to_string());
-    lines.push(format!(
-        "# {} would exceed the 10KB response cap ({} lines, {} public methods).",
-        symbol,
-        size,
-        methods.len()
-    ));
-    lines.push(format!("symbol: {}", yaml_escape(symbol)));
-    lines.push(format!("file: {}", yaml_escape(file)));
-    lines.push(format!(
-        "lines: [{}, {}]  # {} lines",
-        el.start, el.end, size
-    ));
-    if !methods.is_empty() {
-        let name_width = methods.iter().map(|(n, _)| n.len()).max().unwrap_or(0);
-        lines.push("methods:".to_string());
-        for (name, mel) in methods {
-            let msize = mel.end.saturating_sub(mel.start) + 1;
-            lines.push(format!(
-                "  {:<nw$}  [{}, {}]  # {} lines",
-                name,
-                mel.start,
-                mel.end,
-                msize,
-                nw = name_width,
-            ));
-        }
-    }
-    lines.push("---".to_string());
-    if let Some((first_method, _)) = methods.first() {
-        lines.push(format!(
-            "# Use dotted notation to read a specific method: fmm_read_symbol(\"{}.{}\")",
-            symbol, first_method
-        ));
-    }
-    lines.push("# Use truncate: false for full source.".to_string());
-    lines.join("\n")
-}
-
 // ---------------------------------------------------------------------------
 // List exports formatters
 // ---------------------------------------------------------------------------
@@ -631,16 +581,28 @@ pub fn compute_rollup_buckets(
 ) -> Vec<(String, usize, usize)> {
     use std::collections::HashMap;
     let prefix = prefix.unwrap_or("");
+    // Normalise to include trailing slash so strip_prefix removes the full
+    // directory segment.  "packages" → "packages/", "" stays "".
+    // Without this, strip_prefix("packages") on "packages/core/foo.ts" returns
+    // "/core/foo.ts" and the leading '/' makes the first split segment empty,
+    // collapsing every file into a single "packages/" bucket.
+    let prefix_dir: String = if prefix.is_empty() {
+        String::new()
+    } else if prefix.ends_with('/') {
+        prefix.to_string()
+    } else {
+        format!("{}/", prefix)
+    };
     let mut buckets: HashMap<String, (usize, usize)> = HashMap::new();
 
     for (path, loc, _) in entries {
-        let rel = path.strip_prefix(prefix).unwrap_or(path);
+        let rel = path.strip_prefix(&prefix_dir).unwrap_or(path);
         let bucket = if let Some(idx) = rel.find('/') {
-            format!("{}{}/", prefix, &rel[..idx])
-        } else if prefix.is_empty() {
+            format!("{}{}/", prefix_dir, &rel[..idx])
+        } else if prefix_dir.is_empty() {
             "(root)".to_string()
         } else {
-            prefix.to_string()
+            prefix_dir.clone()
         };
         let e = buckets.entry(bucket).or_insert((0, 0));
         e.0 += 1;

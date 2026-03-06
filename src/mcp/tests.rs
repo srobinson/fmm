@@ -741,6 +741,117 @@ fn list_files_group_by_invalid_returns_error() {
     );
 }
 
+// --- ALP-835: fmm_list_files group_by="subdir" broken when directory is set ---
+
+fn group_by_directory_manifest() -> McpServer {
+    use crate::manifest::Manifest;
+    use crate::parser::{ExportEntry, Metadata};
+    let mut manifest = Manifest::new();
+    for (path, loc) in &[
+        ("packages/core/injector/injector.ts", 200usize),
+        ("packages/core/middleware/middleware.ts", 150),
+        ("packages/common/decorators/module.ts", 80),
+        ("packages/common/interfaces/index.ts", 40),
+        ("packages/microservices/client.ts", 120),
+    ] {
+        manifest.add_file(
+            path,
+            Metadata {
+                exports: vec![ExportEntry::new("X".to_string(), 1, 10)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: *loc,
+            },
+        );
+    }
+    McpServer {
+        manifest: Some(manifest),
+        root: std::path::PathBuf::from("/tmp"),
+    }
+}
+
+#[test]
+fn list_files_group_by_subdir_with_directory_splits_into_subdirs() {
+    // ALP-835: directory="packages" + group_by="subdir" must produce one bucket
+    // per immediate child of packages/, not one giant "packages/" bucket.
+    let server = group_by_directory_manifest();
+    let result = server
+        .call_tool(
+            "fmm_list_files",
+            serde_json::json!({"directory": "packages", "group_by": "subdir"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("packages/core/"),
+        "should show packages/core/ bucket; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("packages/common/"),
+        "should show packages/common/ bucket; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("packages/microservices/"),
+        "should show packages/microservices/ bucket; got:\n{}",
+        text
+    );
+    // Must NOT collapse everything into a single "packages/" entry
+    let packages_count = text.matches("packages/core/").count()
+        + text.matches("packages/common/").count()
+        + text.matches("packages/microservices/").count();
+    assert!(
+        packages_count >= 3,
+        "expected at least 3 distinct buckets; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_files_group_by_subdir_no_directory_unchanged() {
+    // ALP-835: no directory param must still produce top-level buckets
+    let server = group_by_directory_manifest();
+    let result = server
+        .call_tool("fmm_list_files", serde_json::json!({"group_by": "subdir"}))
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("packages/"),
+        "should show top-level packages/ bucket; got:\n{}",
+        text
+    );
+    // Should NOT show deeper paths as top-level buckets
+    assert!(
+        !text.contains("packages/core/"),
+        "should not show packages/core/ at top level; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_files_group_by_subdir_nested_directory() {
+    // ALP-835: directory="packages/core" must split by core's children
+    let server = group_by_directory_manifest();
+    let result = server
+        .call_tool(
+            "fmm_list_files",
+            serde_json::json!({"directory": "packages/core", "group_by": "subdir"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("packages/core/injector/"),
+        "should show injector/ bucket; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("packages/core/middleware/"),
+        "should show middleware/ bucket; got:\n{}",
+        text
+    );
+}
+
 // --- ALP-819: fmm_list_files filter=source / filter=tests ---
 
 #[test]
