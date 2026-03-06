@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.28](https://github.com/srobinson/fmm/compare/v0.1.27...v0.1.28) (2026-03-06)
+
+
+### Features
+
+* **resolver:** cross-package import resolution for accurate downstream graph ([#83](https://github.com/srobinson/fmm/issues/83)) ([025a8c0](https://github.com/srobinson/fmm/commit/025a8c0af807786ec021e5ef11d3ef1ab4bb43ec))
+
 ## [0.1.27](https://github.com/srobinson/fmm/compare/v0.1.26...v0.1.27) (2026-03-06)
 
 
