@@ -1,6 +1,6 @@
 ---
 file: src/format.rs
-fmm: v0.3+0.1.25
+fmm: v0.3+0.1.26
 exports:
   format_file_outline: [20, 178]
   format_lookup_export: [181, 204]

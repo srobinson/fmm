@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/scala.rs
-fmm: v0.3+0.1.25
+fmm: v0.3+0.1.26
 exports:
   ScalaParser: [6, 8]
 methods:
