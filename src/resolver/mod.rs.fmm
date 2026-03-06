@@ -1,0 +1,15 @@
+---
+file: src/resolver/mod.rs
+fmm: v0.3+0.1.27
+exports:
+  workspace: [9, 9]
+  CrossPackageResolver: [24, 26]
+  resolve_by_directory_prefix: [101, 141]
+methods:
+  CrossPackageResolver.new: [31, 64]
+  CrossPackageResolver.resolve: [71, 89]
+imports: [oxc_resolver, std]
+loc: 211
+modified: 2026-03-06
+rust:
+  derives: [Clone]

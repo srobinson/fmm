@@ -1,11 +1,13 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use ignore::WalkBuilder;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::Path;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 use crate::parser::Metadata;
+use crate::resolver::{resolve_by_directory_prefix, CrossPackageResolver};
 
 pub mod call_site_finder;
 pub mod private_members;
@@ -144,6 +146,16 @@ pub struct Manifest {
     /// Not persisted — rebuilt on each load.
     #[serde(skip)]
     pub function_index: HashMap<String, ExportLocation>,
+    /// Maps workspace package name → absolute directory path.
+    /// Built from pnpm-workspace.yaml or package.json workspaces at load time.
+    /// Not persisted — rebuilt on each load.
+    #[serde(skip)]
+    pub workspace_packages: HashMap<String, PathBuf>,
+    /// Absolute directory paths of all workspace package roots.
+    /// Used by the directory prefix heuristic (Layer 3 of cross-package resolution).
+    /// Not persisted — rebuilt on each load.
+    #[serde(skip)]
+    pub workspace_roots: Vec<PathBuf>,
 }
 
 impl Manifest {
@@ -158,6 +170,8 @@ impl Manifest {
             method_index: HashMap::new(),
             reverse_deps: HashMap::new(),
             function_index: HashMap::new(),
+            workspace_packages: HashMap::new(),
+            workspace_roots: Vec::new(),
         }
     }
 
@@ -278,6 +292,12 @@ impl Manifest {
                 manifest.files.insert(key, file_entry);
             }
         }
+
+        // Discover workspace packages before building reverse deps —
+        // workspace_packages and workspace_roots are consumed by the cross-package resolver.
+        let workspace_info = crate::resolver::workspace::discover(root);
+        manifest.workspace_packages = workspace_info.packages;
+        manifest.workspace_roots = workspace_info.roots;
 
         manifest.reverse_deps = build_reverse_deps(&manifest);
 
@@ -946,12 +966,17 @@ pub(crate) fn try_resolve_local_dep(
 /// Maps each file to the set of files that directly import it. Built once at
 /// manifest load time so downstream lookups are O(1) instead of O(N × D).
 ///
-/// Mirrors the logic of `dependency_graph()` downstream detection exactly:
-/// - `entry.dependencies` resolved via `dep_targets_file`-equivalent logic
-/// - `entry.imports` resolved via `dotted_dep_matches`
+/// Three resolution paths:
+/// - `entry.dependencies`: relative imports resolved via `try_resolve_local_dep` /
+///   `dep_matches` / `python_dep_matches`
+/// - `entry.imports` (Python dotted style): resolved via `dotted_dep_matches`
+/// - `entry.imports` (JS/TS cross-package bare specifiers): resolved via the
+///   three-layer `CrossPackageResolver` (tsconfig paths + workspace aliases + directory
+///   prefix heuristic)
 pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<String>> {
     let mut rev: HashMap<String, Vec<String>> = HashMap::new();
 
+    // Pass 1: relative and non-relative dependencies (unchanged behavior)
     for (source, entry) in &manifest.files {
         for dep in &entry.dependencies {
             if dep.starts_with("./") || dep.starts_with("../") {
@@ -969,13 +994,107 @@ pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<Str
             }
         }
 
+        // Pass 2a: Python dotted absolute imports (existing behavior preserved)
         for imp in &entry.imports {
-            // Dotted dep matches (Python absolute style), same check as downstream filter
             for target in manifest.files.keys() {
                 if dotted_dep_matches(imp, target) {
                     rev.entry(target.clone()).or_default().push(source.clone());
                 }
             }
+        }
+    }
+
+    // Pass 2b: JS/TS cross-package bare specifiers via three-layer resolver.
+    // Runs in parallel via Rayon; CrossPackageResolver is Send+Sync via Arc<Resolver>.
+    // Skipped if no workspace config was found (workspace_packages and workspace_roots both empty).
+    if !manifest.workspace_packages.is_empty() || !manifest.workspace_roots.is_empty() {
+        let resolver = CrossPackageResolver::new(&manifest.workspace_packages);
+
+        // Build canonical → original key map. On macOS, /var/... symlinks resolve to
+        // /private/var/..., so the resolver (symlinks=true) returns canonical paths while
+        // manifest keys are the original paths from sidecar file: fields. This map lets us
+        // match resolver output back to the correct original manifest key.
+        let canonical_to_original: std::sync::Arc<HashMap<String, String>> = std::sync::Arc::new(
+            manifest
+                .files
+                .keys()
+                .filter_map(|k| {
+                    let canonical = std::fs::canonicalize(k).ok()?;
+                    Some((canonical.to_str()?.to_string(), k.clone()))
+                })
+                .collect(),
+        );
+
+        // Also keep the original keys set for Layer 3 (which constructs paths from
+        // workspace_roots — also non-canonical — so we can do direct lookup there).
+        let original_keys: std::sync::Arc<HashSet<String>> =
+            std::sync::Arc::new(manifest.files.keys().cloned().collect());
+
+        let cross_package_edges: Vec<(String, String)> = manifest
+            .files
+            .par_iter()
+            .flat_map(|(file_path, entry)| {
+                let resolver = resolver.clone();
+                let canonical_to_original = std::sync::Arc::clone(&canonical_to_original);
+                let original_keys = std::sync::Arc::clone(&original_keys);
+                let importer = Path::new(file_path.as_str());
+
+                entry
+                    .imports
+                    .iter()
+                    .filter_map(|import_str| {
+                        // Skip Python-style dotted imports — already handled in pass 2a
+                        if import_str.contains('.') && !import_str.contains('/') {
+                            return None;
+                        }
+
+                        // Layer 3 produces paths via workspace_roots (non-canonical), so
+                        // it uses original_keys for its manifest guard.
+                        let layer3_result = || {
+                            resolve_by_directory_prefix(
+                                import_str,
+                                &manifest.workspace_roots,
+                                &original_keys,
+                            )
+                        };
+
+                        // Layer 1 + 2: oxc-resolver with tsconfig paths and workspace aliases
+                        if let Some(resolved) = resolver.resolve(importer, import_str) {
+                            // Resolver may return canonical path (symlinks=true) — map back
+                            // to the original manifest key via canonical_to_original.
+                            let original_key = resolved.to_str().and_then(|s| {
+                                if original_keys.contains(s) {
+                                    Some(s.to_string())
+                                } else {
+                                    // Try canonical lookup
+                                    std::fs::canonicalize(&resolved)
+                                        .ok()
+                                        .and_then(|c| c.to_str().map(|s| s.to_string()))
+                                        .and_then(|c| canonical_to_original.get(&c).cloned())
+                                }
+                            });
+                            if let Some(target_key) = original_key {
+                                return Some((target_key, file_path.clone()));
+                            }
+                        }
+
+                        // Layer 3 fallback: directory prefix heuristic
+                        layer3_result().and_then(|path| {
+                            let path_str = path.to_str()?.to_string();
+                            if original_keys.contains(&path_str) {
+                                Some((path_str, file_path.clone()))
+                            } else {
+                                None
+                            }
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        // Merge cross-package edges into reverse index
+        for (target, importer) in cross_package_edges {
+            rev.entry(target).or_default().push(importer);
         }
     }
 

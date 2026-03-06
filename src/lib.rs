@@ -6,4 +6,5 @@ pub mod formatter;
 pub mod manifest;
 pub mod mcp;
 pub mod parser;
+pub mod resolver;
 pub mod search;
