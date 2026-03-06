@@ -250,13 +250,6 @@ impl McpServer {
             "fmm_file_outline" => tools::tool_file_outline(manifest, &self.root, &arguments),
             "fmm_list_files" => tools::tool_list_files(manifest, &self.root, &arguments),
             "fmm_glossary" => tools::tool_glossary(manifest, &self.root, &arguments),
-            // Legacy aliases
-            "fmm_find_export" => tools::tool_lookup_export(manifest, &self.root, &arguments),
-            "fmm_find_symbol" => tools::tool_lookup_export(manifest, &self.root, &arguments),
-            "fmm_file_metadata" => tools::tool_file_outline(manifest, &self.root, &arguments),
-            "fmm_analyze_dependencies" => {
-                tools::tool_dependency_graph(manifest, &self.root, &arguments)
-            }
             _ => Err(format!("Unknown tool: {}", tool_name)),
         };
 

@@ -14,18 +14,6 @@ use crate::search::{BareSearchResult, ExportHitCompact, FileSearchResult};
 // Per-file sidecar YAML formatters
 // ---------------------------------------------------------------------------
 
-/// Format file info as sidecar YAML (exact .fmm format without version/modified).
-pub fn format_file_info(file: &str, entry: &FileEntry) -> String {
-    let mut lines = Vec::new();
-    lines.push("---".to_string());
-    lines.push(format!("file: {}", yaml_escape(file)));
-    push_exports_map(&mut lines, &entry.exports, entry.export_lines.as_ref());
-    push_inline_list(&mut lines, "imports", &entry.imports);
-    push_inline_list(&mut lines, "dependencies", &entry.dependencies);
-    lines.push(format!("loc: {}", entry.loc));
-    lines.join("\n")
-}
-
 /// Format file outline: sidecar YAML with symbol sizes and method sub-entries.
 /// `private_by_class` is populated only when `include_private: true` is requested.
 /// When `Some`, private members are merged with public methods and annotated `# private`.

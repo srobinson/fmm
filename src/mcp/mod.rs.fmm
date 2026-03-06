@@ -11,7 +11,7 @@ methods:
   McpServer.run: [107, 159]
 imports: [anyhow, serde, serde_json, std]
 dependencies: ['crate::manifest']
-loc: 296
+loc: 289
 modified: 2026-03-06
 rust:
   derives: [Debug, Deserialize, Serialize]

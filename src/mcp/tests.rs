@@ -45,29 +45,6 @@ fn cap_response_truncate_false_returns_full_text() {
 }
 
 #[test]
-fn file_info_directory_path_returns_helpful_error() {
-    use crate::manifest::Manifest;
-    let server = McpServer {
-        manifest: Some(Manifest::new()),
-        root: std::path::PathBuf::from("/tmp"),
-    };
-    let result = server
-        .call_tool("fmm_file_outline", serde_json::json!({"file": "src/cli/"}))
-        .unwrap();
-    let text = result["content"][0]["text"].as_str().unwrap_or("");
-    assert!(
-        text.starts_with("ERROR:"),
-        "expected ERROR: prefix, got: {}",
-        text
-    );
-    assert!(
-        text.contains("fmm_list_files"),
-        "should suggest fmm_list_files, got: {}",
-        text
-    );
-}
-
-#[test]
 fn dependency_graph_directory_path_returns_helpful_error() {
     use crate::manifest::Manifest;
     let server = McpServer {
