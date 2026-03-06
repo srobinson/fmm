@@ -1194,3 +1194,90 @@ fn list_exports_pattern_directory_filter_applies_to_methods() {
         text
     );
 }
+
+// --- ALP-824: fmm_list_exports — truncation notice when results exceed limit ---
+
+#[test]
+fn list_exports_truncation_notice_shown_when_limit_reached() {
+    use crate::manifest::Manifest;
+    use crate::parser::{ExportEntry, Metadata};
+
+    let mut manifest = Manifest::new();
+    // Add 5 exports across multiple files
+    for i in 0..5usize {
+        manifest.add_file(
+            &format!("src/file{}.ts", i),
+            Metadata {
+                exports: vec![ExportEntry::new(format!("export{}", i), 1, 5)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 10,
+            },
+        );
+    }
+    let server = McpServer {
+        manifest: Some(manifest),
+        root: std::path::PathBuf::from("/tmp"),
+    };
+
+    // Request only 2 of 5 — truncation notice must appear
+    let result = server
+        .call_tool(
+            "fmm_list_exports",
+            serde_json::json!({"pattern": "export", "limit": 2}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("showing:") || text.contains("# showing:"),
+        "truncation notice must appear when limit < total; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("of 5"),
+        "notice should state total (5); got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("offset="),
+        "notice should hint at offset pagination; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_exports_no_truncation_notice_when_all_fit() {
+    use crate::manifest::Manifest;
+    use crate::parser::{ExportEntry, Metadata};
+
+    let mut manifest = Manifest::new();
+    for i in 0..3usize {
+        manifest.add_file(
+            &format!("src/file{}.ts", i),
+            Metadata {
+                exports: vec![ExportEntry::new(format!("export{}", i), 1, 5)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 10,
+            },
+        );
+    }
+    let server = McpServer {
+        manifest: Some(manifest),
+        root: std::path::PathBuf::from("/tmp"),
+    };
+
+    // limit=10 > total=3 — no truncation notice
+    let result = server
+        .call_tool(
+            "fmm_list_exports",
+            serde_json::json!({"pattern": "export", "limit": 10}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        !text.contains("showing:") && !text.contains("# showing:"),
+        "no truncation notice when all results fit; got:\n{}",
+        text
+    );
+}
