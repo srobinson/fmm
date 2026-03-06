@@ -351,9 +351,16 @@ pub(super) fn tool_list_files(
     }
 
     let total = entries.len();
+    let total_loc: usize = entries.iter().map(|(_, loc, _)| loc).sum();
+    let largest = entries
+        .iter()
+        .max_by_key(|(_, loc, _)| loc)
+        .map(|(path, loc, _)| (*path, *loc));
     let page: Vec<(&str, usize, usize)> = entries.into_iter().skip(offset).take(limit).collect();
 
-    Ok(crate::format::format_list_files(dir, &page, total, offset))
+    Ok(crate::format::format_list_files(
+        dir, &page, total, total_loc, largest, offset,
+    ))
 }
 
 pub(super) fn tool_search(

@@ -455,6 +455,11 @@ pub fn ls(
     }
 
     let total = entries.len();
+    let total_loc: usize = entries.iter().map(|(_, loc, _)| loc).sum();
+    let largest = entries
+        .iter()
+        .max_by_key(|(_, loc, _)| loc)
+        .map(|(path, loc, _)| (*path, *loc));
 
     if json_output {
         let json: Vec<ListFileJson> = entries
@@ -469,7 +474,7 @@ pub fn ls(
     } else {
         println!(
             "{}",
-            crate::format::format_list_files(directory, &entries, total, 0)
+            crate::format::format_list_files(directory, &entries, total, total_loc, largest, 0)
         );
     }
 

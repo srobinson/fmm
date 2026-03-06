@@ -304,11 +304,15 @@ pub fn format_list_exports_all(
 /// - `directory`: directory prefix filter, shown in header
 /// - `files`: the current page of entries (already sliced by offset/limit)
 /// - `total`: total number of matching files before pagination
+/// - `total_loc`: sum of LOC across all matching files (full set, not page)
+/// - `largest`: path and LOC of the largest file in the full set
 /// - `offset`: the page start index (0-based)
 pub fn format_list_files(
     directory: Option<&str>,
     files: &[(&str, usize, usize)],
     total: usize,
+    total_loc: usize,
+    largest: Option<(&str, usize)>,
     offset: usize,
 ) -> String {
     let mut lines = Vec::new();
@@ -316,6 +320,22 @@ pub fn format_list_files(
     if let Some(dir) = directory {
         lines.push(format!("directory: {}", yaml_escape(dir)));
     }
+    // Summary: file count, total LOC, largest file — scoped to the filtered set
+    let summary = match largest {
+        Some((path, loc)) => format!(
+            "{} files · {} LOC · largest: {} ({} LOC)",
+            format_count(total),
+            format_count(total_loc),
+            path,
+            format_count(loc),
+        ),
+        None => format!(
+            "{} files · {} LOC",
+            format_count(total),
+            format_count(total_loc)
+        ),
+    };
+    lines.push(format!("summary: {}", summary));
     lines.push(format!("total: {}", total));
     let showing = files.len();
     if showing > 0 && showing < total {
@@ -532,6 +552,19 @@ pub fn format_glossary(entries: &[GlossaryEntry], total_matched: usize, limit: u
     lines.join("\n")
 }
 
+/// Format a number with comma thousands separators (e.g. 1234567 → "1,234,567").
+fn format_count(n: usize) -> String {
+    let s = n.to_string();
+    let mut result = String::with_capacity(s.len() + s.len() / 3);
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            result.push(',');
+        }
+        result.push(c);
+    }
+    result.chars().rev().collect()
+}
+
 fn push_inline_list(lines: &mut Vec<String>, key: &str, items: &[String]) {
     if items.is_empty() {
         return;
@@ -622,6 +655,45 @@ mod tests {
             large_pos < medium_pos && medium_pos < small_pos,
             "methods should be sorted by size descending: large > medium > small"
         );
+    }
+
+    #[test]
+    fn format_count_inserts_commas() {
+        assert_eq!(format_count(0), "0");
+        assert_eq!(format_count(999), "999");
+        assert_eq!(format_count(1000), "1,000");
+        assert_eq!(format_count(1234567), "1,234,567");
+        assert_eq!(format_count(487341), "487,341");
+    }
+
+    #[test]
+    fn list_files_summary_header_included() {
+        // Two files: alpha (100 LOC) and beta (30 LOC)
+        let files = vec![("src/alpha.ts", 100usize, 2usize), ("src/beta.ts", 30, 1)];
+        let out = format_list_files(None, &files, 2, 130, Some(("src/alpha.ts", 100)), 0);
+        assert!(
+            out.contains("summary:"),
+            "summary line should appear; got:\n{}",
+            out
+        );
+        assert!(
+            out.contains("2 files"),
+            "summary should show file count; got:\n{}",
+            out
+        );
+        assert!(
+            out.contains("130 LOC"),
+            "summary should show total LOC; got:\n{}",
+            out
+        );
+        assert!(
+            out.contains("largest: src/alpha.ts (100 LOC)"),
+            "summary should show largest file; got:\n{}",
+            out
+        );
+        // Row format unchanged
+        assert!(out.contains("src/alpha.ts"));
+        assert!(out.contains("# loc: 100"));
     }
 
     #[test]
