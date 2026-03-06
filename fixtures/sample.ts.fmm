@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.ts
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   AppConfig: [6, 10]
   Handler: [12, 12]
@@ -15,7 +15,7 @@ methods:
 imports: [events, fs/promises]
 dependencies: [../config, ./helper]
 loc: 42
-modified: 2026-03-06
+modified: 2026-03-07
 named_imports:
   ../config:
     - BaseConfig

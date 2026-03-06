@@ -18,11 +18,20 @@ struct BareSearchJson {
     exports: Vec<ExportMatchJson>,
     files: Vec<String>,
     imports: Vec<ImportMatchJson>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    call_sites: Vec<NamedImportMatchJson>,
 }
 
 #[derive(serde::Serialize)]
 struct ImportMatchJson {
     package: String,
+    files: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+struct NamedImportMatchJson {
+    symbol: String,
+    source: String,
     files: Vec<String>,
 }
 
@@ -107,6 +116,10 @@ pub fn search(
                 h.files.retain(|f| filter_files.contains(f.as_str()));
             });
             result.imports.retain(|h| !h.files.is_empty());
+            result.named_import_hits.iter_mut().for_each(|h| {
+                h.files.retain(|f| filter_files.contains(f.as_str()));
+            });
+            result.named_import_hits.retain(|h| !h.files.is_empty());
             // Stale truncation count is meaningless after filter intersection —
             // exports were dropped because no matching files export them, not
             // because the relevance cap was hit. Clear it to avoid a misleading
@@ -129,6 +142,15 @@ pub fn search(
                         .iter()
                         .map(|h| ImportMatchJson {
                             package: h.package.clone(),
+                            files: h.files.clone(),
+                        })
+                        .collect(),
+                    call_sites: result
+                        .named_import_hits
+                        .iter()
+                        .map(|h| NamedImportMatchJson {
+                            symbol: h.symbol.clone(),
+                            source: h.source.clone(),
                             files: h.files.clone(),
                         })
                         .collect(),
@@ -191,12 +213,24 @@ fn bare_search(manifest: &Manifest, term: &str, json_output: bool) -> Result<()>
                     files: h.files.clone(),
                 })
                 .collect(),
+            call_sites: result
+                .named_import_hits
+                .iter()
+                .map(|h| NamedImportMatchJson {
+                    symbol: h.symbol.clone(),
+                    source: h.source.clone(),
+                    files: h.files.clone(),
+                })
+                .collect(),
         };
         println!("{}", serde_json::to_string_pretty(&json)?);
         return Ok(());
     }
 
-    let total = result.exports.len() + result.files.len() + result.imports.len();
+    let total = result.exports.len()
+        + result.files.len()
+        + result.imports.len()
+        + result.named_import_hits.len();
     if total == 0 {
         println!("{} No matches for '{}'", "!".yellow(), term);
         println!(
@@ -554,5 +588,136 @@ mod tests {
         let text = crate::format::format_filter_search(&results, false);
         assert!(text.contains("redux"));
         assert!(text.contains("imports:"));
+    }
+
+    fn test_manifest_with_named_imports() -> Manifest {
+        use std::collections::HashMap;
+        let mut m = Manifest::new();
+
+        let mut named_a: HashMap<String, Vec<String>> = HashMap::new();
+        named_a.insert(
+            "@tanstack/react-start".to_string(),
+            vec!["createServerFn".to_string(), "createFileRoute".to_string()],
+        );
+        m.files.insert(
+            "src/api/routes.ts".to_string(),
+            FileEntry {
+                exports: vec!["routeHandler".to_string()],
+                export_lines: None,
+                methods: None,
+                imports: vec!["@tanstack/react-start".to_string()],
+                dependencies: vec![],
+                loc: 50,
+                modified: None,
+                function_names: Vec::new(),
+                named_imports: named_a,
+                ..Default::default()
+            },
+        );
+
+        let mut named_b: HashMap<String, Vec<String>> = HashMap::new();
+        named_b.insert(
+            "@tanstack/react-start".to_string(),
+            vec!["createServerFn".to_string()],
+        );
+        m.files.insert(
+            "src/api/actions.ts".to_string(),
+            FileEntry {
+                exports: vec!["submitAction".to_string()],
+                export_lines: None,
+                methods: None,
+                imports: vec!["@tanstack/react-start".to_string()],
+                dependencies: vec![],
+                loc: 30,
+                modified: None,
+                function_names: Vec::new(),
+                named_imports: named_b,
+                ..Default::default()
+            },
+        );
+
+        // File with no named imports of interest
+        m.files.insert(
+            "src/utils/helpers.ts".to_string(),
+            FileEntry {
+                exports: vec!["formatDate".to_string()],
+                export_lines: None,
+                methods: None,
+                imports: vec!["date-fns".to_string()],
+                dependencies: vec![],
+                loc: 20,
+                modified: None,
+                function_names: Vec::new(),
+                ..Default::default()
+            },
+        );
+
+        for (path, entry) in &m.files {
+            for export in &entry.exports {
+                m.export_index.insert(export.clone(), path.clone());
+                m.export_locations.insert(
+                    export.clone(),
+                    ExportLocation {
+                        file: path.clone(),
+                        lines: None,
+                    },
+                );
+            }
+        }
+
+        m
+    }
+
+    #[test]
+    fn named_import_exact_match() {
+        let m = test_manifest_with_named_imports();
+        let result = crate::search::bare_search(&m, "createServerFn", None);
+        assert_eq!(result.named_import_hits.len(), 1);
+        let hit = &result.named_import_hits[0];
+        assert_eq!(hit.symbol, "createServerFn");
+        assert_eq!(hit.source, "@tanstack/react-start");
+        assert_eq!(hit.files.len(), 2);
+        assert!(hit.files.contains(&"src/api/actions.ts".to_string()));
+        assert!(hit.files.contains(&"src/api/routes.ts".to_string()));
+    }
+
+    #[test]
+    fn named_import_fuzzy_match() {
+        let m = test_manifest_with_named_imports();
+        // "serverFn" is a case-insensitive substring of "createServerFn"
+        let result = crate::search::bare_search(&m, "serverFn", None);
+        assert!(!result.named_import_hits.is_empty());
+        let hit = &result.named_import_hits[0];
+        assert_eq!(hit.symbol, "createServerFn");
+        // "createFileRoute" does not contain "serverFn"
+        assert!(result
+            .named_import_hits
+            .iter()
+            .all(|h| h.symbol != "createFileRoute"));
+    }
+
+    #[test]
+    fn named_import_combined_mode_intersection() {
+        let m = test_manifest_with_named_imports();
+        let mut result = crate::search::bare_search(&m, "createServerFn", None);
+        // Simulate combined mode: only allow src/api/actions.ts
+        let allowed: std::collections::HashSet<&str> =
+            ["src/api/actions.ts"].iter().copied().collect();
+        result.named_import_hits.iter_mut().for_each(|h| {
+            h.files.retain(|f| allowed.contains(f.as_str()));
+        });
+        result.named_import_hits.retain(|h| !h.files.is_empty());
+        assert_eq!(result.named_import_hits.len(), 1);
+        assert_eq!(result.named_import_hits[0].files, vec!["src/api/actions.ts"]);
+    }
+
+    #[test]
+    fn named_import_appears_in_call_sites_section() {
+        let m = test_manifest_with_named_imports();
+        let result = crate::search::bare_search(&m, "createServerFn", None);
+        let text = crate::format::format_bare_search(&result, false);
+        assert!(text.contains("CALL SITES"));
+        assert!(text.contains("createServerFn"));
+        assert!(text.contains("@tanstack/react-start"));
     }
 }

@@ -125,13 +125,13 @@ serde_json::from_str(r##"{
     },
     {
       "name": "fmm_search",
-      "description": "Universal codebase search. Use 'term' for smart search across exports, files, and imports. Use structured filters (export, imports, depends_on, LOC) for precise queries. Combine 'term' with filters to narrow results with AND semantics — only exports matching the term from files matching the filters are returned. Note: depends_on uses transitive matching (full import chain), not direct-only. For direct importers only, use fmm_dependency_graph with depth=1.",
+      "description": "Universal codebase search. Use 'term' for smart search across exports, file paths, import names, and named import call sites (files that import a symbol by name from any package). Use structured filters (export, imports, depends_on, LOC) for precise queries. Combine 'term' with filters to narrow results with AND semantics. Note: depends_on uses transitive matching (full import chain), not direct-only. For direct importers only, use fmm_dependency_graph with depth=1.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "term": {
             "type": "string",
-            "description": "Universal search term — searches exports (exact then fuzzy), file paths, and imports. Returns grouped results. Can be combined with structured filters to narrow results to matching files."
+            "description": "Search across four dimensions: (1) codebase-defined exports (exact then fuzzy), (2) file paths, (3) external import package names, and (4) named import call sites — files that import the matched symbol by name from any package (e.g. term: createServerFn finds all files that import createServerFn, whether from @tanstack/react-start or elsewhere). Results are grouped by type: EXPORTS, FILES, IMPORTS, CALL SITES. Can be combined with structured filters to narrow results to matching files."
           },
           "export": {
             "type": "string",

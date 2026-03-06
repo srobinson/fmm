@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.cpp
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   Point: [10, 12]
   Status: [14, 18]
@@ -11,6 +11,6 @@ exports:
 imports: [algorithm, memory, string, vector]
 dependencies: [config.h, utils/helpers.h]
 loc: 66
-modified: 2026-03-06
+modified: 2026-03-07
 cpp:
   namespaces: [engine, utils]

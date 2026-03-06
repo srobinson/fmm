@@ -1,6 +1,6 @@
 ---
 file: src/format/list_formatters.rs
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   format_list_exports_pattern: [13, 48]
   format_list_exports_file: [51, 57]
@@ -10,4 +10,4 @@ exports:
   format_list_files_rollup: [266, 303]
 dependencies: [../helpers/push_exports_map, 'crate::formatter::yaml_escape', 'crate::manifest']
 loc: 370
-modified: 2026-03-06
+modified: 2026-03-07

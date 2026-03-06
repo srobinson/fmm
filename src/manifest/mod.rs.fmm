@@ -1,12 +1,12 @@
 ---
 file: src/manifest/mod.rs
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   call_site_finder: [10, 10]
   private_members: [11, 11]
-  dep_matches: [22, 22]
-  dotted_dep_matches: [22, 22]
-  python_dep_matches: [22, 22]
+  dep_matches: [21, 21]
+  dotted_dep_matches: [21, 21]
+  python_dep_matches: [21, 21]
   GlossaryEntry: [23, 23]
   GlossaryMode: [23, 23]
   GlossarySource: [23, 23]
@@ -29,7 +29,7 @@ methods:
 imports: [anyhow, chrono, dependency_matcher, glossary_builder, ignore, serde, sidecar_parser, std]
 dependencies: ['crate::parser']
 loc: 493
-modified: 2026-03-06
+modified: 2026-03-07
 rust:
   derives: [Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize]
   trait_impls: [Default for Manifest]

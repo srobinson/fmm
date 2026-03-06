@@ -1,6 +1,6 @@
 ---
 file: src/cli/sidecar.rs
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   generate: [10, 87]
   validate: [89, 142]
@@ -8,4 +8,4 @@ exports:
 imports: [anyhow, colored, rayon]
 dependencies: ['crate::config', 'crate::extractor']
 loc: 213
-modified: 2026-03-06
+modified: 2026-03-07

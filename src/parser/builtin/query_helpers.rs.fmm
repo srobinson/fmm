@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/query_helpers.rs
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   make_parser: [41, 47]
   compile_query: [53, 56]
@@ -16,6 +16,6 @@ exports:
 imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: ['crate::parser']
 loc: 370
-modified: 2026-03-06
+modified: 2026-03-07
 rust:
   lifetimes: ['''n']

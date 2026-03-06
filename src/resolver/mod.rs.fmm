@@ -1,6 +1,6 @@
 ---
 file: src/resolver/mod.rs
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   workspace: [9, 9]
   CrossPackageResolver: [24, 26]
@@ -10,6 +10,6 @@ methods:
   CrossPackageResolver.resolve: [71, 89]
 imports: [oxc_resolver, std]
 loc: 211
-modified: 2026-03-06
+modified: 2026-03-07
 rust:
   derives: [Clone]

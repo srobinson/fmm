@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.rs
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   Config: [11, 14]
   Status: [16, 20]
@@ -10,7 +10,7 @@ exports:
 imports: [anyhow, serde, std, tokio]
 dependencies: [../utils, 'crate::config']
 loc: 60
-modified: 2026-03-06
+modified: 2026-03-07
 rust:
   async_functions: 1
   derives: [Clone, Debug, Deserialize, Serialize]

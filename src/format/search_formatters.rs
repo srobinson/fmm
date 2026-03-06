@@ -78,6 +78,26 @@ pub fn format_bare_search(result: &BareSearchResult, colored: bool) -> String {
         sections.push(lines.join("\n"));
     }
 
+    if !result.named_import_hits.is_empty() {
+        let mut lines = Vec::new();
+        let header = if colored {
+            "\x1b[1mCALL SITES\x1b[0m"
+        } else {
+            "CALL SITES"
+        };
+        lines.push(header.to_string());
+        for hit in &result.named_import_hits {
+            let file_list: Vec<&str> = hit.files.iter().map(|s| s.as_str()).collect();
+            lines.push(format!(
+                "  {}  from {}  ({})",
+                hit.symbol,
+                hit.source,
+                file_list.join(", ")
+            ));
+        }
+        sections.push(lines.join("\n"));
+    }
+
     // Truncation notice if fuzzy results were capped
     if let Some(total_fuzzy) = result.total_exports {
         sections.push(format!(
