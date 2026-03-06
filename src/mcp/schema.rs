@@ -143,7 +143,7 @@ pub(super) fn tool_list() -> Value {
         },
         Tool {
             name: "fmm_list_files".to_string(),
-            description: "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC and export count. Default sort: LOC descending (largest files first). Use sort_by=name for alphabetical or sort_by=exports for export count. Default limit: 200. Use offset to page through large directories.".to_string(),
+            description: "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC, export count, and downstream dependent count. Default sort: LOC descending (largest files first). sort_by options: loc (default), name, exports, downstream (blast-radius sort — files with most dependents first). Default limit: 200. Use offset to page through large directories.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -165,8 +165,8 @@ pub(super) fn tool_list() -> Value {
                     },
                     "sort_by": {
                         "type": "string",
-                        "enum": ["name", "loc", "exports"],
-                        "description": "Sort field. 'loc' (default): lines of code descending. 'name': alphabetical. 'exports': export count descending. 'loc' and 'exports' default to descending order (largest first)."
+                        "enum": ["name", "loc", "exports", "downstream"],
+                        "description": "Sort field. 'loc' (default): lines of code descending. 'name': alphabetical. 'exports': export count descending. 'downstream': direct dependent count descending (blast-radius sort — highest-risk files first). 'loc', 'exports', and 'downstream' default to descending order."
                     },
                     "order": {
                         "type": "string",

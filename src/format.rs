@@ -307,9 +307,11 @@ pub fn format_list_exports_all(
 /// - `total_loc`: sum of LOC across all matching files (full set, not page)
 /// - `largest`: path and LOC of the largest file in the full set
 /// - `offset`: the page start index (0-based)
+/// Entry tuple for format_list_files: (path, loc, exports, downstream_count).
+/// `downstream_count` is the number of direct importers from the reverse_deps index.
 pub fn format_list_files(
     directory: Option<&str>,
-    files: &[(&str, usize, usize)],
+    files: &[(&str, usize, usize, usize)],
     total: usize,
     total_loc: usize,
     largest: Option<(&str, usize)>,
@@ -348,13 +350,19 @@ pub fn format_list_files(
     if !files.is_empty() {
         lines.push("files:".to_string());
         // Column width for alignment
-        let path_width = files.iter().map(|(p, _, _)| p.len()).max().unwrap_or(0);
-        for (path, loc, exports) in files {
+        let path_width = files.iter().map(|(p, _, _, _)| p.len()).max().unwrap_or(0);
+        for (path, loc, exports, downstream) in files {
+            let downstream_str = if *downstream > 0 {
+                format!(", ↓ {} downstream", downstream)
+            } else {
+                String::new()
+            };
             lines.push(format!(
-                "  - {:<pw$}  # loc: {}, exports: {}",
+                "  - {:<pw$}  # loc: {}, exports: {}{}",
                 path,
                 loc,
                 exports,
+                downstream_str,
                 pw = path_width,
             ));
         }
@@ -770,8 +778,11 @@ mod tests {
 
     #[test]
     fn list_files_summary_header_included() {
-        // Two files: alpha (100 LOC) and beta (30 LOC)
-        let files = vec![("src/alpha.ts", 100usize, 2usize), ("src/beta.ts", 30, 1)];
+        // Two files: alpha (100 LOC, 2 exports, 5 downstream) and beta (30 LOC, 1 export, 0 downstream)
+        let files = vec![
+            ("src/alpha.ts", 100usize, 2usize, 5usize),
+            ("src/beta.ts", 30, 1, 0),
+        ];
         let out = format_list_files(None, &files, 2, 130, Some(("src/alpha.ts", 100)), 0);
         assert!(
             out.contains("summary:"),
@@ -793,9 +804,11 @@ mod tests {
             "summary should show largest file; got:\n{}",
             out
         );
-        // Row format unchanged
+        // Row format: downstream shown when > 0
         assert!(out.contains("src/alpha.ts"));
         assert!(out.contains("# loc: 100"));
+        assert!(out.contains("↓ 5 downstream")); // alpha has 5 downstream
+        assert!(!out.contains("↓ 0")); // beta has 0 downstream — not shown
     }
 
     #[test]

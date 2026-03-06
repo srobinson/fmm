@@ -289,9 +289,9 @@ pub(super) fn tool_list_files(
     let group_by = args.group_by.as_deref();
     let filter = args.filter.as_deref().unwrap_or("all");
 
-    if !matches!(sort_by, "name" | "loc" | "exports") {
+    if !matches!(sort_by, "name" | "loc" | "exports" | "downstream") {
         return Err(format!(
-            "Invalid sort_by '{}'. Valid values: name, loc, exports.",
+            "Invalid sort_by '{}'. Valid values: name, loc, exports, downstream.",
             sort_by
         ));
     }
@@ -315,7 +315,7 @@ pub(super) fn tool_list_files(
     // Load config for test-file detection (used when filter != "all").
     let config = crate::config::Config::load_from_dir(_root).unwrap_or_default();
 
-    let mut entries: Vec<(&str, usize, usize)> = manifest
+    let mut entries: Vec<(&str, usize, usize, usize)> = manifest
         .files
         .iter()
         .filter(|(path, _)| {
@@ -346,52 +346,70 @@ pub(super) fn tool_list_files(
             }
             true
         })
-        .map(|(path, entry)| (path.as_str(), entry.loc, entry.exports.len()))
+        .map(|(path, entry)| {
+            let downstream = manifest
+                .reverse_deps
+                .get(path.as_str())
+                .map(|v| v.len())
+                .unwrap_or(0);
+            (path.as_str(), entry.loc, entry.exports.len(), downstream)
+        })
         .collect();
 
     // Rollup mode: group by immediate subdirectory.
     if group_by == Some("subdir") {
-        return Ok(build_rollup(entries, dir, sort_by, order));
+        // Rollup only uses (path, loc, exports) — strip downstream before passing
+        let stripped: Vec<(&str, usize, usize)> =
+            entries.iter().map(|(p, l, e, _)| (*p, *l, *e)).collect();
+        return Ok(build_rollup(stripped, dir, sort_by, order));
     }
 
-    // Smart defaults: loc/exports sort descending unless explicitly overridden.
-    // name sorts ascending by default.
+    // Smart defaults: loc/exports/downstream sort descending; name sorts ascending.
     let desc = match sort_by {
-        "loc" | "exports" => order != Some("asc"),
+        "loc" | "exports" | "downstream" => order != Some("asc"),
         _ => order == Some("desc"),
     };
 
     match sort_by {
         "loc" => {
             if desc {
-                entries.sort_by(|(_, a, _), (_, b, _)| b.cmp(a));
+                entries.sort_by(|(_, a, _, _), (_, b, _, _)| b.cmp(a));
             } else {
-                entries.sort_by(|(_, a, _), (_, b, _)| a.cmp(b));
+                entries.sort_by(|(_, a, _, _), (_, b, _, _)| a.cmp(b));
             }
         }
         "exports" => {
             if desc {
-                entries.sort_by(|(_, _, a), (_, _, b)| b.cmp(a));
+                entries.sort_by(|(_, _, a, _), (_, _, b, _)| b.cmp(a));
             } else {
-                entries.sort_by(|(_, _, a), (_, _, b)| a.cmp(b));
+                entries.sort_by(|(_, _, a, _), (_, _, b, _)| a.cmp(b));
+            }
+        }
+        "downstream" => {
+            if desc {
+                entries.sort_by(|(_, _, _, a), (_, _, _, b)| b.cmp(a));
+            } else {
+                entries.sort_by(|(_, _, _, a), (_, _, _, b)| a.cmp(b));
             }
         }
         _ => {
             if desc {
-                entries.sort_by(|(a, _, _), (b, _, _)| b.to_lowercase().cmp(&a.to_lowercase()));
+                entries
+                    .sort_by(|(a, _, _, _), (b, _, _, _)| b.to_lowercase().cmp(&a.to_lowercase()));
             } else {
-                entries.sort_by_key(|(path, _, _)| path.to_lowercase());
+                entries.sort_by_key(|(path, _, _, _)| path.to_lowercase());
             }
         }
     }
 
     let total = entries.len();
-    let total_loc: usize = entries.iter().map(|(_, loc, _)| loc).sum();
+    let total_loc: usize = entries.iter().map(|(_, loc, _, _)| loc).sum();
     let largest = entries
         .iter()
-        .max_by_key(|(_, loc, _)| loc)
-        .map(|(path, loc, _)| (*path, *loc));
-    let page: Vec<(&str, usize, usize)> = entries.into_iter().skip(offset).take(limit).collect();
+        .max_by_key(|(_, loc, _, _)| loc)
+        .map(|(path, loc, _, _)| (*path, *loc));
+    let page: Vec<(&str, usize, usize, usize)> =
+        entries.into_iter().skip(offset).take(limit).collect();
 
     Ok(crate::format::format_list_files(
         dir, &page, total, total_loc, largest, offset,
