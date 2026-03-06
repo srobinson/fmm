@@ -242,6 +242,41 @@ pub(super) fn tool_read_symbol(
 
     let symbol_source = source_lines[start..end].join("\n");
 
+    // Bare class redirect: when a bare class name (no dot) would exceed the 10KB cap
+    // and truncate was not explicitly disabled, return an outline with redirect hints
+    // instead of a misleading partial view of the class body.
+    let is_bare_name = !args.name.contains('.');
+    let should_truncate = args.truncate.unwrap_or(true);
+    if is_bare_name
+        && should_truncate
+        && symbol_source.len() > crate::mcp::McpServer::MAX_RESPONSE_BYTES
+    {
+        // Check if this class has methods registered in the file entry.
+        if let Some(file_entry) = manifest.files.get(&resolved_file) {
+            let prefix = format!("{}.", args.name);
+            let mut class_methods: Vec<(&str, &crate::manifest::ExportLines)> = file_entry
+                .methods
+                .as_ref()
+                .map(|m| {
+                    m.iter()
+                        .filter(|(k, _)| k.starts_with(&prefix))
+                        .map(|(k, v)| (k.trim_start_matches(&prefix), v))
+                        .collect()
+                })
+                .unwrap_or_default();
+            if !class_methods.is_empty() {
+                // Sort by line start order for readability.
+                class_methods.sort_by_key(|(_, el)| el.start);
+                return Ok(crate::format::format_class_redirect(
+                    &args.name,
+                    &resolved_file,
+                    &lines,
+                    &class_methods,
+                ));
+            }
+        }
+    }
+
     Ok(crate::format::format_read_symbol(
         &args.name,
         &resolved_file,

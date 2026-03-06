@@ -202,6 +202,56 @@ pub fn format_read_symbol(symbol: &str, file: &str, el: &ExportLines, source: &s
     lines.join("\n")
 }
 
+/// Format a class-redirect response when a bare class read would exceed the 10KB cap.
+///
+/// Shows the class name, file, line range, size, method count, method list, and redirect hints.
+pub fn format_class_redirect(
+    symbol: &str,
+    file: &str,
+    el: &ExportLines,
+    methods: &[(&str, &ExportLines)],
+) -> String {
+    let size = el.end.saturating_sub(el.start) + 1;
+    let mut lines = Vec::new();
+    lines.push("---".to_string());
+    lines.push(format!(
+        "# {} would exceed the 10KB response cap ({} lines, {} public methods).",
+        symbol,
+        size,
+        methods.len()
+    ));
+    lines.push(format!("symbol: {}", yaml_escape(symbol)));
+    lines.push(format!("file: {}", yaml_escape(file)));
+    lines.push(format!(
+        "lines: [{}, {}]  # {} lines",
+        el.start, el.end, size
+    ));
+    if !methods.is_empty() {
+        let name_width = methods.iter().map(|(n, _)| n.len()).max().unwrap_or(0);
+        lines.push("methods:".to_string());
+        for (name, mel) in methods {
+            let msize = mel.end.saturating_sub(mel.start) + 1;
+            lines.push(format!(
+                "  {:<nw$}  [{}, {}]  # {} lines",
+                name,
+                mel.start,
+                mel.end,
+                msize,
+                nw = name_width,
+            ));
+        }
+    }
+    lines.push("---".to_string());
+    if let Some((first_method, _)) = methods.first() {
+        lines.push(format!(
+            "# Use dotted notation to read a specific method: fmm_read_symbol(\"{}.{}\")",
+            symbol, first_method
+        ));
+    }
+    lines.push("# Use truncate: false for full source.".to_string());
+    lines.join("\n")
+}
+
 // ---------------------------------------------------------------------------
 // List exports formatters
 // ---------------------------------------------------------------------------

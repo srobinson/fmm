@@ -34,6 +34,8 @@ pub(super) struct SearchArgs {
 #[derive(Debug, Deserialize)]
 pub(super) struct ReadSymbolArgs {
     pub(super) name: String,
+    /// When false, bypasses the 10KB response cap (default: true).
+    pub(super) truncate: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]

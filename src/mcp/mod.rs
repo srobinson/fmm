@@ -76,7 +76,7 @@ impl McpServer {
 
     /// Cap MCP tool responses to prevent context bombs.
     /// Large responses get truncated to disk by Claude, defeating the purpose.
-    const MAX_RESPONSE_BYTES: usize = 10_240;
+    pub(crate) const MAX_RESPONSE_BYTES: usize = 10_240;
 
     fn cap_response(text: String, truncate: bool) -> String {
         if !truncate || text.len() <= Self::MAX_RESPONSE_BYTES {
