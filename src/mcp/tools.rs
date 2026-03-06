@@ -635,7 +635,36 @@ pub(super) fn tool_search(
 
     // Structured filter search (no term)
     let results = crate::search::filter_search(manifest, &filters);
-    Ok(crate::format::format_filter_search(&results, false))
+    let total_count = results.len();
+    let formatted = crate::format::format_filter_search(&results, false);
+
+    // ALP-861: when depends_on is used, add a count header and transitive/direct clarification.
+    if let Some(ref dep_path) = filters.depends_on {
+        let limit_note = if total_count > 0 {
+            format!(
+                "{} file{} depend on {} (transitive — includes indirect dependents).",
+                total_count,
+                if total_count == 1 { "" } else { "s" },
+                dep_path,
+            )
+        } else {
+            format!("0 files depend on {} (transitive).", dep_path)
+        };
+        let footer = format!(
+            "# For direct dependents only: fmm_dependency_graph({})",
+            dep_path
+        );
+        return Ok(format!(
+            "# {}
+
+{}
+
+{}",
+            limit_note, formatted, footer
+        ));
+    }
+
+    Ok(formatted)
 }
 
 pub(super) fn tool_glossary(

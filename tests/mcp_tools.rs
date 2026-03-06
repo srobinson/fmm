@@ -709,9 +709,14 @@ fn search_depends_on_full_manifest_path() {
         text.contains("src/db/pool.ts"),
         "pool.ts should appear; got: {text}"
     );
-    // config.ts itself has no dependency on config.ts — it should not appear
+    // config.ts itself has no dependency on config.ts — it should not appear as a result file.
+    // Note: the header line may mention src/config.ts as the query target, so we check
+    // specifically for it appearing as a result entry (at line start or after newline).
+    let result_lines: Vec<&str> = text.lines().filter(|l| !l.starts_with('#')).collect();
     assert!(
-        !text.contains("src/config.ts\n") && !text.contains("src/config.ts "),
+        !result_lines
+            .iter()
+            .any(|l| l.trim_start().starts_with("src/config.ts")),
         "config.ts should not appear as a dependent of itself; got: {text}"
     );
 }
