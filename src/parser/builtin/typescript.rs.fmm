@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/typescript.rs
-fmm: v0.3+0.1.27
+fmm: v0.4+0.1.28
 exports:
   TypeScriptParser: [141, 161]
 methods:
@@ -8,7 +8,7 @@ methods:
   TypeScriptParser.new_tsx: [170, 172]
 imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: [../query_helpers/collect_matches_with_lines, 'crate::parser']
-loc: 1666
+loc: 1689
 modified: 2026-03-06
 rust:
   lifetimes: ['''static']

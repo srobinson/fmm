@@ -1,13 +1,13 @@
 ---
 file: src/parser/builtin/zig.rs
-fmm: v0.3+0.1.27
+fmm: v0.4+0.1.28
 exports:
   ZigParser: [6, 8]
 methods:
   ZigParser.new: [11, 19]
 imports: [anyhow, std, tree_sitter]
 dependencies: ['crate::parser']
-loc: 310
+loc: 311
 modified: 2026-03-06
 rust:
   lifetimes: ['''static']

@@ -1031,7 +1031,17 @@ pub(super) fn compute_import_specifiers(candidate_path: &str, source_file: &str)
             format!("./{}", source_base),
             format!("./{}", source_filename),
         )
+    } else if up == 0 {
+        // Down-only path (source is in a subdirectory of the common ancestor).
+        // Parts contain no `..` segments, so we must add `./` — without it the
+        // specifier would be treated as a bare package name, not a relative path.
+        let suffix = parts.join("/");
+        (
+            format!("./{}/{}", suffix, source_base),
+            format!("./{}/{}", suffix, source_filename),
+        )
     } else {
+        // Up-then-down path — starts with `..`, already unambiguously relative.
         let prefix = parts.join("/");
         (
             format!("{}/{}", prefix, source_base),

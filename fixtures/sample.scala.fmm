@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.scala
-fmm: v0.3+0.1.27
+fmm: v0.4+0.1.28
 exports:
   Config: [10, 14]
   Status: [17, 17]

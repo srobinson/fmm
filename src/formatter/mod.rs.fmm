@@ -1,6 +1,6 @@
 ---
 file: src/formatter/mod.rs
-fmm: v0.3+0.1.27
+fmm: v0.4+0.1.28
 exports:
   Frontmatter: [6, 13]
   yaml_escape: [176, 185]
@@ -11,5 +11,5 @@ methods:
   Frontmatter.render: [46, 171]
 imports: [chrono, std]
 dependencies: ['crate::parser']
-loc: 562
+loc: 568
 modified: 2026-03-06

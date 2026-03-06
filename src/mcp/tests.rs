@@ -1793,11 +1793,34 @@ fn compute_import_specifiers_cross_directory() {
 
 #[test]
 fn compute_import_specifiers_file_in_root() {
-    // Candidate in repo root importing from a subdirectory file
+    // Candidate in repo root importing from a subdirectory file.
+    // Must produce ./src/utils (not src/utils) — bare specifiers are package lookups.
     let specs = compute_import_specifiers("index.js", "src/utils.js");
     assert!(
-        specs.contains(&"src/utils".to_string()),
-        "expected src/utils in {:?}",
+        specs.contains(&"./src/utils".to_string()),
+        "expected ./src/utils in {:?}",
+        specs
+    );
+    assert!(
+        specs.contains(&"./src/utils.js".to_string()),
+        "expected ./src/utils.js in {:?}",
+        specs
+    );
+}
+
+#[test]
+fn compute_import_specifiers_into_subdirectory() {
+    // Candidate and source share a common ancestor; source is one level deeper.
+    // e.g. src/a/file.ts → src/a/deep/module.ts should yield ./deep/module[.ts].
+    let specs = compute_import_specifiers("src/a/file.ts", "src/a/deep/module.ts");
+    assert!(
+        specs.contains(&"./deep/module".to_string()),
+        "expected ./deep/module in {:?}",
+        specs
+    );
+    assert!(
+        specs.contains(&"./deep/module.ts".to_string()),
+        "expected ./deep/module.ts in {:?}",
         specs
     );
 }
