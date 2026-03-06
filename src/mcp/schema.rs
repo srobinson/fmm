@@ -56,7 +56,7 @@ pub(super) fn tool_list() -> Value {
         },
         Tool {
             name: "fmm_dependency_graph".to_string(),
-            description: "Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius. Add depth>1 for transitive traversal; depth=-1 for full closure.".to_string(),
+            description: "Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius. Add depth>1 for transitive traversal; depth=-1 for full closure. Use filter='source' to exclude test files from downstream, or filter='tests' to see only test coverage.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -67,6 +67,11 @@ pub(super) fn tool_list() -> Value {
                     "depth": {
                         "type": "integer",
                         "description": "Traversal depth (default: 1 = direct deps only). depth=2 adds transitive deps. depth=-1 computes the full transitive closure. depth>1 returns flat lists with a depth annotation per entry."
+                    },
+                    "filter": {
+                        "type": "string",
+                        "enum": ["all", "source", "tests"],
+                        "description": "Filter upstream and downstream lists by file type. 'all' (default): no filtering. 'source': exclude test files (*.spec.ts, *.test.ts, /test/, etc.) — use for production blast-radius analysis. 'tests': show only test files — use for test coverage analysis."
                     }
                 },
                 "required": ["file"]

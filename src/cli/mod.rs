@@ -507,13 +507,16 @@ pub enum Commands {
     #[command(
         long_about = "Show a file's dependency graph: local_deps (resolved local imports), \
             external (packages), and downstream (what would break if this file changes).\n\n\
-            Use --depth for transitive traversal. depth=-1 computes the full closure.",
+            Use --depth for transitive traversal. depth=-1 computes the full closure.\n\
+            Use --filter=source to exclude test files from downstream for production blast-radius analysis.",
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm deps src/injector.ts</bold>              <dim># Direct deps (depth=1)</dim>
-  <dim>$</dim> <bold>fmm deps src/injector.ts --depth 2</bold>   <dim># Transitive (2 hops)</dim>
-  <dim>$</dim> <bold>fmm deps src/injector.ts --depth -1</bold>  <dim># Full closure</dim>
-  <dim>$</dim> <bold>fmm deps src/injector.ts --json</bold>       <dim># JSON output</dim>"#),
+  <dim>$</dim> <bold>fmm deps src/injector.ts</bold>                           <dim># Direct deps (depth=1)</dim>
+  <dim>$</dim> <bold>fmm deps src/injector.ts --depth 2</bold>                <dim># Transitive (2 hops)</dim>
+  <dim>$</dim> <bold>fmm deps src/injector.ts --depth -1</bold>               <dim># Full closure</dim>
+  <dim>$</dim> <bold>fmm deps src/injector.ts --filter source</bold>          <dim># Exclude test files from downstream</dim>
+  <dim>$</dim> <bold>fmm deps src/injector.ts --filter tests</bold>           <dim># Only test files in downstream</dim>
+  <dim>$</dim> <bold>fmm deps src/injector.ts --json</bold>                    <dim># JSON output</dim>"#),
     )]
     Deps {
         /// Source file path (relative to project root, as indexed by fmm)
@@ -523,6 +526,10 @@ pub enum Commands {
         /// Traversal depth (1 = direct deps only, -1 = full closure)
         #[arg(long, default_value = "1")]
         depth: i32,
+
+        /// Filter upstream/downstream by file type: all (default), source (exclude tests), tests (only tests)
+        #[arg(long, default_value = "all", value_parser = ["all", "source", "tests"])]
+        filter: String,
 
         /// Output as JSON
         #[arg(short = 'j', long = "json")]

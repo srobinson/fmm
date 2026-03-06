@@ -521,6 +521,135 @@ fn list_files_tool_pagination_limit_and_offset() {
     );
 }
 
+// --- ALP-838: fmm_dependency_graph filter=source/tests ---
+
+fn dependency_filter_manifest() -> McpServer {
+    use crate::manifest::Manifest;
+    use crate::parser::Metadata;
+    let mut manifest = Manifest::new();
+    // Core source file
+    manifest.add_file(
+        "src/core.ts",
+        Metadata {
+            exports: vec![],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 100,
+        },
+    );
+    // Source file that depends on core (relative dep so reverse_deps resolves correctly)
+    manifest.add_file(
+        "src/service.ts",
+        Metadata {
+            exports: vec![],
+            imports: vec![],
+            dependencies: vec!["./core".to_string()],
+            loc: 80,
+        },
+    );
+    // Spec file that depends on core
+    manifest.add_file(
+        "src/core.spec.ts",
+        Metadata {
+            exports: vec![],
+            imports: vec![],
+            dependencies: vec!["./core".to_string()],
+            loc: 50,
+        },
+    );
+    manifest.rebuild_reverse_deps();
+    McpServer {
+        manifest: Some(manifest),
+        root: std::path::PathBuf::from("/tmp"),
+    }
+}
+
+#[test]
+fn dependency_graph_filter_all_is_default() {
+    // ALP-838: omitting filter returns all downstream (existing behavior)
+    let server = dependency_filter_manifest();
+    let result = server
+        .call_tool(
+            "fmm_dependency_graph",
+            serde_json::json!({"file": "src/core.ts"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("src/service.ts"),
+        "should show source downstream; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("src/core.spec.ts"),
+        "should show test downstream without filter; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn dependency_graph_filter_source_excludes_tests() {
+    // ALP-838: filter=source must remove spec files from downstream
+    let server = dependency_filter_manifest();
+    let result = server
+        .call_tool(
+            "fmm_dependency_graph",
+            serde_json::json!({"file": "src/core.ts", "filter": "source"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("src/service.ts"),
+        "source filter should keep src/service.ts; got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("src/core.spec.ts"),
+        "source filter must exclude src/core.spec.ts; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn dependency_graph_filter_tests_shows_only_tests() {
+    // ALP-838: filter=tests must show only test files in downstream
+    let server = dependency_filter_manifest();
+    let result = server
+        .call_tool(
+            "fmm_dependency_graph",
+            serde_json::json!({"file": "src/core.ts", "filter": "tests"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("src/core.spec.ts"),
+        "tests filter should show src/core.spec.ts; got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("src/service.ts"),
+        "tests filter must exclude src/service.ts (source file); got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn dependency_graph_invalid_filter_returns_error() {
+    let server = dependency_filter_manifest();
+    let result = server
+        .call_tool(
+            "fmm_dependency_graph",
+            serde_json::json!({"file": "src/core.ts", "filter": "bad"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.starts_with("ERROR:"),
+        "invalid filter must return ERROR:; got:\n{}",
+        text
+    );
+}
+
 // --- ALP-803: fmm_list_files sort_by + order ---
 
 fn list_files_sort_manifest() -> McpServer {
