@@ -873,28 +873,17 @@ pub fn format_glossary(entries: &[GlossaryEntry], total_matched: usize, limit: u
                 if !src.used_by.is_empty() {
                     let items: Vec<String> = src.used_by.iter().map(|s| yaml_escape(s)).collect();
                     lines.push(format!("    used_by: [{}]", items.join(", ")));
-                }
-                // ALP-865: disclose namespace-import callers separately.
-                if !src.namespace_callers.is_empty() {
-                    let ns_files: Vec<String> = src
-                        .namespace_callers
-                        .iter()
-                        .map(|(f, _ns)| yaml_escape(f))
-                        .collect();
-                    let ns_name = src
-                        .namespace_callers
-                        .first()
-                        .map(|(_, ns)| ns.as_str())
-                        .unwrap_or("ns");
-                    lines.push(format!(
-                        "    # {} via namespace import ({}.{}) — call-site precision unavailable",
-                        ns_files.join(", "),
-                        ns_name,
-                        "…"
-                    ));
-                }
-                if src.used_by.is_empty() {
+                } else {
                     lines.push("    used_by: []".to_string());
+                }
+                // ALP-865: disclose each namespace-import caller individually so each gets
+                // its own namespace alias (files may import under different namespace names).
+                for (f, ns) in &src.namespace_callers {
+                    lines.push(format!(
+                        "    # {} via namespace import ({}.…) — call-site precision unavailable",
+                        yaml_escape(f),
+                        ns,
+                    ));
                 }
             }
         }

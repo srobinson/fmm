@@ -6,7 +6,7 @@ exports:
   BareCallSiteResult: [141, 149]
   find_bare_function_callers: [160, 177]
 imports: [std, streaming_iterator, tree_sitter]
-loc: 587
+loc: 599
 modified: 2026-03-06
 rust:
   derives: [Debug, Eq, PartialEq]

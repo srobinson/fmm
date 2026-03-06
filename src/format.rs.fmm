@@ -16,8 +16,8 @@ exports:
   format_list_files_rollup: [658, 695]
   format_bare_search: [704, 785]
   format_filter_search: [789, 814]
-  format_glossary: [855, 909]
+  format_glossary: [855, 898]
 imports: [std]
 dependencies: ['crate::formatter::yaml_escape', 'crate::manifest', 'crate::manifest::private_members', 'crate::search']
-loc: 1241
+loc: 1230
 modified: 2026-03-06
