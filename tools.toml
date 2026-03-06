@@ -313,8 +313,8 @@ cli_flag        = "--export"
 [[tools.fmm_search.params]]
 name            = "imports"
 type            = "string"
-mcp_description = "Find all files that import this package/module (substring match)"
-cli_help        = "Find files that import a module"
+mcp_description = "Find all files that import an external package (npm, pip, crate, etc.) — substring match on the import name. For local file paths (e.g. src/db/client), use depends_on instead."
+cli_help        = "Find files that import an external package (use --depends-on for local paths)"
 cli_flag        = "--imports"
 
 [[tools.fmm_search.params]]

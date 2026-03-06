@@ -220,12 +220,23 @@ pub fn filter_search(manifest: &Manifest, filters: &SearchFilters) -> Vec<FileSe
     }
 
     // Imports filter — file must import the given package/module name.
+    // External packages live in entry.imports; local file paths live in entry.dependencies.
+    // When the query looks like a local path (contains '/' but not '://'), also check
+    // dependencies using the same resolution logic as depends_on so that
+    // `imports: src/db/client` works even though deps are stored as relative paths.
     if let Some(ref import_name) = filters.imports {
-        file_set.retain(|(_, entry)| {
-            entry
+        let looks_like_local = import_name.contains('/') && !import_name.contains("://");
+        let dep_stem = strip_source_ext(import_name);
+        file_set.retain(|(file_path, entry)| {
+            let in_imports = entry
                 .imports
                 .iter()
-                .any(|i| i.contains(import_name.as_str()))
+                .any(|i| i.contains(import_name.as_str()));
+            let in_deps = looks_like_local
+                && entry.dependencies.iter().any(|d| {
+                    dep_targets_file(d, import_name, file_path, manifest) || d.contains(dep_stem)
+                });
+            in_imports || in_deps
         });
     }
 
@@ -1443,6 +1454,86 @@ mod tests {
             files_with.contains(&"src/services/auth.ts"),
             "auth.ts (dep ../db/schema) should match; got: {:?}",
             files_with
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // imports filter local-path fallback (ALP-903)
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn imports_filter_local_path_checks_dependencies() {
+        // Local file paths live in entry.dependencies, not entry.imports.
+        // `imports: src/db/client` should return files that depend on it.
+        let m = manifest_with(vec![
+            ("src/db/client.ts", vec![]),
+            ("src/routes/users.ts", vec!["../db/client"]),
+            ("src/services/auth.ts", vec!["../db/client"]),
+        ]);
+
+        let filters = SearchFilters {
+            export: None,
+            imports: Some("src/db/client".to_string()),
+            depends_on: None,
+            min_loc: None,
+            max_loc: None,
+        };
+
+        let results = filter_search(&m, &filters);
+        let files: Vec<&str> = results.iter().map(|r| r.file.as_str()).collect();
+
+        assert!(
+            files.contains(&"src/routes/users.ts"),
+            "users.ts should match local-path imports filter; got: {:?}",
+            files
+        );
+        assert!(
+            files.contains(&"src/services/auth.ts"),
+            "auth.ts should match local-path imports filter; got: {:?}",
+            files
+        );
+        // The file itself should not appear (it doesn't import itself)
+        assert!(
+            !files.contains(&"src/db/client.ts"),
+            "client.ts should not match; got: {:?}",
+            files
+        );
+    }
+
+    #[test]
+    fn imports_filter_external_package_unaffected() {
+        // External package queries must continue to work as before.
+        let m = manifest_with_imports(vec![
+            ("src/utils.ts", vec![], vec!["lodash"]),
+            ("src/app.ts", vec![], vec!["lodash", "react"]),
+            ("src/pure.ts", vec![], vec![]),
+        ]);
+
+        let filters = SearchFilters {
+            export: None,
+            imports: Some("lodash".to_string()),
+            depends_on: None,
+            min_loc: None,
+            max_loc: None,
+        };
+
+        let results = filter_search(&m, &filters);
+        let files: Vec<&str> = results.iter().map(|r| r.file.as_str()).collect();
+
+        assert!(
+            files.contains(&"src/utils.ts"),
+            "utils.ts imports lodash; got: {:?}",
+            files
+        );
+        assert!(
+            files.contains(&"src/app.ts"),
+            "app.ts imports lodash; got: {:?}",
+            files
+        );
+        assert!(
+            !files.contains(&"src/pure.ts"),
+            "pure.ts does not import lodash; got: {:?}",
+            files
         );
     }
 }

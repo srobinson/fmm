@@ -139,7 +139,7 @@ serde_json::from_str(r##"{
           },
           "imports": {
             "type": "string",
-            "description": "Find all files that import this package/module (substring match)"
+            "description": "Find all files that import an external package (npm, pip, crate, etc.) — substring match on the import name. For local file paths (e.g. src/db/client), use depends_on instead."
           },
           "depends_on": {
             "type": "string",
