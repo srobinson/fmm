@@ -3,6 +3,8 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Language, Parser as TSParser};
 
+use super::query_helpers::make_parser;
+
 pub struct KotlinParser {
     parser: TSParser,
 }
@@ -10,10 +12,7 @@ pub struct KotlinParser {
 impl KotlinParser {
     pub fn new() -> Result<Self> {
         let language: Language = tree_sitter_kotlin_ng::LANGUAGE.into();
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language)
-            .map_err(|e| anyhow::anyhow!("Failed to set Kotlin language: {}", e))?;
+        let parser = make_parser(&language, "Kotlin")?;
         Ok(Self { parser })
     }
 

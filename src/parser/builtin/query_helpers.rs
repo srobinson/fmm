@@ -23,9 +23,35 @@
 //! - [`collect_matches`] — simplest form; returns deduplicated strings from any capture.
 
 use crate::parser::ExportEntry;
+use anyhow::Result;
 use std::collections::HashSet;
 use streaming_iterator::StreamingIterator;
-use tree_sitter::{Query, QueryCursor};
+use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
+
+/// Create and configure a [`TSParser`] for the given language.
+///
+/// Replaces the repeated three-line init block across every parser `new()`:
+/// ```ignore
+/// let mut parser = TSParser::new();
+/// parser.set_language(&language)
+///     .map_err(|e| anyhow::anyhow!("Failed to set {} language: {}", lang, e))?;
+/// ```
+pub fn make_parser(language: &Language, lang_name: &str) -> Result<TSParser> {
+    let mut parser = TSParser::new();
+    parser
+        .set_language(language)
+        .map_err(|e| anyhow::anyhow!("Failed to set {} language: {}", lang_name, e))?;
+    Ok(parser)
+}
+
+/// Compile a single tree-sitter [`Query`] with a descriptive error on failure.
+///
+/// Replaces the repeated two-line `Query::new(...).map_err(...)` pattern in
+/// every parser that compiles named queries.
+pub fn compile_query(language: &Language, pattern: &str, query_name: &str) -> Result<Query> {
+    Query::new(language, pattern)
+        .map_err(|e| anyhow::anyhow!("Failed to compile {} query: {}", query_name, e))
+}
 
 /// Collect unique text from all captures of a query, returned as a sorted Vec.
 pub fn collect_matches(

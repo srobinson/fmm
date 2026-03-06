@@ -3,6 +3,8 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Language, Parser as TSParser};
 
+use super::query_helpers::make_parser;
+
 pub struct DartParser {
     parser: TSParser,
 }
@@ -10,10 +12,7 @@ pub struct DartParser {
 impl DartParser {
     pub fn new() -> Result<Self> {
         let language: Language = tree_sitter_dart_orchard::LANGUAGE.into();
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language)
-            .map_err(|e| anyhow::anyhow!("Failed to set Dart language: {}", e))?;
+        let parser = make_parser(&language, "Dart")?;
         Ok(Self { parser })
     }
 
