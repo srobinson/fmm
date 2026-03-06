@@ -11,7 +11,13 @@ struct ExportJson {
     lines: Option<[usize; 2]>,
 }
 
-pub fn exports(pattern: Option<&str>, directory: Option<&str>, json_output: bool) -> Result<()> {
+pub fn exports(
+    pattern: Option<&str>,
+    directory: Option<&str>,
+    limit: Option<usize>,
+    offset: usize,
+    json_output: bool,
+) -> Result<()> {
     let (_, manifest) = load_manifest()?;
 
     if manifest.files.is_empty() {
@@ -70,6 +76,11 @@ pub fn exports(pattern: Option<&str>, directory: Option<&str>, json_output: bool
         matches.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
         let total = matches.len();
 
+        // Apply pagination.
+        let page_start = offset.min(total);
+        let page_end = limit.map(|l| (page_start + l).min(total)).unwrap_or(total);
+        let matches = &matches[page_start..page_end];
+
         if json_output {
             let json: Vec<ExportJson> = matches
                 .iter()
@@ -89,7 +100,7 @@ pub fn exports(pattern: Option<&str>, directory: Option<&str>, json_output: bool
         } else {
             println!(
                 "{}",
-                crate::format::format_list_exports_pattern(&matches, total, 0)
+                crate::format::format_list_exports_pattern(matches, total, page_start)
             );
         }
     } else {

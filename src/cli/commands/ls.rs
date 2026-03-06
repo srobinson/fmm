@@ -9,12 +9,16 @@ struct ListFileJson {
     exports: usize,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn ls(
     directory: Option<&str>,
+    pattern: Option<&str>,
     sort_by: &str,
     order: Option<&str>,
     group_by: Option<&str>,
     filter: &str,
+    limit: Option<usize>,
+    offset: usize,
     json_output: bool,
 ) -> Result<()> {
     let (root, manifest) = load_manifest()?;
@@ -51,12 +55,28 @@ pub fn ls(
 
     let config = crate::config::Config::load_from_dir(&root).unwrap_or_default();
 
+    let glob_pattern = pattern
+        .map(|p| {
+            glob::Pattern::new(p)
+                .map_err(|e| anyhow::anyhow!("Invalid --pattern glob '{}': {}", p, e))
+        })
+        .transpose()?;
+
     let mut entries: Vec<(&str, usize, usize, usize, Option<&str>)> = manifest
         .files
         .iter()
         .filter(|(path, _)| {
             if let Some(d) = directory {
                 if !path.starts_with(d) {
+                    return false;
+                }
+            }
+            if let Some(pat) = &glob_pattern {
+                let filename = std::path::Path::new(path.as_str())
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+                if !pat.matches(filename) {
                     return false;
                 }
             }
@@ -149,6 +169,11 @@ pub fn ls(
         .max_by_key(|(_, loc, _, _, _)| loc)
         .map(|(path, loc, _, _, _)| (*path, *loc));
 
+    // Apply pagination.
+    let page_start = offset.min(total);
+    let page_end = limit.map(|l| (page_start + l).min(total)).unwrap_or(total);
+    let entries = &entries[page_start..page_end];
+
     if json_output {
         let json: Vec<ListFileJson> = entries
             .iter()
@@ -165,11 +190,11 @@ pub fn ls(
             "{}",
             crate::format::format_list_files(
                 directory,
-                &entries,
+                entries,
                 total,
                 total_loc,
                 largest,
-                0,
+                page_start,
                 show_modified,
             )
         );

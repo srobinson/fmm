@@ -4,7 +4,7 @@ fmm: v0.4+0.1.29
 exports:
   main: [6, 11]
   print_error: [13, 34]
-  run: [36, 169]
+  run: [36, 187]
 imports: [clap, colored, fmm]
-loc: 169
+loc: 187
 modified: 2026-03-06

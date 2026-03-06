@@ -17,7 +17,7 @@ struct OutlineJson {
     loc: usize,
 }
 
-pub fn outline(file: &str, json_output: bool) -> Result<()> {
+pub fn outline(file: &str, include_private: bool, json_output: bool) -> Result<()> {
     let (root, manifest) = load_manifest()?;
 
     if manifest.files.is_empty() {
@@ -65,7 +65,20 @@ pub fn outline(file: &str, json_output: bool) -> Result<()> {
         };
         println!("{}", serde_json::to_string_pretty(&json)?);
     } else {
-        println!("{}", crate::format::format_file_outline(file, entry, None));
+        let private_by_class = if include_private {
+            let class_names: Vec<&str> = entry.exports.iter().map(|s| s.as_str()).collect();
+            Some(crate::manifest::private_members::extract_private_members(
+                &root,
+                file,
+                &class_names,
+            ))
+        } else {
+            None
+        };
+        println!(
+            "{}",
+            crate::format::format_file_outline(file, entry, private_by_class.as_ref())
+        );
     }
 
     Ok(())

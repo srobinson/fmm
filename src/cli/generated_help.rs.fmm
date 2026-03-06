@@ -1,0 +1,14 @@
+---
+file: src/cli/generated_help.rs
+fmm: v0.4+0.1.29
+exports:
+  LOOKUP_ABOUT: [6, 6]
+  EXPORTS_ABOUT: [7, 7]
+  DEPS_ABOUT: [8, 8]
+  READ_ABOUT: [9, 9]
+  OUTLINE_ABOUT: [10, 10]
+  SEARCH_ABOUT: [11, 11]
+  LS_ABOUT: [12, 12]
+  GLOSSARY_ABOUT: [13, 13]
+loc: 13
+modified: 2026-03-06

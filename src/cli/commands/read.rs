@@ -11,7 +11,12 @@ struct ReadSymbolJson {
     source: String,
 }
 
-pub fn read_symbol(name: &str, no_truncate: bool, json_output: bool) -> Result<()> {
+pub fn read_symbol(
+    name: &str,
+    no_truncate: bool,
+    line_numbers: bool,
+    json_output: bool,
+) -> Result<()> {
     let (root, manifest) = load_manifest()?;
 
     if manifest.files.is_empty() {
@@ -105,7 +110,13 @@ pub fn read_symbol(name: &str, no_truncate: bool, json_output: bool) -> Result<(
     } else {
         println!(
             "{}",
-            crate::format::format_read_symbol(name, &resolved_file, &lines, &symbol_source, false)
+            crate::format::format_read_symbol(
+                name,
+                &resolved_file,
+                &lines,
+                &symbol_source,
+                line_numbers
+            )
         );
     }
 
