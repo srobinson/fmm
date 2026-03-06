@@ -121,6 +121,11 @@ pub fn exports(
         by_file.sort_by_key(|(path, _)| path.to_lowercase());
         let total = by_file.len();
 
+        // Apply pagination.
+        let page_start = offset.min(total);
+        let page_end = limit.map(|l| (page_start + l).min(total)).unwrap_or(total);
+        let by_file = &by_file[page_start..page_end];
+
         if json_output {
             #[derive(serde::Serialize)]
             struct FileExportsJson {
@@ -155,7 +160,7 @@ pub fn exports(
         } else {
             println!(
                 "{}",
-                crate::format::format_list_exports_all(&by_file, total, 0)
+                crate::format::format_list_exports_all(by_file, total, page_start)
             );
         }
     }
