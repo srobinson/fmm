@@ -8,7 +8,7 @@ methods:
 imports: [anyhow, std, tree_sitter]
 dependencies: ['crate::parser']
 loc: 424
-modified: 2026-03-05
+modified: 2026-03-06
 rust:
   lifetimes: ['''static']
   trait_impls: [Parser for DartParser]

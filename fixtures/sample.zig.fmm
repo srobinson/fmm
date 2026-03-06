@@ -14,7 +14,7 @@ exports:
 imports: [builtin, std]
 dependencies: [../config.zig, ./utils.zig]
 loc: 122
-modified: 2026-03-05
+modified: 2026-03-06
 zig:
   comptime_blocks: 2
   test_blocks: 3

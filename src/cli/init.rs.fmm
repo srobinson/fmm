@@ -8,4 +8,4 @@ exports:
 imports: [anyhow, colored, std]
 dependencies: [../collect_files, ../resolve_root, ../sidecar, 'crate::config', 'crate::extractor::sidecar_path_for']
 loc: 210
-modified: 2026-03-05
+modified: 2026-03-06

@@ -150,29 +150,33 @@ pub fn format_file_outline(
                         let mut public_sorted = class_methods.clone();
                         public_sorted.sort_by_key(|(_, el)| el.start);
 
-                        // Build a combined list of (start, label, end, is_private)
-                        let mut combined: Vec<(usize, String, usize, bool)> = Vec::new();
+                        // Build a combined list of (start, label, end, suffix)
+                        let mut combined: Vec<(usize, String, usize, &str)> = Vec::new();
                         for (method_name, method_lines) in &public_sorted {
                             combined.push((
                                 method_lines.start,
                                 method_name.clone(),
                                 method_lines.end,
-                                false,
+                                "",
                             ));
                         }
                         for pm in private_members {
-                            combined.push((pm.start, pm.name.clone(), pm.end, true));
+                            let suffix = if pm.is_method {
+                                "  # private"
+                            } else {
+                                "  # private field"
+                            };
+                            combined.push((pm.start, pm.name.clone(), pm.end, suffix));
                         }
                         combined.sort_by_key(|(start, _, _, _)| *start);
 
-                        for (start, method_name, end, is_private) in &combined {
-                            let private_label = if *is_private { "  # private" } else { "" };
+                        for (start, method_name, end, suffix) in &combined {
                             lines.push(format!(
                                 "    {}: [{}, {}]{}",
                                 yaml_escape(method_name),
                                 start,
                                 end,
-                                private_label
+                                suffix
                             ));
                         }
                     }
@@ -1088,6 +1092,53 @@ mod tests {
         assert!(
             out.contains("  - file: src/c.ts  depth: 1"),
             "non-circular entry wrong; got:\n{}",
+            out
+        );
+    }
+
+    // ALP-827: private field annotation consistency in mixed public+private case
+    #[test]
+    fn file_outline_private_field_annotated_correctly_when_public_methods_present() {
+        use crate::manifest::private_members::PrivateMember;
+
+        let entry =
+            make_entry_with_methods(vec![("MyClass", 1, 50)], vec![("MyClass.doWork", 5, 20)]);
+
+        let mut private_map = HashMap::new();
+        private_map.insert(
+            "MyClass".to_string(),
+            vec![
+                PrivateMember {
+                    name: "pool".to_string(),
+                    start: 3,
+                    end: 3,
+                    is_method: false,
+                },
+                PrivateMember {
+                    name: "_helper".to_string(),
+                    start: 22,
+                    end: 30,
+                    is_method: true,
+                },
+            ],
+        );
+
+        let out = format_file_outline("src/my.ts", &entry, Some(&private_map));
+
+        assert!(
+            out.contains("pool: [3, 3]  # private field"),
+            "private field should be annotated '# private field'; got:\n{}",
+            out
+        );
+        assert!(
+            out.contains("_helper: [22, 30]  # private"),
+            "private method should be annotated '# private'; got:\n{}",
+            out
+        );
+        // Confirm the field is NOT just annotated "# private" (without "field")
+        assert!(
+            !out.contains("pool: [3, 3]  # private\n"),
+            "private field must not carry generic '# private' label; got:\n{}",
             out
         );
     }

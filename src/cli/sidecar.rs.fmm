@@ -8,4 +8,4 @@ exports:
 imports: [anyhow, colored, rayon]
 dependencies: ['crate::config', 'crate::extractor']
 loc: 213
-modified: 2026-03-05
+modified: 2026-03-06

@@ -9,4 +9,4 @@ exports:
 imports: [std, streaming_iterator, tree_sitter]
 dependencies: ['crate::parser']
 loc: 211
-modified: 2026-03-05
+modified: 2026-03-06

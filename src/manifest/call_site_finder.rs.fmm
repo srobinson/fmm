@@ -5,4 +5,4 @@ exports:
   find_call_sites: [21, 27]
 imports: [std, streaming_iterator, tree_sitter]
 loc: 256
-modified: 2026-03-05
+modified: 2026-03-06

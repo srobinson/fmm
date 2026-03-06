@@ -2,7 +2,7 @@
 file: src/mcp/schema.rs
 fmm: v0.3+0.1.24
 imports: [serde, serde_json]
-loc: 215
+loc: 223
 modified: 2026-03-06
 rust:
   derives: [Debug, Serialize]

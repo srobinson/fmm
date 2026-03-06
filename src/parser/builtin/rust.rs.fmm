@@ -8,7 +8,7 @@ methods:
 imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: ['crate::parser']
 loc: 1710
-modified: 2026-03-05
+modified: 2026-03-06
 rust:
   lifetimes: ['''a', '''static']
   trait_impls: [Parser for RustParser]

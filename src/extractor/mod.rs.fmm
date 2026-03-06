@@ -13,4 +13,4 @@ methods:
 imports: [anyhow, std]
 dependencies: ['crate::formatter', 'crate::parser']
 loc: 176
-modified: 2026-03-05
+modified: 2026-03-06

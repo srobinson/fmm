@@ -12,6 +12,6 @@ methods:
   UserController.getAll: [12, 14]
   PlainService.execute: [24, 24]
 loc: 25
-modified: 2026-03-05
+modified: 2026-03-06
 typescript:
   decorators: [Controller, Injectable, Module]

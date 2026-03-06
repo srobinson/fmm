@@ -6,4 +6,4 @@ exports:
 imports: [anyhow, colored]
 dependencies: [../collect_files, 'crate::config', 'crate::extractor::sidecar_path_for']
 loc: 59
-modified: 2026-03-05
+modified: 2026-03-06

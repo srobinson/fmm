@@ -1,0 +1,12 @@
+---
+file: src/manifest/private_members.rs
+fmm: v0.3+0.1.24
+exports:
+  PrivateMember: [16, 25]
+  extract_private_members: [31, 59]
+  find_private_method_range: [65, 77]
+imports: [std]
+loc: 423
+modified: 2026-03-06
+rust:
+  derives: [Clone, Debug]

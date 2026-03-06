@@ -3,4 +3,4 @@ file: tests/cli_integration.rs
 fmm: v0.3+0.1.24
 imports: [std, tempfile]
 loc: 300
-modified: 2026-03-05
+modified: 2026-03-06

@@ -8,6 +8,6 @@ exports:
   process: [22, 24]
 imports: [dataclasses]
 loc: 35
-modified: 2026-03-05
+modified: 2026-03-06
 python:
   decorators: [dataclass]

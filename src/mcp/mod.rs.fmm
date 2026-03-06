@@ -12,7 +12,7 @@ methods:
 imports: [anyhow, serde, serde_json, std]
 dependencies: ['crate::manifest']
 loc: 296
-modified: 2026-03-05
+modified: 2026-03-06
 rust:
   derives: [Debug, Deserialize, Serialize]
   trait_impls: [Default for McpServer]

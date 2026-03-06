@@ -6,6 +6,6 @@ exports:
 imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: [../query_helpers/collect_matches, 'crate::parser']
 loc: 344
-modified: 2026-03-05
+modified: 2026-03-06
 rust:
   lifetimes: ['''static']

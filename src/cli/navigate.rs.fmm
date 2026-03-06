@@ -6,11 +6,11 @@ exports:
   read_symbol: [131, 230]
   deps: [234, 330]
   outline: [334, 386]
-  ls: [390, 538]
-  exports: [542, 670]
+  ls: [390, 547]
+  exports: [551, 679]
 imports: [anyhow, colored]
 dependencies: ['crate::manifest']
-loc: 670
+loc: 679
 modified: 2026-03-06
 rust:
   derives: ['serde::Serialize']
