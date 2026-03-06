@@ -10,7 +10,7 @@ use super::Manifest;
 /// Strip a file extension from a path only when the suffix is a recognized source-file
 /// extension. Returns the original string unchanged for compound names like
 /// `runtime.exception` or `crypto.utils` where the dot is part of the filename.
-fn strip_source_ext(path: &str) -> &str {
+pub(crate) fn strip_source_ext(path: &str) -> &str {
     if let Some((stem, ext)) = path.rsplit_once('.') {
         match ext {
             "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "py" | "go" | "rs" | "java" | "kt"

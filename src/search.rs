@@ -6,8 +6,8 @@
 use std::collections::{BTreeMap, HashSet};
 
 use crate::manifest::{
-    dep_matches, dotted_dep_matches, python_dep_matches, try_resolve_local_dep, ExportLocation,
-    FileEntry, Manifest,
+    dep_matches, dotted_dep_matches, python_dep_matches, strip_source_ext, try_resolve_local_dep,
+    ExportLocation, FileEntry, Manifest,
 };
 
 // ---------------------------------------------------------------------------
@@ -234,13 +234,16 @@ pub fn filter_search(manifest: &Manifest, filters: &SearchFilters) -> Vec<FileSe
     // Go/Rust module paths all resolve via dep_targets_file; substring fallback handles
     // bare fragment queries (e.g. "config" matches "../config").
     if let Some(ref dep_path) = filters.depends_on {
+        let dep_stem = strip_source_ext(dep_path);
         file_set.retain(|(file_path, entry)| {
-            entry.dependencies.iter().any(|d| {
-                dep_targets_file(d, dep_path, file_path, manifest) || d.contains(dep_path.as_str())
-            }) || entry
-                .imports
+            entry
+                .dependencies
                 .iter()
-                .any(|i| dotted_dep_matches(i, dep_path))
+                .any(|d| dep_targets_file(d, dep_path, file_path, manifest) || d.contains(dep_stem))
+                || entry
+                    .imports
+                    .iter()
+                    .any(|i| dotted_dep_matches(i, dep_path))
         });
     }
 
@@ -479,7 +482,11 @@ pub fn dependency_graph_transitive(
 /// For all other dep types, delegates to `dep_matches` and `python_dep_matches`.
 fn dep_targets_file(dep: &str, target: &str, source: &str, manifest: &Manifest) -> bool {
     if dep.starts_with("./") || dep.starts_with("../") {
-        try_resolve_local_dep(dep, source, manifest).as_deref() == Some(target)
+        if let Some(resolved) = try_resolve_local_dep(dep, source, manifest) {
+            strip_source_ext(&resolved) == strip_source_ext(target)
+        } else {
+            false
+        }
     } else {
         dep_matches(dep, target, source) || python_dep_matches(dep, target, source)
     }
@@ -1366,5 +1373,76 @@ mod tests {
             spoke_local
         );
         assert!(spoke_down.is_empty(), "spokes have no downstream");
+    }
+
+    // -------------------------------------------------------------------------
+    // depends_on extension normalization (ALP-901)
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn depends_on_with_extension_equals_without() {
+        // Scenario from TanStack report: `depends_on: src/db/schema.ts` returned 1 result
+        // while `depends_on: src/db/schema` returned 21. Should be identical.
+        let m = manifest_with(vec![
+            ("src/db/schema.ts", vec![]),
+            ("src/routes/users.ts", vec!["../db/schema"]),
+            ("src/routes/posts.ts", vec!["../db/schema.ts"]),
+            ("src/services/auth.ts", vec!["../db/schema"]),
+        ]);
+
+        let filters_with_ext = SearchFilters {
+            export: None,
+            imports: None,
+            depends_on: Some("src/db/schema.ts".to_string()),
+            min_loc: None,
+            max_loc: None,
+        };
+        let filters_without_ext = SearchFilters {
+            export: None,
+            imports: None,
+            depends_on: Some("src/db/schema".to_string()),
+            min_loc: None,
+            max_loc: None,
+        };
+
+        let results_with = filter_search(&m, &filters_with_ext);
+        let results_without = filter_search(&m, &filters_without_ext);
+
+        let files_with: Vec<&str> = results_with.iter().map(|r| r.file.as_str()).collect();
+        let files_without: Vec<&str> = results_without.iter().map(|r| r.file.as_str()).collect();
+
+        assert_eq!(
+            results_with.len(),
+            results_without.len(),
+            "extension vs no-extension should return same count; with: {:?}, without: {:?}",
+            files_with,
+            files_without
+        );
+
+        for file in &files_with {
+            assert!(
+                files_without.contains(file),
+                "file {:?} in with-ext results but not in without-ext; without: {:?}",
+                file,
+                files_without
+            );
+        }
+
+        // All three dependents should appear
+        assert!(
+            files_with.contains(&"src/routes/users.ts"),
+            "users.ts (dep ../db/schema) should match; got: {:?}",
+            files_with
+        );
+        assert!(
+            files_with.contains(&"src/routes/posts.ts"),
+            "posts.ts (dep ../db/schema.ts) should match; got: {:?}",
+            files_with
+        );
+        assert!(
+            files_with.contains(&"src/services/auth.ts"),
+            "auth.ts (dep ../db/schema) should match; got: {:?}",
+            files_with
+        );
     }
 }
