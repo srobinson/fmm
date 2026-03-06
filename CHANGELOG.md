@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.30](https://github.com/srobinson/fmm/compare/v0.1.29...v0.1.30) (2026-03-06)
+
+
+### Features
+
+* **docs:** tools.toml single source of truth — build-time doc generation + skill sync ([#88](https://github.com/srobinson/fmm/issues/88)) ([ca83b3f](https://github.com/srobinson/fmm/commit/ca83b3f782817024dd0f3ee68ba15e1bf8f3b70d))
+
 ## [0.1.29](https://github.com/srobinson/fmm/compare/v0.1.28...v0.1.29) (2026-03-06)
 
 
