@@ -3,6 +3,8 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Language, Parser as TSParser};
 
+use super::query_helpers::{extract_child_text, make_parser};
+
 pub struct DartParser {
     parser: TSParser,
 }
@@ -10,10 +12,7 @@ pub struct DartParser {
 impl DartParser {
     pub fn new() -> Result<Self> {
         let language: Language = tree_sitter_dart_orchard::LANGUAGE.into();
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language)
-            .map_err(|e| anyhow::anyhow!("Failed to set Dart language: {}", e))?;
+        let parser = make_parser(&language, "Dart")?;
         Ok(Self { parser })
     }
 
@@ -23,27 +22,6 @@ impl DartParser {
     }
 
     /// Extract identifier text from a node's `identifier` child.
-    fn get_identifier(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "identifier" {
-                return child.utf8_text(source_bytes).ok().map(|s| s.to_string());
-            }
-        }
-        None
-    }
-
-    /// Extract type_identifier text from a node.
-    fn get_type_identifier(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "type_identifier" {
-                return child.utf8_text(source_bytes).ok().map(|s| s.to_string());
-            }
-        }
-        None
-    }
-
     /// Extract the variable name from static_final_declaration_list or initialized_identifier_list.
     fn get_var_name_from_decl(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
         // These nodes contain child like "appVersion = '1.0.0'"
@@ -69,7 +47,7 @@ impl DartParser {
             let child = children[i];
             match child.kind() {
                 "class_definition" => {
-                    if let Some(name) = Self::get_identifier(&child, source_bytes) {
+                    if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
                         if !Self::is_private(&name) && seen.insert(name.clone()) {
                             exports.push(ExportEntry::new(
                                 name,
@@ -80,7 +58,7 @@ impl DartParser {
                     }
                 }
                 "mixin_declaration" => {
-                    if let Some(name) = Self::get_identifier(&child, source_bytes) {
+                    if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
                         if !Self::is_private(&name) && seen.insert(name.clone()) {
                             exports.push(ExportEntry::new(
                                 name,
@@ -91,7 +69,7 @@ impl DartParser {
                     }
                 }
                 "enum_declaration" => {
-                    if let Some(name) = Self::get_identifier(&child, source_bytes) {
+                    if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
                         if !Self::is_private(&name) && seen.insert(name.clone()) {
                             exports.push(ExportEntry::new(
                                 name,
@@ -102,7 +80,7 @@ impl DartParser {
                     }
                 }
                 "extension_declaration" => {
-                    if let Some(name) = Self::get_identifier(&child, source_bytes) {
+                    if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
                         if !Self::is_private(&name) && seen.insert(name.clone()) {
                             exports.push(ExportEntry::new(
                                 name,
@@ -113,7 +91,8 @@ impl DartParser {
                     }
                 }
                 "type_alias" => {
-                    if let Some(name) = Self::get_type_identifier(&child, source_bytes) {
+                    if let Some(name) = extract_child_text(&child, source_bytes, "type_identifier")
+                    {
                         if !Self::is_private(&name) && seen.insert(name.clone()) {
                             exports.push(ExportEntry::new(
                                 name,
@@ -125,7 +104,7 @@ impl DartParser {
                 }
                 "function_signature" => {
                     // Function name is an identifier child of function_signature
-                    if let Some(name) = Self::get_identifier(&child, source_bytes) {
+                    if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
                         if !Self::is_private(&name) && seen.insert(name.clone()) {
                             // End line includes the function_body sibling if present
                             let end_row = if i + 1 < children.len()

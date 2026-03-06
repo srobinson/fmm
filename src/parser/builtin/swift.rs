@@ -3,6 +3,8 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Language, Parser as TSParser};
 
+use super::query_helpers::{extract_child_text, has_modifier, make_parser, push_export};
+
 pub struct SwiftParser {
     parser: TSParser,
 }
@@ -10,28 +12,8 @@ pub struct SwiftParser {
 impl SwiftParser {
     pub fn new() -> Result<Self> {
         let language: Language = tree_sitter_swift::LANGUAGE.into();
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language)
-            .map_err(|e| anyhow::anyhow!("Failed to set Swift language: {}", e))?;
+        let parser = make_parser(&language, "Swift")?;
         Ok(Self { parser })
-    }
-
-    /// Check if a node has a `modifiers` child containing `public` or `open`.
-    fn has_public_visibility(node: &tree_sitter::Node, source_bytes: &[u8]) -> bool {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "modifiers" {
-                if let Ok(text) = child.utf8_text(source_bytes) {
-                    // modifiers can contain multiple modifiers like "@objc public"
-                    // Check for public or open visibility
-                    return text
-                        .split_whitespace()
-                        .any(|w| w == "public" || w == "open");
-                }
-            }
-        }
-        false
     }
 
     /// Get the declaration keyword for a class_declaration (class, struct, enum, extension).
@@ -44,28 +26,6 @@ impl SwiftParser {
                 "enum" => return Some("enum"),
                 "extension" => return Some("extension"),
                 _ => {}
-            }
-        }
-        None
-    }
-
-    /// Extract the type name from a class_declaration (type_identifier child).
-    fn get_type_name(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "type_identifier" {
-                return child.utf8_text(source_bytes).ok().map(|s| s.to_string());
-            }
-        }
-        None
-    }
-
-    /// Extract function name (simple_identifier child).
-    fn get_func_name(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "simple_identifier" {
-                return child.utf8_text(source_bytes).ok().map(|s| s.to_string());
             }
         }
         None
@@ -107,25 +67,27 @@ impl SwiftParser {
                 for body_child in child.children(&mut body_cursor) {
                     match body_child.kind() {
                         "function_declaration" => {
-                            if let Some(name) = Self::get_func_name(&body_child, source_bytes) {
-                                if seen.insert(name.clone()) {
-                                    exports.push(ExportEntry::new(
-                                        name,
-                                        body_child.start_position().row + 1,
-                                        body_child.end_position().row + 1,
-                                    ));
-                                }
+                            if let Some(name) =
+                                extract_child_text(&body_child, source_bytes, "simple_identifier")
+                            {
+                                push_export(
+                                    exports,
+                                    seen,
+                                    name,
+                                    body_child.start_position().row + 1,
+                                    body_child.end_position().row + 1,
+                                );
                             }
                         }
                         "property_declaration" => {
                             if let Some(name) = Self::get_property_name(&body_child, source_bytes) {
-                                if seen.insert(name.clone()) {
-                                    exports.push(ExportEntry::new(
-                                        name,
-                                        body_child.start_position().row + 1,
-                                        body_child.end_position().row + 1,
-                                    ));
-                                }
+                                push_export(
+                                    exports,
+                                    seen,
+                                    name,
+                                    body_child.start_position().row + 1,
+                                    body_child.end_position().row + 1,
+                                );
                             }
                         }
                         _ => {}
@@ -144,7 +106,8 @@ impl SwiftParser {
         for child in root_node.children(&mut cursor) {
             match child.kind() {
                 "class_declaration" => {
-                    let is_public = Self::has_public_visibility(&child, source_bytes);
+                    let is_public =
+                        has_modifier(&child, source_bytes, "modifiers", &["public", "open"]);
                     let keyword = Self::get_class_keyword(&child);
 
                     match keyword {
@@ -161,14 +124,16 @@ impl SwiftParser {
                         }
                         Some("class") | Some("struct") | Some("enum") => {
                             if is_public {
-                                if let Some(name) = Self::get_type_name(&child, source_bytes) {
-                                    if seen.insert(name.clone()) {
-                                        exports.push(ExportEntry::new(
-                                            name,
-                                            child.start_position().row + 1,
-                                            child.end_position().row + 1,
-                                        ));
-                                    }
+                                if let Some(name) =
+                                    extract_child_text(&child, source_bytes, "type_identifier")
+                                {
+                                    push_export(
+                                        &mut exports,
+                                        &mut seen,
+                                        name,
+                                        child.start_position().row + 1,
+                                        child.end_position().row + 1,
+                                    );
                                 }
                             }
                         }
@@ -176,54 +141,60 @@ impl SwiftParser {
                     }
                 }
                 "protocol_declaration" => {
-                    if Self::has_public_visibility(&child, source_bytes) {
-                        if let Some(name) = Self::get_type_name(&child, source_bytes) {
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    child.start_position().row + 1,
-                                    child.end_position().row + 1,
-                                ));
-                            }
+                    if has_modifier(&child, source_bytes, "modifiers", &["public", "open"]) {
+                        if let Some(name) =
+                            extract_child_text(&child, source_bytes, "type_identifier")
+                        {
+                            push_export(
+                                &mut exports,
+                                &mut seen,
+                                name,
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            );
                         }
                     }
                 }
                 "function_declaration" => {
-                    if Self::has_public_visibility(&child, source_bytes) {
-                        if let Some(name) = Self::get_func_name(&child, source_bytes) {
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    child.start_position().row + 1,
-                                    child.end_position().row + 1,
-                                ));
-                            }
+                    if has_modifier(&child, source_bytes, "modifiers", &["public", "open"]) {
+                        if let Some(name) =
+                            extract_child_text(&child, source_bytes, "simple_identifier")
+                        {
+                            push_export(
+                                &mut exports,
+                                &mut seen,
+                                name,
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            );
                         }
                     }
                 }
                 "property_declaration" => {
-                    if Self::has_public_visibility(&child, source_bytes) {
+                    if has_modifier(&child, source_bytes, "modifiers", &["public", "open"]) {
                         if let Some(name) = Self::get_property_name(&child, source_bytes) {
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    child.start_position().row + 1,
-                                    child.end_position().row + 1,
-                                ));
-                            }
+                            push_export(
+                                &mut exports,
+                                &mut seen,
+                                name,
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            );
                         }
                     }
                 }
                 "typealias_declaration" => {
-                    if Self::has_public_visibility(&child, source_bytes) {
-                        if let Some(name) = Self::get_type_name(&child, source_bytes) {
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    child.start_position().row + 1,
-                                    child.end_position().row + 1,
-                                ));
-                            }
+                    if has_modifier(&child, source_bytes, "modifiers", &["public", "open"]) {
+                        if let Some(name) =
+                            extract_child_text(&child, source_bytes, "type_identifier")
+                        {
+                            push_export(
+                                &mut exports,
+                                &mut seen,
+                                name,
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            );
                         }
                     }
                 }

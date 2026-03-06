@@ -1,13 +1,13 @@
 ---
 file: src/parser/builtin/elixir.rs
-fmm: v0.4+0.1.28
+fmm: v0.4+0.1.29
 exports:
-  ElixirParser: [6, 8]
+  ElixirParser: [8, 10]
 methods:
-  ElixirParser.new: [11, 18]
+  ElixirParser.new: [13, 17]
 imports: [anyhow, std, tree_sitter]
-dependencies: ['crate::parser']
-loc: 392
+dependencies: [../query_helpers/make_parser, 'crate::parser']
+loc: 391
 modified: 2026-03-06
 rust:
   lifetimes: ['''a', '''static']

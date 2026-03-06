@@ -4,7 +4,9 @@ use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
-use super::query_helpers::collect_matches;
+use super::query_helpers::{
+    collect_matches, compile_query, has_modifier, make_parser, push_export,
+};
 
 pub struct CSharpParser {
     parser: TSParser,
@@ -21,40 +23,48 @@ pub struct CSharpParser {
 impl CSharpParser {
     pub fn new() -> Result<Self> {
         let language: Language = tree_sitter_c_sharp::LANGUAGE.into();
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language)
-            .map_err(|e| anyhow::anyhow!("Failed to set C# language: {}", e))?;
+        let parser = make_parser(&language, "C#")?;
 
-        let class_query = Query::new(&language, "(class_declaration name: (identifier) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile class query: {}", e))?;
-
-        let interface_query = Query::new(
+        let class_query = compile_query(
+            &language,
+            "(class_declaration name: (identifier) @name)",
+            "class",
+        )?;
+        let interface_query = compile_query(
             &language,
             "(interface_declaration name: (identifier) @name)",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile interface query: {}", e))?;
-
-        let struct_query = Query::new(&language, "(struct_declaration name: (identifier) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile struct query: {}", e))?;
-
-        let enum_query = Query::new(&language, "(enum_declaration name: (identifier) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile enum query: {}", e))?;
-
-        let method_query = Query::new(&language, "(method_declaration name: (identifier) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile method query: {}", e))?;
-
-        let using_query = Query::new(
+            "interface",
+        )?;
+        let struct_query = compile_query(
+            &language,
+            "(struct_declaration name: (identifier) @name)",
+            "struct",
+        )?;
+        let enum_query = compile_query(
+            &language,
+            "(enum_declaration name: (identifier) @name)",
+            "enum",
+        )?;
+        let method_query = compile_query(
+            &language,
+            "(method_declaration name: (identifier) @name)",
+            "method",
+        )?;
+        let using_query = compile_query(
             &language,
             "[(using_directive (identifier) @name) (using_directive (qualified_name) @name)]",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile using query: {}", e))?;
-
-        let namespace_query = Query::new(&language, "(namespace_declaration name: (_) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile namespace query: {}", e))?;
-
-        let attribute_query = Query::new(&language, "(attribute name: (identifier) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile attribute query: {}", e))?;
+            "using",
+        )?;
+        let namespace_query = compile_query(
+            &language,
+            "(namespace_declaration name: (_) @name)",
+            "namespace",
+        )?;
+        let attribute_query = compile_query(
+            &language,
+            "(attribute name: (identifier) @name)",
+            "attribute",
+        )?;
 
         Ok(Self {
             parser,
@@ -69,20 +79,6 @@ impl CSharpParser {
         })
     }
 
-    fn has_public_modifier(node: tree_sitter::Node, source_bytes: &[u8]) -> bool {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "modifier" {
-                if let Ok(text) = child.utf8_text(source_bytes) {
-                    if text == "public" {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
-    }
-
     fn collect_public_declarations(
         query: &Query,
         root_node: tree_sitter::Node,
@@ -95,16 +91,15 @@ impl CSharpParser {
         while let Some(m) = iter.next() {
             for capture in m.captures {
                 if let Some(parent) = capture.node.parent() {
-                    if Self::has_public_modifier(parent, source_bytes) {
+                    if has_modifier(&parent, source_bytes, "modifier", &["public"]) {
                         if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                            let name = text.to_string();
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    parent.start_position().row + 1,
-                                    parent.end_position().row + 1,
-                                ));
-                            }
+                            push_export(
+                                exports,
+                                seen,
+                                text.to_string(),
+                                parent.start_position().row + 1,
+                                parent.end_position().row + 1,
+                            );
                         }
                     }
                 }

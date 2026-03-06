@@ -1,13 +1,13 @@
 ---
 file: src/parser/builtin/scala.rs
-fmm: v0.4+0.1.28
+fmm: v0.4+0.1.29
 exports:
-  ScalaParser: [6, 8]
+  ScalaParser: [8, 10]
 methods:
-  ScalaParser.new: [11, 19]
+  ScalaParser.new: [13, 17]
 imports: [anyhow, std, tree_sitter]
-dependencies: ['crate::parser']
-loc: 453
+dependencies: [../query_helpers, 'crate::parser']
+loc: 440
 modified: 2026-03-06
 rust:
   lifetimes: ['''static']

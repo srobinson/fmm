@@ -1,0 +1,13 @@
+---
+file: src/manifest/glossary_builder.rs
+fmm: v0.4+0.1.29
+exports:
+  GlossaryMode: [8, 16]
+  GlossaryEntry: [20, 23]
+  GlossarySource: [28, 48]
+imports: [serde]
+dependencies: [../dependency_matcher]
+loc: 531
+modified: 2026-03-06
+rust:
+  derives: [Clone, Copy, Debug, Default, Eq, PartialEq, Serialize]

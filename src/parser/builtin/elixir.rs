@@ -3,6 +3,8 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Language, Parser as TSParser};
 
+use super::query_helpers::make_parser;
+
 pub struct ElixirParser {
     parser: TSParser,
 }
@@ -10,10 +12,7 @@ pub struct ElixirParser {
 impl ElixirParser {
     pub fn new() -> Result<Self> {
         let language: Language = tree_sitter_elixir::LANGUAGE.into();
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language)
-            .map_err(|e| anyhow::anyhow!("Failed to set Elixir language: {}", e))?;
+        let parser = make_parser(&language, "Elixir")?;
         Ok(Self { parser })
     }
 

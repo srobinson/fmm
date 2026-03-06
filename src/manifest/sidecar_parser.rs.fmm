@@ -1,0 +1,8 @@
+---
+file: src/manifest/sidecar_parser.rs
+fmm: v0.4+0.1.29
+imports: [serde, std]
+loc: 384
+modified: 2026-03-06
+rust:
+  derives: [Debug, Deserialize]

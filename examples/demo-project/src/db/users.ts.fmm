@@ -1,6 +1,6 @@
 ---
 file: examples/demo-project/src/db/users.ts
-fmm: v0.4+0.1.28
+fmm: v0.4+0.1.29
 exports:
   User: [3, 8]
   findUserByEmail: [10, 13]

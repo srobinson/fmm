@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.rs
-fmm: v0.4+0.1.28
+fmm: v0.4+0.1.29
 exports:
   Config: [11, 14]
   Status: [16, 20]

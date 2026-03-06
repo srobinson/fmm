@@ -1,13 +1,13 @@
 ---
 file: src/parser/builtin/go.rs
-fmm: v0.4+0.1.28
+fmm: v0.4+0.1.29
 exports:
   GoParser: [9, 19]
 methods:
-  GoParser.new: [61, 107]
+  GoParser.new: [61, 100]
 imports: [anyhow, std, streaming_iterator, tree_sitter]
-dependencies: [../query_helpers/collect_matches_with_lines, 'crate::parser']
-loc: 516
+dependencies: [../query_helpers, 'crate::parser']
+loc: 509
 modified: 2026-03-06
 rust:
   lifetimes: ['''static']

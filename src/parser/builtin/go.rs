@@ -1,4 +1,4 @@
-use super::query_helpers::collect_matches_with_lines;
+use super::query_helpers::{collect_matches_with_lines, compile_query, make_parser};
 use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::HashSet;
@@ -60,40 +60,33 @@ fn extract_module_name(content: &str) -> Option<String> {
 impl GoParser {
     pub fn new() -> Result<Self> {
         let language: Language = tree_sitter_go::LANGUAGE.into();
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language)
-            .map_err(|e| anyhow::anyhow!("Failed to set Go language: {}", e))?;
+        let parser = make_parser(&language, "Go")?;
 
-        let func_query = Query::new(
+        let func_query = compile_query(
             &language,
             "(source_file (function_declaration name: (identifier) @name))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile func query: {}", e))?;
-
-        let type_query = Query::new(
+            "func",
+        )?;
+        let type_query = compile_query(
             &language,
             "(source_file (type_declaration (type_spec name: (type_identifier) @name)))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile type query: {}", e))?;
-
-        let const_query = Query::new(
+            "type",
+        )?;
+        let const_query = compile_query(
             &language,
             "(source_file (const_declaration (const_spec name: (identifier) @name)))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile const query: {}", e))?;
-
-        let var_query = Query::new(
+            "const",
+        )?;
+        let var_query = compile_query(
             &language,
             "(source_file (var_declaration (var_spec name: (identifier) @name)))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile var query: {}", e))?;
-
-        let import_query = Query::new(
+            "var",
+        )?;
+        let import_query = compile_query(
             &language,
             "(import_spec path: (interpreted_string_literal) @path)",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile import query: {}", e))?;
+            "import",
+        )?;
 
         Ok(Self {
             parser,

@@ -3,6 +3,8 @@ use anyhow::Result;
 use std::collections::HashSet;
 use tree_sitter::{Language, Parser as TSParser};
 
+use super::query_helpers::make_parser;
+
 pub struct LuaParser {
     parser: TSParser,
 }
@@ -10,11 +12,7 @@ pub struct LuaParser {
 impl LuaParser {
     pub fn new() -> Result<Self> {
         let language: Language = tree_sitter_lua::LANGUAGE.into();
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language)
-            .map_err(|e| anyhow::anyhow!("Failed to set Lua language: {}", e))?;
-
+        let parser = make_parser(&language, "Lua")?;
         Ok(Self { parser })
     }
 

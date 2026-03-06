@@ -1,13 +1,13 @@
 ---
 file: src/parser/builtin/python.rs
-fmm: v0.4+0.1.28
+fmm: v0.4+0.1.29
 exports:
   PythonParser: [28, 41]
 methods:
-  PythonParser.new: [44, 116]
+  PythonParser.new: [44, 119]
 imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: [../query_helpers, 'crate::parser']
-loc: 895
+loc: 898
 modified: 2026-03-06
 rust:
   lifetimes: ['''a', '''static']

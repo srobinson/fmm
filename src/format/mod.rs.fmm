@@ -1,0 +1,25 @@
+---
+file: src/format/mod.rs
+fmm: v0.4+0.1.29
+exports:
+  list_formatters: [7, 7]
+  search_formatters: [8, 8]
+  yaml_formatters: [9, 9]
+  compute_rollup_buckets: [11, 11]
+  format_list_exports_all: [11, 11]
+  format_list_exports_file: [11, 11]
+  format_list_exports_pattern: [11, 11]
+  format_list_files: [11, 11]
+  format_list_files_rollup: [11, 11]
+  format_bare_search: [15, 15]
+  format_filter_search: [15, 15]
+  format_glossary: [15, 15]
+  format_class_redirect: [16, 16]
+  format_dependency_graph: [16, 16]
+  format_dependency_graph_transitive: [16, 16]
+  format_file_outline: [16, 16]
+  format_lookup_export: [16, 16]
+  format_read_symbol: [16, 16]
+imports: [list_formatters, search_formatters, yaml_formatters]
+loc: 19
+modified: 2026-03-06

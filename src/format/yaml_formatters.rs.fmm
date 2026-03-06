@@ -1,0 +1,14 @@
+---
+file: src/format/yaml_formatters.rs
+fmm: v0.4+0.1.29
+exports:
+  format_file_outline: [14, 172]
+  format_lookup_export: [175, 198]
+  format_dependency_graph: [202, 248]
+  format_dependency_graph_transitive: [254, 301]
+  format_read_symbol: [307, 334]
+  format_class_redirect: [339, 384]
+imports: [std]
+dependencies: [../helpers, 'crate::formatter::yaml_escape', 'crate::manifest', 'crate::manifest::private_members']
+loc: 646
+modified: 2026-03-06

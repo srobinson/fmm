@@ -1,3 +1,4 @@
+use super::query_helpers::{compile_query, make_parser};
 use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -15,27 +16,25 @@ pub struct CParser {
 impl CParser {
     pub fn new() -> Result<Self> {
         let language: Language = tree_sitter_c::LANGUAGE.into();
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language)
-            .map_err(|e| anyhow::anyhow!("Failed to set C language: {}", e))?;
+        let parser = make_parser(&language, "C")?;
 
-        let macro_query = Query::new(&language, "(preproc_def name: (identifier) @name)")
-            .map_err(|e| anyhow::anyhow!("Failed to compile macro query: {}", e))?;
-
-        let fn_macro_query =
-            Query::new(&language, "(preproc_function_def name: (identifier) @name)")
-                .map_err(|e| anyhow::anyhow!("Failed to compile fn macro query: {}", e))?;
-
-        let system_include_query = Query::new(
+        let macro_query =
+            compile_query(&language, "(preproc_def name: (identifier) @name)", "macro")?;
+        let fn_macro_query = compile_query(
+            &language,
+            "(preproc_function_def name: (identifier) @name)",
+            "fn macro",
+        )?;
+        let system_include_query = compile_query(
             &language,
             "(preproc_include path: (system_lib_string) @path)",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile system include query: {}", e))?;
-
-        let local_include_query =
-            Query::new(&language, "(preproc_include path: (string_literal) @path)")
-                .map_err(|e| anyhow::anyhow!("Failed to compile local include query: {}", e))?;
+            "system include",
+        )?;
+        let local_include_query = compile_query(
+            &language,
+            "(preproc_include path: (string_literal) @path)",
+            "local include",
+        )?;
 
         Ok(Self {
             parser,

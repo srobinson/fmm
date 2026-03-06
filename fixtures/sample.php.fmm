@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.php
-fmm: v0.4+0.1.28
+fmm: v0.4+0.1.29
 exports:
   MAX_RETRIES: [13, 13]
   API_VERSION: [14, 14]

@@ -1,26 +1,26 @@
 ---
 file: src/parser/mod.rs
-fmm: v0.4+0.1.28
+fmm: v0.4+0.1.29
 exports:
   builtin: [1, 1]
-  ExportEntry: [10, 18]
-  Metadata: [42, 57]
-  ParseResult: [73, 76]
-  Parser: [78, 93]
-  ParserRegistry: [98, 101]
+  ExportEntry: [27, 35]
+  Metadata: [59, 74]
+  ParseResult: [90, 93]
+  Parser: [95, 110]
+  ParserRegistry: [115, 118]
 methods:
-  ExportEntry.new: [21, 28]
-  ExportEntry.method: [31, 38]
-  Metadata.export_names: [62, 68]
-  ParserRegistry.new: [104, 109]
-  ParserRegistry.with_builtins: [112, 116]
-  ParserRegistry.register: [119, 131]
-  ParserRegistry.language_id_for: [237, 239]
-  ParserRegistry.get_parser: [242, 248]
-  ParserRegistry.has_parser: [252, 254]
-  ParserRegistry.extensions: [258, 262]
+  ExportEntry.new: [38, 45]
+  ExportEntry.method: [48, 55]
+  Metadata.export_names: [79, 85]
+  ParserRegistry.new: [121, 126]
+  ParserRegistry.with_builtins: [129, 133]
+  ParserRegistry.register: [136, 148]
+  ParserRegistry.language_id_for: [211, 213]
+  ParserRegistry.get_parser: [216, 222]
+  ParserRegistry.has_parser: [226, 228]
+  ParserRegistry.extensions: [232, 236]
 imports: [anyhow, serde, std]
-loc: 394
+loc: 368
 modified: 2026-03-06
 rust:
   derives: [Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize]

@@ -1,4 +1,7 @@
-use super::query_helpers::{collect_matches_with_lines, collect_named_matches, top_level_ancestor};
+use super::query_helpers::{
+    collect_matches_with_lines, collect_named_matches, compile_query, make_parser,
+    top_level_ancestor,
+};
 use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -17,31 +20,33 @@ pub struct RubyParser {
 impl RubyParser {
     pub fn new() -> Result<Self> {
         let language: Language = tree_sitter_ruby::LANGUAGE.into();
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language)
-            .map_err(|e| anyhow::anyhow!("Failed to set Ruby language: {}", e))?;
+        let parser = make_parser(&language, "Ruby")?;
 
-        let class_query = Query::new(&language, "(program (class name: (constant) @name))")
-            .map_err(|e| anyhow::anyhow!("Failed to compile class query: {}", e))?;
-
-        let module_query = Query::new(&language, "(program (module name: (constant) @name))")
-            .map_err(|e| anyhow::anyhow!("Failed to compile module query: {}", e))?;
-
-        let method_query = Query::new(&language, "(program (method name: (identifier) @name))")
-            .map_err(|e| anyhow::anyhow!("Failed to compile method query: {}", e))?;
-
-        let require_query = Query::new(
+        let class_query = compile_query(
+            &language,
+            "(program (class name: (constant) @name))",
+            "class",
+        )?;
+        let module_query = compile_query(
+            &language,
+            "(program (module name: (constant) @name))",
+            "module",
+        )?;
+        let method_query = compile_query(
+            &language,
+            "(program (method name: (identifier) @name))",
+            "method",
+        )?;
+        let require_query = compile_query(
             &language,
             "(call method: (identifier) @method arguments: (argument_list (string (string_content) @path)) (#eq? @method \"require\"))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile require query: {}", e))?;
-
-        let require_relative_query = Query::new(
+            "require",
+        )?;
+        let require_relative_query = compile_query(
             &language,
             "(call method: (identifier) @method arguments: (argument_list (string (string_content) @path)) (#eq? @method \"require_relative\"))",
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compile require_relative query: {}", e))?;
+            "require_relative",
+        )?;
 
         Ok(Self {
             parser,

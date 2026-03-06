@@ -1,13 +1,13 @@
 ---
 file: src/parser/builtin/swift.rs
-fmm: v0.4+0.1.28
+fmm: v0.4+0.1.29
 exports:
-  SwiftParser: [6, 8]
+  SwiftParser: [8, 10]
 methods:
-  SwiftParser.new: [11, 18]
+  SwiftParser.new: [13, 17]
 imports: [anyhow, std, tree_sitter]
-dependencies: ['crate::parser']
-loc: 468
+dependencies: [../query_helpers, 'crate::parser']
+loc: 439
 modified: 2026-03-06
 rust:
   lifetimes: ['''static']

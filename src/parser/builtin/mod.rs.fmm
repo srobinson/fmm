@@ -1,24 +1,25 @@
 ---
 file: src/parser/builtin/mod.rs
-fmm: v0.4+0.1.28
+fmm: v0.4+0.1.29
 exports:
-  c: [1, 1]
-  cpp: [2, 2]
-  csharp: [3, 3]
-  dart: [4, 4]
-  elixir: [5, 5]
-  go: [6, 6]
-  java: [7, 7]
-  kotlin: [8, 8]
-  lua: [9, 9]
-  php: [10, 10]
-  python: [11, 11]
-  query_helpers: [12, 12]
-  ruby: [13, 13]
-  rust: [14, 14]
-  scala: [15, 15]
-  swift: [16, 16]
-  typescript: [17, 17]
-  zig: [18, 18]
-loc: 18
+  template: [4, 4]
+  c: [6, 6]
+  cpp: [7, 7]
+  csharp: [8, 8]
+  dart: [9, 9]
+  elixir: [10, 10]
+  go: [11, 11]
+  java: [12, 12]
+  kotlin: [13, 13]
+  lua: [14, 14]
+  php: [15, 15]
+  python: [16, 16]
+  query_helpers: [17, 17]
+  ruby: [18, 18]
+  rust: [19, 19]
+  scala: [20, 20]
+  swift: [21, 21]
+  typescript: [22, 22]
+  zig: [23, 23]
+loc: 23
 modified: 2026-03-06

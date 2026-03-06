@@ -1,6 +1,23 @@
 pub mod builtin;
 
 use anyhow::Result;
+
+/// Register a language parser and its language-id mapping in one atomic call.
+///
+/// Guarantees that `register()` and `register_language_id()` are always paired —
+/// it is impossible to call one without the other.
+///
+/// Usage:
+/// ```ignore
+/// register_language!(self, builtin::rust, RustParser, &["rs"], "rust");
+/// ```
+macro_rules! register_language {
+    ($registry:expr, $module:path, $parser:ident, $extensions:expr, $lang_id:expr) => {{
+        use $module as _m;
+        $registry.register($extensions, || Ok(Box::new(_m::$parser::new()?)));
+        $registry.register_language_id($extensions, $lang_id);
+    }};
+}
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -133,98 +150,55 @@ impl ParserRegistry {
     /// Register all builtin parsers.
     fn register_builtin(&mut self) {
         // TypeScript / JavaScript (ALP-753: split TS and TSX into separate parsers)
-        self.register(&["ts", "js"], || {
-            Ok(Box::new(builtin::typescript::TypeScriptParser::new()?))
-        });
-        self.register_language_id(&["ts", "js"], "typescript");
+        register_language!(
+            self,
+            builtin::typescript,
+            TypeScriptParser,
+            &["ts", "js"],
+            "typescript"
+        );
 
-        // TSX / JSX — uses LANGUAGE_TSX grammar for correct JSX angle-bracket parsing
+        // TSX / JSX uses LANGUAGE_TSX grammar for correct angle-bracket parsing.
+        // Handled manually because the constructor is new_tsx(), not new().
         self.register(&["tsx", "jsx"], || {
             Ok(Box::new(builtin::typescript::TypeScriptParser::new_tsx()?))
         });
         self.register_language_id(&["tsx", "jsx"], "tsx");
 
-        // Python
-        self.register(&["py"], || {
-            Ok(Box::new(builtin::python::PythonParser::new()?))
-        });
-        self.register_language_id(&["py"], "python");
-
-        // Rust
-        self.register(&["rs"], || Ok(Box::new(builtin::rust::RustParser::new()?)));
-        self.register_language_id(&["rs"], "rust");
-
-        // Go
-        self.register(&["go"], || Ok(Box::new(builtin::go::GoParser::new()?)));
-        self.register_language_id(&["go"], "go");
-
-        // Java
-        self.register(&["java"], || {
-            Ok(Box::new(builtin::java::JavaParser::new()?))
-        });
-        self.register_language_id(&["java"], "java");
-
-        // C++
-        self.register(&["cpp", "hpp", "cc", "hh", "cxx", "hxx"], || {
-            Ok(Box::new(builtin::cpp::CppParser::new()?))
-        });
-        self.register_language_id(&["cpp", "hpp", "cc", "hh", "cxx", "hxx"], "cpp");
-
-        // C#
-        self.register(&["cs"], || {
-            Ok(Box::new(builtin::csharp::CSharpParser::new()?))
-        });
-        self.register_language_id(&["cs"], "csharp");
-
-        // Ruby
-        self.register(&["rb"], || Ok(Box::new(builtin::ruby::RubyParser::new()?)));
-        self.register_language_id(&["rb"], "ruby");
-
-        // PHP
-        self.register(&["php"], || Ok(Box::new(builtin::php::PhpParser::new()?)));
-        self.register_language_id(&["php"], "php");
-
-        // C
-        self.register(&["c", "h"], || Ok(Box::new(builtin::c::CParser::new()?)));
-        self.register_language_id(&["c", "h"], "c");
-
-        // Zig
-        self.register(&["zig"], || Ok(Box::new(builtin::zig::ZigParser::new()?)));
-        self.register_language_id(&["zig"], "zig");
-
-        // Lua
-        self.register(&["lua"], || Ok(Box::new(builtin::lua::LuaParser::new()?)));
-        self.register_language_id(&["lua"], "lua");
-
-        // Scala
-        self.register(&["scala", "sc"], || {
-            Ok(Box::new(builtin::scala::ScalaParser::new()?))
-        });
-        self.register_language_id(&["scala", "sc"], "scala");
-
-        // Swift
-        self.register(&["swift"], || {
-            Ok(Box::new(builtin::swift::SwiftParser::new()?))
-        });
-        self.register_language_id(&["swift"], "swift");
-
-        // Kotlin
-        self.register(&["kt", "kts"], || {
-            Ok(Box::new(builtin::kotlin::KotlinParser::new()?))
-        });
-        self.register_language_id(&["kt", "kts"], "kotlin");
-
-        // Dart
-        self.register(&["dart"], || {
-            Ok(Box::new(builtin::dart::DartParser::new()?))
-        });
-        self.register_language_id(&["dart"], "dart");
-
-        // Elixir
-        self.register(&["ex", "exs"], || {
-            Ok(Box::new(builtin::elixir::ElixirParser::new()?))
-        });
-        self.register_language_id(&["ex", "exs"], "elixir");
+        register_language!(self, builtin::python, PythonParser, &["py"], "python");
+        register_language!(self, builtin::rust, RustParser, &["rs"], "rust");
+        register_language!(self, builtin::go, GoParser, &["go"], "go");
+        register_language!(self, builtin::java, JavaParser, &["java"], "java");
+        register_language!(
+            self,
+            builtin::cpp,
+            CppParser,
+            &["cpp", "hpp", "cc", "hh", "cxx", "hxx"],
+            "cpp"
+        );
+        register_language!(self, builtin::csharp, CSharpParser, &["cs"], "csharp");
+        register_language!(self, builtin::ruby, RubyParser, &["rb"], "ruby");
+        register_language!(self, builtin::php, PhpParser, &["php"], "php");
+        register_language!(self, builtin::c, CParser, &["c", "h"], "c");
+        register_language!(self, builtin::zig, ZigParser, &["zig"], "zig");
+        register_language!(self, builtin::lua, LuaParser, &["lua"], "lua");
+        register_language!(self, builtin::scala, ScalaParser, &["scala", "sc"], "scala");
+        register_language!(self, builtin::swift, SwiftParser, &["swift"], "swift");
+        register_language!(
+            self,
+            builtin::kotlin,
+            KotlinParser,
+            &["kt", "kts"],
+            "kotlin"
+        );
+        register_language!(self, builtin::dart, DartParser, &["dart"], "dart");
+        register_language!(
+            self,
+            builtin::elixir,
+            ElixirParser,
+            &["ex", "exs"],
+            "elixir"
+        );
     }
 
     fn register_language_id(&mut self, extensions: &[&str], language_id: &'static str) {

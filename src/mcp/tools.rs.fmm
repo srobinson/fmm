@@ -1,7 +1,0 @@
----
-file: src/mcp/tools.rs
-fmm: v0.4+0.1.28
-imports: [serde_json]
-dependencies: [../args, 'crate::manifest']
-loc: 1083
-modified: 2026-03-06
