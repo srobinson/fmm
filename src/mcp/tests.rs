@@ -741,6 +741,66 @@ fn list_files_group_by_invalid_returns_error() {
     );
 }
 
+// --- ALP-836: fmm_list_files directory="." returns empty ---
+
+#[test]
+fn list_files_directory_dot_returns_all_files() {
+    // ALP-836: "." must behave the same as omitting directory
+    let server = list_files_sort_manifest(); // 3 files under src/
+    let result_dot = server
+        .call_tool("fmm_list_files", serde_json::json!({"directory": "."}))
+        .unwrap();
+    let text_dot = result_dot["content"][0]["text"].as_str().unwrap();
+
+    let result_none = server
+        .call_tool("fmm_list_files", serde_json::json!({}))
+        .unwrap();
+    let text_none = result_none["content"][0]["text"].as_str().unwrap();
+
+    assert_eq!(
+        text_dot, text_none,
+        "directory=\".\" must return same output as no directory"
+    );
+}
+
+#[test]
+fn list_files_directory_dot_slash_returns_all_files() {
+    // ALP-836: "./" must also behave the same as omitting directory
+    let server = list_files_sort_manifest();
+    let result = server
+        .call_tool("fmm_list_files", serde_json::json!({"directory": "./"}))
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("src/alpha.ts"),
+        "directory=\"./\" should list all files; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("total: 3"),
+        "should show all 3 files; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_files_invalid_directory_returns_empty() {
+    // ALP-836: invalid directory should still return empty silently (not error)
+    let server = list_files_sort_manifest();
+    let result = server
+        .call_tool(
+            "fmm_list_files",
+            serde_json::json!({"directory": "doesnotexist"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("total: 0"),
+        "nonexistent directory should return 0 files; got:\n{}",
+        text
+    );
+}
+
 // --- ALP-835: fmm_list_files group_by="subdir" broken when directory is set ---
 
 fn group_by_directory_manifest() -> McpServer {

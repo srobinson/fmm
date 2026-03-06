@@ -365,7 +365,15 @@ pub(super) fn tool_list_files(
     let args: ListFilesArgs =
         serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
-    let dir = args.directory.as_deref();
+    // Normalise "." / "./" to None so callers get the full index, matching
+    // the behaviour of omitting the directory parameter entirely.
+    let dir = args.directory.as_deref().and_then(|d| {
+        if matches!(d, "." | "./") {
+            None
+        } else {
+            Some(d)
+        }
+    });
     let pat = args.pattern.as_deref();
     let limit = args.limit.unwrap_or(DEFAULT_LIMIT);
     let offset = args.offset.unwrap_or(0);

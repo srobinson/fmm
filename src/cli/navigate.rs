@@ -417,6 +417,16 @@ pub fn ls(
         }
     }
 
+    // Normalise "." / "./" to None — they should list the full repo root,
+    // matching the behaviour of omitting the directory parameter entirely.
+    let directory = directory.and_then(|d| {
+        if matches!(d, "." | "./") {
+            None
+        } else {
+            Some(d)
+        }
+    });
+
     let config = crate::config::Config::load_from_dir(&root).unwrap_or_default();
 
     let mut entries: Vec<(&str, usize, usize, usize, Option<&str>)> = manifest
