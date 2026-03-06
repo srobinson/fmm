@@ -18,6 +18,8 @@ pub(super) struct ListExportsArgs {
 pub(super) struct DependencyGraphArgs {
     pub(super) file: String,
     pub(super) depth: Option<i32>,
+    /// source / tests / all (default)
+    pub(super) filter: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

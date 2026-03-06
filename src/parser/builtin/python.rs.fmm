@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/python.rs
-fmm: v0.3+0.1.24
+fmm: v0.3+0.1.25
 exports:
   PythonParser: [28, 41]
 methods:

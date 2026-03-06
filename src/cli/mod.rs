@@ -62,7 +62,7 @@ const LONG_HELP: &str = cstr!(
   <bold>deps</bold> FILE           Dependency graph: local_deps, external, downstream
   <bold>outline</bold> FILE        File table-of-contents with line ranges
   <bold>ls</bold> [DIR]           List indexed files under a directory
-  <bold>exports</bold> [PATTERN]  Search exports by pattern (fuzzy, case-insensitive)
+  <bold>exports</bold> [PATTERN]  Search exports by pattern (substring or regex, auto-detected)
   <bold>search</bold>             Smart search — exports, files, imports (just works)
   <bold>glossary</bold>           Symbol-level impact analysis — who uses this export?
 
@@ -84,7 +84,7 @@ const LONG_HELP: &str = cstr!(
   <dim>$</dim> <bold>fmm deps src/injector.ts --depth 2</bold>         <dim># Transitive (2 hops)</dim>
   <dim>$</dim> <bold>fmm outline src/injector.ts</bold>                 <dim># Exports with line ranges</dim>
   <dim>$</dim> <bold>fmm ls src/</bold>                                 <dim># Files in src/</dim>
-  <dim>$</dim> <bold>fmm ls --sort-by loc</bold>                        <dim># Heaviest files first</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by downstream</bold>                  <dim># Most-imported files first (pre-refactoring)</dim>
   <dim>$</dim> <bold>fmm exports Module</bold>                          <dim># All exports matching "Module"</dim>
   <dim>$</dim> <bold>fmm exports Module --dir packages/core/</bold>     <dim># Scoped to directory</dim>
   <dim>$</dim> <bold>fmm lookup Injector --json | jq .file</bold>      <dim># Machine-readable output</dim>
@@ -507,13 +507,16 @@ pub enum Commands {
     #[command(
         long_about = "Show a file's dependency graph: local_deps (resolved local imports), \
             external (packages), and downstream (what would break if this file changes).\n\n\
-            Use --depth for transitive traversal. depth=-1 computes the full closure.",
+            Use --depth for transitive traversal. depth=-1 computes the full closure.\n\
+            Use --filter=source to exclude test files from downstream for production blast-radius analysis.",
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm deps src/injector.ts</bold>              <dim># Direct deps (depth=1)</dim>
-  <dim>$</dim> <bold>fmm deps src/injector.ts --depth 2</bold>   <dim># Transitive (2 hops)</dim>
-  <dim>$</dim> <bold>fmm deps src/injector.ts --depth -1</bold>  <dim># Full closure</dim>
-  <dim>$</dim> <bold>fmm deps src/injector.ts --json</bold>       <dim># JSON output</dim>"#),
+  <dim>$</dim> <bold>fmm deps src/injector.ts</bold>                           <dim># Direct deps (depth=1)</dim>
+  <dim>$</dim> <bold>fmm deps src/injector.ts --depth 2</bold>                <dim># Transitive (2 hops)</dim>
+  <dim>$</dim> <bold>fmm deps src/injector.ts --depth -1</bold>               <dim># Full closure</dim>
+  <dim>$</dim> <bold>fmm deps src/injector.ts --filter source</bold>          <dim># Exclude test files from downstream</dim>
+  <dim>$</dim> <bold>fmm deps src/injector.ts --filter tests</bold>           <dim># Only test files in downstream</dim>
+  <dim>$</dim> <bold>fmm deps src/injector.ts --json</bold>                    <dim># JSON output</dim>"#),
     )]
     Deps {
         /// Source file path (relative to project root, as indexed by fmm)
@@ -523,6 +526,10 @@ pub enum Commands {
         /// Traversal depth (1 = direct deps only, -1 = full closure)
         #[arg(long, default_value = "1")]
         depth: i32,
+
+        /// Filter upstream/downstream by file type: all (default), source (exclude tests), tests (only tests)
+        #[arg(long, default_value = "all", value_parser = ["all", "source", "tests"])]
+        filter: String,
 
         /// Output as JSON
         #[arg(short = 'j', long = "json")]
@@ -551,16 +558,27 @@ pub enum Commands {
     /// List indexed files under a directory
     #[command(
         long_about = "List all files indexed by fmm under a directory prefix.\n\n\
-            Shows file paths with LOC and export count. Use --sort-by to find the \
-            heaviest files. Defaults to alphabetical sort.",
+            Shows file paths with LOC and export count.\n\n\
+            Sort modes (--sort-by):\n\
+            - loc (default): heaviest files first\n\
+            - name: alphabetical\n\
+            - exports: most exported symbols first\n\
+            - downstream: most depended-upon files first (best for pre-refactoring blast radius)\n\
+            - modified: most recently changed first\n\n\
+            Use --group-by=subdir to collapse into directory buckets.\n\
+            Use --filter=source to exclude test files; --filter=tests for test files only.",
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm ls</bold>                          <dim># All indexed files</dim>
-  <dim>$</dim> <bold>fmm ls src/</bold>                     <dim># Files under src/</dim>
-  <dim>$</dim> <bold>fmm ls --sort-by loc</bold>            <dim># Heaviest files first</dim>
-  <dim>$</dim> <bold>fmm ls --sort-by exports</bold>        <dim># Most exports first</dim>
-  <dim>$</dim> <bold>fmm ls --sort-by modified</bold>       <dim># Most recently changed first</dim>
-  <dim>$</dim> <bold>fmm ls src/ --json</bold>              <dim># JSON output</dim>"#),
+  <dim>$</dim> <bold>fmm ls</bold>                                 <dim># All indexed files (sorted by LOC)</dim>
+  <dim>$</dim> <bold>fmm ls src/</bold>                            <dim># Files under src/</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by loc</bold>                   <dim># Heaviest files first</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by downstream</bold>            <dim># Most-imported files first (pre-refactoring)</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by exports</bold>               <dim># Most exports first</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by name</bold>                  <dim># Alphabetical</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by modified</bold>              <dim># Most recently changed first</dim>
+  <dim>$</dim> <bold>fmm ls --group-by subdir</bold>               <dim># Directory rollup (file count + LOC)</dim>
+  <dim>$</dim> <bold>fmm ls --filter source</bold>                 <dim># Source files only (no tests)</dim>
+  <dim>$</dim> <bold>fmm ls src/ --json</bold>                     <dim># JSON output</dim>"#),
     )]
     Ls {
         /// Directory prefix to filter (e.g. src/, packages/core/)
@@ -588,22 +606,28 @@ pub enum Commands {
         json: bool,
     },
 
-    /// Search exports by pattern (fuzzy, case-insensitive)
+    /// Search exports by pattern (substring or regex, auto-detected)
     #[command(
         long_about = "List exports matching a pattern across the indexed codebase.\n\n\
             Without a pattern, lists all exports grouped by file. \
             Use --dir to scope results to a directory. \
-            Includes dotted method names (ClassName.method).",
+            Includes dotted method names (ClassName.method).\n\n\
+            Pattern matching is auto-detected: plain strings use case-insensitive \
+            substring match; patterns with regex metacharacters (^, $, [, (, \\, \
+            ., *, +, ?, {) are compiled as regex.",
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm exports</bold>                         <dim># All exports (grouped by file)</dim>
-  <dim>$</dim> <bold>fmm exports Module</bold>                  <dim># Fuzzy match "Module"</dim>
-  <dim>$</dim> <bold>fmm exports create</bold>                  <dim># All exports containing "create"</dim>
-  <dim>$</dim> <bold>fmm exports Module --dir packages/core/</bold>  <dim># Scoped to directory</dim>
-  <dim>$</dim> <bold>fmm exports Module --json</bold>           <dim># JSON output</dim>"#),
+  <dim>$</dim> <bold>fmm exports</bold>                              <dim># All exports (grouped by file)</dim>
+  <dim>$</dim> <bold>fmm exports Module</bold>                       <dim># Substring match "Module"</dim>
+  <dim>$</dim> <bold>fmm exports create</bold>                       <dim># All exports containing "create"</dim>
+  <dim>$</dim> <bold>fmm exports '^handle'</bold>                    <dim># Regex: exports starting with "handle"</dim>
+  <dim>$</dim> <bold>fmm exports 'Service$'</bold>                   <dim># Regex: exports ending in "Service"</dim>
+  <dim>$</dim> <bold>fmm exports '^[A-Z]'</bold>                     <dim># Regex: PascalCase exports only</dim>
+  <dim>$</dim> <bold>fmm exports Module --dir packages/core/</bold>   <dim># Scoped to directory</dim>
+  <dim>$</dim> <bold>fmm exports Module --json</bold>                 <dim># JSON output</dim>"#),
     )]
     Exports {
-        /// Pattern to filter exports (case-insensitive substring)
+        /// Pattern to filter exports — substring (case-insensitive) or regex (auto-detected when metacharacters present)
         #[arg(value_name = "PATTERN")]
         pattern: Option<String>,
 

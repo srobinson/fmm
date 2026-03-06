@@ -581,16 +581,28 @@ pub fn compute_rollup_buckets(
 ) -> Vec<(String, usize, usize)> {
     use std::collections::HashMap;
     let prefix = prefix.unwrap_or("");
+    // Normalise to include trailing slash so strip_prefix removes the full
+    // directory segment.  "packages" → "packages/", "" stays "".
+    // Without this, strip_prefix("packages") on "packages/core/foo.ts" returns
+    // "/core/foo.ts" and the leading '/' makes the first split segment empty,
+    // collapsing every file into a single "packages/" bucket.
+    let prefix_dir: String = if prefix.is_empty() {
+        String::new()
+    } else if prefix.ends_with('/') {
+        prefix.to_string()
+    } else {
+        format!("{}/", prefix)
+    };
     let mut buckets: HashMap<String, (usize, usize)> = HashMap::new();
 
     for (path, loc, _) in entries {
-        let rel = path.strip_prefix(prefix).unwrap_or(path);
+        let rel = path.strip_prefix(&prefix_dir).unwrap_or(path);
         let bucket = if let Some(idx) = rel.find('/') {
-            format!("{}{}/", prefix, &rel[..idx])
-        } else if prefix.is_empty() {
+            format!("{}{}/", prefix_dir, &rel[..idx])
+        } else if prefix_dir.is_empty() {
             "(root)".to_string()
         } else {
-            prefix.to_string()
+            prefix_dir.clone()
         };
         let e = buckets.entry(bucket).or_insert((0, 0));
         e.0 += 1;

@@ -1,6 +1,6 @@
 ---
 file: src/mcp/tests.rs
-fmm: v0.3+0.1.24
+fmm: v0.3+0.1.25
 dependencies: [../tools]
-loc: 1283
+loc: 1745
 modified: 2026-03-06

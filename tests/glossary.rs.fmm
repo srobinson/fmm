@@ -1,6 +1,6 @@
 ---
 file: tests/glossary.rs
-fmm: v0.3+0.1.24
+fmm: v0.3+0.1.25
 imports: [serde_json]
 loc: 543
 modified: 2026-03-06

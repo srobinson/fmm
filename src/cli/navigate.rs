@@ -231,7 +231,7 @@ pub fn read_symbol(name: &str, no_truncate: bool, json_output: bool) -> Result<(
 
 // -- fmm deps <file> --
 
-pub fn deps(file: &str, depth: i32, json_output: bool) -> Result<()> {
+pub fn deps(file: &str, depth: i32, filter: &str, json_output: bool) -> Result<()> {
     let (root, manifest) = load_manifest()?;
 
     if manifest.files.is_empty() {
@@ -242,6 +242,16 @@ pub fn deps(file: &str, depth: i32, json_output: bool) -> Result<()> {
     if depth != -1 && depth < 1 {
         anyhow::bail!("--depth must be >= 1 or -1 (full closure). Got {}.", depth);
     }
+
+    // Build filter predicate — same heuristic as fmm_list_files filter.
+    let config = crate::config::Config::load_from_dir(&root).unwrap_or_default();
+    let keep = |path: &str| -> bool {
+        match filter {
+            "source" => !config.is_test_file(path),
+            "tests" => config.is_test_file(path),
+            _ => true,
+        }
+    };
 
     if file.ends_with('/') || root.join(file).is_dir() {
         anyhow::bail!(
@@ -262,16 +272,26 @@ pub fn deps(file: &str, depth: i32, json_output: bool) -> Result<()> {
         if depth == 1 {
             let (local, external, downstream) =
                 crate::search::dependency_graph(&manifest, file, entry);
+            let local: Vec<String> = local.into_iter().filter(|p| keep(p)).collect();
+            let downstream: Vec<String> = downstream
+                .into_iter()
+                .filter(|p| keep(p.as_str()))
+                .cloned()
+                .collect();
             let json = DepsJson {
                 file: file.to_string(),
                 local_deps: local,
                 external,
-                downstream: downstream.into_iter().cloned().collect(),
+                downstream,
             };
             println!("{}", serde_json::to_string_pretty(&json)?);
         } else {
             let (upstream, external, downstream) =
                 crate::search::dependency_graph_transitive(&manifest, file, entry, depth);
+            let upstream: Vec<(String, i32)> =
+                upstream.into_iter().filter(|(p, _)| keep(p)).collect();
+            let downstream: Vec<(String, i32)> =
+                downstream.into_iter().filter(|(p, _)| keep(p)).collect();
             #[derive(serde::Serialize)]
             struct TransitiveEntry {
                 file: String,
@@ -306,6 +326,11 @@ pub fn deps(file: &str, depth: i32, json_output: bool) -> Result<()> {
         }
     } else if depth == 1 {
         let (local, external, downstream) = crate::search::dependency_graph(&manifest, file, entry);
+        let local: Vec<String> = local.into_iter().filter(|p| keep(p)).collect();
+        let downstream: Vec<&String> = downstream
+            .into_iter()
+            .filter(|p| keep(p.as_str()))
+            .collect();
         println!(
             "{}",
             crate::format::format_dependency_graph(file, entry, &local, &external, &downstream)
@@ -313,6 +338,9 @@ pub fn deps(file: &str, depth: i32, json_output: bool) -> Result<()> {
     } else {
         let (upstream, external, downstream) =
             crate::search::dependency_graph_transitive(&manifest, file, entry, depth);
+        let upstream: Vec<(String, i32)> = upstream.into_iter().filter(|(p, _)| keep(p)).collect();
+        let downstream: Vec<(String, i32)> =
+            downstream.into_iter().filter(|(p, _)| keep(p)).collect();
         println!(
             "{}",
             crate::format::format_dependency_graph_transitive(
@@ -416,6 +444,16 @@ pub fn ls(
             anyhow::bail!("Invalid --order '{}'. Valid values: asc, desc.", o);
         }
     }
+
+    // Normalise "." / "./" to None — they should list the full repo root,
+    // matching the behaviour of omitting the directory parameter entirely.
+    let directory = directory.and_then(|d| {
+        if matches!(d, "." | "./") {
+            None
+        } else {
+            Some(d)
+        }
+    });
 
     let config = crate::config::Config::load_from_dir(&root).unwrap_or_default();
 
@@ -557,7 +595,18 @@ pub fn exports(pattern: Option<&str>, directory: Option<&str>, json_output: bool
     }
 
     if let Some(pat) = pattern {
-        let pat_lower = pat.to_lowercase();
+        // Auto-detect regex: metacharacters trigger compiled regex (case-sensitive).
+        // Plain patterns keep the existing case-insensitive substring match.
+        const METACHAR: &[char] = &['^', '$', '[', '(', '\\', '.', '*', '+', '?', '{'];
+        let uses_regex = pat.chars().any(|c| METACHAR.contains(&c));
+        let matcher: Box<dyn Fn(&str) -> bool> = if uses_regex {
+            let re = regex::Regex::new(pat).map_err(|e| anyhow::anyhow!("Invalid pattern: {e}"))?;
+            Box::new(move |name: &str| re.is_match(name))
+        } else {
+            let pat_lower = pat.to_lowercase();
+            Box::new(move |name: &str| name.to_lowercase().contains(&pat_lower))
+        };
+
         let mut matches: Vec<(String, String, Option<[usize; 2]>)> = manifest
             .export_index
             .iter()
@@ -567,7 +616,7 @@ pub fn exports(pattern: Option<&str>, directory: Option<&str>, json_output: bool
                         return false;
                     }
                 }
-                name.to_lowercase().contains(&pat_lower)
+                matcher(name)
             })
             .map(|(name, path)| {
                 let lines = manifest
@@ -581,7 +630,7 @@ pub fn exports(pattern: Option<&str>, directory: Option<&str>, json_output: bool
 
         // Include method_index matches (dotted names like "ClassName.method").
         for (dotted_name, loc) in &manifest.method_index {
-            if !dotted_name.to_lowercase().contains(&pat_lower) {
+            if !matcher(dotted_name) {
                 continue;
             }
             if let Some(d) = directory {

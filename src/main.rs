@@ -125,8 +125,13 @@ fn run() -> anyhow::Result<()> {
         } => {
             cli::read_symbol(&symbol, no_truncate, json)?;
         }
-        Commands::Deps { file, depth, json } => {
-            cli::deps(&file, depth, json)?;
+        Commands::Deps {
+            file,
+            depth,
+            filter,
+            json,
+        } => {
+            cli::deps(&file, depth, &filter, json)?;
         }
         Commands::Outline { file, json } => {
             cli::outline(&file, json)?;

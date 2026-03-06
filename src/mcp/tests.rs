@@ -521,6 +521,135 @@ fn list_files_tool_pagination_limit_and_offset() {
     );
 }
 
+// --- ALP-838: fmm_dependency_graph filter=source/tests ---
+
+fn dependency_filter_manifest() -> McpServer {
+    use crate::manifest::Manifest;
+    use crate::parser::Metadata;
+    let mut manifest = Manifest::new();
+    // Core source file
+    manifest.add_file(
+        "src/core.ts",
+        Metadata {
+            exports: vec![],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 100,
+        },
+    );
+    // Source file that depends on core (relative dep so reverse_deps resolves correctly)
+    manifest.add_file(
+        "src/service.ts",
+        Metadata {
+            exports: vec![],
+            imports: vec![],
+            dependencies: vec!["./core".to_string()],
+            loc: 80,
+        },
+    );
+    // Spec file that depends on core
+    manifest.add_file(
+        "src/core.spec.ts",
+        Metadata {
+            exports: vec![],
+            imports: vec![],
+            dependencies: vec!["./core".to_string()],
+            loc: 50,
+        },
+    );
+    manifest.rebuild_reverse_deps();
+    McpServer {
+        manifest: Some(manifest),
+        root: std::path::PathBuf::from("/tmp"),
+    }
+}
+
+#[test]
+fn dependency_graph_filter_all_is_default() {
+    // ALP-838: omitting filter returns all downstream (existing behavior)
+    let server = dependency_filter_manifest();
+    let result = server
+        .call_tool(
+            "fmm_dependency_graph",
+            serde_json::json!({"file": "src/core.ts"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("src/service.ts"),
+        "should show source downstream; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("src/core.spec.ts"),
+        "should show test downstream without filter; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn dependency_graph_filter_source_excludes_tests() {
+    // ALP-838: filter=source must remove spec files from downstream
+    let server = dependency_filter_manifest();
+    let result = server
+        .call_tool(
+            "fmm_dependency_graph",
+            serde_json::json!({"file": "src/core.ts", "filter": "source"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("src/service.ts"),
+        "source filter should keep src/service.ts; got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("src/core.spec.ts"),
+        "source filter must exclude src/core.spec.ts; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn dependency_graph_filter_tests_shows_only_tests() {
+    // ALP-838: filter=tests must show only test files in downstream
+    let server = dependency_filter_manifest();
+    let result = server
+        .call_tool(
+            "fmm_dependency_graph",
+            serde_json::json!({"file": "src/core.ts", "filter": "tests"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("src/core.spec.ts"),
+        "tests filter should show src/core.spec.ts; got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("src/service.ts"),
+        "tests filter must exclude src/service.ts (source file); got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn dependency_graph_invalid_filter_returns_error() {
+    let server = dependency_filter_manifest();
+    let result = server
+        .call_tool(
+            "fmm_dependency_graph",
+            serde_json::json!({"file": "src/core.ts", "filter": "bad"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.starts_with("ERROR:"),
+        "invalid filter must return ERROR:; got:\n{}",
+        text
+    );
+}
+
 // --- ALP-803: fmm_list_files sort_by + order ---
 
 fn list_files_sort_manifest() -> McpServer {
@@ -737,6 +866,177 @@ fn list_files_group_by_invalid_returns_error() {
     assert!(
         text.starts_with("ERROR:"),
         "invalid group_by must return ERROR:; got: {}",
+        text
+    );
+}
+
+// --- ALP-836: fmm_list_files directory="." returns empty ---
+
+#[test]
+fn list_files_directory_dot_returns_all_files() {
+    // ALP-836: "." must behave the same as omitting directory
+    let server = list_files_sort_manifest(); // 3 files under src/
+    let result_dot = server
+        .call_tool("fmm_list_files", serde_json::json!({"directory": "."}))
+        .unwrap();
+    let text_dot = result_dot["content"][0]["text"].as_str().unwrap();
+
+    let result_none = server
+        .call_tool("fmm_list_files", serde_json::json!({}))
+        .unwrap();
+    let text_none = result_none["content"][0]["text"].as_str().unwrap();
+
+    assert_eq!(
+        text_dot, text_none,
+        "directory=\".\" must return same output as no directory"
+    );
+}
+
+#[test]
+fn list_files_directory_dot_slash_returns_all_files() {
+    // ALP-836: "./" must also behave the same as omitting directory
+    let server = list_files_sort_manifest();
+    let result = server
+        .call_tool("fmm_list_files", serde_json::json!({"directory": "./"}))
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("src/alpha.ts"),
+        "directory=\"./\" should list all files; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("total: 3"),
+        "should show all 3 files; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_files_invalid_directory_returns_empty() {
+    // ALP-836: invalid directory should still return empty silently (not error)
+    let server = list_files_sort_manifest();
+    let result = server
+        .call_tool(
+            "fmm_list_files",
+            serde_json::json!({"directory": "doesnotexist"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("total: 0"),
+        "nonexistent directory should return 0 files; got:\n{}",
+        text
+    );
+}
+
+// --- ALP-835: fmm_list_files group_by="subdir" broken when directory is set ---
+
+fn group_by_directory_manifest() -> McpServer {
+    use crate::manifest::Manifest;
+    use crate::parser::{ExportEntry, Metadata};
+    let mut manifest = Manifest::new();
+    for (path, loc) in &[
+        ("packages/core/injector/injector.ts", 200usize),
+        ("packages/core/middleware/middleware.ts", 150),
+        ("packages/common/decorators/module.ts", 80),
+        ("packages/common/interfaces/index.ts", 40),
+        ("packages/microservices/client.ts", 120),
+    ] {
+        manifest.add_file(
+            path,
+            Metadata {
+                exports: vec![ExportEntry::new("X".to_string(), 1, 10)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: *loc,
+            },
+        );
+    }
+    McpServer {
+        manifest: Some(manifest),
+        root: std::path::PathBuf::from("/tmp"),
+    }
+}
+
+#[test]
+fn list_files_group_by_subdir_with_directory_splits_into_subdirs() {
+    // ALP-835: directory="packages" + group_by="subdir" must produce one bucket
+    // per immediate child of packages/, not one giant "packages/" bucket.
+    let server = group_by_directory_manifest();
+    let result = server
+        .call_tool(
+            "fmm_list_files",
+            serde_json::json!({"directory": "packages", "group_by": "subdir"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("packages/core/"),
+        "should show packages/core/ bucket; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("packages/common/"),
+        "should show packages/common/ bucket; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("packages/microservices/"),
+        "should show packages/microservices/ bucket; got:\n{}",
+        text
+    );
+    // Must NOT collapse everything into a single "packages/" entry
+    let packages_count = text.matches("packages/core/").count()
+        + text.matches("packages/common/").count()
+        + text.matches("packages/microservices/").count();
+    assert!(
+        packages_count >= 3,
+        "expected at least 3 distinct buckets; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_files_group_by_subdir_no_directory_unchanged() {
+    // ALP-835: no directory param must still produce top-level buckets
+    let server = group_by_directory_manifest();
+    let result = server
+        .call_tool("fmm_list_files", serde_json::json!({"group_by": "subdir"}))
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("packages/"),
+        "should show top-level packages/ bucket; got:\n{}",
+        text
+    );
+    // Should NOT show deeper paths as top-level buckets
+    assert!(
+        !text.contains("packages/core/"),
+        "should not show packages/core/ at top level; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_files_group_by_subdir_nested_directory() {
+    // ALP-835: directory="packages/core" must split by core's children
+    let server = group_by_directory_manifest();
+    let result = server
+        .call_tool(
+            "fmm_list_files",
+            serde_json::json!({"directory": "packages/core", "group_by": "subdir"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("packages/core/injector/"),
+        "should show injector/ bucket; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("packages/core/middleware/"),
+        "should show middleware/ bucket; got:\n{}",
         text
     );
 }
@@ -1278,6 +1578,168 @@ fn list_exports_no_truncation_notice_when_all_fit() {
     assert!(
         !text.contains("showing:") && !text.contains("# showing:"),
         "no truncation notice when all results fit; got:\n{}",
+        text
+    );
+}
+
+// --- ALP-837: fmm_list_exports — regex pattern support (auto-detected) ---
+
+fn regex_exports_manifest() -> McpServer {
+    use crate::manifest::Manifest;
+    use crate::parser::{ExportEntry, Metadata};
+    let mut manifest = Manifest::new();
+    // Mix of PascalCase class exports and camelCase function exports
+    for (file, export) in &[
+        ("src/a.ts", "AppModule"),
+        ("src/b.ts", "AuthService"),
+        ("src/c.ts", "handleLogin"),
+        ("src/d.ts", "handleLogout"),
+        ("src/e.ts", "createUser"),
+        ("src/f.ts", "UserController"),
+        ("src/g.ts", "getProfile"),
+    ] {
+        manifest.add_file(
+            file,
+            Metadata {
+                exports: vec![ExportEntry::new((*export).to_string(), 1, 10)],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 50,
+            },
+        );
+    }
+    McpServer {
+        manifest: Some(manifest),
+        root: std::path::PathBuf::from("/tmp"),
+    }
+}
+
+#[test]
+fn list_exports_regex_prefix_match() {
+    // ALP-837: "^handle" matches handleLogin and handleLogout, not createUser
+    let server = regex_exports_manifest();
+    let result = server
+        .call_tool(
+            "fmm_list_exports",
+            serde_json::json!({"pattern": "^handle"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("handleLogin"),
+        "should match handleLogin; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("handleLogout"),
+        "should match handleLogout; got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("createUser"),
+        "should not match createUser; got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("AppModule"),
+        "should not match AppModule; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_exports_regex_suffix_match() {
+    // ALP-837: "Service$" matches AuthService only
+    let server = regex_exports_manifest();
+    let result = server
+        .call_tool(
+            "fmm_list_exports",
+            serde_json::json!({"pattern": "Service$"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("AuthService"),
+        "should match AuthService; got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("handleLogin"),
+        "should not match handleLogin; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_exports_regex_pascal_case_filter() {
+    // ALP-837: "^[A-Z]" matches PascalCase exports only
+    let server = regex_exports_manifest();
+    let result = server
+        .call_tool("fmm_list_exports", serde_json::json!({"pattern": "^[A-Z]"}))
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("AppModule"),
+        "should match AppModule; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("AuthService"),
+        "should match AuthService; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("UserController"),
+        "should match UserController; got:\n{}",
+        text
+    );
+    // camelCase must be excluded
+    assert!(
+        !text.contains("handleLogin"),
+        "should not match handleLogin (camelCase); got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("createUser"),
+        "should not match createUser (camelCase); got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_exports_plain_pattern_still_case_insensitive() {
+    // ALP-837: plain patterns (no metacharacters) must remain case-insensitive
+    let server = regex_exports_manifest();
+    let result = server
+        .call_tool("fmm_list_exports", serde_json::json!({"pattern": "module"}))
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("AppModule"),
+        "plain pattern 'module' must match 'AppModule' case-insensitively; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn list_exports_invalid_regex_returns_error() {
+    // ALP-837: invalid regex must return a clean error, not panic
+    let server = regex_exports_manifest();
+    let result = server
+        .call_tool(
+            "fmm_list_exports",
+            serde_json::json!({"pattern": "[invalid"}),
+        )
+        .unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.starts_with("ERROR:"),
+        "invalid regex must return ERROR:; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("Invalid pattern"),
+        "error must say 'Invalid pattern'; got:\n{}",
         text
     );
 }

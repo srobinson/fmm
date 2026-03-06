@@ -1,10 +1,10 @@
 ---
 file: src/main.rs
-fmm: v0.3+0.1.24
+fmm: v0.3+0.1.25
 exports:
   main: [6, 11]
   print_error: [13, 34]
-  run: [36, 164]
+  run: [36, 169]
 imports: [clap, colored, fmm]
-loc: 164
+loc: 169
 modified: 2026-03-06

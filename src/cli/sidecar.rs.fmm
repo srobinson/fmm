@@ -1,6 +1,6 @@
 ---
 file: src/cli/sidecar.rs
-fmm: v0.3+0.1.24
+fmm: v0.3+0.1.25
 exports:
   generate: [10, 87]
   validate: [89, 142]

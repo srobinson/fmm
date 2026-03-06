@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/elixir.rs
-fmm: v0.3+0.1.24
+fmm: v0.3+0.1.25
 exports:
   ElixirParser: [6, 8]
 methods:
