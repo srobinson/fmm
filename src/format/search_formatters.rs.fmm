@@ -1,0 +1,10 @@
+---
+file: src/format/search_formatters.rs
+fmm: v0.4+0.1.29
+exports:
+  format_bare_search: [10, 91]
+  format_filter_search: [95, 120]
+  format_glossary: [132, 214]
+dependencies: ['crate::formatter::yaml_escape', 'crate::manifest', 'crate::search']
+loc: 221
+modified: 2026-03-06
