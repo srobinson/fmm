@@ -151,27 +151,39 @@ fn collect_ts_private_members(body: tree_sitter::Node, source: &[u8]) -> Vec<Pri
 }
 
 /// Extract a private/protected method_definition. Returns None when public.
+///
+/// Handles two private-method syntaxes:
+/// - TypeScript `private`/`protected` keyword: `accessibility_modifier` child present
+/// - ECMAScript `#method`: name child kind is `private_property_identifier`
 fn ts_private_method(node: tree_sitter::Node, source: &[u8]) -> Option<PrivateMember> {
-    let mut is_private = false;
-    for i in 0..node.child_count() {
-        if let Some(child) = node.child(i as u32) {
-            if child.kind() == "accessibility_modifier" {
-                let text = child.utf8_text(source).unwrap_or("");
-                if text == "private" || text == "protected" {
-                    is_private = true;
-                }
-            }
-        }
-    }
-    if !is_private {
+    let name_node = node.child_by_field_name("name")?;
+    let name_kind = name_node.kind();
+    let name = name_node.utf8_text(source).ok()?.to_string();
+
+    // Skip computed names like [Symbol.iterator]
+    if name.starts_with('[') {
         return None;
     }
 
-    let name_node = node.child_by_field_name("name")?;
-    let name = name_node.utf8_text(source).ok()?.to_string();
+    // ECMAScript #method — private_property_identifier is the name
+    if name_kind == "private_property_identifier" {
+        return Some(PrivateMember {
+            name,
+            start: node.start_position().row + 1,
+            end: node.end_position().row + 1,
+            is_method: true,
+        });
+    }
 
-    // Skip computed names ([Symbol.iterator]) and ECMAScript #private fields
-    if name.starts_with('[') || name.starts_with('#') {
+    // TypeScript `private`/`protected` keyword
+    let has_modifier = (0..node.child_count()).any(|i| {
+        node.child(i as u32)
+            .filter(|c| c.kind() == "accessibility_modifier")
+            .and_then(|c| c.utf8_text(source).ok())
+            .map(|t| t == "private" || t == "protected")
+            .unwrap_or(false)
+    });
+    if !has_modifier {
         return None;
     }
 
@@ -183,27 +195,41 @@ fn ts_private_method(node: tree_sitter::Node, source: &[u8]) -> Option<PrivateMe
     })
 }
 
-/// Extract a private/protected public_field_definition. Returns None when public.
+/// Extract a private/protected field declaration. Returns None when public.
+///
+/// In tree-sitter-typescript, all field declarations use `public_field_definition`
+/// regardless of access modifier. Two private-field syntaxes are handled:
+/// - TypeScript `private`/`protected` keyword: `accessibility_modifier` child present
+/// - ECMAScript `#field`: name child kind is `private_property_identifier`
 fn ts_private_field(node: tree_sitter::Node, source: &[u8]) -> Option<PrivateMember> {
-    let mut is_private = false;
-    for i in 0..node.child_count() {
-        if let Some(child) = node.child(i as u32) {
-            if child.kind() == "accessibility_modifier" {
-                let text = child.utf8_text(source).unwrap_or("");
-                if text == "private" || text == "protected" {
-                    is_private = true;
-                }
-            }
-        }
-    }
-    if !is_private {
+    let name_node = node.child_by_field_name("name")?;
+    let name_kind = name_node.kind();
+    let name = name_node.utf8_text(source).ok()?.to_string();
+
+    // Skip computed property names like [Symbol.hasInstance]
+    if name.starts_with('[') {
         return None;
     }
 
-    let name_node = node.child_by_field_name("name")?;
-    let name = name_node.utf8_text(source).ok()?.to_string();
+    // ECMAScript #field — private_property_identifier is the name child
+    if name_kind == "private_property_identifier" {
+        return Some(PrivateMember {
+            name,
+            start: node.start_position().row + 1,
+            end: node.end_position().row + 1,
+            is_method: false,
+        });
+    }
 
-    if name.starts_with('[') || name.starts_with('#') {
+    // TypeScript `private`/`protected` keyword
+    let has_modifier = (0..node.child_count()).any(|i| {
+        node.child(i as u32)
+            .filter(|c| c.kind() == "accessibility_modifier")
+            .and_then(|c| c.utf8_text(source).ok())
+            .map(|t| t == "private" || t == "protected")
+            .unwrap_or(false)
+    });
+    if !has_modifier {
         return None;
     }
 
@@ -419,5 +445,89 @@ mod tests {
         std::fs::write(tmp.path().join("foo.rs"), "pub struct Foo {}").unwrap();
         let result = extract_private_members(tmp.path(), "foo.rs", &["Foo"]);
         assert!(result.is_empty());
+    }
+
+    // ALP-855: Regression tests for #field, public field, and TypeScript private keyword.
+
+    /// A class mixing all three field varieties: public, TypeScript `private`, and `#field`.
+    /// Only the two private varieties should appear; the public field must not.
+    #[test]
+    fn ts_hash_field_detected_and_public_excluded() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let src = "export class Counter {\n  public label: string;\n  private count: number;\n  #secret: string;\n}\n";
+        std::fs::write(tmp.path().join("counter.ts"), src).unwrap();
+
+        let result = extract_private_members(tmp.path(), "counter.ts", &["Counter"]);
+        let members = result
+            .get("Counter")
+            .expect("Counter should have private members");
+        let names: Vec<&str> = members.iter().map(|m| m.name.as_str()).collect();
+
+        assert!(
+            names.contains(&"count"),
+            "TypeScript private field 'count' missing: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"#secret"),
+            "ECMAScript #field '#secret' missing: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"label"),
+            "public field 'label' should not appear: {:?}",
+            names
+        );
+        // #secret must be is_method=false
+        let secret = members.iter().find(|m| m.name == "#secret").unwrap();
+        assert!(!secret.is_method, "#secret should be a field, not a method");
+    }
+
+    /// A class with `#method()` ECMAScript private method syntax.
+    #[test]
+    fn ts_hash_method_detected() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let src = "export class Worker {\n  public run(): void {}\n  #setup(): void {}\n}\n";
+        std::fs::write(tmp.path().join("worker.ts"), src).unwrap();
+
+        let result = extract_private_members(tmp.path(), "worker.ts", &["Worker"]);
+        let members = result
+            .get("Worker")
+            .expect("Worker should have private members");
+        let names: Vec<&str> = members.iter().map(|m| m.name.as_str()).collect();
+
+        assert!(
+            names.contains(&"#setup"),
+            "ECMAScript #method '#setup' missing: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"run"),
+            "public method 'run' should not appear: {:?}",
+            names
+        );
+        let setup = members.iter().find(|m| m.name == "#setup").unwrap();
+        assert!(setup.is_method, "#setup should be is_method=true");
+    }
+
+    /// Public-only class using `#field` must NOT produce false positives for
+    /// classes that have no private keyword fields — only `#field` ones.
+    #[test]
+    fn ts_class_with_only_hash_fields_no_keyword_private() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let src = "export class Bag {\n  #items: string[] = [];\n  #size: number = 0;\n  public add(item: string): void {}\n}\n";
+        std::fs::write(tmp.path().join("bag.ts"), src).unwrap();
+
+        let result = extract_private_members(tmp.path(), "bag.ts", &["Bag"]);
+        let members = result.get("Bag").expect("Bag should have private members");
+        let names: Vec<&str> = members.iter().map(|m| m.name.as_str()).collect();
+
+        assert!(names.contains(&"#items"), "#items missing: {:?}", names);
+        assert!(names.contains(&"#size"), "#size missing: {:?}", names);
+        assert!(
+            !names.contains(&"add"),
+            "public method 'add' should not appear: {:?}",
+            names
+        );
     }
 }
