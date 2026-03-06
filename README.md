@@ -99,9 +99,9 @@ fmm includes a built-in MCP server with 9 tools. Configure via `fmm init --mcp` 
 | Tool                   | Purpose                                                                       |
 | ---------------------- | ----------------------------------------------------------------------------- |
 | `fmm_lookup_export`    | Find which file defines a symbol — O(1)                                       |
-| `fmm_read_symbol`      | Extract exact source; use `ClassName.method` for public methods; follows re-export chains |
+| `fmm_read_symbol`      | Extract exact source; `ClassName.method` for public or private methods; `line_numbers: true` to annotate lines; follows re-export chains |
 | `fmm_dependency_graph` | Intra-project deps (`local_deps`), external packages, and downstream blast radius |
-| `fmm_file_outline`     | Table of contents with line ranges (canonical — prefer over `fmm_file_info`) |
+| `fmm_file_outline`     | Table of contents with line ranges; `include_private: true` shows private/protected members |
 | `fmm_list_exports`     | Search exports by pattern (fuzzy)                                             |
 | `fmm_file_info`        | Alias for `fmm_file_outline` — kept for backwards compatibility               |
 | `fmm_search`           | Multi-criteria AND queries with relevance scoring                             |
