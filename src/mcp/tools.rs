@@ -287,6 +287,7 @@ pub(super) fn tool_list_files(
     let sort_by = args.sort_by.as_deref().unwrap_or("loc");
     let order = args.order.as_deref();
     let group_by = args.group_by.as_deref();
+    let filter = args.filter.as_deref().unwrap_or("all");
 
     if !matches!(sort_by, "name" | "loc" | "exports") {
         return Err(format!(
@@ -304,6 +305,15 @@ pub(super) fn tool_list_files(
             return Err(format!("Invalid group_by '{}'. Valid values: subdir.", g));
         }
     }
+    if !matches!(filter, "all" | "source" | "tests") {
+        return Err(format!(
+            "Invalid filter '{}'. Valid values: all, source, tests.",
+            filter
+        ));
+    }
+
+    // Load config for test-file detection (used when filter != "all").
+    let config = crate::config::Config::load_from_dir(_root).unwrap_or_default();
 
     let mut entries: Vec<(&str, usize, usize)> = manifest
         .files
@@ -313,6 +323,20 @@ pub(super) fn tool_list_files(
                 if !path.starts_with(d) {
                     return false;
                 }
+            }
+            // Apply source/test filter
+            match filter {
+                "tests" => {
+                    if !config.is_test_file(path) {
+                        return false;
+                    }
+                }
+                "source" => {
+                    if config.is_test_file(path) {
+                        return false;
+                    }
+                }
+                _ => {} // "all": no filter
             }
             if let Some(p) = pat {
                 let filename = path.rsplit('/').next().unwrap_or(path.as_str());

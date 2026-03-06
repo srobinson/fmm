@@ -392,9 +392,10 @@ pub fn ls(
     sort_by: &str,
     order: Option<&str>,
     group_by: Option<&str>,
+    filter: &str,
     json_output: bool,
 ) -> Result<()> {
-    let (_, manifest) = load_manifest()?;
+    let (root, manifest) = load_manifest()?;
 
     if manifest.files.is_empty() {
         warn_no_sidecars();
@@ -413,14 +414,21 @@ pub fn ls(
         }
     }
 
+    let config = crate::config::Config::load_from_dir(&root).unwrap_or_default();
+
     let mut entries: Vec<(&str, usize, usize)> = manifest
         .files
         .iter()
         .filter(|(path, _)| {
             if let Some(d) = directory {
-                path.starts_with(d)
-            } else {
-                true
+                if !path.starts_with(d) {
+                    return false;
+                }
+            }
+            match filter {
+                "tests" => config.is_test_file(path),
+                "source" => !config.is_test_file(path),
+                _ => true,
             }
         })
         .map(|(path, entry)| (path.as_str(), entry.loc, entry.exports.len()))

@@ -3,17 +3,44 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::Path;
 
+/// Patterns used to classify test vs. source files.
+///
+/// A file is classified as a test if its path contains any `path_contains`
+/// segment or its filename ends with any `filename_suffixes` entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TestPatterns {
+    /// Path segments that indicate a test file (e.g. "/test/", "/e2e/")
+    #[serde(default = "default_test_path_contains")]
+    pub path_contains: Vec<String>,
+    /// Filename suffix patterns that indicate a test file (e.g. ".spec.ts")
+    #[serde(default = "default_test_filename_suffixes")]
+    pub filename_suffixes: Vec<String>,
+}
+
+impl Default for TestPatterns {
+    fn default() -> Self {
+        Self {
+            path_contains: default_test_path_contains(),
+            filename_suffixes: default_test_filename_suffixes(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Languages to process
     #[serde(default = "default_languages")]
     pub languages: BTreeSet<String>,
+    /// Patterns for detecting test files (used by fmm_list_files filter parameter)
+    #[serde(default)]
+    pub test_patterns: TestPatterns,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             languages: default_languages(),
+            test_patterns: TestPatterns::default(),
         }
     }
 }
@@ -37,6 +64,49 @@ impl Config {
     pub fn is_supported_language(&self, extension: &str) -> bool {
         self.languages.contains(extension)
     }
+
+    /// Return true if `path` matches the configured test-file heuristics.
+    pub fn is_test_file(&self, path: &str) -> bool {
+        let tp = &self.test_patterns;
+        // Check path-segment patterns (use `/` prefix to avoid matching partial names)
+        for seg in &tp.path_contains {
+            if path.contains(seg.as_str()) {
+                return true;
+            }
+        }
+        // Check filename suffix patterns
+        let filename = path.rsplit('/').next().unwrap_or(path);
+        for suffix in &tp.filename_suffixes {
+            if filename.ends_with(suffix.as_str()) {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+fn default_test_path_contains() -> Vec<String> {
+    vec![
+        "/e2e/".to_string(),
+        "/test/".to_string(),
+        "/tests/".to_string(),
+        "/spec/".to_string(),
+        "/__tests__/".to_string(),
+    ]
+}
+
+fn default_test_filename_suffixes() -> Vec<String> {
+    vec![
+        ".spec.ts".to_string(),
+        ".test.ts".to_string(),
+        ".e2e-spec.ts".to_string(),
+        ".spec.js".to_string(),
+        ".test.js".to_string(),
+        "_test.go".to_string(),
+        "_test.rs".to_string(),
+        ".spec.tsx".to_string(),
+        ".test.tsx".to_string(),
+    ]
 }
 
 fn default_languages() -> BTreeSet<String> {
@@ -145,6 +215,44 @@ mod tests {
         let config = Config::load_from_dir(tmp.path()).unwrap();
         assert_eq!(config.languages.len(), 2);
         assert!(config.languages.contains("xyz"));
+    }
+
+    #[test]
+    fn is_test_file_detects_spec_suffix() {
+        let config = Config::default();
+        assert!(config.is_test_file("src/auth/auth.spec.ts"));
+        assert!(config.is_test_file("src/core/core.test.ts"));
+        assert!(config.is_test_file("src/auth/auth.e2e-spec.ts"));
+        assert!(!config.is_test_file("src/auth/auth.service.ts"));
+        assert!(!config.is_test_file("src/core/index.ts"));
+    }
+
+    #[test]
+    fn is_test_file_detects_path_segment() {
+        let config = Config::default();
+        assert!(config.is_test_file("src/test/helper.ts"));
+        assert!(config.is_test_file("packages/core/e2e/app.ts"));
+        assert!(config.is_test_file("src/__tests__/utils.ts"));
+        assert!(!config.is_test_file("src/contest/result.ts")); // "contest" does not match "/test/"
+    }
+
+    #[test]
+    fn test_patterns_configurable_via_fmmrc() {
+        let tmp = TempDir::new().unwrap();
+        let json = r#"{
+            "test_patterns": {
+                "path_contains": ["/custom_tests/"],
+                "filename_suffixes": [".myspec.ts"]
+            }
+        }"#;
+        fs::write(tmp.path().join(".fmmrc.json"), json).unwrap();
+
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert!(config.is_test_file("src/custom_tests/foo.ts"));
+        assert!(config.is_test_file("src/bar.myspec.ts"));
+        // Default patterns NOT active (custom config replaces them)
+        assert!(!config.is_test_file("src/auth.spec.ts"));
+        assert!(!config.is_test_file("src/test/foo.ts"));
     }
 
     #[test]

@@ -177,6 +177,11 @@ pub(super) fn tool_list() -> Value {
                         "type": "string",
                         "enum": ["subdir"],
                         "description": "Collapse files into directory buckets. 'subdir': group by immediate subdirectory, showing file count and total LOC per bucket. Best for initial orientation of large codebases. sort_by applies to bucket-level LOC."
+                    },
+                    "filter": {
+                        "type": "string",
+                        "enum": ["all", "source", "tests"],
+                        "description": "File type filter. 'all' (default): no filtering. 'source': exclude test files. 'tests': return only test files. Detection heuristic uses path segments (/test/, /e2e/, /__tests__/) and filename suffixes (.spec.ts, .test.ts, _test.go, etc.), configurable via test_patterns in .fmmrc.json."
                     }
                 }
             }),

@@ -136,6 +136,7 @@ fn run() -> anyhow::Result<()> {
             sort_by,
             order,
             group_by,
+            filter,
             json,
         } => {
             cli::ls(
@@ -143,6 +144,7 @@ fn run() -> anyhow::Result<()> {
                 &sort_by,
                 order.as_deref(),
                 group_by.as_deref(),
+                &filter,
                 json,
             )?;
         }

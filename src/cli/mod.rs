@@ -578,6 +578,10 @@ pub enum Commands {
         #[arg(long = "group-by", value_parser = ["subdir"])]
         group_by: Option<String>,
 
+        /// File type filter: all (default), source (exclude tests), tests (only tests)
+        #[arg(long, default_value = "all", value_parser = ["all", "source", "tests"])]
+        filter: String,
+
         /// Output as JSON
         #[arg(short = 'j', long = "json")]
         json: bool,
