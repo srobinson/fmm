@@ -3,7 +3,12 @@ use colored::Colorize;
 
 use crate::manifest::{GlossaryMode, Manifest};
 
-pub fn glossary(pattern: Option<String>, mode: &str, json_output: bool) -> Result<()> {
+pub fn glossary(
+    pattern: Option<String>,
+    mode: &str,
+    limit: Option<usize>,
+    json_output: bool,
+) -> Result<()> {
     let pattern = pattern.as_deref().unwrap_or("").trim().to_string();
     if pattern.is_empty() {
         anyhow::bail!(
@@ -29,6 +34,9 @@ pub fn glossary(pattern: Option<String>, mode: &str, json_output: bool) -> Resul
         _ => GlossaryMode::Source,
     };
     let mut entries = manifest.build_glossary(&pattern, mode);
+    if let Some(n) = limit {
+        entries.truncate(n);
+    }
 
     // ALP-785: For dotted method queries, refine used_by via call-site detection.
     if let Some(dot_pos) = pattern.rfind('.') {

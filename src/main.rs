@@ -111,9 +111,10 @@ fn run() -> anyhow::Result<()> {
         Commands::Glossary {
             pattern,
             mode,
+            limit,
             json,
         } => {
-            cli::glossary(pattern, &mode, json)?;
+            cli::glossary(pattern, &mode, limit, json)?;
         }
         Commands::Lookup { symbol, json } => {
             cli::lookup(&symbol, json)?;
@@ -121,9 +122,10 @@ fn run() -> anyhow::Result<()> {
         Commands::Read {
             symbol,
             no_truncate,
+            line_numbers,
             json,
         } => {
-            cli::read_symbol(&symbol, no_truncate, json)?;
+            cli::read_symbol(&symbol, no_truncate, line_numbers, json)?;
         }
         Commands::Deps {
             file,
@@ -133,28 +135,44 @@ fn run() -> anyhow::Result<()> {
         } => {
             cli::deps(&file, depth, &filter, json)?;
         }
-        Commands::Outline { file, json } => {
-            cli::outline(&file, json)?;
+        Commands::Outline {
+            file,
+            include_private,
+            json,
+        } => {
+            cli::outline(&file, include_private, json)?;
         }
         Commands::Ls {
             directory,
+            pattern,
             sort_by,
             order,
             group_by,
             filter,
+            limit,
+            offset,
             json,
         } => {
             cli::ls(
                 directory.as_deref(),
+                pattern.as_deref(),
                 &sort_by,
                 order.as_deref(),
                 group_by.as_deref(),
                 &filter,
+                limit,
+                offset,
                 json,
             )?;
         }
-        Commands::Exports { pattern, dir, json } => {
-            cli::exports(pattern.as_deref(), dir.as_deref(), json)?;
+        Commands::Exports {
+            pattern,
+            dir,
+            limit,
+            offset,
+            json,
+        } => {
+            cli::exports(pattern.as_deref(), dir.as_deref(), limit, offset, json)?;
         }
         Commands::Mcp | Commands::Serve => {
             let mut server = mcp::McpServer::new();

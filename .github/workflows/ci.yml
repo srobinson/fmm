@@ -30,3 +30,11 @@ jobs:
 
       - name: Build (release)
         run: cargo build --release
+
+      - name: Check generated docs are in sync with tools.toml
+        run: |
+          git diff --exit-code \
+            src/mcp/generated_schema.rs \
+            src/cli/generated_help.rs \
+            templates/SKILL.md || \
+            (echo "ERROR: Generated docs are out of sync with tools.toml. Run 'just gen-docs' and commit the result." && exit 1)

@@ -1,0 +1,8 @@
+---
+file: build.rs
+fmm: v0.4+0.1.29
+imports: [indexmap, serde, std]
+loc: 353
+modified: 2026-03-06
+rust:
+  derives: [Deserialize]

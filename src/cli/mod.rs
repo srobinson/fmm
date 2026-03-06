@@ -18,6 +18,8 @@ mod watch;
 mod help_text;
 use help_text::{HELP_TEMPLATE, LONG_ABOUT, LONG_HELP, SHORT_HELP};
 
+mod generated_help;
+
 pub use commands::{deps, exports, lookup, ls, outline, read_symbol};
 pub use glossary::glossary;
 pub use init::init;
@@ -259,12 +261,7 @@ pub enum Commands {
 
     /// Query the index — O(1) export lookup, dependency graphs, LOC filters
     #[command(
-        long_about = "Search sidecar metadata to find files by export name, import path, \
-            dependency, or line count.\n\n\
-            With a bare term (no flags), searches across all dimensions: exports, file paths, \
-            and imports — with smart ranking. Exact export matches appear first.\n\n\
-            Export lookups use a reverse index for O(1) performance. Flags narrow the search \
-            to a single dimension and can be combined with AND logic.",
+        long_about = generated_help::SEARCH_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm search store</bold>            <dim># Smart search across everything</dim>
@@ -349,16 +346,14 @@ pub enum Commands {
 
     /// Show all definitions of an export and which files use it
     #[command(
-        long_about = "Symbol-level impact analysis.\n\n\
-            Given a symbol name or pattern, shows every definition and exactly which files \
-            import it. Use before renaming a function or changing a signature to know \
-            precisely what breaks.",
+        long_about = generated_help::GLOSSARY_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm glossary run_dispatch</bold>              <dim># Exact symbol lookup (source mode)</dim>
   <dim>$</dim> <bold>fmm glossary config</bold>                    <dim># All Config, loadConfig, AppConfig, ...</dim>
   <dim>$</dim> <bold>fmm glossary run_dispatch --mode tests</bold> <dim># What tests cover this symbol?</dim>
   <dim>$</dim> <bold>fmm glossary config --mode all</bold>         <dim># Source + tests combined</dim>
+  <dim>$</dim> <bold>fmm glossary config --limit 20</bold>         <dim># Limit results</dim>
   <dim>$</dim> <bold>fmm glossary config --json</bold>             <dim># JSON output for scripting</dim>"#),
     )]
     Glossary {
@@ -370,6 +365,10 @@ pub enum Commands {
         #[arg(long, value_name = "MODE", default_value = "source", value_parser = ["source", "tests", "all"])]
         mode: String,
 
+        /// Maximum number of entries returned (default: 10)
+        #[arg(long)]
+        limit: Option<usize>,
+
         /// Output as JSON
         #[arg(short = 'j', long = "json")]
         json: bool,
@@ -377,9 +376,7 @@ pub enum Commands {
 
     /// Find where a symbol is defined — O(1) lookup
     #[command(
-        long_about = "Find which file defines a symbol and show its metadata.\n\n\
-            Uses the pre-built export index for O(1) lookup. \
-            Supports plain exports, re-exports, and dotted ClassName.method notation.",
+        long_about = generated_help::LOOKUP_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm lookup Injector</bold>           <dim># Find symbol definition</dim>
@@ -399,16 +396,14 @@ pub enum Commands {
     /// Extract exact source for a symbol or method
     #[command(
         name = "read",
-        long_about = "Read the source code of an exported symbol or a specific method.\n\n\
-            Use plain name for a top-level export, or ClassName.method notation for a \
-            specific public method. Truncates at 10KB by default; use --no-truncate for \
-            full source.",
+        long_about = generated_help::READ_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm read Injector</bold>                  <dim># Full class source</dim>
-  <dim>$</dim> <bold>fmm read Injector.loadInstance</bold>     <dim># Single method</dim>
-  <dim>$</dim> <bold>fmm read Injector --no-truncate</bold>   <dim># Bypass 10KB cap</dim>
-  <dim>$</dim> <bold>fmm read createStore --json</bold>        <dim># JSON output</dim>"#),
+  <dim>$</dim> <bold>fmm read Injector</bold>                       <dim># Full class source</dim>
+  <dim>$</dim> <bold>fmm read Injector.loadInstance</bold>          <dim># Single method</dim>
+  <dim>$</dim> <bold>fmm read Injector --no-truncate</bold>        <dim># Bypass 10KB cap</dim>
+  <dim>$</dim> <bold>fmm read Injector --line-numbers</bold>       <dim># With absolute line numbers</dim>
+  <dim>$</dim> <bold>fmm read createStore --json</bold>             <dim># JSON output</dim>"#),
     )]
     Read {
         /// Symbol name (or ClassName.method for a specific public method)
@@ -419,6 +414,10 @@ pub enum Commands {
         #[arg(long = "no-truncate")]
         no_truncate: bool,
 
+        /// Prepend absolute line numbers to each source line
+        #[arg(long = "line-numbers")]
+        line_numbers: bool,
+
         /// Output as JSON
         #[arg(short = 'j', long = "json")]
         json: bool,
@@ -426,10 +425,7 @@ pub enum Commands {
 
     /// Show dependency graph for a file
     #[command(
-        long_about = "Show a file's dependency graph: local_deps (resolved local imports), \
-            external (packages), and downstream (what would break if this file changes).\n\n\
-            Use --depth for transitive traversal. depth=-1 computes the full closure.\n\
-            Use --filter=source to exclude test files from downstream for production blast-radius analysis.",
+        long_about = generated_help::DEPS_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm deps src/injector.ts</bold>                           <dim># Direct deps (depth=1)</dim>
@@ -459,17 +455,21 @@ pub enum Commands {
 
     /// Show file table-of-contents with export line ranges
     #[command(
-        long_about = "Show all exports in a file with their line ranges.\n\n\
-            Use before reading source to identify which symbol to target with 'fmm read'.",
+        long_about = generated_help::OUTLINE_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm outline src/injector.ts</bold>         <dim># All exports + line ranges</dim>
-  <dim>$</dim> <bold>fmm outline src/injector.ts --json</bold>  <dim># JSON output</dim>"#),
+  <dim>$</dim> <bold>fmm outline src/injector.ts</bold>                  <dim># All exports + line ranges</dim>
+  <dim>$</dim> <bold>fmm outline src/injector.ts --include-private</bold> <dim># Include private members</dim>
+  <dim>$</dim> <bold>fmm outline src/injector.ts --json</bold>            <dim># JSON output</dim>"#),
     )]
     Outline {
         /// Source file path (relative to project root)
         #[arg(value_name = "FILE")]
         file: String,
+
+        /// Include private/protected methods and fields under each class
+        #[arg(long = "include-private")]
+        include_private: bool,
 
         /// Output as JSON
         #[arg(short = 'j', long = "json")]
@@ -478,33 +478,30 @@ pub enum Commands {
 
     /// List indexed files under a directory
     #[command(
-        long_about = "List all files indexed by fmm under a directory prefix.\n\n\
-            Shows file paths with LOC and export count.\n\n\
-            Sort modes (--sort-by):\n\
-            - loc (default): heaviest files first\n\
-            - name: alphabetical\n\
-            - exports: most exported symbols first\n\
-            - downstream: most depended-upon files first (best for pre-refactoring blast radius)\n\
-            - modified: most recently changed first\n\n\
-            Use --group-by=subdir to collapse into directory buckets.\n\
-            Use --filter=source to exclude test files; --filter=tests for test files only.",
+        long_about = generated_help::LS_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm ls</bold>                                 <dim># All indexed files (sorted by LOC)</dim>
   <dim>$</dim> <bold>fmm ls src/</bold>                            <dim># Files under src/</dim>
-  <dim>$</dim> <bold>fmm ls --sort-by loc</bold>                   <dim># Heaviest files first</dim>
   <dim>$</dim> <bold>fmm ls --sort-by downstream</bold>            <dim># Most-imported files first (pre-refactoring)</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by loc</bold>                   <dim># Heaviest files first</dim>
   <dim>$</dim> <bold>fmm ls --sort-by exports</bold>               <dim># Most exports first</dim>
   <dim>$</dim> <bold>fmm ls --sort-by name</bold>                  <dim># Alphabetical</dim>
   <dim>$</dim> <bold>fmm ls --sort-by modified</bold>              <dim># Most recently changed first</dim>
   <dim>$</dim> <bold>fmm ls --group-by subdir</bold>               <dim># Directory rollup (file count + LOC)</dim>
   <dim>$</dim> <bold>fmm ls --filter source</bold>                 <dim># Source files only (no tests)</dim>
+  <dim>$</dim> <bold>fmm ls --pattern "*.ts"</bold>                <dim># Filter by filename glob</dim>
+  <dim>$</dim> <bold>fmm ls --limit 20 --offset 20</bold>          <dim># Pagination</dim>
   <dim>$</dim> <bold>fmm ls src/ --json</bold>                     <dim># JSON output</dim>"#),
     )]
     Ls {
         /// Directory prefix to filter (e.g. src/, packages/core/)
         #[arg(value_name = "DIR")]
         directory: Option<String>,
+
+        /// Glob pattern to filter by filename (e.g. '*.ts', '*.rs', 'test_*')
+        #[arg(long)]
+        pattern: Option<String>,
 
         /// Sort field: loc (default), name, exports, downstream, modified
         #[arg(long = "sort-by", default_value = "loc", value_parser = ["name", "loc", "exports", "downstream", "modified"])]
@@ -522,6 +519,14 @@ pub enum Commands {
         #[arg(long, default_value = "all", value_parser = ["all", "source", "tests"])]
         filter: String,
 
+        /// Maximum number of files to return (default: 200)
+        #[arg(long)]
+        limit: Option<usize>,
+
+        /// Number of files to skip (default: 0) — use for pagination
+        #[arg(long, default_value = "0")]
+        offset: usize,
+
         /// Output as JSON
         #[arg(short = 'j', long = "json")]
         json: bool,
@@ -529,13 +534,7 @@ pub enum Commands {
 
     /// Search exports by pattern (substring or regex, auto-detected)
     #[command(
-        long_about = "List exports matching a pattern across the indexed codebase.\n\n\
-            Without a pattern, lists all exports grouped by file. \
-            Use --dir to scope results to a directory. \
-            Includes dotted method names (ClassName.method).\n\n\
-            Pattern matching is auto-detected: plain strings use case-insensitive \
-            substring match; patterns with regex metacharacters (^, $, [, (, \\, \
-            ., *, +, ?, {) are compiled as regex.",
+        long_about = generated_help::EXPORTS_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm exports</bold>                              <dim># All exports (grouped by file)</dim>
@@ -545,6 +544,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm exports 'Service$'</bold>                   <dim># Regex: exports ending in "Service"</dim>
   <dim>$</dim> <bold>fmm exports '^[A-Z]'</bold>                     <dim># Regex: PascalCase exports only</dim>
   <dim>$</dim> <bold>fmm exports Module --dir packages/core/</bold>   <dim># Scoped to directory</dim>
+  <dim>$</dim> <bold>fmm exports Module --limit 50 --offset 50</bold> <dim># Pagination</dim>
   <dim>$</dim> <bold>fmm exports Module --json</bold>                 <dim># JSON output</dim>"#),
     )]
     Exports {
@@ -555,6 +555,14 @@ pub enum Commands {
         /// Scope results to a directory prefix (e.g. packages/core/)
         #[arg(long = "dir")]
         dir: Option<String>,
+
+        /// Maximum number of results (default: 200)
+        #[arg(long)]
+        limit: Option<usize>,
+
+        /// Number of results to skip (default: 0) — use for pagination
+        #[arg(long, default_value = "0")]
+        offset: usize,
 
         /// Output as JSON
         #[arg(short = 'j', long = "json")]

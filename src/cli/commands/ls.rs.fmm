@@ -2,9 +2,9 @@
 file: src/cli/commands/ls.rs
 fmm: v0.4+0.1.29
 exports:
-  ls: [12, 179]
+  ls: [12, 203]
 imports: [anyhow]
-loc: 179
+loc: 203
 modified: 2026-03-06
 rust:
   derives: ['serde::Serialize']
