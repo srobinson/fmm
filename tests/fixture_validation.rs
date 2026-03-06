@@ -1413,3 +1413,45 @@ fn validate_typescript_decorators_fixture() {
     assert!(result.metadata.imports.is_empty());
     assert!(result.metadata.dependencies.is_empty());
 }
+
+/// Verify that the language template file exists and contains the required structural
+/// elements. This test does not compile the template (it is gated with `#[cfg(never)]`);
+/// it checks the file's content to catch accidental edits that would break it as a
+/// contributor reference.
+#[test]
+fn template_rs_is_structurally_complete() {
+    let src = include_str!("../src/parser/builtin/template.rs");
+
+    assert!(
+        src.contains("pub struct TemplateParser"),
+        "template.rs must define TemplateParser"
+    );
+    assert!(
+        src.contains("pub fn new()"),
+        "template.rs must have a new() constructor"
+    );
+    assert!(
+        src.contains("impl Parser for TemplateParser"),
+        "template.rs must impl the Parser trait"
+    );
+    assert!(
+        src.contains("fn language_id"),
+        "template.rs must implement language_id()"
+    );
+    assert!(
+        src.contains("fn extensions"),
+        "template.rs must implement extensions()"
+    );
+    assert!(
+        src.contains("fn parse("),
+        "template.rs must implement parse()"
+    );
+    assert!(
+        src.contains("fn extract_exports"),
+        "template.rs must have an extract_exports helper"
+    );
+    assert!(
+        src.contains("fn extract_imports"),
+        "template.rs must have an extract_imports helper"
+    );
+}

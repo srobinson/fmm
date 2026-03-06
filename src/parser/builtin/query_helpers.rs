@@ -1,3 +1,27 @@
+//! Shared tree-sitter query utilities used across all builtin parsers.
+//!
+//! # Capture name conventions
+//!
+//! All fmm parsers follow a shared set of capture names so these helpers work
+//! consistently. The full reference is in `docs/QUERIES.md`. Quick summary:
+//!
+//! | Capture | Meaning |
+//! |---|---|
+//! | `@name` | Primary identifier being defined (function, class, variable) |
+//! | `@vis` | Visibility modifier (`pub`, `public`, `export`) |
+//! | `@source` | Import/export source path string |
+//! | `@class_name` | Parent class identifier (for method extraction) |
+//! | `@method_name` | Method identifier (paired with `@class_name`) |
+//! | `@attr_name` | Decorator or annotation name |
+//! | `@original_name` | Pre-alias export name (TS: `export { foo as bar }`) |
+//! | `@values` | List literal (Python `__all__`) |
+//!
+//! # Choosing a helper
+//!
+//! - [`collect_matches_with_lines`] — use for exports; returns [`ExportEntry`] with line ranges.
+//! - [`collect_named_matches`] — use when a query has multiple capture names and you want one.
+//! - [`collect_matches`] — simplest form; returns deduplicated strings from any capture.
+
 use crate::parser::ExportEntry;
 use std::collections::HashSet;
 use streaming_iterator::StreamingIterator;

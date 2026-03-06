@@ -1,3 +1,8 @@
+// Template for new language contributors — gated with cfg(any()) so it is never
+// compiled. Copy it to src/parser/builtin/<lang>.rs and follow docs/CONTRIBUTING_LANGUAGE.md.
+#[cfg(any())]
+pub mod template;
+
 pub mod c;
 pub mod cpp;
 pub mod csharp;
