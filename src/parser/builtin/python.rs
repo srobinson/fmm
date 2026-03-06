@@ -341,7 +341,7 @@ impl PythonParser {
             };
 
             for i in 0..body.child_count() {
-                if let Some(child) = body.child(i) {
+                if let Some(child) = body.child(i as u32) {
                     match child.kind() {
                         "function_definition" => {
                             if let Some(entry) =
@@ -353,7 +353,7 @@ impl PythonParser {
                         "decorated_definition" => {
                             // Find the function_definition inside the decorated_definition
                             for j in 0..child.child_count() {
-                                if let Some(inner) = child.child(j) {
+                                if let Some(inner) = child.child(j as u32) {
                                     if inner.kind() == "function_definition" {
                                         if let Some(mut entry) = Self::extract_python_method_entry(
                                             &class_name,
