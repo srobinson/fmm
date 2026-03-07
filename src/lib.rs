@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod config;
+pub mod db;
 pub mod extractor;
 pub mod format;
 pub mod formatter;

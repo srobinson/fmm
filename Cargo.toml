@@ -51,6 +51,9 @@ ctrlc = "3.4"
 # Parallelism
 rayon = "1.10"
 
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
