@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.38](https://github.com/srobinson/fmm/compare/v0.1.37...v0.1.38) (2026-03-07)
+
+
+### Bug Fixes
+
+* detect stale index after fmm upgrade ([1dd32c1](https://github.com/srobinson/fmm/commit/1dd32c1ce4f53cd533e5e154e932c65356ac2666))
+
+
+### Performance
+
+* opt-level 3 and 64MB SQLite page cache ([3d3ab57](https://github.com/srobinson/fmm/commit/3d3ab574da83a0923d4dcbcf1f51e827635835b7))
+
 ## [0.1.37](https://github.com/srobinson/fmm/compare/v0.1.36...v0.1.37) (2026-03-07)
 
 ### Features
