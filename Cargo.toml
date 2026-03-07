@@ -97,7 +97,7 @@ harness = false
 lto = true
 codegen-units = 1
 strip = true
-opt-level = "z"
+opt-level = 3
 
 [profile.bench]
 opt-level = 3

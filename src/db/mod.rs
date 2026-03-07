@@ -48,12 +48,14 @@ fn apply_pragmas(conn: &Connection) -> Result<()> {
     // mmap_size=256MB: reduces syscall overhead on large repos.
     // temp_store=memory: scratch tables stay in RAM.
     // foreign_keys=ON: enforce ON DELETE CASCADE for exports/methods.
+    // cache_size=-64000: 64MB page cache for bulk write performance.
     conn.execute_batch(
         "PRAGMA journal_mode=WAL;
          PRAGMA synchronous=NORMAL;
          PRAGMA mmap_size=268435456;
          PRAGMA temp_store=memory;
-         PRAGMA foreign_keys=ON;",
+         PRAGMA foreign_keys=ON;
+         PRAGMA cache_size=-64000;",
     )
     .context("Failed to apply database pragmas")?;
     Ok(())
