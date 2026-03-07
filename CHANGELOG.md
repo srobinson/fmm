@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.34](https://github.com/srobinson/fmm/compare/v0.1.33...v0.1.34) (2026-03-07)
+
+
+### Features
+
+* non-exported top-level functions in outline and read_symbol (#ALP-909) ([#99](https://github.com/srobinson/fmm/issues/99)) ([b8c9783](https://github.com/srobinson/fmm/commit/b8c97831bcadeeb11c59ad54d7676c142aca56ba))
+
 ## [0.1.33](https://github.com/srobinson/fmm/compare/v0.1.32...v0.1.33) (2026-03-07)
 
 
