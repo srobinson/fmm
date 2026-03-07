@@ -178,9 +178,7 @@ pub(in crate::mcp) fn compute_import_specifiers(
                     if !specifiers.contains(&with_ext) {
                         specifiers.push(with_ext);
                     }
-                    if without_ext != *specifiers.last().unwrap_or(&String::new())
-                        && !specifiers.contains(&without_ext)
-                    {
+                    if !specifiers.contains(&without_ext) {
                         specifiers.push(without_ext);
                     }
                 }

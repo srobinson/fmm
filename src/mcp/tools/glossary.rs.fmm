@@ -3,5 +3,5 @@ file: src/mcp/tools/glossary.rs
 fmm: v0.4+0.1.31
 imports: [serde_json]
 dependencies: [../common/compute_import_specifiers, 'crate::manifest', 'crate::mcp::args']
-loc: 229
+loc: 233
 modified: 2026-03-07
