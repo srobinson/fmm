@@ -60,7 +60,7 @@ impl McpServer {
     }
 
     pub fn with_root(root: PathBuf) -> Self {
-        let manifest = Manifest::load_from_sidecars(&root).ok();
+        let manifest = Manifest::load(&root).ok();
         Self { manifest, root }
     }
 

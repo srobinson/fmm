@@ -64,7 +64,7 @@ pub fn search(
     json_output: bool,
 ) -> Result<()> {
     let root = std::env::current_dir()?;
-    let manifest = Manifest::load_from_sidecars(&root)?;
+    let manifest = Manifest::load(&root)?;
 
     if manifest.files.is_empty() {
         println!(

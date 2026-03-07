@@ -1,3 +1,4 @@
+pub mod reader;
 pub mod writer;
 
 use anyhow::{Context, Result};

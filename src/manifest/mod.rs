@@ -303,6 +303,32 @@ impl Manifest {
         Ok(manifest)
     }
 
+    /// Load a complete `Manifest` from the SQLite database at `root/.fmm.db`.
+    ///
+    /// Populates all index fields identically to `load_from_sidecars`. Callers
+    /// should use `Manifest::load` which prefers SQLite and falls back to
+    /// sidecars when no database file is present.
+    pub fn load_from_sqlite(root: &std::path::Path) -> Result<Self> {
+        let conn = crate::db::open_db(root)?;
+        crate::db::reader::load_manifest_from_db(&conn, root)
+    }
+
+    /// Load a `Manifest` using the best available index.
+    ///
+    /// Prefers `.fmm.db` (SQLite) when present; falls back to `*.fmm` sidecar
+    /// files with a one-time warning printed to stderr.  All callers should use
+    /// this method instead of calling the individual loaders directly.
+    pub fn load(root: &std::path::Path) -> Result<Self> {
+        let db_path = root.join(crate::db::DB_FILENAME);
+        if db_path.exists() {
+            return Self::load_from_sqlite(root);
+        }
+        eprintln!(
+            "warning: no .fmm.db found — loading from sidecars (run 'fmm generate' to build SQLite index)"
+        );
+        Self::load_from_sidecars(root)
+    }
+
     /// Add or update a file entry in the index
     pub fn add_file(&mut self, path: &str, metadata: Metadata) {
         if let Some(old_entry) = self.files.get(path) {

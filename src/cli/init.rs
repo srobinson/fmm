@@ -84,7 +84,7 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
                 }
 
                 // Suggest a search using a real export
-                let manifest = crate::manifest::Manifest::load_from_sidecars(&root)?;
+                let manifest = crate::manifest::Manifest::load(&root)?;
                 if let Some((export_name, _)) = manifest.export_index.iter().next() {
                     println!(
                         "\n  {} Try: fmm search --export {}",

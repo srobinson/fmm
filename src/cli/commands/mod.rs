@@ -19,7 +19,7 @@ pub use read::read_symbol;
 
 fn load_manifest() -> Result<(std::path::PathBuf, Manifest)> {
     let root = std::env::current_dir().context("Failed to get current directory")?;
-    let manifest = Manifest::load_from_sidecars(&root)?;
+    let manifest = Manifest::load(&root)?;
     Ok((root, manifest))
 }
 
