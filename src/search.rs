@@ -98,8 +98,7 @@ pub fn bare_search(manifest: &Manifest, term: &str, limit: Option<usize>) -> Bar
         seen_exports.insert(term.to_string());
     }
 
-    // 2. Exact match in method_index (nested functions and class methods by dotted name).
-    // Handles "silentNeverType" matching "createTypeChecker.silentNeverType".
+    // 2. Exact match in method_index by full dotted name (e.g. "createTypeChecker.getIndexType").
     let method_exact = manifest
         .method_index
         .get(term)

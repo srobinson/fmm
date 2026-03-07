@@ -724,7 +724,7 @@ impl TypeScriptParser {
                                 Some(n) => n.to_string(),
                                 None => continue,
                             };
-                            if Self::is_non_trivial_declarator(decl, source_bytes) {
+                            if Self::is_non_trivial_declarator(decl) {
                                 entries.push(crate::parser::ExportEntry::closure_state(
                                     var_name,
                                     decl.start_position().row + 1,
@@ -744,7 +744,7 @@ impl TypeScriptParser {
 
     /// Return true when a variable_declarator is worth indexing as closure-state:
     /// it has a type annotation, or its value starts with a call expression.
-    fn is_non_trivial_declarator(decl: tree_sitter::Node, source_bytes: &[u8]) -> bool {
+    fn is_non_trivial_declarator(decl: tree_sitter::Node) -> bool {
         // Check for type_annotation child
         for i in 0..decl.child_count() {
             if let Some(child) = decl.child(i as u32) {
@@ -765,7 +765,6 @@ impl TypeScriptParser {
             // One level deeper: `(call())` — parenthesized expression
             for i in 0..value.child_count() {
                 if let Some(child) = value.child(i as u32) {
-                    let _ = source_bytes; // suppress unused warning
                     if child.kind() == "call_expression" || child.kind() == "new_expression" {
                         return true;
                     }
