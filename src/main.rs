@@ -71,9 +71,9 @@ fn run() -> anyhow::Result<()> {
             paths,
             dry_run,
             force,
+            quiet,
         } => {
-            println!("{}", "Indexing source files...".green().bold());
-            cli::generate(&paths, dry_run, force)?;
+            cli::generate(&paths, dry_run, force, quiet)?;
         }
         Commands::Validate { paths } => {
             println!("{}", "Validating index...".green().bold());

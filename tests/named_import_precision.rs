@@ -71,7 +71,7 @@ fn setup_precision_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
         "import * as WL from './WorkLoop';\nexport function debugSchedule(root: any) { WL.scheduleUpdate(root); }\n",
     ).unwrap();
 
-    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
     (tmp, fmm::mcp::McpServer::with_root(root.to_path_buf()))
 }
 

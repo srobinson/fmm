@@ -106,7 +106,7 @@ fn generate_creates_db() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
-    fmm::cli::generate(&[path.to_string()], false, false).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
 
     assert!(db_exists(tmp.path()));
     assert!(db_indexed(tmp.path(), "src/auth.ts"));
@@ -119,7 +119,7 @@ fn generate_indexes_exports() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
-    fmm::cli::generate(&[path.to_string()], false, false).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
 
     assert!(db_has_export(tmp.path(), "src/auth.ts", "validateUser"));
     assert!(db_has_export(tmp.path(), "src/auth.ts", "AuthService"));
@@ -130,11 +130,11 @@ fn generate_skips_unchanged_files() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
-    fmm::cli::generate(&[path.to_string()], false, false).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
     let count_before = db_export_count(tmp.path(), "src/auth.ts");
 
     // Generate again — source unchanged, export count should be identical
-    fmm::cli::generate(&[path.to_string()], false, false).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
     let count_after = db_export_count(tmp.path(), "src/auth.ts");
 
     assert_eq!(count_before, count_after);
@@ -145,7 +145,7 @@ fn generate_updates_stale_files() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
-    fmm::cli::generate(&[path.to_string()], false, false).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
 
     // Modify source to add a new export
     let auth_path = tmp.path().join("src/auth.ts");
@@ -154,7 +154,7 @@ fn generate_updates_stale_files() {
     fs::write(&auth_path, content).unwrap();
 
     // Generate again — should detect the change and update
-    fmm::cli::generate(&[path.to_string()], false, false).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
 
     assert!(db_has_export(tmp.path(), "src/auth.ts", "NEW_EXPORT"));
 }
@@ -164,7 +164,7 @@ fn generate_dry_run_creates_no_files() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
-    fmm::cli::generate(&[path.to_string()], true, false).unwrap();
+    fmm::cli::generate(&[path.to_string()], true, false, true).unwrap();
 
     assert!(!db_exists(tmp.path()));
 }
@@ -174,7 +174,7 @@ fn generate_dry_run_preserves_stale_db() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
-    fmm::cli::generate(&[path.to_string()], false, false).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
 
     // Modify source
     let auth_path = tmp.path().join("src/auth.ts");
@@ -182,7 +182,7 @@ fn generate_dry_run_preserves_stale_db() {
     content.push_str("\nexport const DRY_RUN_TEST = true;\n");
     fs::write(&auth_path, content).unwrap();
 
-    fmm::cli::generate(&[path.to_string()], true, false).unwrap();
+    fmm::cli::generate(&[path.to_string()], true, false, true).unwrap();
 
     // DB should NOT contain the new export (dry run)
     assert!(!db_has_export(tmp.path(), "src/auth.ts", "DRY_RUN_TEST"));
@@ -193,7 +193,7 @@ fn validate_passes_after_generate() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
-    fmm::cli::generate(&[path.to_string()], false, false).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
     let result = fmm::cli::validate(&[path.to_string()]);
     assert!(result.is_ok());
 }
@@ -203,7 +203,7 @@ fn validate_fails_after_source_change() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
-    fmm::cli::generate(&[path.to_string()], false, false).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
 
     // Modify source to add a new export
     let auth_path = tmp.path().join("src/auth.ts");
@@ -220,7 +220,7 @@ fn clean_clears_db() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
-    fmm::cli::generate(&[path.to_string()], false, false).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
     assert!(db_indexed(tmp.path(), "src/auth.ts"));
 
     fmm::cli::clean(&[path.to_string()], false, false).unwrap();
@@ -234,7 +234,7 @@ fn clean_dry_run_preserves_db() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
-    fmm::cli::generate(&[path.to_string()], false, false).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
 
     fmm::cli::clean(&[path.to_string()], true, false).unwrap();
 
@@ -249,7 +249,7 @@ fn full_workflow_generate_validate_clean() {
     let path = tmp.path().to_str().unwrap();
 
     // Generate
-    fmm::cli::generate(&[path.to_string()], false, false).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
     assert!(db_indexed(tmp.path(), "src/auth.ts"));
 
     // Validate (should pass)
@@ -262,7 +262,7 @@ fn full_workflow_generate_validate_clean() {
         "export function newConnect() {}\nexport const NEW_SIZE = 20;\n",
     )
     .unwrap();
-    fmm::cli::generate(&[path.to_string()], false, false).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
 
     // Validate again (should pass after generate updates stale entry)
     fmm::cli::validate(&[path.to_string()]).unwrap();
@@ -287,7 +287,7 @@ fn respects_gitignore() {
     // Create .gitignore that ignores utils.py
     fs::write(tmp.path().join(".gitignore"), "src/utils.py\n").unwrap();
 
-    fmm::cli::generate(&[path.to_string()], false, false).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
 
     // TypeScript files should be indexed
     assert!(db_indexed(tmp.path(), "src/auth.ts"));
@@ -304,7 +304,7 @@ fn respects_fmmignore() {
     // Create .fmmignore that ignores db.ts
     fs::write(tmp.path().join(".fmmignore"), "src/db.ts\n").unwrap();
 
-    fmm::cli::generate(&[path.to_string()], false, false).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
 
     assert!(db_indexed(tmp.path(), "src/auth.ts"));
     assert!(!db_indexed(tmp.path(), "src/db.ts"));
@@ -319,7 +319,13 @@ fn single_file_generate() {
     // (no .git/.fmmrc.json in a temp dir, so root = src/).
     let src_dir = tmp.path().join("src");
 
-    fmm::cli::generate(&[file_path.to_str().unwrap().to_string()], false, false).unwrap();
+    fmm::cli::generate(
+        &[file_path.to_str().unwrap().to_string()],
+        false,
+        false,
+        true,
+    )
+    .unwrap();
 
     // DB is at src/.fmm.db; file path stored relative to src/
     assert!(db_indexed(&src_dir, "auth.ts"));

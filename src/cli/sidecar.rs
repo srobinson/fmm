@@ -1,8 +1,11 @@
 use anyhow::Result;
 use chrono::Utc;
 use colored::Colorize;
+use indicatif::ParallelProgressIterator;
+use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use rusqlite::params;
+use std::time::{Duration, Instant};
 
 use crate::config::Config;
 use crate::db;
@@ -11,10 +14,32 @@ use crate::resolver;
 
 use super::{collect_files_multi, resolve_root_multi};
 
-pub fn generate(paths: &[String], dry_run: bool, force: bool) -> Result<()> {
+/// Show progress bars when at least this many files need processing.
+const PROGRESS_THRESHOLD: usize = 10;
+
+pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Result<()> {
+    let total_start = Instant::now();
     let config = Config::load().unwrap_or_default();
+
+    // Scan phase: spinner while walking the directory tree.
+    let scan_sp = if !quiet {
+        let sp = ProgressBar::new_spinner();
+        sp.set_style(
+            ProgressStyle::with_template("{spinner:.blue} Scanning files...")
+                .expect("valid template"),
+        );
+        sp.enable_steady_tick(Duration::from_millis(80));
+        Some(sp)
+    } else {
+        None
+    };
+
     let files = collect_files_multi(paths, &config)?;
     let root = resolve_root_multi(paths)?;
+
+    if let Some(sp) = &scan_sp {
+        sp.finish_and_clear();
+    }
 
     if files.is_empty() {
         println!("{} No supported source files found", "!".yellow());
@@ -34,10 +59,6 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool) -> Result<()> {
         );
         return Ok(());
     }
-
-    println!("Found {} files to process", files.len());
-
-    let processor = FileProcessor::new(&root);
 
     if dry_run {
         // Dry run: show what would be indexed without touching the DB.
@@ -86,7 +107,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool) -> Result<()> {
     db::writer::upsert_workspace_packages(&conn, &workspace_info.packages)?;
 
     // Phase 1 (sequential): determine which files are stale in the DB.
-    // mtime comparison is O(1) per file and fast even at 4,673 files.
+    let phase1_start = Instant::now();
     let dirty_files: Vec<&std::path::PathBuf> = files
         .iter()
         .filter(|file| {
@@ -102,11 +123,45 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool) -> Result<()> {
             !db::writer::is_file_up_to_date(&conn, &rel, mtime.as_deref())
         })
         .collect();
+    let phase1_elapsed = phase1_start.elapsed();
 
-    if !dirty_files.is_empty() {
-        // Phase 2 (parallel): parse all stale files.
-        let parse_results: Vec<(std::path::PathBuf, crate::parser::ParseResult)> = dirty_files
+    if dirty_files.is_empty() {
+        let elapsed = total_start.elapsed();
+        println!(
+            "Found {} files · all up to date  ({:.1}s)",
+            files.len(),
+            elapsed.as_secs_f64()
+        );
+        db::writer::write_meta(&conn, "fmm_version", env!("CARGO_PKG_VERSION"))?;
+        db::writer::write_meta(&conn, "generated_at", &Utc::now().to_rfc3339())?;
+        return Ok(());
+    }
+
+    let show_progress = !quiet && dirty_files.len() >= PROGRESS_THRESHOLD;
+
+    if !quiet {
+        println!(
+            "Found {} files · {} changed",
+            files.len(),
+            dirty_files.len()
+        );
+    }
+
+    let processor = FileProcessor::new(&root);
+
+    // Phase 2 (parallel): parse all stale files.
+    let phase2_start = Instant::now();
+    let parse_results: Vec<(std::path::PathBuf, crate::parser::ParseResult)> = if show_progress {
+        let pb = ProgressBar::new(dirty_files.len() as u64);
+        pb.set_style(
+            ProgressStyle::with_template(
+                "Parsing  {wide_bar:.cyan/blue} {pos}/{len}  {per_sec}  ETA {eta}",
+            )
+            .expect("valid template"),
+        );
+        let results = dirty_files
             .par_iter()
+            .progress_with(pb.clone())
             .filter_map(|file| match processor.parse(file) {
                 Ok(result) => Some(((*file).clone(), result)),
                 Err(e) => {
@@ -115,10 +170,44 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool) -> Result<()> {
                 }
             })
             .collect();
+        pb.finish_and_clear();
+        results
+    } else {
+        dirty_files
+            .par_iter()
+            .filter_map(|file| match processor.parse(file) {
+                Ok(result) => Some(((*file).clone(), result)),
+                Err(e) => {
+                    eprintln!("{} {}: {}", "error:".red().bold(), file.display(), e);
+                    None
+                }
+            })
+            .collect()
+    };
+    let phase2_elapsed = phase2_start.elapsed();
 
-        // Phase 3 (transacted): write all parsed results to DB in one commit.
-        {
-            let tx = conn.transaction()?;
+    // Phase 3 (transacted): write all parsed results to DB in one commit.
+    let phase3_start = Instant::now();
+    {
+        let tx = conn.transaction()?;
+        if show_progress {
+            let pb = ProgressBar::new(parse_results.len() as u64);
+            pb.set_style(
+                ProgressStyle::with_template("Writing  {wide_bar:.green/blue} {pos}/{len}")
+                    .expect("valid template"),
+            );
+            for (abs_path, result) in &parse_results {
+                let rel = abs_path
+                    .strip_prefix(&root)
+                    .unwrap_or(abs_path)
+                    .display()
+                    .to_string();
+                let mtime = db::writer::file_mtime_rfc3339(abs_path);
+                db::writer::upsert_file_data(&tx, &rel, result, mtime.as_deref())?;
+                pb.inc(1);
+            }
+            pb.finish_and_clear();
+        } else {
             for (abs_path, result) in &parse_results {
                 let rel = abs_path
                     .strip_prefix(&root)
@@ -128,31 +217,50 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool) -> Result<()> {
                 let mtime = db::writer::file_mtime_rfc3339(abs_path);
                 db::writer::upsert_file_data(&tx, &rel, result, mtime.as_deref())?;
             }
-            tx.commit()?;
         }
-
-        // Phase 4: rebuild the pre-computed reverse dependency graph.
-        db::writer::rebuild_and_write_reverse_deps(&mut conn, &root)?;
-
-        for abs_path in &dirty_files {
-            let rel = abs_path.strip_prefix(&root).unwrap_or(abs_path);
-            println!("{} {}", "✓".green(), rel.display());
-        }
-        println!(
-            "\n{} {} file(s) indexed",
-            "✓".green().bold(),
-            dirty_files.len()
-        );
-        println!(
-            "\n  {} Run 'fmm validate' to verify, or 'fmm search --export <name>' to find symbols",
-            "next:".cyan()
-        );
-    } else {
-        println!("{} All files up to date", "✓".green());
+        tx.commit()?;
     }
+    let phase3_elapsed = phase3_start.elapsed();
+
+    // Phase 4: rebuild the pre-computed reverse dependency graph.
+    let phase4_start = Instant::now();
+    if show_progress {
+        let sp = ProgressBar::new_spinner();
+        sp.set_style(
+            ProgressStyle::with_template("{spinner:.blue} Building dependency graph...")
+                .expect("valid template"),
+        );
+        sp.enable_steady_tick(Duration::from_millis(80));
+        db::writer::rebuild_and_write_reverse_deps(&mut conn, &root)?;
+        sp.finish_and_clear();
+    } else {
+        db::writer::rebuild_and_write_reverse_deps(&mut conn, &root)?;
+    }
+    let phase4_elapsed = phase4_start.elapsed();
 
     db::writer::write_meta(&conn, "fmm_version", env!("CARGO_PKG_VERSION"))?;
     db::writer::write_meta(&conn, "generated_at", &Utc::now().to_rfc3339())?;
+
+    let total_elapsed = total_start.elapsed();
+
+    println!(
+        "{} {} file(s) indexed in {:.1}s",
+        "Done ✓".green().bold(),
+        dirty_files.len(),
+        total_elapsed.as_secs_f64()
+    );
+
+    if !quiet {
+        let accounted = phase1_elapsed + phase2_elapsed + phase3_elapsed + phase4_elapsed;
+        let other = total_elapsed.saturating_sub(accounted);
+        println!(
+            "  parse: {:.1}s · write: {:.1}s · deps: {:.1}s · other: {:.1}s",
+            phase2_elapsed.as_secs_f64(),
+            phase3_elapsed.as_secs_f64(),
+            phase4_elapsed.as_secs_f64(),
+            other.as_secs_f64(),
+        );
+    }
 
     Ok(())
 }

@@ -19,7 +19,7 @@ fn write_file(base: &Path, rel: &str, content: &str) {
 }
 
 fn load_manifest(root: &Path) -> fmm::manifest::Manifest {
-    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false)
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true)
         .expect("generate failed");
     fmm::manifest::Manifest::load(root).unwrap_or_default()
 }

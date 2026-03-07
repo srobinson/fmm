@@ -50,6 +50,7 @@ ctrlc = "3.4"
 
 # Parallelism
 rayon = "1.10"
+indicatif = { version = "0.17", features = ["rayon"] }
 
 # Database
 rusqlite = { version = "0.32", features = ["bundled"] }

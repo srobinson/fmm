@@ -54,7 +54,7 @@ fn setup_glossary_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
         "export function formatDate(): string { return ''; }\n",
     );
 
-    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
@@ -99,7 +99,7 @@ fn setup_glossary_server_with_tests() -> (tempfile::TempDir, fmm::mcp::McpServer
         "from ..src.agent import run_dispatch\n\ndef test_dispatch_happy_path():\n    pass\n",
     );
 
-    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
@@ -387,7 +387,7 @@ fn glossary_default_limit_is_ten() {
         let export = format!("item{i}");
         write_file(root, &filename, &format!("export const {export} = {i};\n"));
     }
-    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     let text = call_tool_text(&server, "fmm_glossary", json!({"pattern": "item"}));
     // 11 matches, default limit 10 → truncation notice
@@ -427,7 +427,7 @@ fn setup_method_glossary_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
         "import { Injector } from '../src/injector';\nexport function testLoadInstance() {}\n",
     );
 
-    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
@@ -572,7 +572,7 @@ fn setup_bare_fn_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
         "import { scheduleUpdate } from './scheduler';\n// never calls it\n",
     );
 
-    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
@@ -644,7 +644,7 @@ fn setup_workspace_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
         "import { otherFlag } from './ReactFeatureFlags';\n",
     );
 
-    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
@@ -716,7 +716,7 @@ fn setup_disclosure_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
         "import { otherThing } from './source';\n",
     );
 
-    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
