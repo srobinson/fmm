@@ -129,8 +129,12 @@ pub(in crate::mcp) fn tool_glossary(
                                     named_callers.push(candidate);
                                     continue;
                                 }
-                                let specifiers =
-                                    compute_import_specifiers(&candidate, &source_file);
+                                let specifiers = compute_import_specifiers(
+                                    &candidate,
+                                    &source_file,
+                                    &manifest.workspace_roots,
+                                    root,
+                                );
 
                                 if specifiers.iter().any(|s| fe.namespace_imports.contains(s)) {
                                     l2_ns.push(candidate);
@@ -221,7 +225,7 @@ pub(in crate::mcp) fn tool_glossary(
         None
     };
 
-    let mut out = crate::format::format_glossary(&entries, total_matched, limit);
+    let mut out = crate::format::format_glossary(&entries, total_matched, limit, pattern);
     if let Some(n) = nudge {
         out.push_str(&n);
     }

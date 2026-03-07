@@ -146,7 +146,12 @@ pub fn format_filter_search(results: &[FileSearchResult], colored: bool) -> Stri
 ///   - src: src/config/index.ts [3-8]
 ///     used_by: [src/api/routes.ts, src/auth/middleware.ts]
 /// ```
-pub fn format_glossary(entries: &[GlossaryEntry], total_matched: usize, limit: usize) -> String {
+pub fn format_glossary(
+    entries: &[GlossaryEntry],
+    total_matched: usize,
+    limit: usize,
+    symbol: &str,
+) -> String {
     let mut lines = Vec::new();
     lines.push("---".to_string());
     if entries.is_empty() {
@@ -191,17 +196,19 @@ pub fn format_glossary(entries: &[GlossaryEntry], total_matched: usize, limit: u
                 }
             }
             // ALP-882: disclose how many files were filtered out by Layer 2.
+            // ALP-907: fixed duplicate "import" word; symbol name included for scannability.
             if src.layer2_excluded_count > 0 {
                 let src_basename = src.file.rsplit('/').next().unwrap_or(&src.file);
                 lines.push(format!(
-                    "    # {} additional {} import {} but not this specific symbol",
+                    "    # {} additional {} import {} but not {} specifically",
                     src.layer2_excluded_count,
                     if src.layer2_excluded_count == 1 {
-                        "file imports"
+                        "file"
                     } else {
-                        "files import"
+                        "files"
                     },
                     src_basename,
+                    symbol,
                 ));
             }
             // ALP-883: re-export-only files — impacted by rename but not callers.
