@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use crate::config::Config;
 use crate::db;
-use crate::extractor::FileProcessor;
+use crate::extractor::ParserCache;
 use crate::resolver;
 
 use super::{collect_files_multi, resolve_root_multi};
@@ -160,9 +160,9 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
         );
     }
 
-    let processor = FileProcessor::new(&root);
-
     // Phase 2 (parallel): parse all stale files.
+    // map_init creates one ParserCache per rayon worker thread — parsers and
+    // compiled queries are reused across files instead of constructed per-file.
     let phase2_start = Instant::now();
     let parse_results: Vec<(std::path::PathBuf, crate::parser::ParseResult)> = if show_progress {
         let pb = ProgressBar::new(dirty_files.len() as u64);
@@ -173,28 +173,36 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
             .expect("valid template"),
         );
         let results = dirty_files
-            .par_iter()
+            .iter()
+            .par_bridge()
             .progress_with(pb.clone())
-            .filter_map(|file| match processor.parse(file) {
-                Ok(result) => Some(((*file).clone(), result)),
-                Err(e) => {
-                    eprintln!("{} {}: {}", "error:".red().bold(), file.display(), e);
-                    None
+            .map_init(ParserCache::new, |cache, file| {
+                match cache.parse_file(file) {
+                    Ok(result) => Some(((*file).clone(), result)),
+                    Err(e) => {
+                        eprintln!("{} {}: {}", "error:".red().bold(), file.display(), e);
+                        None
+                    }
                 }
             })
+            .filter_map(|x| x)
             .collect();
         pb.finish_and_clear();
         results
     } else {
         dirty_files
-            .par_iter()
-            .filter_map(|file| match processor.parse(file) {
-                Ok(result) => Some(((*file).clone(), result)),
-                Err(e) => {
-                    eprintln!("{} {}: {}", "error:".red().bold(), file.display(), e);
-                    None
+            .iter()
+            .par_bridge()
+            .map_init(ParserCache::new, |cache, file| {
+                match cache.parse_file(file) {
+                    Ok(result) => Some(((*file).clone(), result)),
+                    Err(e) => {
+                        eprintln!("{} {}: {}", "error:".red().bold(), file.display(), e);
+                        None
+                    }
                 }
             })
+            .filter_map(|x| x)
             .collect()
     };
     let phase2_elapsed = phase2_start.elapsed();

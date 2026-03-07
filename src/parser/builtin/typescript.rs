@@ -158,6 +158,9 @@ pub struct TypeScriptParser {
     reexport_named_query: Query,
     /// true when built for TSX/JSX (ALP-753)
     is_tsx: bool,
+    /// ALP-925: per-parser cache of file directory → resolved tsconfig path aliases.
+    /// Populated lazily; avoids redundant filesystem walks for files sharing a directory.
+    tsconfig_cache: HashMap<std::path::PathBuf, HashMap<String, Vec<String>>>,
 }
 
 impl TypeScriptParser {
@@ -270,6 +273,7 @@ impl TypeScriptParser {
             namespace_import_query,
             reexport_named_query,
             is_tsx,
+            tsconfig_cache: HashMap::new(),
         })
     }
 
@@ -782,8 +786,20 @@ impl Parser for TypeScriptParser {
 
     /// ALP-794: override parse_file() to load tsconfig path aliases from the
     /// file's directory tree and use them to classify alias imports as local deps.
+    /// ALP-925: result is cached per directory so the filesystem walk happens
+    /// at most once per unique parent directory per parser instance.
     fn parse_file(&mut self, source: &str, file_path: &Path) -> Result<ParseResult> {
-        let aliases = load_tsconfig_paths(file_path);
+        let dir = file_path
+            .parent()
+            .unwrap_or(std::path::Path::new(""))
+            .to_path_buf();
+        // Clone releases the borrow of tsconfig_cache before parse_with_aliases
+        // borrows self again. Path alias maps are small (≤ tens of entries).
+        let aliases = self
+            .tsconfig_cache
+            .entry(dir)
+            .or_insert_with(|| load_tsconfig_paths(file_path))
+            .clone();
         self.parse_with_aliases(source, &aliases)
     }
 
