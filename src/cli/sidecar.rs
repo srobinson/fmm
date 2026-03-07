@@ -1,11 +1,14 @@
 use anyhow::Result;
 use chrono::Utc;
 use colored::Colorize;
-use indicatif::ParallelProgressIterator;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use rusqlite::params;
-use std::time::{Duration, Instant};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::config::Config;
 use crate::db;
@@ -168,26 +171,86 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
         let pb = ProgressBar::new(dirty_files.len() as u64);
         pb.set_style(
             ProgressStyle::with_template(
-                "Parsing  {wide_bar:.cyan/blue} {pos}/{len}  {per_sec}  ETA {eta}",
+                "Parsing  {wide_bar:.cyan/blue} {pos}/{len}  {per_sec}  {msg}",
             )
             .expect("valid template"),
         );
+        pb.set_message("starting...");
+        // Steady tick redraws the bar even when no completions arrive (e.g. during
+        // long-running parses of large files). Without this the display freezes.
+        pb.enable_steady_tick(Duration::from_millis(100));
+
+        // Watcher thread: switches from "ETA Xs" to "N remaining (Xs)" when the
+        // bar stalls at the tail. Large files like checker.ts (54k lines) can keep
+        // one rayon worker busy for minutes after the rest of the corpus finishes.
+        // The plain ETA formula produces "ETA 0s" in that situation — misleading.
+        let last_inc_ms = Arc::new(AtomicU64::new(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64,
+        ));
+        let pb_w = pb.clone();
+        let last_inc_w = Arc::clone(&last_inc_ms);
+        let watcher = std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_millis(200));
+            let pos = pb_w.position();
+            let len = pb_w.length().unwrap_or(pos);
+            if pos >= len {
+                break;
+            }
+            let now_ms = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            let stall_secs = now_ms.saturating_sub(last_inc_w.load(Ordering::Relaxed)) / 1000;
+            if stall_secs >= 2 {
+                // Stalled: show remaining count + elapsed wait so the user knows
+                // we are still alive and parsing, not hung.
+                pb_w.set_message(format!("{} remaining  ({}s)", len - pos, stall_secs));
+            } else {
+                let eta = pb_w.eta();
+                let secs = eta.as_secs();
+                if secs > 1 {
+                    let msg = if secs >= 60 {
+                        format!("ETA {}m{}s", secs / 60, secs % 60)
+                    } else {
+                        format!("ETA {}s", secs)
+                    };
+                    pb_w.set_message(msg);
+                } else {
+                    pb_w.set_message("finishing...");
+                }
+            }
+        });
+
         let results = dirty_files
             .iter()
             .par_bridge()
-            .progress_with(pb.clone())
             .map_init(ParserCache::new, |cache, file| {
-                match cache.parse_file(file) {
+                let r = match cache.parse_file(file) {
                     Ok(result) => Some(((*file).clone(), result)),
                     Err(e) => {
                         eprintln!("{} {}: {}", "error:".red().bold(), file.display(), e);
                         None
                     }
-                }
+                };
+                // Stamp completion time BEFORE inc so the watcher sees fresh
+                // state as soon as the counter changes.
+                last_inc_ms.store(
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as u64,
+                    Ordering::Relaxed,
+                );
+                pb.inc(1);
+                r
             })
             .filter_map(|x| x)
             .collect();
         pb.finish_and_clear();
+        let _ = watcher.join();
         results
     } else {
         dirty_files
