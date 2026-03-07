@@ -202,6 +202,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     // Phase 2b (parallel): pre-serialize JSON fields for all parsed files.
     // serde_json::to_string is CPU-bound — rayon cuts this from O(N) serial to
     // O(N/cores) before we enter the single-threaded SQLite transaction.
+    let phase2b_start = Instant::now();
     let serialized_rows: Vec<db::writer::PreserializedRow> = parse_results
         .par_iter()
         .filter_map(|(abs_path, result)| {
@@ -225,6 +226,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
             }
         })
         .collect();
+    let phase2b_elapsed = phase2b_start.elapsed();
 
     // Phase 3 (transacted): write pre-serialized rows to DB in one commit.
     // JSON serialization already done in parallel — this loop is pure SQLite I/O.
@@ -275,16 +277,18 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     println!(
         "{} {} file(s) indexed in {:.1}s",
         "Done ✓".green().bold(),
-        dirty_files.len(),
+        serialized_rows.len(),
         total_elapsed.as_secs_f64()
     );
 
     if !quiet {
-        let accounted = phase1_elapsed + phase2_elapsed + phase3_elapsed + phase4_elapsed;
+        let accounted =
+            phase1_elapsed + phase2_elapsed + phase2b_elapsed + phase3_elapsed + phase4_elapsed;
         let other = total_elapsed.saturating_sub(accounted);
         println!(
-            "  parse: {:.1}s · write: {:.1}s · deps: {:.1}s · other: {:.1}s",
+            "  parse: {:.1}s · serialize: {:.1}s · write: {:.1}s · deps: {:.1}s · other: {:.1}s",
             phase2_elapsed.as_secs_f64(),
+            phase2b_elapsed.as_secs_f64(),
             phase3_elapsed.as_secs_f64(),
             phase4_elapsed.as_secs_f64(),
             other.as_secs_f64(),
