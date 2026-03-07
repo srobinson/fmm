@@ -1,0 +1,9 @@
+---
+file: src/db/reader.rs
+fmm: v0.4+0.1.34
+exports:
+  load_manifest_from_db: [12, 22]
+imports: [anyhow, rusqlite, std]
+dependencies: ['crate::manifest']
+loc: 429
+modified: 2026-03-07

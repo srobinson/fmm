@@ -75,7 +75,7 @@ pub(in crate::mcp) fn tool_glossary(
                 };
                 let mut lines = vec!["---".to_string()];
                 for (entry, src_counts) in entries.iter().zip(pre_counts.iter()) {
-                    lines.push(format!("{}:", crate::formatter::yaml_escape(&entry.name)));
+                    lines.push(format!("{}:", crate::format::yaml_escape(&entry.name)));
                     for (source, &importer_count) in entry.sources.iter().zip(src_counts.iter()) {
                         let basename = source.file.rsplit('/').next().unwrap_or(&source.file);
                         lines.push(format!("  (no external {} callers)", mode_label));

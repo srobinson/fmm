@@ -1,0 +1,16 @@
+---
+file: src/db/writer.rs
+fmm: v0.4+0.1.34
+exports:
+  file_mtime_rfc3339: [16, 26]
+  is_file_up_to_date: [30, 42]
+  upsert_file_data: [49, 123]
+  load_files_map: [131, 194]
+  rebuild_and_write_reverse_deps: [199, 211]
+  write_reverse_deps: [214, 231]
+  upsert_workspace_packages: [234, 245]
+  write_meta: [248, 255]
+imports: [anyhow, chrono, rusqlite, std]
+dependencies: ['crate::manifest', 'crate::parser']
+loc: 514
+modified: 2026-03-07

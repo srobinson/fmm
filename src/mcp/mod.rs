@@ -54,7 +54,7 @@ impl Default for McpServer {
 
 impl McpServer {
     pub fn new() -> Self {
-        // Safe default: empty path is harmless; MCP server will report "no sidecars" if cwd fails
+        // Safe default: empty path is harmless; MCP server will report "no index" if cwd fails
         let root = std::env::current_dir().unwrap_or_default();
         Self::with_root(root)
     }
@@ -65,7 +65,7 @@ impl McpServer {
     }
 
     fn reload(&mut self) {
-        self.manifest = Manifest::load_from_sidecars(&self.root).ok();
+        self.manifest = Manifest::load(&self.root).ok();
     }
 
     /// Call a tool by name with JSON arguments. Useful for testing.

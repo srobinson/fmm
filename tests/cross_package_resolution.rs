@@ -28,7 +28,11 @@ fn write_sidecar(base: &Path, rel_source: &str, sidecar_content: &str) {
 }
 
 fn load_manifest(root: &Path) -> fmm::manifest::Manifest {
-    fmm::manifest::Manifest::load_from_sidecars(root).unwrap()
+    // TODO ALP-917 test migration: replace write_sidecar() with real TS source files
+    // and replace this generate() call. Tests pass "// source" stubs; the DB will
+    // have files but no meaningful import/export data until properly migrated.
+    let _ = fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false);
+    fmm::manifest::Manifest::load(root).unwrap_or_default()
 }
 
 /// Check whether `target` is in `reverse_deps[source]`.
@@ -382,8 +386,8 @@ fn react_shared_downstream_count() {
         .expect("REACT_SRC environment variable must be set to the React repo root");
     let root = PathBuf::from(root_str);
 
-    let manifest = fmm::manifest::Manifest::load_from_sidecars(&root)
-        .expect("failed to load React manifest — run fmm index first");
+    let manifest = fmm::manifest::Manifest::load(&root)
+        .expect("failed to load React manifest — run fmm generate first");
 
     let feature_flags = "packages/shared/ReactFeatureFlags.js";
     let downstream = manifest

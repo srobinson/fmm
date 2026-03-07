@@ -93,19 +93,44 @@ fn detect_workspace_globs(repo_root: &Path) -> Vec<String> {
 }
 
 /// Parse pnpm-workspace.yaml → list of glob strings.
+///
+/// Uses a lightweight line-based parser instead of a full YAML library.
+/// Expected format:
+/// ```yaml
+/// packages:
+///   - 'packages/*'
+///   - "apps/*"
+///   - plain-glob/*
+/// ```
 fn parse_pnpm_workspace(path: &Path) -> Vec<String> {
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
         Err(_) => return Vec::new(),
     };
 
-    // Expected structure: { packages: ["packages/*", "apps/*", "!**/test/**"] }
-    let value: serde_yaml::Value = match serde_yaml::from_str(&content) {
-        Ok(v) => v,
-        Err(_) => return Vec::new(),
-    };
+    let mut in_packages = false;
+    let mut results = Vec::new();
 
-    extract_string_list(&value["packages"])
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed == "packages:" || trimmed.starts_with("packages:") {
+            in_packages = true;
+            continue;
+        }
+        if in_packages {
+            if trimmed.starts_with('-') {
+                let raw = trimmed.trim_start_matches('-').trim();
+                let unquoted = raw.trim_matches('\'').trim_matches('"').to_string();
+                if !unquoted.is_empty() {
+                    results.push(unquoted);
+                }
+            } else if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                in_packages = false;
+            }
+        }
+    }
+
+    results
 }
 
 /// Parse package.json `workspaces` field → list of glob strings.
@@ -172,16 +197,6 @@ fn is_excluded(path: &Path, repo_root: &Path, exclude_patterns: &[String]) -> bo
         }
     }
     false
-}
-
-fn extract_string_list(value: &serde_yaml::Value) -> Vec<String> {
-    match value {
-        serde_yaml::Value::Sequence(seq) => seq
-            .iter()
-            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-            .collect(),
-        _ => Vec::new(),
-    }
 }
 
 fn extract_json_string_list(value: &serde_json::Value) -> Vec<String> {

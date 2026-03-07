@@ -3,10 +3,8 @@ use colored::Colorize;
 use std::path::Path;
 
 use crate::config::Config;
-use crate::extractor::sidecar_path_for;
 
 use super::collect_files;
-use super::resolve_root;
 use super::sidecar;
 
 const SKILL_CONTENT: &str = include_str!("../../templates/SKILL.md");
@@ -14,7 +12,7 @@ const SKILL_CONTENT: &str = include_str!("../../templates/SKILL.md");
 pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> {
     println!(
         "\n{}",
-        "Frontmatter Matters — metadata sidecars for LLM code navigation"
+        "Frontmatter Matters — SQLite code intelligence for LLM navigation"
             .cyan()
             .bold()
     );
@@ -37,7 +35,7 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
         init_mcp_config()?;
     }
 
-    // Auto-generate sidecars unless --no-generate or partial install
+    // Auto-generate index unless --no-generate or partial install
     if full_setup && !no_generate {
         println!();
         let config = Config::load().unwrap_or_default();
@@ -58,44 +56,38 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
                 lang_set.into_iter().collect::<Vec<_>>().join(", ")
             );
 
-            println!("{}", "Generating sidecars...".green().bold());
+            println!("{}", "Generating index...".green().bold());
             sidecar::generate(&[".".to_string()], false, false)?;
 
-            // Show one sample sidecar
-            let root = resolve_root(".")?;
-            if let Some(sample_file) = files.iter().find(|f| sidecar_path_for(f).exists()) {
-                let sidecar = sidecar_path_for(sample_file);
-                if let Ok(content) = std::fs::read_to_string(&sidecar) {
-                    let rel = sample_file
-                        .strip_prefix(&root)
-                        .unwrap_or(sample_file)
-                        .display();
-                    println!(
-                        "\n{} {}:",
-                        "Sample sidecar for".dimmed(),
-                        rel.to_string().white().bold()
-                    );
-                    for line in content.lines().take(15) {
-                        println!("  {}", line.dimmed());
-                    }
-                    if content.lines().count() > 15 {
-                        println!("  {}", "...".dimmed());
-                    }
-                }
+            // Show DB stats and a sample export
+            let root = super::resolve_root(".")?;
+            if let Ok(conn) = crate::db::open_db(&root) {
+                let file_count: i64 = conn
+                    .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
+                    .unwrap_or(0);
+                let export_count: i64 = conn
+                    .query_row("SELECT COUNT(*) FROM exports", [], |r| r.get(0))
+                    .unwrap_or(0);
+                println!(
+                    "\n  {} {} files indexed, {} exports",
+                    "✓".green(),
+                    file_count,
+                    export_count
+                );
 
-                // Suggest a search using a real export
-                let manifest = crate::manifest::Manifest::load(&root)?;
-                if let Some((export_name, _)) = manifest.export_index.iter().next() {
-                    println!(
-                        "\n  {} Try: fmm search --export {}",
-                        "next:".cyan(),
-                        export_name
-                    );
+                if let Ok(manifest) = crate::manifest::Manifest::load(&root) {
+                    if let Some((export_name, _)) = manifest.export_index.iter().next() {
+                        println!(
+                            "\n  {} Try: fmm search --export {}",
+                            "next:".cyan(),
+                            export_name
+                        );
+                    }
                 }
             }
         } else {
             println!(
-                "{} No supported source files found — sidecars will be created when you add code",
+                "{} No supported source files found — index will be created when you add code",
                 "!".yellow()
             );
         }
