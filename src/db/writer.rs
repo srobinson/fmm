@@ -156,41 +156,66 @@ pub fn serialize_file_data(
 ///
 /// Unlike `upsert_file_data`, this takes already-serialized JSON strings so
 /// the CPU-bound serialization work can be done outside the transaction.
-pub fn upsert_preserialized(tx: &Transaction<'_>, row: &PreserializedRow) -> Result<()> {
-    tx.execute(
-        "INSERT OR REPLACE INTO files
-             (path, loc, modified, imports, dependencies, named_imports,
-              namespace_imports, function_names, indexed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        params![
-            row.rel_path,
-            row.loc,
-            row.mtime,
-            row.imports_json,
-            row.deps_json,
-            row.named_imports_json,
-            row.namespace_imports_json,
-            row.function_names_json,
-            row.indexed_at,
-        ],
-    )
-    .context("Failed to upsert file row")?;
+///
+/// `plain_insert` — when `true`, use plain `INSERT` (caller must have deleted
+/// the file rows beforehand via `delete_all_files`); when `false`, use
+/// `INSERT OR REPLACE` which triggers CASCADE deletes per row. The
+/// `prepare_cached` path caches the statement across the 39k-row loop.
+pub fn upsert_preserialized(
+    tx: &Transaction<'_>,
+    row: &PreserializedRow,
+    plain_insert: bool,
+) -> Result<()> {
+    {
+        let sql = if plain_insert {
+            "INSERT INTO files
+                 (path, loc, modified, imports, dependencies, named_imports,
+                  namespace_imports, function_names, indexed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+        } else {
+            "INSERT OR REPLACE INTO files
+                 (path, loc, modified, imports, dependencies, named_imports,
+                  namespace_imports, function_names, indexed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+        };
+        tx.prepare_cached(sql)?
+            .execute(params![
+                row.rel_path,
+                row.loc,
+                row.mtime,
+                row.imports_json,
+                row.deps_json,
+                row.named_imports_json,
+                row.namespace_imports_json,
+                row.function_names_json,
+                row.indexed_at,
+            ])
+            .context("Failed to upsert file row")?;
+    }
 
     {
-        let mut stmt = tx.prepare_cached(
+        let sql = if plain_insert {
+            "INSERT INTO exports (name, file_path, start_line, end_line)
+             VALUES (?1, ?2, ?3, ?4)"
+        } else {
             "INSERT OR REPLACE INTO exports (name, file_path, start_line, end_line)
-             VALUES (?1, ?2, ?3, ?4)",
-        )?;
+             VALUES (?1, ?2, ?3, ?4)"
+        };
+        let mut stmt = tx.prepare_cached(sql)?;
         for e in &row.exports {
             stmt.execute(params![e.name, row.rel_path, e.start_line, e.end_line])?;
         }
     }
 
     {
-        let mut stmt = tx.prepare_cached(
+        let sql = if plain_insert {
+            "INSERT INTO methods (dotted_name, file_path, start_line, end_line, kind)
+             VALUES (?1, ?2, ?3, ?4, ?5)"
+        } else {
             "INSERT OR REPLACE INTO methods (dotted_name, file_path, start_line, end_line, kind)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-        )?;
+             VALUES (?1, ?2, ?3, ?4, ?5)"
+        };
+        let mut stmt = tx.prepare_cached(sql)?;
         for m in &row.methods {
             stmt.execute(params![
                 m.dotted_name,
@@ -203,6 +228,14 @@ pub fn upsert_preserialized(tx: &Transaction<'_>, row: &PreserializedRow) -> Res
     }
 
     Ok(())
+}
+
+/// Delete all rows from `files` (CASCADE clears `exports` and `methods`).
+///
+/// Used before a full-generate bulk INSERT to avoid per-row CASCADE overhead.
+pub fn delete_all_files(tx: &Transaction<'_>) -> Result<()> {
+    tx.execute_batch("DELETE FROM files")
+        .context("Failed to delete all files")
 }
 
 /// Insert or replace a complete file record plus its exports and methods.

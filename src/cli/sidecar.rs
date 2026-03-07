@@ -238,9 +238,18 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
 
     // Phase 3 (transacted): write pre-serialized rows to DB in one commit.
     // JSON serialization already done in parallel — this loop is pure SQLite I/O.
+    //
+    // Full generates (force or entire repo dirty): DELETE all files in one
+    // statement (CASCADE clears exports/methods), then use plain INSERT.
+    // Avoids 39k per-row DELETE+INSERT cycles from INSERT OR REPLACE.
+    // Incremental generates: keep INSERT OR REPLACE (handles CASCADE per dirty file).
+    let is_full_generate = force || dirty_files.len() == files.len();
     let phase3_start = Instant::now();
     {
         let tx = conn.transaction()?;
+        if is_full_generate {
+            db::writer::delete_all_files(&tx)?;
+        }
         if show_progress {
             let pb = ProgressBar::new(serialized_rows.len() as u64);
             pb.set_style(
@@ -248,13 +257,13 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
                     .expect("valid template"),
             );
             for row in &serialized_rows {
-                db::writer::upsert_preserialized(&tx, row)?;
+                db::writer::upsert_preserialized(&tx, row, is_full_generate)?;
                 pb.inc(1);
             }
             pb.finish_and_clear();
         } else {
             for row in &serialized_rows {
-                db::writer::upsert_preserialized(&tx, row)?;
+                db::writer::upsert_preserialized(&tx, row, is_full_generate)?;
             }
         }
         tx.commit()?;
