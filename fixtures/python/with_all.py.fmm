@@ -1,6 +1,6 @@
 ---
 file: fixtures/python/with_all.py
-fmm: v0.4+0.1.30
+fmm: v0.4+0.1.31
 exports:
   APP_NAME: [7, 7]
   Config: [10, 12]

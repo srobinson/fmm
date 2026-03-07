@@ -47,7 +47,7 @@ pub const OUTLINE_INCLUDE_PRIVATE_HELP: &str = "Include private/protected method
 #[rustfmt::skip]
 pub const SEARCH_ABOUT: &str = "Query the index — O(1) export lookup, dependency graphs, LOC filters.\n\nWith a bare term (no flags), searches across all dimensions: exports, file paths, and imports — with smart ranking. Exact export matches appear first.\n\nExport lookups use a reverse index for O(1) performance. Flags narrow the search to a single dimension and can be combined with AND logic.";
 #[rustfmt::skip]
-pub const SEARCH_TERM_HELP: &str = "Search term — searches exports, files, and imports (smart ranking)";
+pub const SEARCH_TERM_HELP: &str = "Search term — searches exports, files, imports, and named-import call sites (smart ranking)";
 #[rustfmt::skip]
 pub const SEARCH_EXPORT_HELP: &str = "Find file by export name (exact O(1) + fuzzy substring)";
 #[rustfmt::skip]

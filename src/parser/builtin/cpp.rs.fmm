@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/cpp.rs
-fmm: v0.4+0.1.30
+fmm: v0.4+0.1.31
 exports:
   CppParser: [8, 18]
 methods:

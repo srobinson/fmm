@@ -1,6 +1,6 @@
 ---
 file: src/cli/commands/deps.rs
-fmm: v0.4+0.1.30
+fmm: v0.4+0.1.31
 exports:
   deps: [14, 138]
 imports: [anyhow, colored]

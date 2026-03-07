@@ -1,6 +1,6 @@
 ---
 file: src/cli/commands/mod.rs
-fmm: v0.4+0.1.30
+fmm: v0.4+0.1.31
 exports:
   deps: [13, 13]
   exports: [14, 14]

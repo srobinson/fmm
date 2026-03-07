@@ -82,7 +82,7 @@ fmm_dependency_graph(..., depth: -1)            →  full transitive closure
 ### Searching
 
 ```
-fmm_search(term: "store")                       →  smart search: exports, files, imports
+fmm_search(term: "store")                       →  smart search: exports, files, imports, named-import call sites
 fmm_search(imports: "lodash", min_loc: 100)     →  structured AND query
 fmm_search(export: "createStore", min_loc: 50)  →  export + size filter
 fmm_search(depends_on: "src/auth.ts")           →  full blast radius (transitive)
@@ -245,11 +245,11 @@ Get a spatial outline of a file: every exported symbol with its line range and s
 
 ### `fmm_search`
 
-Universal codebase search. Use 'term' for smart search across codebase-defined exports, file paths, and import names. Note: term searches exports DEFINED in this codebase — it will not find call sites of externally-imported functions (e.g. createServerFn from @tanstack/react-start). For files that call an external function, use imports: package-name. Use structured filters (export, imports, depends_on, LOC) for precise queries. Combine 'term' with filters to narrow results with AND semantics. Note: depends_on uses transitive matching (full import chain), not direct-only. For direct importers only, use fmm_dependency_graph with depth=1.
+Universal codebase search. Use 'term' for smart search across codebase-defined exports, file paths, import package names, and named-import call sites. The NAMED IMPORTS section shows files that import the term by name from any package — e.g. term: createServerFn finds every file that imports createServerFn from @tanstack/react-start. Use structured filters (export, imports, depends_on, LOC) for precise queries. Combine 'term' with filters to narrow results with AND semantics. Note: depends_on uses transitive matching (full import chain), not direct-only. For direct importers only, use fmm_dependency_graph with depth=1.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `term` | string | no | Search codebase-defined exports (exact then fuzzy), file paths, and external import names. Does NOT find call sites o... |
+| `term` | string | no | Search codebase-defined exports (exact then fuzzy), file paths, external import package names, and named-import call ... |
 | `export` | string | no | Find files exporting this symbol (exact match, then case-insensitive substring fallback) |
 | `imports` | string | no | Find all files that import an external package (npm, pip, crate, etc.) — substring match on the import name. For lo... |
 | `depends_on` | string | no | Find all files that transitively depend on this local path (full import chain, not just direct importers) — use for... |

@@ -1,6 +1,6 @@
 ---
 file: examples/demo-project/src/index.ts
-fmm: v0.4+0.1.30
+fmm: v0.4+0.1.31
 imports: [express]
 dependencies: [./api/errors, ./api/routes, ./config, ./db/client]
 loc: 21

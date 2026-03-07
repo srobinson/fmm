@@ -1,6 +1,6 @@
 ---
 file: src/manifest/glossary_builder.rs
-fmm: v0.4+0.1.30
+fmm: v0.4+0.1.31
 exports:
   GlossaryMode: [8, 16]
   GlossaryEntry: [20, 23]

@@ -18,11 +18,19 @@ struct BareSearchJson {
     exports: Vec<ExportMatchJson>,
     files: Vec<String>,
     imports: Vec<ImportMatchJson>,
+    named_imports: Vec<NamedImportMatchJson>,
 }
 
 #[derive(serde::Serialize)]
 struct ImportMatchJson {
     package: String,
+    files: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+struct NamedImportMatchJson {
+    symbol: String,
+    source: String,
     files: Vec<String>,
 }
 
@@ -107,6 +115,10 @@ pub fn search(
                 h.files.retain(|f| filter_files.contains(f.as_str()));
             });
             result.imports.retain(|h| !h.files.is_empty());
+            result.named_import_hits.iter_mut().for_each(|h| {
+                h.files.retain(|f| filter_files.contains(f.as_str()));
+            });
+            result.named_import_hits.retain(|h| !h.files.is_empty());
             // Stale truncation count is meaningless after filter intersection —
             // exports were dropped because no matching files export them, not
             // because the relevance cap was hit. Clear it to avoid a misleading
@@ -129,6 +141,15 @@ pub fn search(
                         .iter()
                         .map(|h| ImportMatchJson {
                             package: h.package.clone(),
+                            files: h.files.clone(),
+                        })
+                        .collect(),
+                    named_imports: result
+                        .named_import_hits
+                        .iter()
+                        .map(|h| NamedImportMatchJson {
+                            symbol: h.symbol.clone(),
+                            source: h.source.clone(),
                             files: h.files.clone(),
                         })
                         .collect(),
@@ -191,12 +212,24 @@ fn bare_search(manifest: &Manifest, term: &str, json_output: bool) -> Result<()>
                     files: h.files.clone(),
                 })
                 .collect(),
+            named_imports: result
+                .named_import_hits
+                .iter()
+                .map(|h| NamedImportMatchJson {
+                    symbol: h.symbol.clone(),
+                    source: h.source.clone(),
+                    files: h.files.clone(),
+                })
+                .collect(),
         };
         println!("{}", serde_json::to_string_pretty(&json)?);
         return Ok(());
     }
 
-    let total = result.exports.len() + result.files.len() + result.imports.len();
+    let total = result.exports.len()
+        + result.files.len()
+        + result.imports.len()
+        + result.named_import_hits.len();
     if total == 0 {
         println!("{} No matches for '{}'", "!".yellow(), term);
         println!(
@@ -554,5 +587,158 @@ mod tests {
         let text = crate::format::format_filter_search(&results, false);
         assert!(text.contains("redux"));
         assert!(text.contains("imports:"));
+    }
+
+    // --- Named import call-site tests ---
+
+    fn named_imports_manifest() -> Manifest {
+        use std::collections::HashMap;
+
+        let mut m = Manifest::new();
+
+        // Two files import createServerFn from @tanstack/react-start
+        let mut ni1: HashMap<String, Vec<String>> = HashMap::new();
+        ni1.insert(
+            "@tanstack/react-start".to_string(),
+            vec!["createServerFn".to_string(), "createFileRoute".to_string()],
+        );
+        m.files.insert(
+            "src/routes/foo.ts".to_string(),
+            FileEntry {
+                exports: vec![],
+                imports: vec!["redux".to_string()],
+                dependencies: vec![],
+                loc: 50,
+                named_imports: ni1,
+                ..Default::default()
+            },
+        );
+
+        let mut ni2: HashMap<String, Vec<String>> = HashMap::new();
+        ni2.insert(
+            "@tanstack/react-start".to_string(),
+            vec!["createServerFn".to_string()],
+        );
+        m.files.insert(
+            "src/routes/bar.ts".to_string(),
+            FileEntry {
+                exports: vec![],
+                imports: vec!["axios".to_string()],
+                dependencies: vec![],
+                loc: 30,
+                named_imports: ni2,
+                ..Default::default()
+            },
+        );
+
+        // One file imports a different symbol (no match for createServerFn)
+        let mut ni3: HashMap<String, Vec<String>> = HashMap::new();
+        ni3.insert(
+            "@tanstack/react-start".to_string(),
+            vec!["createFileRoute".to_string()],
+        );
+        m.files.insert(
+            "src/routes/baz.ts".to_string(),
+            FileEntry {
+                exports: vec![],
+                imports: vec!["redux".to_string()],
+                dependencies: vec![],
+                loc: 20,
+                named_imports: ni3,
+                ..Default::default()
+            },
+        );
+
+        m
+    }
+
+    #[test]
+    fn named_import_exact_match() {
+        let m = named_imports_manifest();
+        let result = crate::search::bare_search(&m, "createServerFn", None);
+        assert!(
+            !result.named_import_hits.is_empty(),
+            "should find named import hits for createServerFn"
+        );
+        let hit = result
+            .named_import_hits
+            .iter()
+            .find(|h| h.symbol == "createServerFn")
+            .expect("hit for createServerFn");
+        assert_eq!(hit.source, "@tanstack/react-start");
+        assert!(hit.files.contains(&"src/routes/foo.ts".to_string()));
+        assert!(hit.files.contains(&"src/routes/bar.ts".to_string()));
+        assert!(!hit.files.contains(&"src/routes/baz.ts".to_string()));
+    }
+
+    #[test]
+    fn named_import_fuzzy_match() {
+        let m = named_imports_manifest();
+        // "server" should match "createServerFn" case-insensitively
+        let result = crate::search::bare_search(&m, "server", None);
+        let hit = result
+            .named_import_hits
+            .iter()
+            .find(|h| h.symbol == "createServerFn");
+        assert!(
+            hit.is_some(),
+            "fuzzy match on 'server' should hit createServerFn"
+        );
+        // "Server" (uppercase) should also work
+        let result2 = crate::search::bare_search(&m, "Server", None);
+        let hit2 = result2
+            .named_import_hits
+            .iter()
+            .find(|h| h.symbol == "createServerFn");
+        assert!(hit2.is_some(), "case-insensitive fuzzy match should work");
+    }
+
+    #[test]
+    fn named_import_combined_mode_intersection() {
+        let m = named_imports_manifest();
+        // filter_search: imports "redux" matches foo.ts and baz.ts (not bar.ts)
+        let filters = crate::search::SearchFilters {
+            export: None,
+            imports: Some("redux".to_string()),
+            depends_on: None,
+            min_loc: None,
+            max_loc: None,
+        };
+        let filter_results = crate::search::filter_search(&m, &filters);
+        let filter_files: std::collections::HashSet<&str> =
+            filter_results.iter().map(|r| r.file.as_str()).collect();
+        let mut result = crate::search::bare_search(&m, "createServerFn", None);
+        result.named_import_hits.iter_mut().for_each(|h| {
+            h.files.retain(|f| filter_files.contains(f.as_str()));
+        });
+        result.named_import_hits.retain(|h| !h.files.is_empty());
+
+        let hit = result
+            .named_import_hits
+            .iter()
+            .find(|h| h.symbol == "createServerFn")
+            .expect("hit survives intersection");
+        // foo.ts is in both sets; bar.ts is not in filter set
+        assert!(
+            hit.files.contains(&"src/routes/foo.ts".to_string()),
+            "foo.ts imports redux and createServerFn"
+        );
+        assert!(
+            !hit.files.contains(&"src/routes/bar.ts".to_string()),
+            "bar.ts does not import redux"
+        );
+    }
+
+    #[test]
+    fn named_import_section_in_formatted_output() {
+        let m = named_imports_manifest();
+        let result = crate::search::bare_search(&m, "createServerFn", None);
+        let text = crate::format::format_bare_search(&result, false);
+        assert!(
+            text.contains("NAMED IMPORTS"),
+            "output should have NAMED IMPORTS section"
+        );
+        assert!(text.contains("createServerFn"));
+        assert!(text.contains("@tanstack/react-start"));
     }
 }

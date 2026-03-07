@@ -125,13 +125,13 @@ serde_json::from_str(r##"{
     },
     {
       "name": "fmm_search",
-      "description": "Universal codebase search. Use 'term' for smart search across codebase-defined exports, file paths, and import names. Note: term searches exports DEFINED in this codebase — it will not find call sites of externally-imported functions (e.g. createServerFn from @tanstack/react-start). For files that call an external function, use imports: package-name. Use structured filters (export, imports, depends_on, LOC) for precise queries. Combine 'term' with filters to narrow results with AND semantics. Note: depends_on uses transitive matching (full import chain), not direct-only. For direct importers only, use fmm_dependency_graph with depth=1.",
+      "description": "Universal codebase search. Use 'term' for smart search across codebase-defined exports, file paths, import package names, and named-import call sites. The NAMED IMPORTS section shows files that import the term by name from any package — e.g. term: createServerFn finds every file that imports createServerFn from @tanstack/react-start. Use structured filters (export, imports, depends_on, LOC) for precise queries. Combine 'term' with filters to narrow results with AND semantics. Note: depends_on uses transitive matching (full import chain), not direct-only. For direct importers only, use fmm_dependency_graph with depth=1.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "term": {
             "type": "string",
-            "description": "Search codebase-defined exports (exact then fuzzy), file paths, and external import names. Does NOT find call sites of externally-imported functions — for that, use imports: package-name (e.g. imports: @tanstack/react-start finds all files importing from that package). Can be combined with structured filters to narrow results to matching files."
+            "description": "Search codebase-defined exports (exact then fuzzy), file paths, external import package names, and named-import call sites. Results appear in four sections: EXPORTS (locally defined symbols), FILES (matching paths), IMPORTS (packages), and NAMED IMPORTS (files that import the term by name from any external package). Can be combined with structured filters to narrow results to matching files."
           },
           "export": {
             "type": "string",

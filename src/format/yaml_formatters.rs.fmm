@@ -1,6 +1,6 @@
 ---
 file: src/format/yaml_formatters.rs
-fmm: v0.4+0.1.30
+fmm: v0.4+0.1.31
 exports:
   format_file_outline: [14, 172]
   format_lookup_export: [175, 198]
