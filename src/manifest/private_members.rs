@@ -11,6 +11,68 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+/// A non-exported top-level declaration (function, arrow function, or class).
+///
+/// Extracted on demand when `include_private: true` is requested.
+/// Also used by `fmm_read_symbol` for the `file:symbol` notation.
+#[derive(Debug, Clone)]
+pub struct TopLevelFunction {
+    /// Declaration name.
+    pub name: String,
+    /// 1-based start line.
+    pub start: usize,
+    /// 1-based end line.
+    pub end: usize,
+}
+
+/// Extract non-exported top-level functions and classes from `rel_file`.
+///
+/// Returns items sorted by start line. Any name present in `exports` is excluded
+/// to avoid duplicating symbols already shown in the main outline section.
+/// Returns an empty vec on any read/parse error (no false positives).
+pub fn extract_top_level_functions(
+    root: &Path,
+    rel_file: &str,
+    exports: &[&str],
+) -> Vec<TopLevelFunction> {
+    let abs = root.join(rel_file);
+    let source = match std::fs::read(&abs) {
+        Ok(b) => b,
+        Err(_) => return Vec::new(),
+    };
+
+    let ext = abs
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    match ext.as_str() {
+        "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" => {
+            extract_ts_top_level(&source, exports).unwrap_or_default()
+        }
+        "py" => extract_py_top_level(&source, exports).unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
+/// Find the line range `(start, end)` of a top-level function or class by name.
+///
+/// Unlike `extract_top_level_functions`, this does NOT filter by exports — it
+/// locates any top-level declaration regardless of whether it is exported.
+/// Used by `fmm_read_symbol` for the `file:symbol` colon notation.
+pub fn find_top_level_function_range(
+    root: &Path,
+    rel_file: &str,
+    fn_name: &str,
+) -> Option<(usize, usize)> {
+    // Empty exports slice = no filtering = find any top-level function.
+    let fns = extract_top_level_functions(root, rel_file, &[]);
+    fns.into_iter()
+        .find(|f| f.name == fn_name)
+        .map(|f| (f.start, f.end))
+}
+
 /// A private class member (method or field) extracted on demand.
 #[derive(Debug, Clone)]
 pub struct PrivateMember {
@@ -74,6 +136,132 @@ pub fn find_private_method_range(
         .iter()
         .find(|m| m.is_method && m.name == method_name)
         .map(|m| (m.start, m.end))
+}
+
+// ---------------------------------------------------------------------------
+// TypeScript / JS top-level function extraction (ALP-910)
+// ---------------------------------------------------------------------------
+
+fn extract_ts_top_level(source: &[u8], exports: &[&str]) -> Option<Vec<TopLevelFunction>> {
+    let lang: tree_sitter::Language = tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into();
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&lang).ok()?;
+    let tree = parser.parse(source, None)?;
+
+    let mut result = Vec::new();
+    let root = tree.root_node();
+
+    for i in 0..root.child_count() {
+        let child = match root.child(i as u32) {
+            Some(c) => c,
+            None => continue,
+        };
+
+        match child.kind() {
+            "function_declaration" | "generator_function_declaration" => {
+                if let Some(name_node) = child.child_by_field_name("name") {
+                    if let Ok(name) = name_node.utf8_text(source) {
+                        if !exports.contains(&name) {
+                            result.push(TopLevelFunction {
+                                name: name.to_string(),
+                                start: child.start_position().row + 1,
+                                end: child.end_position().row + 1,
+                            });
+                        }
+                    }
+                }
+            }
+            "lexical_declaration" | "variable_declaration" => {
+                // const/let/var foo = () => {} or = function() {}
+                for j in 0..child.child_count() {
+                    let decl = match child.child(j as u32) {
+                        Some(c) => c,
+                        None => continue,
+                    };
+                    if decl.kind() != "variable_declarator" {
+                        continue;
+                    }
+                    let name_node = match decl.child_by_field_name("name") {
+                        Some(n) => n,
+                        None => continue,
+                    };
+                    let value_node = match decl.child_by_field_name("value") {
+                        Some(v) => v,
+                        None => continue,
+                    };
+                    if matches!(
+                        value_node.kind(),
+                        "arrow_function" | "function_expression" | "generator_function"
+                    ) {
+                        if let Ok(name) = name_node.utf8_text(source) {
+                            if !exports.contains(&name) {
+                                result.push(TopLevelFunction {
+                                    name: name.to_string(),
+                                    start: child.start_position().row + 1,
+                                    end: child.end_position().row + 1,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            "class_declaration" => {
+                if let Some(name_node) = child.child_by_field_name("name") {
+                    if let Ok(name) = name_node.utf8_text(source) {
+                        if !exports.contains(&name) {
+                            result.push(TopLevelFunction {
+                                name: name.to_string(),
+                                start: child.start_position().row + 1,
+                                end: child.end_position().row + 1,
+                            });
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    result.sort_by_key(|f| f.start);
+    Some(result)
+}
+
+// ---------------------------------------------------------------------------
+// Python top-level function extraction (ALP-910)
+// ---------------------------------------------------------------------------
+
+fn extract_py_top_level(source: &[u8], exports: &[&str]) -> Option<Vec<TopLevelFunction>> {
+    let lang: tree_sitter::Language = tree_sitter_python::LANGUAGE.into();
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&lang).ok()?;
+    let tree = parser.parse(source, None)?;
+
+    let mut result = Vec::new();
+    let root = tree.root_node();
+
+    for i in 0..root.child_count() {
+        let child = match root.child(i as u32) {
+            Some(c) => c,
+            None => continue,
+        };
+
+        if child.kind() == "function_definition" {
+            if let Some(name_node) = child.child_by_field_name("name") {
+                if let Ok(name) = name_node.utf8_text(source) {
+                    if !exports.contains(&name) {
+                        result.push(TopLevelFunction {
+                            name: name.to_string(),
+                            start: child.start_position().row + 1,
+                            end: child.end_position().row + 1,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    result.sort_by_key(|f| f.start);
+    Some(result)
 }
 
 // ---------------------------------------------------------------------------
@@ -508,6 +696,109 @@ mod tests {
         );
         let setup = members.iter().find(|m| m.name == "#setup").unwrap();
         assert!(setup.is_method, "#setup should be is_method=true");
+    }
+
+    // ---------------------------------------------------------------------------
+    // ALP-910: TopLevelFunction extraction tests
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn ts_non_exported_function_declaration() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let src = "export function exportedFn() {}\nfunction helperFn() {}\n";
+        std::fs::write(tmp.path().join("foo.ts"), src).unwrap();
+
+        let result = extract_top_level_functions(tmp.path(), "foo.ts", &["exportedFn"]);
+        let names: Vec<&str> = result.iter().map(|f| f.name.as_str()).collect();
+        assert!(names.contains(&"helperFn"), "helperFn missing: {:?}", names);
+        assert!(
+            !names.contains(&"exportedFn"),
+            "exportedFn should be excluded: {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn ts_non_exported_arrow_function() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let src = "export const pub = () => {};\nconst helper = () => {};\nconst data = 42;\n";
+        std::fs::write(tmp.path().join("foo.ts"), src).unwrap();
+
+        let result = extract_top_level_functions(tmp.path(), "foo.ts", &["pub"]);
+        let names: Vec<&str> = result.iter().map(|f| f.name.as_str()).collect();
+        assert!(names.contains(&"helper"), "helper missing: {:?}", names);
+        assert!(
+            !names.contains(&"pub"),
+            "exported pub should be excluded: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"data"),
+            "non-function data should not appear: {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn ts_non_exported_class_declaration() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let src = "export class PublicClass {}\nclass InternalClass {}\n";
+        std::fs::write(tmp.path().join("foo.ts"), src).unwrap();
+
+        let result = extract_top_level_functions(tmp.path(), "foo.ts", &["PublicClass"]);
+        let names: Vec<&str> = result.iter().map(|f| f.name.as_str()).collect();
+        assert!(
+            names.contains(&"InternalClass"),
+            "InternalClass missing: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"PublicClass"),
+            "PublicClass should be excluded: {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn ts_find_top_level_function_range_returns_lines() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let src = "function helperFn() {\n  return 42;\n}\n";
+        std::fs::write(tmp.path().join("foo.ts"), src).unwrap();
+
+        let range = find_top_level_function_range(tmp.path(), "foo.ts", "helperFn");
+        assert!(range.is_some(), "expected range for helperFn");
+        let (start, end) = range.unwrap();
+        assert_eq!(start, 1, "start should be 1");
+        assert_eq!(end, 3, "end should be 3");
+    }
+
+    #[test]
+    fn py_non_exported_function() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let src = "def public_fn():\n    pass\n\ndef _private_fn():\n    pass\n";
+        std::fs::write(tmp.path().join("mod.py"), src).unwrap();
+
+        // Simulate fmm exporting only public_fn
+        let result = extract_top_level_functions(tmp.path(), "mod.py", &["public_fn"]);
+        let names: Vec<&str> = result.iter().map(|f| f.name.as_str()).collect();
+        assert!(
+            names.contains(&"_private_fn"),
+            "_private_fn missing: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"public_fn"),
+            "public_fn should be excluded: {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn top_level_unsupported_extension_returns_empty() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("foo.rs"), "fn helper() {}").unwrap();
+        let result = extract_top_level_functions(tmp.path(), "foo.rs", &[]);
+        assert!(result.is_empty());
     }
 
     /// Public-only class using `#field` must NOT produce false positives for

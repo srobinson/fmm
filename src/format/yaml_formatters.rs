@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::formatter::yaml_escape;
-use crate::manifest::private_members::PrivateMember;
+use crate::manifest::private_members::{PrivateMember, TopLevelFunction};
 use crate::manifest::{ExportLines, FileEntry};
 
 use super::helpers::{push_exports_map, push_inline_list};
@@ -11,10 +11,13 @@ use super::helpers::{push_exports_map, push_inline_list};
 /// Format file outline: sidecar YAML with symbol sizes and method sub-entries.
 /// `private_by_class` is populated only when `include_private: true` is requested.
 /// When `Some`, private members are merged with public methods and annotated `# private`.
+/// `top_level_fns` is also populated when `include_private: true` and contains
+/// non-exported top-level functions and classes, appended after the `symbols:` block.
 pub fn format_file_outline(
     file: &str,
     entry: &FileEntry,
     private_by_class: Option<&HashMap<String, Vec<PrivateMember>>>,
+    top_level_fns: Option<&[TopLevelFunction]>,
 ) -> String {
     let mut lines = Vec::new();
     lines.push("---".to_string());
@@ -168,6 +171,24 @@ pub fn format_file_outline(
             }
         }
     }
+
+    // ALP-910: Render non-exported top-level functions after the symbols block.
+    if let Some(fns) = top_level_fns {
+        if !fns.is_empty() {
+            lines.push("non_exported:".to_string());
+            for f in fns {
+                let size = f.end.saturating_sub(f.start) + 1;
+                lines.push(format!(
+                    "  {}: [{}, {}]  # {} lines  # non-exported",
+                    yaml_escape(&f.name),
+                    f.start,
+                    f.end,
+                    size
+                ));
+            }
+        }
+    }
+
     lines.join("\n")
 }
 
@@ -442,7 +463,7 @@ mod tests {
                 ("NestFactoryStatic.createApplicationContext", 132, 158),
             ],
         );
-        let out = format_file_outline("src/factory.ts", &entry, None);
+        let out = format_file_outline("src/factory.ts", &entry, None, None);
 
         // Class line shows method count
         assert!(out.contains("NestFactoryStatic: [43, 381]"));
@@ -467,7 +488,7 @@ mod tests {
                 ("MyClass.medium", 160, 189), // 29 lines
             ],
         );
-        let out = format_file_outline("src/my.ts", &entry, None);
+        let out = format_file_outline("src/my.ts", &entry, None, None);
         let large_pos = out.find("large:").unwrap();
         let medium_pos = out.find("medium:").unwrap();
         let small_pos = out.find("small:").unwrap();
@@ -480,7 +501,7 @@ mod tests {
     #[test]
     fn file_outline_no_methods_unchanged() {
         let entry = make_entry_with_methods(vec![("foo", 1, 10), ("bar", 12, 20)], vec![]);
-        let out = format_file_outline("src/mod.ts", &entry, None);
+        let out = format_file_outline("src/mod.ts", &entry, None, None);
         assert!(out.contains("  foo: [1, 10]  # 10 lines"));
         assert!(out.contains("  bar: [12, 20]  # 9 lines"));
         assert!(!out.contains("public methods"));
@@ -578,7 +599,7 @@ mod tests {
             ],
         );
 
-        let out = format_file_outline("src/my.ts", &entry, Some(&private_map));
+        let out = format_file_outline("src/my.ts", &entry, Some(&private_map), None);
 
         assert!(
             out.contains("pool: [3, 3]  # private field"),

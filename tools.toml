@@ -35,10 +35,11 @@ fmm_file_outline(..., include_private: true)  →  private members too
 ### Reading Code
 
 ```
-fmm_read_symbol("ClassName")            →  full class source (capped at 10KB)
-fmm_read_symbol("Class.method")         →  single method — surgical extraction
-fmm_read_symbol("Symbol", line_numbers: true)  →  with absolute line numbers
-fmm_read_symbol("LargeClass", truncate: false) →  bypass 10KB cap
+fmm_read_symbol("ClassName")                     →  full class source (capped at 10KB)
+fmm_read_symbol("Class.method")                  →  single method — surgical extraction
+fmm_read_symbol("src/foo.ts:helperFn")           →  non-exported top-level function
+fmm_read_symbol("Symbol", line_numbers: true)    →  with absolute line numbers
+fmm_read_symbol("LargeClass", truncate: false)   →  bypass 10KB cap
 ```
 
 ### Impact Analysis
@@ -272,15 +273,15 @@ cli_flag        = "--filter"
 
 [tools.fmm_read_symbol]
 cli_name        = "read"
-mcp_description = "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Requires line-range data from v0.3 sidecars. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line."
-cli_about       = "Read the source code of an exported symbol or a specific method.\n\nUse plain name for a top-level export, or ClassName.method notation for a specific public method. Truncates at 10KB by default; use --no-truncate for full source."
+mcp_description = "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Requires line-range data from v0.3 sidecars. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Use `path/to/file.ts:helperFunction` notation to read a non-exported top-level function via on-demand tree-sitter parse. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line."
+cli_about       = "Read the source code of an exported symbol, a specific method, or a non-exported function.\n\nUse plain name for a top-level export, ClassName.method notation for a specific public/private method, or path/to/file.ts:helperFn notation to read a non-exported top-level function. Truncates at 10KB by default; use --no-truncate for full source."
 
 [[tools.fmm_read_symbol.params]]
 name            = "name"
 type            = "string"
 required        = true
-mcp_description = "Exact export name to read (function, class, type, component), or ClassName.method for a specific public or private method"
-cli_help        = "Symbol name (or ClassName.method for a specific public method)"
+mcp_description = "Exact export name to read (function, class, type, component), or ClassName.method for a specific public or private method, or path/to/file.ts:helperFn to read a non-exported top-level function by on-demand parse"
+cli_help        = "Symbol name, ClassName.method for a specific method, or path/to/file.ts:fn for a non-exported function"
 cli_flag        = "name"
 
 [[tools.fmm_read_symbol.params]]
@@ -299,7 +300,7 @@ cli_flag        = "--line-numbers"
 
 [tools.fmm_file_outline]
 cli_name        = "outline"
-mcp_description = "Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. Set include_private: true to also show private/protected members under each class (TypeScript and Python; on-demand tree-sitter parse)."
+mcp_description = "Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. Set include_private: true to also show private/protected class members AND non-exported top-level functions (in a 'non_exported:' section). Supported: TypeScript, JavaScript, Python. On-demand tree-sitter parse — no index rebuild needed."
 cli_about       = "Show all exports in a file with their line ranges.\n\nUse before reading source to identify which symbol to target with 'fmm read'."
 
 [[tools.fmm_file_outline.params]]
@@ -313,8 +314,8 @@ cli_flag        = "file"
 [[tools.fmm_file_outline.params]]
 name            = "include_private"
 type            = "boolean"
-mcp_description = "When true, include private/protected methods and fields under each class, annotated with '# private'. On-demand tree-sitter parse — no index rebuild needed. Supported: TypeScript, JavaScript, Python. Default: false."
-cli_help        = "Include private/protected methods and fields under each class"
+mcp_description = "When true, include private/protected members under each class (annotated '# private') AND non-exported top-level functions in a 'non_exported:' section (annotated '# non-exported'). On-demand tree-sitter parse — no index rebuild needed. Supported: TypeScript, JavaScript, Python. Default: false."
+cli_help        = "Include private/protected class members and non-exported top-level functions"
 cli_flag        = "--include-private"
 
 [tools.fmm_search]

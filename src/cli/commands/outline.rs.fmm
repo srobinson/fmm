@@ -1,10 +1,10 @@
 ---
 file: src/cli/commands/outline.rs
-fmm: v0.4+0.1.31
+fmm: v0.4+0.1.32
 exports:
-  outline: [20, 85]
+  outline: [20, 100]
 imports: [anyhow, colored]
-loc: 85
+loc: 100
 modified: 2026-03-07
 rust:
   derives: ['serde::Serialize']

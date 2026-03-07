@@ -1,12 +1,15 @@
 ---
 file: src/manifest/private_members.rs
-fmm: v0.4+0.1.31
+fmm: v0.4+0.1.32
 exports:
-  PrivateMember: [16, 25]
-  extract_private_members: [31, 59]
-  find_private_method_range: [65, 77]
+  TopLevelFunction: [19, 26]
+  extract_top_level_functions: [33, 57]
+  find_top_level_function_range: [64, 74]
+  PrivateMember: [78, 87]
+  extract_private_members: [93, 121]
+  find_private_method_range: [127, 139]
 imports: [std]
-loc: 533
+loc: 830
 modified: 2026-03-07
 rust:
   derives: [Clone, Debug]

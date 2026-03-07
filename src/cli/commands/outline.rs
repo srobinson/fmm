@@ -75,9 +75,26 @@ pub fn outline(file: &str, include_private: bool, json_output: bool) -> Result<(
         } else {
             None
         };
+        let top_level_fns = if include_private {
+            let export_names: Vec<&str> = entry.exports.iter().map(|s| s.as_str()).collect();
+            Some(
+                crate::manifest::private_members::extract_top_level_functions(
+                    &root,
+                    file,
+                    &export_names,
+                ),
+            )
+        } else {
+            None
+        };
         println!(
             "{}",
-            crate::format::format_file_outline(file, entry, private_by_class.as_ref())
+            crate::format::format_file_outline(
+                file,
+                entry,
+                private_by_class.as_ref(),
+                top_level_fns.as_deref(),
+            )
         );
     }
 

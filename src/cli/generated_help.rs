@@ -29,9 +29,9 @@ pub const DEPS_DEPTH_HELP: &str = "Traversal depth (1 = direct deps only, -1 = f
 pub const DEPS_FILTER_HELP: &str = "Filter upstream/downstream by file type: all (default), source (exclude tests), tests (only tests)";
 
 #[rustfmt::skip]
-pub const READ_ABOUT: &str = "Read the source code of an exported symbol or a specific method.\n\nUse plain name for a top-level export, or ClassName.method notation for a specific public method. Truncates at 10KB by default; use --no-truncate for full source.";
+pub const READ_ABOUT: &str = "Read the source code of an exported symbol, a specific method, or a non-exported function.\n\nUse plain name for a top-level export, ClassName.method notation for a specific public/private method, or path/to/file.ts:helperFn notation to read a non-exported top-level function. Truncates at 10KB by default; use --no-truncate for full source.";
 #[rustfmt::skip]
-pub const READ_NAME_HELP: &str = "Symbol name (or ClassName.method for a specific public method)";
+pub const READ_NAME_HELP: &str = "Symbol name, ClassName.method for a specific method, or path/to/file.ts:fn for a non-exported function";
 #[rustfmt::skip]
 pub const READ_TRUNCATE_HELP: &str = "Return full source, bypassing the 10KB truncation cap";
 #[rustfmt::skip]
@@ -42,7 +42,7 @@ pub const OUTLINE_ABOUT: &str = "Show all exports in a file with their line rang
 #[rustfmt::skip]
 pub const OUTLINE_FILE_HELP: &str = "Source file path (relative to project root)";
 #[rustfmt::skip]
-pub const OUTLINE_INCLUDE_PRIVATE_HELP: &str = "Include private/protected methods and fields under each class";
+pub const OUTLINE_INCLUDE_PRIVATE_HELP: &str = "Include private/protected class members and non-exported top-level functions";
 
 #[rustfmt::skip]
 pub const SEARCH_ABOUT: &str = "Query the index — O(1) export lookup, dependency graphs, LOC filters.\n\nWith a bare term (no flags), searches across all dimensions: exports, file paths, and imports — with smart ranking. Exact export matches appear first.\n\nExport lookups use a reverse index for O(1) performance. Flags narrow the search to a single dimension and can be combined with AND logic.";
