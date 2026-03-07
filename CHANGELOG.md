@@ -2,87 +2,75 @@
 
 ## [0.1.37](https://github.com/srobinson/fmm/compare/v0.1.36...v0.1.37) (2026-03-07)
 
-
 ### Features
 
-* TypeScript scale — make fmm work on 39k+ file codebases (#ALP-923) ([#104](https://github.com/srobinson/fmm/issues/104)) ([a5767e8](https://github.com/srobinson/fmm/commit/a5767e88339e9595036275dd8d5d0827980e9def))
+- TypeScript scale — make fmm work on 39k+ file codebases (#ALP-923) ([#104](https://github.com/srobinson/fmm/issues/104)) ([a5767e8](https://github.com/srobinson/fmm/commit/a5767e88339e9595036275dd8d5d0827980e9def))
 
 ## [0.1.36](https://github.com/srobinson/fmm/compare/v0.1.35...v0.1.36) (2026-03-07)
 
-
 ### Bug Fixes
 
-* **glossary:** multi-line used_by format and truncate parameter (#ALP-919) ([15c34d1](https://github.com/srobinson/fmm/commit/15c34d1da1ae85ebf5f4191f5dacae5b9622d080))
+- **glossary:** multi-line used_by format and truncate parameter (#ALP-919) ([15c34d1](https://github.com/srobinson/fmm/commit/15c34d1da1ae85ebf5f4191f5dacae5b9622d080))
 
 ## [0.1.35](https://github.com/srobinson/fmm/compare/v0.1.34...v0.1.35) (2026-03-07)
 
-
 ### Features
 
-* SQLite manifest store — replace per-file YAML sidecars (#ALP-912) ([#101](https://github.com/srobinson/fmm/issues/101)) ([dabc5f3](https://github.com/srobinson/fmm/commit/dabc5f327de8b6b85a5e4ca5e06aa3a72bf136e4))
+- SQLite manifest store — replace per-file YAML sidecars (#ALP-912) ([#101](https://github.com/srobinson/fmm/issues/101)) ([dabc5f3](https://github.com/srobinson/fmm/commit/dabc5f327de8b6b85a5e4ca5e06aa3a72bf136e4))
 
 ## [0.1.34](https://github.com/srobinson/fmm/compare/v0.1.33...v0.1.34) (2026-03-07)
 
-
 ### Features
 
-* non-exported top-level functions in outline and read_symbol (#ALP-909) ([#99](https://github.com/srobinson/fmm/issues/99)) ([b8c9783](https://github.com/srobinson/fmm/commit/b8c97831bcadeeb11c59ad54d7676c142aca56ba))
+- non-exported top-level functions in outline and read_symbol (#ALP-909) ([#99](https://github.com/srobinson/fmm/issues/99)) ([b8c9783](https://github.com/srobinson/fmm/commit/b8c97831bcadeeb11c59ad54d7676c142aca56ba))
 
 ## [0.1.33](https://github.com/srobinson/fmm/compare/v0.1.32...v0.1.33) (2026-03-07)
 
-
 ### Bug Fixes
 
-* **glossary:** cross-package bare specifier matching + disclosure typo (#ALP-905) ([#97](https://github.com/srobinson/fmm/issues/97)) ([65015b4](https://github.com/srobinson/fmm/commit/65015b43964e1b1dacc97c106b3b820e79ea5416))
+- **glossary:** cross-package bare specifier matching + disclosure typo (#ALP-905) ([#97](https://github.com/srobinson/fmm/issues/97)) ([65015b4](https://github.com/srobinson/fmm/commit/65015b43964e1b1dacc97c106b3b820e79ea5416))
 
 ## [0.1.32](https://github.com/srobinson/fmm/compare/v0.1.31...v0.1.32) (2026-03-07)
 
-
 ### Features
 
-* **search:** named-import call-site discovery in fmm_search ([#95](https://github.com/srobinson/fmm/issues/95)) ([453f293](https://github.com/srobinson/fmm/commit/453f29301536579903bd2e1ed3f1a8501ff5a86c))
+- **search:** named-import call-site discovery in fmm_search ([#95](https://github.com/srobinson/fmm/issues/95)) ([453f293](https://github.com/srobinson/fmm/commit/453f29301536579903bd2e1ed3f1a8501ff5a86c))
 
 ## [0.1.31](https://github.com/srobinson/fmm/compare/v0.1.30...v0.1.31) (2026-03-07)
 
-
 ### Bug Fixes
 
-* **search:** fmm_search bug fixes from TanStack user feedback ([#90](https://github.com/srobinson/fmm/issues/90)) ([dd2af2a](https://github.com/srobinson/fmm/commit/dd2af2ab8d80a9a422e5456d74d471d1c899ad5a))
+- **search:** fmm_search bug fixes from TanStack user feedback ([#90](https://github.com/srobinson/fmm/issues/90)) ([dd2af2a](https://github.com/srobinson/fmm/commit/dd2af2ab8d80a9a422e5456d74d471d1c899ad5a))
 
 ## [0.1.30](https://github.com/srobinson/fmm/compare/v0.1.29...v0.1.30) (2026-03-06)
 
-
 ### Features
 
-* **docs:** tools.toml single source of truth — build-time doc generation + skill sync ([#88](https://github.com/srobinson/fmm/issues/88)) ([ca83b3f](https://github.com/srobinson/fmm/commit/ca83b3f782817024dd0f3ee68ba15e1bf8f3b70d))
+- **docs:** tools.toml single source of truth — build-time doc generation + skill sync ([#88](https://github.com/srobinson/fmm/issues/88)) ([ca83b3f](https://github.com/srobinson/fmm/commit/ca83b3f782817024dd0f3ee68ba15e1bf8f3b70d))
 
 ## [0.1.29](https://github.com/srobinson/fmm/compare/v0.1.28...v0.1.29) (2026-03-06)
 
-
 ### Features
 
-* **glossary:** layered call-site precision — named import tracking + used_by filtering ([#85](https://github.com/srobinson/fmm/issues/85)) ([678d16b](https://github.com/srobinson/fmm/commit/678d16b2b4f9a89fcbc4a9753fb73126c67925d7))
+- **glossary:** layered call-site precision — named import tracking + used_by filtering ([#85](https://github.com/srobinson/fmm/issues/85)) ([678d16b](https://github.com/srobinson/fmm/commit/678d16b2b4f9a89fcbc4a9753fb73126c67925d7))
 
 ## [0.1.28](https://github.com/srobinson/fmm/compare/v0.1.27...v0.1.28) (2026-03-06)
 
-
 ### Features
 
-* **resolver:** cross-package import resolution for accurate downstream graph ([#83](https://github.com/srobinson/fmm/issues/83)) ([025a8c0](https://github.com/srobinson/fmm/commit/025a8c0af807786ec021e5ef11d3ef1ab4bb43ec))
+- **resolver:** cross-package import resolution for accurate downstream graph ([#83](https://github.com/srobinson/fmm/issues/83)) ([025a8c0](https://github.com/srobinson/fmm/commit/025a8c0af807786ec021e5ef11d3ef1ab4bb43ec))
 
 ## [0.1.27](https://github.com/srobinson/fmm/compare/v0.1.26...v0.1.27) (2026-03-06)
 
-
 ### Features
 
-* **mcp+cli:** Round 5 evaluation improvements — 5 fixes + 13 enhancements ([#81](https://github.com/srobinson/fmm/issues/81)) ([e1e0953](https://github.com/srobinson/fmm/commit/e1e095379fa1773c9d5236773b620ae03cf82492))
+- **mcp+cli:** Round 5 evaluation improvements — 5 fixes + 13 enhancements ([#81](https://github.com/srobinson/fmm/issues/81)) ([e1e0953](https://github.com/srobinson/fmm/commit/e1e095379fa1773c9d5236773b620ae03cf82492))
 
 ## [0.1.26](https://github.com/srobinson/fmm/compare/v0.1.25...v0.1.26) (2026-03-06)
 
-
 ### Features
 
-* **mcp+cli:** Round 4 evaluation improvements — 5 bug fixes + 4 enhancements ([#79](https://github.com/srobinson/fmm/issues/79)) ([044ce50](https://github.com/srobinson/fmm/commit/044ce50b6819416bfd67d0378cf916c7797557e5))
+- **mcp+cli:** Round 4 evaluation improvements — 5 bug fixes + 4 enhancements ([#79](https://github.com/srobinson/fmm/issues/79)) ([044ce50](https://github.com/srobinson/fmm/commit/044ce50b6819416bfd67d0378cf916c7797557e5))
 
 ## [0.1.25](https://github.com/srobinson/fmm/compare/v0.1.24...v0.1.25) (2026-03-06)
 
