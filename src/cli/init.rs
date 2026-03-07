@@ -56,8 +56,7 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
                 lang_set.into_iter().collect::<Vec<_>>().join(", ")
             );
 
-            println!("{}", "Generating index...".green().bold());
-            sidecar::generate(&[".".to_string()], false, false)?;
+            sidecar::generate(&[".".to_string()], false, false, false)?;
 
             // Show DB stats and a sample export
             let root = super::resolve_root(".")?;

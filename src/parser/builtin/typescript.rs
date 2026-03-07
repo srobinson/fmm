@@ -631,6 +631,150 @@ impl TypeScriptParser {
     }
 }
 
+impl TypeScriptParser {
+    /// ALP-922: Extract depth-1 nested function declarations and prologue variables
+    /// from all top-level function bodies. Only processes JS/TS function_declaration nodes
+    /// (exported or bare). Arrow functions assigned to variables are skipped — they have
+    /// no named nested declarations in practice.
+    fn extract_nested_symbols(
+        source: &str,
+        root_node: tree_sitter::Node,
+    ) -> Vec<crate::parser::ExportEntry> {
+        let source_bytes = source.as_bytes();
+        let mut entries = Vec::new();
+
+        for i in 0..root_node.child_count() {
+            let child = match root_node.child(i as u32) {
+                Some(c) => c,
+                None => continue,
+            };
+
+            let fn_node = match child.kind() {
+                "function_declaration" => Some(child),
+                "export_statement" => {
+                    // exported function_declaration is typically the second child
+                    let mut found = None;
+                    for j in 0..child.child_count() {
+                        if let Some(c) = child.child(j as u32) {
+                            if c.kind() == "function_declaration" {
+                                found = Some(c);
+                                break;
+                            }
+                        }
+                    }
+                    found
+                }
+                _ => None,
+            };
+
+            let fn_node = match fn_node {
+                Some(n) => n,
+                None => continue,
+            };
+
+            let fn_name = match fn_node
+                .child_by_field_name("name")
+                .and_then(|n| n.utf8_text(source_bytes).ok())
+            {
+                Some(n) => n.to_string(),
+                None => continue,
+            };
+
+            let body = match fn_node.child_by_field_name("body") {
+                Some(b) => b,
+                None => continue,
+            };
+
+            let mut first_nested_fn_seen = false;
+
+            for j in 0..body.child_count() {
+                let stmt = match body.child(j as u32) {
+                    Some(s) => s,
+                    None => continue,
+                };
+
+                match stmt.kind() {
+                    "function_declaration" => {
+                        first_nested_fn_seen = true;
+                        let nested_name = match stmt
+                            .child_by_field_name("name")
+                            .and_then(|n| n.utf8_text(source_bytes).ok())
+                        {
+                            Some(n) => n.to_string(),
+                            None => continue,
+                        };
+                        entries.push(crate::parser::ExportEntry::nested_fn(
+                            nested_name,
+                            stmt.start_position().row + 1,
+                            stmt.end_position().row + 1,
+                            fn_name.clone(),
+                        ));
+                    }
+                    "lexical_declaration" | "variable_declaration" if !first_nested_fn_seen => {
+                        // Prologue: extract individual declarators that are non-trivial
+                        for k in 0..stmt.child_count() {
+                            let decl = match stmt.child(k as u32) {
+                                Some(d) if d.kind() == "variable_declarator" => d,
+                                _ => continue,
+                            };
+                            let var_name = match decl
+                                .child_by_field_name("name")
+                                .and_then(|n| n.utf8_text(source_bytes).ok())
+                            {
+                                Some(n) => n.to_string(),
+                                None => continue,
+                            };
+                            if Self::is_non_trivial_declarator(decl) {
+                                entries.push(crate::parser::ExportEntry::closure_state(
+                                    var_name,
+                                    decl.start_position().row + 1,
+                                    decl.end_position().row + 1,
+                                    fn_name.clone(),
+                                ));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        entries
+    }
+
+    /// Return true when a variable_declarator is worth indexing as closure-state:
+    /// it has a type annotation, or its value starts with a call expression.
+    fn is_non_trivial_declarator(decl: tree_sitter::Node) -> bool {
+        // Check for type_annotation child
+        for i in 0..decl.child_count() {
+            if let Some(child) = decl.child(i as u32) {
+                if child.kind() == "type_annotation" {
+                    return true;
+                }
+            }
+        }
+        // Check value for call_expression (or as_expression wrapping one)
+        if let Some(value) = decl.child_by_field_name("value") {
+            if value.kind() == "call_expression" {
+                return true;
+            }
+            // Handle `foo() as Type` (as_expression) or `new Foo()` (new_expression)
+            if value.kind() == "as_expression" || value.kind() == "new_expression" {
+                return true;
+            }
+            // One level deeper: `(call())` — parenthesized expression
+            for i in 0..value.child_count() {
+                if let Some(child) = value.child(i as u32) {
+                    if child.kind() == "call_expression" || child.kind() == "new_expression" {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+}
+
 impl Parser for TypeScriptParser {
     fn parse(&mut self, source: &str) -> Result<ParseResult> {
         self.parse_with_aliases(source, &HashMap::new())
@@ -687,6 +831,11 @@ impl TypeScriptParser {
             .collect();
         let methods = self.extract_class_methods(source, root_node, &exported_classes);
         exports.extend(methods);
+
+        // ALP-922: extract depth-1 nested function declarations and prologue vars
+        let nested = Self::extract_nested_symbols(source, root_node);
+        exports.extend(nested);
+
         exports.sort_by_key(|e| e.start_line);
 
         let decorators = self.extract_decorators(source, root_node);
@@ -1679,5 +1828,168 @@ import { c } from './mod-b';
             Some("src/utils/helper".to_string())
         );
         assert_eq!(match_alias("@nestjs/common", "@/*", &targets), None);
+    }
+
+    // --- ALP-922: Nested symbol extraction ---
+
+    #[test]
+    fn nested_fn_extracted_from_exported_function() {
+        let source = r#"
+export function createTypeChecker(host: any): any {
+  var silentNeverType = createIntrinsicType(TypeFlags.Never, "never");
+  function getIndexType(type: any): any { return undefined; }
+  function getReturnType(sig: any): any { return undefined; }
+  return {};
+}
+"#;
+        let result = parse(source);
+        let nested: Vec<_> = result
+            .metadata
+            .exports
+            .iter()
+            .filter(|e| e.parent_class.as_deref() == Some("createTypeChecker"))
+            .collect();
+        let names: Vec<&str> = nested.iter().map(|e| e.name.as_str()).collect();
+        assert!(
+            names.contains(&"getIndexType"),
+            "getIndexType missing; names={:?}",
+            names
+        );
+        assert!(
+            names.contains(&"getReturnType"),
+            "getReturnType missing; names={:?}",
+            names
+        );
+        // silentNeverType is closure-state (call expression initializer)
+        assert!(
+            names.contains(&"silentNeverType"),
+            "silentNeverType missing; names={:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn nested_fn_has_correct_kind() {
+        let source = r#"
+export function outer(): void {
+  var state = createState();
+  function inner(): void {}
+}
+"#;
+        let result = parse(source);
+        let inner_entry = result
+            .metadata
+            .exports
+            .iter()
+            .find(|e| e.name == "inner")
+            .expect("inner not found");
+        assert_eq!(inner_entry.kind.as_deref(), Some("nested-fn"));
+        assert_eq!(inner_entry.parent_class.as_deref(), Some("outer"));
+
+        let state_entry = result
+            .metadata
+            .exports
+            .iter()
+            .find(|e| e.name == "state")
+            .expect("state (closure-state) not found");
+        assert_eq!(state_entry.kind.as_deref(), Some("closure-state"));
+    }
+
+    #[test]
+    fn trivial_var_not_extracted_as_closure_state() {
+        let source = r#"
+export function outer(): void {
+  let counter = 0;
+  var flag = false;
+  function inner(): void {}
+}
+"#;
+        let result = parse(source);
+        let names: Vec<&str> = result
+            .metadata
+            .exports
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
+        // trivial literals must not appear
+        assert!(
+            !names.contains(&"counter"),
+            "trivial counter should not be extracted"
+        );
+        assert!(
+            !names.contains(&"flag"),
+            "trivial flag should not be extracted"
+        );
+    }
+
+    #[test]
+    fn depth2_nested_fn_not_extracted() {
+        let source = r#"
+export function outer(): void {
+  function depth1(): void {
+    function depth2(): void {}
+  }
+}
+"#;
+        let result = parse(source);
+        let names: Vec<&str> = result
+            .metadata
+            .exports
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
+        assert!(!names.contains(&"depth2"), "depth2 should not be extracted");
+        assert!(names.contains(&"depth1"), "depth1 should be extracted");
+    }
+
+    #[test]
+    fn prologue_var_after_first_nested_fn_not_extracted() {
+        let source = r#"
+export function outer(): void {
+  var before = createA();
+  function inner(): void {}
+  var after = createB();
+}
+"#;
+        let result = parse(source);
+        let names: Vec<&str> = result
+            .metadata
+            .exports
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
+        assert!(
+            names.contains(&"before"),
+            "before (prologue) should be extracted"
+        );
+        assert!(
+            !names.contains(&"after"),
+            "after (post-first-fn) should not be extracted"
+        );
+    }
+
+    #[test]
+    fn nested_symbols_in_non_exported_function() {
+        let source = r#"
+function internalHelper(): void {
+  var state = createState();
+  function processItem(item: any): void {}
+}
+"#;
+        let result = parse(source);
+        let names: Vec<&str> = result
+            .metadata
+            .exports
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
+        assert!(
+            names.contains(&"processItem"),
+            "processItem should be extracted"
+        );
+        assert!(
+            names.contains(&"state"),
+            "state closure-state should be extracted"
+        );
     }
 }

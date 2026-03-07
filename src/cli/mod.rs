@@ -98,6 +98,10 @@ pub enum Commands {
         /// Re-index all files, bypassing mtime comparison
         #[arg(short, long)]
         force: bool,
+
+        /// Suppress progress bars — print only the final summary line
+        #[arg(short = 'q', long)]
+        quiet: bool,
     },
 
     /// Check the index is current (CI-friendly, exit 1 if stale)

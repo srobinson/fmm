@@ -1,8 +1,11 @@
 use anyhow::Result;
 use chrono::Utc;
 use colored::Colorize;
+use indicatif::ParallelProgressIterator;
+use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use rusqlite::params;
+use std::time::{Duration, Instant};
 
 use crate::config::Config;
 use crate::db;
@@ -11,10 +14,32 @@ use crate::resolver;
 
 use super::{collect_files_multi, resolve_root_multi};
 
-pub fn generate(paths: &[String], dry_run: bool, force: bool) -> Result<()> {
+/// Show progress bars when at least this many files need processing.
+const PROGRESS_THRESHOLD: usize = 10;
+
+pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Result<()> {
+    let total_start = Instant::now();
     let config = Config::load().unwrap_or_default();
+
+    // Scan phase: spinner while walking the directory tree.
+    let scan_sp = if !quiet {
+        let sp = ProgressBar::new_spinner();
+        sp.set_style(
+            ProgressStyle::with_template("{spinner:.blue} Scanning files...")
+                .expect("valid template"),
+        );
+        sp.enable_steady_tick(Duration::from_millis(80));
+        Some(sp)
+    } else {
+        None
+    };
+
     let files = collect_files_multi(paths, &config)?;
     let root = resolve_root_multi(paths)?;
+
+    if let Some(sp) = &scan_sp {
+        sp.finish_and_clear();
+    }
 
     if files.is_empty() {
         println!("{} No supported source files found", "!".yellow());
@@ -34,10 +59,6 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool) -> Result<()> {
         );
         return Ok(());
     }
-
-    println!("Found {} files to process", files.len());
-
-    let processor = FileProcessor::new(&root);
 
     if dry_run {
         // Dry run: show what would be indexed without touching the DB.
@@ -85,10 +106,17 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool) -> Result<()> {
     let workspace_info = resolver::workspace::discover(&root);
     db::writer::upsert_workspace_packages(&conn, &workspace_info.packages)?;
 
-    // Phase 1 (sequential): determine which files are stale in the DB.
-    // mtime comparison is O(1) per file and fast even at 4,673 files.
+    // Phase 1: bulk staleness check.
+    // Load all indexed_at times in one query (avoids 39k individual SELECTs),
+    // then compare in parallel with rayon (mtime syscalls are I/O-parallel).
+    let phase1_start = Instant::now();
+    let indexed_mtimes: std::collections::HashMap<String, String> = if !force {
+        db::writer::load_indexed_mtimes(&conn)?
+    } else {
+        std::collections::HashMap::new()
+    };
     let dirty_files: Vec<&std::path::PathBuf> = files
-        .iter()
+        .par_iter()
         .filter(|file| {
             if force {
                 return true;
@@ -98,15 +126,55 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool) -> Result<()> {
                 .unwrap_or(file)
                 .display()
                 .to_string();
-            let mtime = db::writer::file_mtime_rfc3339(file);
-            !db::writer::is_file_up_to_date(&conn, &rel, mtime.as_deref())
+            let Some(mtime) = db::writer::file_mtime_rfc3339(file) else {
+                return true; // unreadable mtime → treat as dirty
+            };
+            // Dirty when not in DB, or stored indexed_at < file mtime.
+            indexed_mtimes
+                .get(&rel)
+                .map(|indexed_at| indexed_at.as_str() < mtime.as_str())
+                .unwrap_or(true)
         })
         .collect();
+    let phase1_elapsed = phase1_start.elapsed();
 
-    if !dirty_files.is_empty() {
-        // Phase 2 (parallel): parse all stale files.
-        let parse_results: Vec<(std::path::PathBuf, crate::parser::ParseResult)> = dirty_files
+    if dirty_files.is_empty() {
+        let elapsed = total_start.elapsed();
+        println!(
+            "Found {} files · all up to date  ({:.1}s)",
+            files.len(),
+            elapsed.as_secs_f64()
+        );
+        db::writer::write_meta(&conn, "fmm_version", env!("CARGO_PKG_VERSION"))?;
+        db::writer::write_meta(&conn, "generated_at", &Utc::now().to_rfc3339())?;
+        return Ok(());
+    }
+
+    let show_progress = !quiet && dirty_files.len() >= PROGRESS_THRESHOLD;
+
+    if !quiet {
+        println!(
+            "Found {} files · {} changed",
+            files.len(),
+            dirty_files.len()
+        );
+    }
+
+    let processor = FileProcessor::new(&root);
+
+    // Phase 2 (parallel): parse all stale files.
+    let phase2_start = Instant::now();
+    let parse_results: Vec<(std::path::PathBuf, crate::parser::ParseResult)> = if show_progress {
+        let pb = ProgressBar::new(dirty_files.len() as u64);
+        pb.set_style(
+            ProgressStyle::with_template(
+                "Parsing  {wide_bar:.cyan/blue} {pos}/{len}  {per_sec}  ETA {eta}",
+            )
+            .expect("valid template"),
+        );
+        let results = dirty_files
             .par_iter()
+            .progress_with(pb.clone())
             .filter_map(|file| match processor.parse(file) {
                 Ok(result) => Some(((*file).clone(), result)),
                 Err(e) => {
@@ -115,44 +183,117 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool) -> Result<()> {
                 }
             })
             .collect();
-
-        // Phase 3 (transacted): write all parsed results to DB in one commit.
-        {
-            let tx = conn.transaction()?;
-            for (abs_path, result) in &parse_results {
-                let rel = abs_path
-                    .strip_prefix(&root)
-                    .unwrap_or(abs_path)
-                    .display()
-                    .to_string();
-                let mtime = db::writer::file_mtime_rfc3339(abs_path);
-                db::writer::upsert_file_data(&tx, &rel, result, mtime.as_deref())?;
-            }
-            tx.commit()?;
-        }
-
-        // Phase 4: rebuild the pre-computed reverse dependency graph.
-        db::writer::rebuild_and_write_reverse_deps(&mut conn, &root)?;
-
-        for abs_path in &dirty_files {
-            let rel = abs_path.strip_prefix(&root).unwrap_or(abs_path);
-            println!("{} {}", "✓".green(), rel.display());
-        }
-        println!(
-            "\n{} {} file(s) indexed",
-            "✓".green().bold(),
-            dirty_files.len()
-        );
-        println!(
-            "\n  {} Run 'fmm validate' to verify, or 'fmm search --export <name>' to find symbols",
-            "next:".cyan()
-        );
+        pb.finish_and_clear();
+        results
     } else {
-        println!("{} All files up to date", "✓".green());
+        dirty_files
+            .par_iter()
+            .filter_map(|file| match processor.parse(file) {
+                Ok(result) => Some(((*file).clone(), result)),
+                Err(e) => {
+                    eprintln!("{} {}: {}", "error:".red().bold(), file.display(), e);
+                    None
+                }
+            })
+            .collect()
+    };
+    let phase2_elapsed = phase2_start.elapsed();
+
+    // Phase 2b (parallel): pre-serialize JSON fields for all parsed files.
+    // serde_json::to_string is CPU-bound — rayon cuts this from O(N) serial to
+    // O(N/cores) before we enter the single-threaded SQLite transaction.
+    let phase2b_start = Instant::now();
+    let serialized_rows: Vec<db::writer::PreserializedRow> = parse_results
+        .par_iter()
+        .filter_map(|(abs_path, result)| {
+            let rel = abs_path
+                .strip_prefix(&root)
+                .unwrap_or(abs_path)
+                .display()
+                .to_string();
+            let mtime = db::writer::file_mtime_rfc3339(abs_path);
+            match db::writer::serialize_file_data(&rel, result, mtime.as_deref()) {
+                Ok(row) => Some(row),
+                Err(e) => {
+                    eprintln!(
+                        "{} serialize {}: {}",
+                        "error:".red().bold(),
+                        abs_path.display(),
+                        e
+                    );
+                    None
+                }
+            }
+        })
+        .collect();
+    let phase2b_elapsed = phase2b_start.elapsed();
+
+    // Phase 3 (transacted): write pre-serialized rows to DB in one commit.
+    // JSON serialization already done in parallel — this loop is pure SQLite I/O.
+    let phase3_start = Instant::now();
+    {
+        let tx = conn.transaction()?;
+        if show_progress {
+            let pb = ProgressBar::new(serialized_rows.len() as u64);
+            pb.set_style(
+                ProgressStyle::with_template("Writing  {wide_bar:.green/blue} {pos}/{len}")
+                    .expect("valid template"),
+            );
+            for row in &serialized_rows {
+                db::writer::upsert_preserialized(&tx, row)?;
+                pb.inc(1);
+            }
+            pb.finish_and_clear();
+        } else {
+            for row in &serialized_rows {
+                db::writer::upsert_preserialized(&tx, row)?;
+            }
+        }
+        tx.commit()?;
     }
+    let phase3_elapsed = phase3_start.elapsed();
+
+    // Phase 4: rebuild the pre-computed reverse dependency graph.
+    let phase4_start = Instant::now();
+    if show_progress {
+        let sp = ProgressBar::new_spinner();
+        sp.set_style(
+            ProgressStyle::with_template("{spinner:.blue} Building dependency graph...")
+                .expect("valid template"),
+        );
+        sp.enable_steady_tick(Duration::from_millis(80));
+        db::writer::rebuild_and_write_reverse_deps(&mut conn, &root)?;
+        sp.finish_and_clear();
+    } else {
+        db::writer::rebuild_and_write_reverse_deps(&mut conn, &root)?;
+    }
+    let phase4_elapsed = phase4_start.elapsed();
 
     db::writer::write_meta(&conn, "fmm_version", env!("CARGO_PKG_VERSION"))?;
     db::writer::write_meta(&conn, "generated_at", &Utc::now().to_rfc3339())?;
+
+    let total_elapsed = total_start.elapsed();
+
+    println!(
+        "{} {} file(s) indexed in {:.1}s",
+        "Done ✓".green().bold(),
+        serialized_rows.len(),
+        total_elapsed.as_secs_f64()
+    );
+
+    if !quiet {
+        let accounted =
+            phase1_elapsed + phase2_elapsed + phase2b_elapsed + phase3_elapsed + phase4_elapsed;
+        let other = total_elapsed.saturating_sub(accounted);
+        println!(
+            "  parse: {:.1}s · serialize: {:.1}s · write: {:.1}s · deps: {:.1}s · other: {:.1}s",
+            phase2_elapsed.as_secs_f64(),
+            phase2b_elapsed.as_secs_f64(),
+            phase3_elapsed.as_secs_f64(),
+            phase4_elapsed.as_secs_f64(),
+            other.as_secs_f64(),
+        );
+    }
 
     Ok(())
 }

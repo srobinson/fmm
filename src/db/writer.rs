@@ -41,6 +41,170 @@ pub fn is_file_up_to_date(conn: &Connection, rel_path: &str, source_mtime: Optio
     .unwrap_or(false)
 }
 
+/// Load all `(path, indexed_at)` pairs from the DB in one query.
+///
+/// Used by the bulk staleness check in `fmm generate` to avoid 39k individual
+/// queries. The returned map is keyed by relative file path.
+pub fn load_indexed_mtimes(conn: &Connection) -> Result<HashMap<String, String>> {
+    let mut stmt = conn.prepare("SELECT path, indexed_at FROM files")?;
+    let map = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(map)
+}
+
+/// All data needed to write one file to the DB, with JSON fields pre-serialized.
+///
+/// Computing JSON strings is CPU-bound and can be done in parallel (rayon)
+/// before the single-threaded SQLite transaction in Phase 3.
+pub struct PreserializedRow {
+    pub rel_path: String,
+    pub loc: i64,
+    pub mtime: Option<String>,
+    pub imports_json: String,
+    pub deps_json: String,
+    pub named_imports_json: String,
+    pub namespace_imports_json: String,
+    pub function_names_json: String,
+    pub indexed_at: String,
+    pub exports: Vec<ExportRecord>,
+    pub methods: Vec<MethodRecord>,
+}
+
+/// A flattened export entry ready for direct DB insertion.
+pub struct ExportRecord {
+    pub name: String,
+    pub start_line: i64,
+    pub end_line: i64,
+}
+
+/// A flattened method entry ready for direct DB insertion.
+pub struct MethodRecord {
+    pub dotted_name: String,
+    pub start_line: i64,
+    pub end_line: i64,
+    /// ALP-922: NULL = class method, "nested-fn", "closure-state".
+    pub kind: Option<String>,
+}
+
+/// Serialize all JSON fields for a parsed file — CPU-bound work safe to run in rayon.
+///
+/// Call this in parallel across dirty files, then pass the results to
+/// `upsert_preserialized` inside the single-threaded SQLite transaction.
+pub fn serialize_file_data(
+    rel_path: &str,
+    result: &ParseResult,
+    mtime: Option<&str>,
+) -> Result<PreserializedRow> {
+    let meta = &result.metadata;
+    let function_names = extract_function_names(result.custom_fields.as_ref());
+
+    let exports: Vec<ExportRecord> = meta
+        .exports
+        .iter()
+        .filter(|e| e.parent_class.is_none())
+        .map(|e| ExportRecord {
+            name: e.name.clone(),
+            start_line: e.start_line as i64,
+            end_line: e.end_line as i64,
+        })
+        .collect();
+
+    let mut seen = std::collections::HashSet::new();
+    let methods: Vec<MethodRecord> = meta
+        .exports
+        .iter()
+        .filter_map(|e| {
+            e.parent_class.as_ref().and_then(|class| {
+                let key = format!("{}.{}", class, e.name);
+                if seen.insert(key.clone()) {
+                    Some(MethodRecord {
+                        dotted_name: key,
+                        start_line: e.start_line as i64,
+                        end_line: e.end_line as i64,
+                        kind: e.kind.clone(),
+                    })
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+
+    Ok(PreserializedRow {
+        rel_path: rel_path.to_string(),
+        loc: meta.loc as i64,
+        mtime: mtime.map(String::from),
+        imports_json: serde_json::to_string(&meta.imports).context("serialize imports")?,
+        deps_json: serde_json::to_string(&meta.dependencies).context("serialize dependencies")?,
+        named_imports_json: serde_json::to_string(&meta.named_imports)
+            .context("serialize named_imports")?,
+        namespace_imports_json: serde_json::to_string(&meta.namespace_imports)
+            .context("serialize namespace_imports")?,
+        function_names_json: serde_json::to_string(&function_names)
+            .context("serialize function_names")?,
+        indexed_at: Utc::now().to_rfc3339(),
+        exports,
+        methods,
+    })
+}
+
+/// Write a pre-serialized file row to the DB within an open transaction.
+///
+/// Unlike `upsert_file_data`, this takes already-serialized JSON strings so
+/// the CPU-bound serialization work can be done outside the transaction.
+pub fn upsert_preserialized(tx: &Transaction<'_>, row: &PreserializedRow) -> Result<()> {
+    tx.execute(
+        "INSERT OR REPLACE INTO files
+             (path, loc, modified, imports, dependencies, named_imports,
+              namespace_imports, function_names, indexed_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![
+            row.rel_path,
+            row.loc,
+            row.mtime,
+            row.imports_json,
+            row.deps_json,
+            row.named_imports_json,
+            row.namespace_imports_json,
+            row.function_names_json,
+            row.indexed_at,
+        ],
+    )
+    .context("Failed to upsert file row")?;
+
+    {
+        let mut stmt = tx.prepare_cached(
+            "INSERT OR REPLACE INTO exports (name, file_path, start_line, end_line)
+             VALUES (?1, ?2, ?3, ?4)",
+        )?;
+        for e in &row.exports {
+            stmt.execute(params![e.name, row.rel_path, e.start_line, e.end_line])?;
+        }
+    }
+
+    {
+        let mut stmt = tx.prepare_cached(
+            "INSERT OR REPLACE INTO methods (dotted_name, file_path, start_line, end_line, kind)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+        )?;
+        for m in &row.methods {
+            stmt.execute(params![
+                m.dotted_name,
+                row.rel_path,
+                m.start_line,
+                m.end_line,
+                m.kind,
+            ])?;
+        }
+    }
+
+    Ok(())
+}
+
 /// Insert or replace a complete file record plus its exports and methods.
 ///
 /// Because the `files` table uses `INSERT OR REPLACE` with a PRIMARY KEY
@@ -100,8 +264,8 @@ pub fn upsert_file_data(
     // dotted name for each signature, deduplicated the same way as the YAML formatter).
     {
         let mut stmt = tx.prepare_cached(
-            "INSERT OR REPLACE INTO methods (dotted_name, file_path, start_line, end_line)
-             VALUES (?1, ?2, ?3, ?4)",
+            "INSERT OR REPLACE INTO methods (dotted_name, file_path, start_line, end_line, kind)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
         )?;
         let mut seen = std::collections::HashSet::new();
         for entry in &meta.exports {
@@ -113,6 +277,7 @@ pub fn upsert_file_data(
                         rel_path,
                         entry.start_line as i64,
                         entry.end_line as i64,
+                        entry.kind,
                     ])?;
                 }
             }
@@ -186,6 +351,7 @@ pub fn load_files_map(conn: &Connection) -> Result<HashMap<String, FileEntry>> {
                 function_names,
                 named_imports,
                 namespace_imports,
+                ..Default::default()
             },
         );
     }

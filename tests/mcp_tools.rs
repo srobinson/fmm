@@ -53,7 +53,7 @@ fn setup_mcp_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
         "import bcrypt from 'bcrypt';\n\nexport function hashPassword(pw: string) {\n  return bcrypt.hash(pw, 10);\n}\n\nexport function verifyPassword(pw: string, hash: string) {\n  return bcrypt.compare(pw, hash);\n}\n",
     );
 
-    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
@@ -950,7 +950,7 @@ fn setup_go_mcp_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
         "package handler\n\nimport \"net/http\"\n\ntype Handler struct{}\n\nfunc NewHandler() *Handler {\n\treturn &Handler{}\n}\n\nfunc (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {}\n",
     );
 
-    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
@@ -1026,7 +1026,7 @@ fn setup_large_class_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
 
     write_file(root, "src/service.ts", &source);
 
-    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
@@ -1130,7 +1130,7 @@ fn setup_collision_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
         "export function createSession() {}\n",
     );
 
-    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     (tmp, server)
 }

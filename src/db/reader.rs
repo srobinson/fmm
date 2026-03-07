@@ -78,6 +78,7 @@ fn load_files(conn: &Connection, manifest: &mut Manifest) -> Result<()> {
                 function_names,
                 named_imports,
                 namespace_imports,
+                ..Default::default()
             },
         );
     }
@@ -214,7 +215,7 @@ fn load_exports(conn: &Connection, manifest: &mut Manifest) -> Result<()> {
 
 fn load_methods(conn: &Connection, manifest: &mut Manifest) -> Result<()> {
     let mut stmt =
-        conn.prepare("SELECT dotted_name, file_path, start_line, end_line FROM methods")?;
+        conn.prepare("SELECT dotted_name, file_path, start_line, end_line, kind FROM methods")?;
 
     let rows = stmt.query_map([], |row| {
         Ok((
@@ -222,11 +223,12 @@ fn load_methods(conn: &Connection, manifest: &mut Manifest) -> Result<()> {
             row.get::<_, String>(1)?,
             row.get::<_, Option<i64>>(2)?,
             row.get::<_, Option<i64>>(3)?,
+            row.get::<_, Option<String>>(4)?,
         ))
     })?;
 
     for row in rows {
-        let (dotted_name, file_path, start, end) = row?;
+        let (dotted_name, file_path, start, end, kind) = row?;
         let lines = match (start, end) {
             (Some(s), Some(e)) if s > 0 => Some(ExportLines {
                 start: s as usize,
@@ -235,15 +237,27 @@ fn load_methods(conn: &Connection, manifest: &mut Manifest) -> Result<()> {
             _ => None,
         };
 
-        // Populate FileEntry.methods so the read_symbol tool can build redirect hints
-        // for large classes without re-querying the DB.
+        let el = lines.clone().unwrap_or(ExportLines { start: 0, end: 0 });
+
+        // Route into the correct FileEntry bucket based on kind.
         if let Some(fe) = manifest.files.get_mut(&file_path) {
-            fe.methods.get_or_insert_with(HashMap::new).insert(
-                dotted_name.clone(),
-                lines.clone().unwrap_or(ExportLines { start: 0, end: 0 }),
-            );
+            match kind.as_deref() {
+                Some("nested-fn") => {
+                    fe.nested_fns.insert(dotted_name.clone(), el);
+                }
+                Some("closure-state") => {
+                    fe.closure_state.insert(dotted_name.clone(), el);
+                }
+                _ => {
+                    // NULL kind = class method
+                    fe.methods
+                        .get_or_insert_with(HashMap::new)
+                        .insert(dotted_name.clone(), el);
+                }
+            }
         }
 
+        // All kinds go into method_index so fmm_read_symbol("Parent.child") works.
         manifest.method_index.insert(
             dotted_name,
             ExportLocation {
