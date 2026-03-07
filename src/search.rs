@@ -1573,4 +1573,72 @@ mod tests {
             files
         );
     }
+
+    #[test]
+    fn imports_filter_scoped_npm_package_not_falsely_checked_as_local() {
+        // @tanstack/react-start contains '/' so looks_like_local is true,
+        // but it must still be found via in_imports (not in_deps).
+        // No file should be dropped or falsely matched.
+        let m = manifest_with_imports(vec![
+            ("src/routes.ts", vec![], vec!["@tanstack/react-start"]),
+            ("src/utils.ts", vec![], vec!["lodash"]),
+        ]);
+
+        let filters = SearchFilters {
+            export: None,
+            imports: Some("@tanstack/react-start".to_string()),
+            depends_on: None,
+            min_loc: None,
+            max_loc: None,
+        };
+
+        let results = filter_search(&m, &filters);
+        let files: Vec<&str> = results.iter().map(|r| r.file.as_str()).collect();
+
+        assert!(
+            files.contains(&"src/routes.ts"),
+            "routes.ts imports @tanstack/react-start; got: {:?}",
+            files
+        );
+        assert!(
+            !files.contains(&"src/utils.ts"),
+            "utils.ts does not import @tanstack/react-start; got: {:?}",
+            files
+        );
+    }
+
+    #[test]
+    fn combined_mode_total_exports_none_suppresses_misleading_notice() {
+        // ALP-902: when combined-mode filter intersection drops all exports,
+        // total_exports must be None so the formatter does not emit the
+        // "[N fuzzy matches — showing top 0 by relevance]" notice.
+        let result = BareSearchResult {
+            exports: vec![],
+            files: vec!["src/routes/users.ts".to_string()],
+            imports: vec![],
+            named_import_hits: vec![],
+            total_exports: None,
+        };
+        let text = crate::format::format_bare_search(&result, false);
+        assert!(
+            !text.contains("fuzzy matches"),
+            "no misleading fuzzy cap notice when total_exports is None; got: {:?}",
+            text
+        );
+
+        // Sanity: Some(N) DOES produce the notice, so the assertion above has real teeth.
+        let result_capped = BareSearchResult {
+            exports: vec![],
+            files: vec![],
+            imports: vec![],
+            named_import_hits: vec![],
+            total_exports: Some(10),
+        };
+        let text_capped = crate::format::format_bare_search(&result_capped, false);
+        assert!(
+            text_capped.contains("fuzzy matches"),
+            "notice must appear when total_exports is Some; got: {:?}",
+            text_capped
+        );
+    }
 }
