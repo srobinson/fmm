@@ -253,14 +253,13 @@ impl McpServer {
             _ => Err(format!("Unknown tool: {}", tool_name)),
         };
 
-        // fmm_read_symbol supports truncate: false to bypass the 10KB cap.
-        let should_truncate = if tool_name == "fmm_read_symbol" {
-            arguments
+        // fmm_read_symbol and fmm_glossary support truncate: false to bypass the 10KB cap.
+        let should_truncate = match tool_name {
+            "fmm_read_symbol" | "fmm_glossary" => arguments
                 .get("truncate")
                 .and_then(|v| v.as_bool())
-                .unwrap_or(true)
-        } else {
-            true
+                .unwrap_or(true),
+            _ => true,
         };
 
         match result {

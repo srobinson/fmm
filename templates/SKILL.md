@@ -75,6 +75,7 @@ fmm_read_symbol("LargeClass", truncate: false)   →  bypass 10KB cap
 ```
 fmm_glossary("loadInstance")                    →  all callers (named-import precision)
 fmm_glossary("Injector.loadInstance")           →  call-site precision
+fmm_glossary("Symbol", truncate: false)         →  bypass 10KB cap for large caller lists
 fmm_dependency_graph(file: "src/injector.ts")   →  upstream deps + downstream blast radius
 fmm_dependency_graph(..., filter: "source")     →  production blast radius (no tests)
 fmm_dependency_graph(..., depth: -1)            →  full transitive closure
@@ -309,6 +310,7 @@ Symbol-level impact analysis. Given a symbol name or pattern, returns all defini
 | `limit` | integer | no | Max entries returned (default 10, hard cap at 50). Use a specific pattern to stay under the default. |
 | `mode` | enum: source \| tests \| all | no | source (default): excludes test symbols and test files. tests: only test exports. all: unfiltered. |
 | `precision` | enum: named \| call-site | no | named (default): Layer 2 only, fast index lookup with no file reads. call-site: adds Layer 3 tree-sitter verification... |
+| `truncate` | boolean | no | Whether to apply the 10KB response cap (default: true). Set to false to return the full glossary for symbols with man... |
 
 ## Rules
 

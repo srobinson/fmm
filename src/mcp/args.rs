@@ -68,4 +68,8 @@ pub(super) struct GlossaryArgs {
     pub(super) mode: Option<String>,
     /// ALP-883: "named" (default) = Layer 2 only; "call-site" = Layer 2 + Layer 3 tree-sitter.
     pub(super) precision: Option<String>,
+    /// When false, bypasses the 10KB response cap (default: true).
+    /// Read from raw JSON in MCP dispatch; field exists so serde accepts the parameter.
+    #[allow(dead_code)]
+    pub(super) truncate: Option<bool>,
 }

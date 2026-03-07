@@ -47,6 +47,7 @@ fmm_read_symbol("LargeClass", truncate: false)   →  bypass 10KB cap
 ```
 fmm_glossary("loadInstance")                    →  all callers (named-import precision)
 fmm_glossary("Injector.loadInstance")           →  call-site precision
+fmm_glossary("Symbol", truncate: false)         →  bypass 10KB cap for large caller lists
 fmm_dependency_graph(file: "src/injector.ts")   →  upstream deps + downstream blast radius
 fmm_dependency_graph(..., filter: "source")     →  production blast radius (no tests)
 fmm_dependency_graph(..., depth: -1)            →  full transitive closure
@@ -472,3 +473,10 @@ enum            = ["named", "call-site"]
 mcp_description = "named (default): Layer 2 only, fast index lookup with no file reads. call-site: adds Layer 3 tree-sitter verification to remove dead imports and annotate re-export-only files."
 cli_help        = "Precision level: named (default, fast) or call-site (tree-sitter verification)"
 cli_flag        = "--precision"
+
+[[tools.fmm_glossary.params]]
+name            = "truncate"
+type            = "boolean"
+mcp_description = "Whether to apply the 10KB response cap (default: true). Set to false to return the full glossary for symbols with many callers."
+cli_help        = "Apply 10KB response cap (default: true, set false to bypass)"
+cli_flag        = "--truncate"

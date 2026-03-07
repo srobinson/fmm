@@ -174,7 +174,15 @@ pub fn format_glossary(
             } else {
                 if !src.used_by.is_empty() {
                     let items: Vec<String> = src.used_by.iter().map(|s| yaml_escape(s)).collect();
-                    lines.push(format!("    used_by: [{}]", items.join(", ")));
+                    const INLINE_THRESHOLD: usize = 10;
+                    if items.len() <= INLINE_THRESHOLD {
+                        lines.push(format!("    used_by: [{}]", items.join(", ")));
+                    } else {
+                        lines.push("    used_by:".to_string());
+                        for item in &items {
+                            lines.push(format!("      - {}", item));
+                        }
+                    }
                 } else {
                     lines.push("    used_by: []".to_string());
                 }

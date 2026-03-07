@@ -90,3 +90,5 @@ pub const GLOSSARY_LIMIT_HELP: &str = "Maximum number of entries returned (defau
 pub const GLOSSARY_MODE_HELP: &str = "Filter mode: source (default, no tests), tests (test coverage only), all (unfiltered)";
 #[rustfmt::skip]
 pub const GLOSSARY_PRECISION_HELP: &str = "Precision level: named (default, fast) or call-site (tree-sitter verification)";
+#[rustfmt::skip]
+pub const GLOSSARY_TRUNCATE_HELP: &str = "Apply 10KB response cap (default: true, set false to bypass)";

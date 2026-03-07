@@ -250,6 +250,10 @@ serde_json::from_str(r##"{
               "named",
               "call-site"
             ]
+          },
+          "truncate": {
+            "type": "boolean",
+            "description": "Whether to apply the 10KB response cap (default: true). Set to false to return the full glossary for symbols with many callers."
           }
         },
         "required": [
