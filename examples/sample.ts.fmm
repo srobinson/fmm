@@ -1,6 +1,6 @@
 ---
 file: examples/sample.ts
-fmm: v0.4+0.1.31
+fmm: v0.4+0.1.33
 exports:
   SessionConfig: [12, 15]
   SessionManager: [17, 46]

@@ -1,6 +1,6 @@
 ---
 file: src/cli/commands/ls.rs
-fmm: v0.4+0.1.31
+fmm: v0.4+0.1.33
 exports:
   ls: [13, 204]
 imports: [anyhow]

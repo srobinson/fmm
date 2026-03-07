@@ -1,10 +1,10 @@
 ---
 file: src/cli/commands/read.rs
-fmm: v0.4+0.1.31
+fmm: v0.4+0.1.33
 exports:
-  read_symbol: [14, 124]
+  read_symbol: [14, 157]
 imports: [anyhow, colored]
-loc: 124
+loc: 157
 modified: 2026-03-07
 rust:
   derives: ['serde::Serialize']

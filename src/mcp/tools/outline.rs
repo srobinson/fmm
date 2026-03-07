@@ -34,10 +34,22 @@ pub(in crate::mcp) fn tool_file_outline(
     } else {
         None
     };
+    let top_level_fns = if include_private {
+        let export_names: Vec<&str> = entry.exports.iter().map(|s| s.as_str()).collect();
+        let fns = crate::manifest::private_members::extract_top_level_functions(
+            root,
+            &args.file,
+            &export_names,
+        );
+        Some(fns)
+    } else {
+        None
+    };
 
     Ok(crate::format::format_file_outline(
         &args.file,
         entry,
         private_by_class.as_ref(),
+        top_level_fns.as_deref(),
     ))
 }

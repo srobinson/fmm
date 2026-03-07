@@ -1,6 +1,6 @@
 ---
 file: src/format/search_formatters.rs
-fmm: v0.4+0.1.31
+fmm: v0.4+0.1.33
 exports:
   format_bare_search: [10, 108]
   format_filter_search: [112, 137]
