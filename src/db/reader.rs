@@ -234,6 +234,15 @@ fn load_methods(conn: &Connection, manifest: &mut Manifest) -> Result<()> {
             }),
             _ => None,
         };
+
+        // Populate FileEntry.methods so the read_symbol tool can build redirect hints
+        // for large classes without re-querying the DB.
+        if let Some(fe) = manifest.files.get_mut(&file_path) {
+            fe.methods
+                .get_or_insert_with(HashMap::new)
+                .insert(dotted_name.clone(), lines.clone().unwrap_or(ExportLines { start: 0, end: 0 }));
+        }
+
         manifest.method_index.insert(
             dotted_name,
             ExportLocation {

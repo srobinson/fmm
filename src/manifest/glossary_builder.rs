@@ -181,9 +181,24 @@ impl Manifest {
         entries
     }
 
-    /// Find all files that depend on `target_file` using all three dependency matchers:
-    /// dep_matches (JS/TS/Rust/Go), python_dep_matches (Python relative), dotted_dep_matches (Python absolute).
+    /// Find all files that depend on `target_file`.
+    ///
+    /// When the manifest is loaded from SQLite, uses the precomputed `reverse_deps` index
+    /// (O(1), includes cross-package bare specifier edges built by `build_reverse_deps`).
+    /// Falls back to scanning all files when `reverse_deps` is empty — used for manifests
+    /// built programmatically via `add_file` without calling `rebuild_reverse_deps`.
     pub fn find_dependents(&self, target_file: &str) -> Vec<String> {
+        if !self.reverse_deps.is_empty() {
+            let mut deps = self
+                .reverse_deps
+                .get(target_file)
+                .cloned()
+                .unwrap_or_default();
+            deps.sort();
+            return deps;
+        }
+
+        // Fallback: scan all files for dependency matches (programmatic manifest path).
         let mut dependents: Vec<String> = self
             .files
             .iter()

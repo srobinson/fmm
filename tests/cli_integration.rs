@@ -57,61 +57,91 @@ def format_output(data: dict) -> str:
     tmp
 }
 
-fn sidecar_exists(base: &Path, relative: &str) -> bool {
-    let sidecar = base.join(format!("{}.fmm", relative));
-    sidecar.exists()
+fn db_exists(base: &Path) -> bool {
+    base.join(".fmm.db").exists()
 }
 
-fn sidecar_content(base: &Path, relative: &str) -> String {
-    let sidecar = base.join(format!("{}.fmm", relative));
-    fs::read_to_string(sidecar).unwrap()
+fn db_indexed(base: &Path, relative: &str) -> bool {
+    let conn = rusqlite::Connection::open(base.join(".fmm.db")).unwrap();
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM files WHERE path = ?1",
+            rusqlite::params![relative],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    count > 0
+}
+
+fn db_export_count(base: &Path, relative: &str) -> i64 {
+    let conn = rusqlite::Connection::open(base.join(".fmm.db")).unwrap();
+    conn.query_row(
+        "SELECT COUNT(*) FROM exports WHERE file_path = ?1",
+        rusqlite::params![relative],
+        |row| row.get(0),
+    )
+    .unwrap_or(0)
+}
+
+fn db_has_export(base: &Path, relative: &str, export_name: &str) -> bool {
+    let conn = rusqlite::Connection::open(base.join(".fmm.db")).unwrap();
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM exports WHERE file_path = ?1 AND name = ?2",
+            rusqlite::params![relative, export_name],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    count > 0
+}
+
+fn db_file_count(base: &Path) -> i64 {
+    let conn = rusqlite::Connection::open(base.join(".fmm.db")).unwrap();
+    conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+        .unwrap_or(0)
 }
 
 #[test]
-fn generate_creates_sidecars() {
+fn generate_creates_db() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
     fmm::cli::generate(&[path.to_string()], false, false).unwrap();
 
-    assert!(sidecar_exists(tmp.path(), "src/auth.ts"));
-    assert!(sidecar_exists(tmp.path(), "src/db.ts"));
-    assert!(sidecar_exists(tmp.path(), "src/utils.py"));
+    assert!(db_exists(tmp.path()));
+    assert!(db_indexed(tmp.path(), "src/auth.ts"));
+    assert!(db_indexed(tmp.path(), "src/db.ts"));
+    assert!(db_indexed(tmp.path(), "src/utils.py"));
 }
 
 #[test]
-fn generate_sidecar_content_is_valid_yaml() {
+fn generate_indexes_exports() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
     fmm::cli::generate(&[path.to_string()], false, false).unwrap();
 
-    let content = sidecar_content(tmp.path(), "src/auth.ts");
-    assert!(content.contains("file:"));
-    assert!(content.contains("exports:"));
-    assert!(content.contains("validateUser"));
-    assert!(content.contains("AuthService"));
+    assert!(db_has_export(tmp.path(), "src/auth.ts", "validateUser"));
+    assert!(db_has_export(tmp.path(), "src/auth.ts", "AuthService"));
 }
 
 #[test]
-fn generate_skips_unchanged_sidecars() {
+fn generate_skips_unchanged_files() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
     fmm::cli::generate(&[path.to_string()], false, false).unwrap();
+    let count_before = db_export_count(tmp.path(), "src/auth.ts");
 
-    let sidecar_path = tmp.path().join("src/auth.ts.fmm");
-    let content_before = fs::read_to_string(&sidecar_path).unwrap();
-
-    // Generate again — source unchanged, sidecar should be identical
+    // Generate again — source unchanged, export count should be identical
     fmm::cli::generate(&[path.to_string()], false, false).unwrap();
+    let count_after = db_export_count(tmp.path(), "src/auth.ts");
 
-    let content_after = fs::read_to_string(&sidecar_path).unwrap();
-    assert_eq!(content_before, content_after);
+    assert_eq!(count_before, count_after);
 }
 
 #[test]
-fn generate_updates_stale_sidecars() {
+fn generate_updates_stale_files() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
@@ -126,8 +156,7 @@ fn generate_updates_stale_sidecars() {
     // Generate again — should detect the change and update
     fmm::cli::generate(&[path.to_string()], false, false).unwrap();
 
-    let sidecar = sidecar_content(tmp.path(), "src/auth.ts");
-    assert!(sidecar.contains("NEW_EXPORT"));
+    assert!(db_has_export(tmp.path(), "src/auth.ts", "NEW_EXPORT"));
 }
 
 #[test]
@@ -137,12 +166,11 @@ fn generate_dry_run_creates_no_files() {
 
     fmm::cli::generate(&[path.to_string()], true, false).unwrap();
 
-    assert!(!sidecar_exists(tmp.path(), "src/auth.ts"));
-    assert!(!sidecar_exists(tmp.path(), "src/db.ts"));
+    assert!(!db_exists(tmp.path()));
 }
 
 #[test]
-fn generate_dry_run_preserves_stale_sidecars() {
+fn generate_dry_run_preserves_stale_db() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
@@ -156,9 +184,8 @@ fn generate_dry_run_preserves_stale_sidecars() {
 
     fmm::cli::generate(&[path.to_string()], true, false).unwrap();
 
-    // Sidecar should NOT contain the new export (dry run)
-    let sidecar = sidecar_content(tmp.path(), "src/auth.ts");
-    assert!(!sidecar.contains("DRY_RUN_TEST"));
+    // DB should NOT contain the new export (dry run)
+    assert!(!db_has_export(tmp.path(), "src/auth.ts", "DRY_RUN_TEST"));
 }
 
 #[test]
@@ -189,22 +216,21 @@ fn validate_fails_after_source_change() {
 }
 
 #[test]
-fn clean_removes_all_sidecars() {
+fn clean_clears_db() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
     fmm::cli::generate(&[path.to_string()], false, false).unwrap();
-    assert!(sidecar_exists(tmp.path(), "src/auth.ts"));
+    assert!(db_indexed(tmp.path(), "src/auth.ts"));
 
     fmm::cli::clean(&[path.to_string()], false, false).unwrap();
 
-    assert!(!sidecar_exists(tmp.path(), "src/auth.ts"));
-    assert!(!sidecar_exists(tmp.path(), "src/db.ts"));
-    assert!(!sidecar_exists(tmp.path(), "src/utils.py"));
+    // DB file remains but all rows are cleared
+    assert_eq!(db_file_count(tmp.path()), 0);
 }
 
 #[test]
-fn clean_dry_run_preserves_files() {
+fn clean_dry_run_preserves_db() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
 
@@ -212,9 +238,9 @@ fn clean_dry_run_preserves_files() {
 
     fmm::cli::clean(&[path.to_string()], true, false).unwrap();
 
-    // Files should still exist
-    assert!(sidecar_exists(tmp.path(), "src/auth.ts"));
-    assert!(sidecar_exists(tmp.path(), "src/db.ts"));
+    // Files should still be indexed
+    assert!(db_indexed(tmp.path(), "src/auth.ts"));
+    assert!(db_indexed(tmp.path(), "src/db.ts"));
 }
 
 #[test]
@@ -224,12 +250,12 @@ fn full_workflow_generate_validate_clean() {
 
     // Generate
     fmm::cli::generate(&[path.to_string()], false, false).unwrap();
-    assert!(sidecar_exists(tmp.path(), "src/auth.ts"));
+    assert!(db_indexed(tmp.path(), "src/auth.ts"));
 
     // Validate (should pass)
     fmm::cli::validate(&[path.to_string()]).unwrap();
 
-    // Modify source and re-generate (replaces old update step)
+    // Modify source and re-generate
     let db_path = tmp.path().join("src/db.ts");
     fs::write(
         &db_path,
@@ -238,13 +264,12 @@ fn full_workflow_generate_validate_clean() {
     .unwrap();
     fmm::cli::generate(&[path.to_string()], false, false).unwrap();
 
-    // Validate again (should pass after generate updates stale sidecars)
+    // Validate again (should pass after generate updates stale entry)
     fmm::cli::validate(&[path.to_string()]).unwrap();
 
     // Clean
     fmm::cli::clean(&[path.to_string()], false, false).unwrap();
-    assert!(!sidecar_exists(tmp.path(), "src/auth.ts"));
-    assert!(!sidecar_exists(tmp.path(), "src/db.ts"));
+    assert_eq!(db_file_count(tmp.path()), 0);
 }
 
 #[test]
@@ -259,16 +284,16 @@ fn respects_gitignore() {
         .output()
         .expect("git init failed");
 
-    // Create .gitignore that ignores the utils.py
+    // Create .gitignore that ignores utils.py
     fs::write(tmp.path().join(".gitignore"), "src/utils.py\n").unwrap();
 
     fmm::cli::generate(&[path.to_string()], false, false).unwrap();
 
-    // TypeScript files should have sidecars
-    assert!(sidecar_exists(tmp.path(), "src/auth.ts"));
-    assert!(sidecar_exists(tmp.path(), "src/db.ts"));
+    // TypeScript files should be indexed
+    assert!(db_indexed(tmp.path(), "src/auth.ts"));
+    assert!(db_indexed(tmp.path(), "src/db.ts"));
     // Python file should be ignored
-    assert!(!sidecar_exists(tmp.path(), "src/utils.py"));
+    assert!(!db_indexed(tmp.path(), "src/utils.py"));
 }
 
 #[test]
@@ -281,20 +306,23 @@ fn respects_fmmignore() {
 
     fmm::cli::generate(&[path.to_string()], false, false).unwrap();
 
-    assert!(sidecar_exists(tmp.path(), "src/auth.ts"));
-    assert!(!sidecar_exists(tmp.path(), "src/db.ts"));
-    assert!(sidecar_exists(tmp.path(), "src/utils.py"));
+    assert!(db_indexed(tmp.path(), "src/auth.ts"));
+    assert!(!db_indexed(tmp.path(), "src/db.ts"));
+    assert!(db_indexed(tmp.path(), "src/utils.py"));
 }
 
 #[test]
 fn single_file_generate() {
     let tmp = setup_project();
     let file_path = tmp.path().join("src/auth.ts");
+    // When a file path is passed, root resolves to the file's parent directory
+    // (no .git/.fmmrc.json in a temp dir, so root = src/).
+    let src_dir = tmp.path().join("src");
 
     fmm::cli::generate(&[file_path.to_str().unwrap().to_string()], false, false).unwrap();
 
-    // Only the targeted file gets a sidecar
-    assert!(sidecar_exists(tmp.path(), "src/auth.ts"));
-    // Other files should not have sidecars
-    assert!(!sidecar_exists(tmp.path(), "src/db.ts"));
+    // DB is at src/.fmm.db; file path stored relative to src/
+    assert!(db_indexed(&src_dir, "auth.ts"));
+    // Other files should not be indexed
+    assert!(!db_indexed(&src_dir, "db.ts"));
 }

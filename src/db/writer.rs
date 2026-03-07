@@ -196,18 +196,57 @@ pub fn load_files_map(conn: &Connection) -> Result<HashMap<String, FileEntry>> {
 /// Load all file data from the DB, build a minimal `Manifest` (workspace
 /// discovery included), recompute all reverse edges, and persist the results
 /// to the `reverse_deps` table.
+///
+/// The DB stores file paths relative to `root`. `build_reverse_deps` requires
+/// absolute paths for the cross-package resolver (oxc_resolver needs an
+/// absolute importer path, Layer 3 checks paths against the filesystem, and
+/// `canonicalize` only works on absolute paths). We therefore convert relative
+/// keys → absolute before computation and strip `root` back to relative before
+/// writing to the DB, so the stored paths stay consistent with the `files` table.
 pub fn rebuild_and_write_reverse_deps(conn: &mut Connection, root: &Path) -> Result<()> {
-    let files_map = load_files_map(conn)?;
+    let rel_files_map = load_files_map(conn)?;
 
     let workspace_info = crate::resolver::workspace::discover(root);
 
+    // Convert relative DB keys to absolute so the resolver works correctly.
+    let abs_files_map: HashMap<String, crate::manifest::FileEntry> = rel_files_map
+        .into_iter()
+        .map(|(rel, entry)| {
+            let abs = root.join(&rel).to_string_lossy().to_string();
+            (abs, entry)
+        })
+        .collect();
+
     let mut manifest = crate::manifest::Manifest::new();
-    manifest.files = files_map;
+    manifest.files = abs_files_map;
     manifest.workspace_packages = workspace_info.packages;
     manifest.workspace_roots = workspace_info.roots;
     manifest.rebuild_reverse_deps();
 
-    write_reverse_deps(conn, &manifest.reverse_deps)
+    // Strip root prefix back to relative for consistent DB storage.
+    let rel_reverse_deps: HashMap<String, Vec<String>> = manifest
+        .reverse_deps
+        .into_iter()
+        .filter_map(|(abs_target, abs_sources)| {
+            let rel_target = Path::new(&abs_target)
+                .strip_prefix(root)
+                .ok()?
+                .to_string_lossy()
+                .to_string();
+            let rel_sources: Vec<String> = abs_sources
+                .into_iter()
+                .filter_map(|s| {
+                    Path::new(&s)
+                        .strip_prefix(root)
+                        .ok()
+                        .map(|p| p.to_string_lossy().to_string())
+                })
+                .collect();
+            Some((rel_target, rel_sources))
+        })
+        .collect();
+
+    write_reverse_deps(conn, &rel_reverse_deps)
 }
 
 /// Clear the `reverse_deps` table and replace it with `rev_deps`.
