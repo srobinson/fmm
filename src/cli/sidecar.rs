@@ -106,10 +106,17 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     let workspace_info = resolver::workspace::discover(&root);
     db::writer::upsert_workspace_packages(&conn, &workspace_info.packages)?;
 
-    // Phase 1 (sequential): determine which files are stale in the DB.
+    // Phase 1: bulk staleness check.
+    // Load all indexed_at times in one query (avoids 39k individual SELECTs),
+    // then compare in parallel with rayon (mtime syscalls are I/O-parallel).
     let phase1_start = Instant::now();
+    let indexed_mtimes: std::collections::HashMap<String, String> = if !force {
+        db::writer::load_indexed_mtimes(&conn)?
+    } else {
+        std::collections::HashMap::new()
+    };
     let dirty_files: Vec<&std::path::PathBuf> = files
-        .iter()
+        .par_iter()
         .filter(|file| {
             if force {
                 return true;
@@ -119,8 +126,14 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
                 .unwrap_or(file)
                 .display()
                 .to_string();
-            let mtime = db::writer::file_mtime_rfc3339(file);
-            !db::writer::is_file_up_to_date(&conn, &rel, mtime.as_deref())
+            let Some(mtime) = db::writer::file_mtime_rfc3339(file) else {
+                return true; // unreadable mtime → treat as dirty
+            };
+            // Dirty when not in DB, or stored indexed_at < file mtime.
+            indexed_mtimes
+                .get(&rel)
+                .map(|indexed_at| indexed_at.as_str() < mtime.as_str())
+                .unwrap_or(true)
         })
         .collect();
     let phase1_elapsed = phase1_start.elapsed();
@@ -186,36 +199,52 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     };
     let phase2_elapsed = phase2_start.elapsed();
 
-    // Phase 3 (transacted): write all parsed results to DB in one commit.
+    // Phase 2b (parallel): pre-serialize JSON fields for all parsed files.
+    // serde_json::to_string is CPU-bound — rayon cuts this from O(N) serial to
+    // O(N/cores) before we enter the single-threaded SQLite transaction.
+    let serialized_rows: Vec<db::writer::PreserializedRow> = parse_results
+        .par_iter()
+        .filter_map(|(abs_path, result)| {
+            let rel = abs_path
+                .strip_prefix(&root)
+                .unwrap_or(abs_path)
+                .display()
+                .to_string();
+            let mtime = db::writer::file_mtime_rfc3339(abs_path);
+            match db::writer::serialize_file_data(&rel, result, mtime.as_deref()) {
+                Ok(row) => Some(row),
+                Err(e) => {
+                    eprintln!(
+                        "{} serialize {}: {}",
+                        "error:".red().bold(),
+                        abs_path.display(),
+                        e
+                    );
+                    None
+                }
+            }
+        })
+        .collect();
+
+    // Phase 3 (transacted): write pre-serialized rows to DB in one commit.
+    // JSON serialization already done in parallel — this loop is pure SQLite I/O.
     let phase3_start = Instant::now();
     {
         let tx = conn.transaction()?;
         if show_progress {
-            let pb = ProgressBar::new(parse_results.len() as u64);
+            let pb = ProgressBar::new(serialized_rows.len() as u64);
             pb.set_style(
                 ProgressStyle::with_template("Writing  {wide_bar:.green/blue} {pos}/{len}")
                     .expect("valid template"),
             );
-            for (abs_path, result) in &parse_results {
-                let rel = abs_path
-                    .strip_prefix(&root)
-                    .unwrap_or(abs_path)
-                    .display()
-                    .to_string();
-                let mtime = db::writer::file_mtime_rfc3339(abs_path);
-                db::writer::upsert_file_data(&tx, &rel, result, mtime.as_deref())?;
+            for row in &serialized_rows {
+                db::writer::upsert_preserialized(&tx, row)?;
                 pb.inc(1);
             }
             pb.finish_and_clear();
         } else {
-            for (abs_path, result) in &parse_results {
-                let rel = abs_path
-                    .strip_prefix(&root)
-                    .unwrap_or(abs_path)
-                    .display()
-                    .to_string();
-                let mtime = db::writer::file_mtime_rfc3339(abs_path);
-                db::writer::upsert_file_data(&tx, &rel, result, mtime.as_deref())?;
+            for row in &serialized_rows {
+                db::writer::upsert_preserialized(&tx, row)?;
             }
         }
         tx.commit()?;
