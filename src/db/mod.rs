@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use std::path::Path;
 
 pub const DB_FILENAME: &str = ".fmm.db";
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
 
 /// Opens or creates the fmm SQLite database at `root/.fmm.db`.
 ///
@@ -156,13 +156,15 @@ CREATE TABLE IF NOT EXISTS exports (
 CREATE INDEX IF NOT EXISTS idx_exports_name ON exports(name);
 CREATE INDEX IF NOT EXISTS idx_exports_file ON exports(file_path);
 
--- Class/interface methods for dotted-name lookups (e.g. 'MyClass.doThing').
--- Replaces the in-memory method_index.
+-- Class/interface methods and nested function symbols for dotted-name lookups.
+-- kind: NULL = class method, 'nested-fn' = depth-1 nested function (ALP-922),
+--        'closure-state' = depth-1 non-trivial prologue var (ALP-922).
 CREATE TABLE IF NOT EXISTS methods (
     dotted_name TEXT NOT NULL,
     file_path   TEXT NOT NULL REFERENCES files(path) ON DELETE CASCADE,
     start_line  INTEGER,
     end_line    INTEGER,
+    kind        TEXT,
     PRIMARY KEY (dotted_name, file_path)
 );
 CREATE INDEX IF NOT EXISTS idx_methods_name ON methods(dotted_name);

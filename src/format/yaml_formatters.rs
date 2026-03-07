@@ -29,12 +29,13 @@ pub fn format_file_outline(
     if !entry.exports.is_empty() {
         lines.push("symbols:".to_string());
         for (i, name) in entry.exports.iter().enumerate() {
+            let prefix = format!("{}.", name);
+
             // Collect public methods belonging to this class (prefix "ClassName.")
             let class_methods: Vec<_> = entry
                 .methods
                 .as_ref()
                 .map(|m| {
-                    let prefix = format!("{}.", name);
                     let mut v: Vec<_> = m
                         .iter()
                         .filter(|(k, _)| k.starts_with(&prefix))
@@ -49,6 +50,29 @@ pub fn format_file_outline(
                 })
                 .unwrap_or_default();
 
+            // ALP-922: nested function declarations (depth-1) under this function
+            let mut nested_fn_list: Vec<_> = entry
+                .nested_fns
+                .iter()
+                .filter(|(k, _)| k.starts_with(&prefix))
+                .map(|(k, v)| (k.trim_start_matches(&prefix).to_string(), v))
+                .collect();
+            nested_fn_list.sort_by_key(|(_, el)| el.start);
+
+            // ALP-922: closure-state vars — only when include_private requested
+            let include_private_flag = private_by_class.is_some();
+            let mut closure_state_list: Vec<_> = if include_private_flag {
+                entry
+                    .closure_state
+                    .iter()
+                    .filter(|(k, _)| k.starts_with(&prefix))
+                    .map(|(k, v)| (k.trim_start_matches(&prefix).to_string(), v))
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            closure_state_list.sort_by_key(|(_, el)| el.start);
+
             // Private members for this class (only when include_private requested)
             let private_members: &[PrivateMember] = private_by_class
                 .and_then(|m| m.get(name.as_str()))
@@ -58,113 +82,122 @@ pub fn format_file_outline(
             if let Some(el) = entry.export_lines.as_ref().and_then(|els| els.get(i)) {
                 let size = el.end.saturating_sub(el.start) + 1;
                 let private_count = private_members.len();
+                let nested_fn_count = nested_fn_list.len();
+                let closure_state_count = closure_state_list.len();
 
-                match (class_methods.is_empty(), private_count) {
-                    (true, 0) => {
-                        lines.push(format!(
-                            "  {}: [{}, {}]  # {} lines",
-                            yaml_escape(name),
-                            el.start,
-                            el.end,
-                            size
+                // Build annotation: summarize what sub-entries are present.
+                let mut annotation_parts: Vec<String> = Vec::new();
+                if !class_methods.is_empty() {
+                    annotation_parts.push(format!("{} public methods", class_methods.len()));
+                }
+                if nested_fn_count > 0 {
+                    annotation_parts.push(format!("{} nested functions", nested_fn_count));
+                }
+                if private_count > 0 {
+                    let pm_count = private_members.iter().filter(|m| m.is_method).count();
+                    let pf_count = private_count - pm_count;
+                    if pm_count > 0 {
+                        annotation_parts.push(format!("{} private methods", pm_count));
+                    }
+                    if pf_count > 0 {
+                        annotation_parts.push(format!("{} private fields", pf_count));
+                    }
+                }
+                if include_private_flag && closure_state_count > 0 {
+                    annotation_parts.push(format!("{} closure-state", closure_state_count));
+                }
+
+                let annotation = if annotation_parts.is_empty() {
+                    format!(
+                        "  {}: [{}, {}]  # {} lines",
+                        yaml_escape(name),
+                        el.start,
+                        el.end,
+                        size
+                    )
+                } else {
+                    format!(
+                        "  {}: [{}, {}]  # {} lines, {}",
+                        yaml_escape(name),
+                        el.start,
+                        el.end,
+                        size,
+                        annotation_parts.join(", ")
+                    )
+                };
+                lines.push(annotation);
+
+                // Sub-entries: build combined list sorted by start line.
+                // (start, short_name, end, suffix)
+                let mut sub_entries: Vec<(usize, String, usize, &'static str)> = Vec::new();
+
+                // Determine whether interleaving by start line is needed:
+                // only when private or nested items are present alongside class methods.
+                let needs_start_sort = !private_members.is_empty()
+                    || !nested_fn_list.is_empty()
+                    || !closure_state_list.is_empty();
+
+                if needs_start_sort {
+                    // Mixed sub-entries: sort class methods by start line for interleaving.
+                    let mut public_sorted = class_methods.clone();
+                    public_sorted.sort_by_key(|(_, el)| el.start);
+                    for (method_name, method_lines) in &public_sorted {
+                        sub_entries.push((
+                            method_lines.start,
+                            method_name.clone(),
+                            method_lines.end,
+                            "",
                         ));
                     }
-                    (false, 0) => {
-                        lines.push(format!(
-                            "  {}: [{}, {}]  # {} lines, {} public methods",
-                            yaml_escape(name),
-                            el.start,
-                            el.end,
-                            size,
-                            class_methods.len()
+                } else {
+                    // Class methods only: preserve size-descending order (original behaviour).
+                    for (method_name, method_lines) in &class_methods {
+                        sub_entries.push((
+                            method_lines.start,
+                            method_name.clone(),
+                            method_lines.end,
+                            "",
                         ));
-                        for (method_name, method_lines) in &class_methods {
-                            lines.push(format!(
-                                "    {}: [{}, {}]",
-                                yaml_escape(method_name),
-                                method_lines.start,
-                                method_lines.end
-                            ));
-                        }
                     }
-                    (true, _) => {
-                        lines.push(format!(
-                            "  {}: [{}, {}]  # {} lines, {} private members",
-                            yaml_escape(name),
-                            el.start,
-                            el.end,
-                            size,
-                            private_count
-                        ));
-                        for pm in private_members {
-                            let suffix = if pm.is_method {
-                                "  # private"
-                            } else {
-                                "  # private field"
-                            };
-                            lines.push(format!(
-                                "    {}: [{}, {}]{}",
-                                yaml_escape(&pm.name),
-                                pm.start,
-                                pm.end,
-                                suffix
-                            ));
-                        }
-                    }
-                    (false, _) => {
-                        let private_method_count =
-                            private_members.iter().filter(|m| m.is_method).count();
-                        let private_field_count = private_count - private_method_count;
-                        let mut summary = format!(
-                            "  {}: [{}, {}]  # {} lines, {} public methods, {} private methods",
-                            yaml_escape(name),
-                            el.start,
-                            el.end,
-                            size,
-                            class_methods.len(),
-                            private_method_count
-                        );
-                        if private_field_count > 0 {
-                            summary.push_str(&format!(", {} private fields", private_field_count));
-                        }
-                        lines.push(summary);
+                }
 
-                        // Merge public (by start line) and private, interleaved by line number.
-                        // Public methods are sorted by size desc by the collector above; re-sort
-                        // by start line for interleaved display.
-                        let mut public_sorted = class_methods.clone();
-                        public_sorted.sort_by_key(|(_, el)| el.start);
+                // Nested functions
+                for (fn_name, fn_lines) in &nested_fn_list {
+                    sub_entries.push((fn_lines.start, fn_name.clone(), fn_lines.end, ""));
+                }
 
-                        // Build a combined list of (start, label, end, suffix)
-                        let mut combined: Vec<(usize, String, usize, &str)> = Vec::new();
-                        for (method_name, method_lines) in &public_sorted {
-                            combined.push((
-                                method_lines.start,
-                                method_name.clone(),
-                                method_lines.end,
-                                "",
-                            ));
-                        }
-                        for pm in private_members {
-                            let suffix = if pm.is_method {
-                                "  # private"
-                            } else {
-                                "  # private field"
-                            };
-                            combined.push((pm.start, pm.name.clone(), pm.end, suffix));
-                        }
-                        combined.sort_by_key(|(start, _, _, _)| *start);
+                // Private class members
+                for pm in private_members {
+                    let suffix = if pm.is_method {
+                        "  # private"
+                    } else {
+                        "  # private field"
+                    };
+                    sub_entries.push((pm.start, pm.name.clone(), pm.end, suffix));
+                }
 
-                        for (start, method_name, end, suffix) in &combined {
-                            lines.push(format!(
-                                "    {}: [{}, {}]{}",
-                                yaml_escape(method_name),
-                                start,
-                                end,
-                                suffix
-                            ));
-                        }
-                    }
+                // Closure-state vars (only with include_private)
+                for (var_name, var_lines) in &closure_state_list {
+                    sub_entries.push((
+                        var_lines.start,
+                        var_name.clone(),
+                        var_lines.end,
+                        "  # closure-state",
+                    ));
+                }
+
+                if needs_start_sort {
+                    sub_entries.sort_by_key(|(start, _, _, _)| *start);
+                }
+
+                for (start, sub_name, end, suffix) in &sub_entries {
+                    lines.push(format!(
+                        "    {}: [{}, {}]{}",
+                        yaml_escape(sub_name),
+                        start,
+                        end,
+                        suffix
+                    ));
                 }
             } else {
                 lines.push(format!("  {}", yaml_escape(name)));

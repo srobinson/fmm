@@ -86,6 +86,8 @@ pub struct MethodRecord {
     pub dotted_name: String,
     pub start_line: i64,
     pub end_line: i64,
+    /// ALP-922: NULL = class method, "nested-fn", "closure-state".
+    pub kind: Option<String>,
 }
 
 /// Serialize all JSON fields for a parsed file — CPU-bound work safe to run in rayon.
@@ -123,6 +125,7 @@ pub fn serialize_file_data(
                         dotted_name: key,
                         start_line: e.start_line as i64,
                         end_line: e.end_line as i64,
+                        kind: e.kind.clone(),
                     })
                 } else {
                     None
@@ -185,15 +188,16 @@ pub fn upsert_preserialized(tx: &Transaction<'_>, row: &PreserializedRow) -> Res
 
     {
         let mut stmt = tx.prepare_cached(
-            "INSERT OR REPLACE INTO methods (dotted_name, file_path, start_line, end_line)
-             VALUES (?1, ?2, ?3, ?4)",
+            "INSERT OR REPLACE INTO methods (dotted_name, file_path, start_line, end_line, kind)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
         )?;
         for m in &row.methods {
             stmt.execute(params![
                 m.dotted_name,
                 row.rel_path,
                 m.start_line,
-                m.end_line
+                m.end_line,
+                m.kind,
             ])?;
         }
     }
@@ -260,8 +264,8 @@ pub fn upsert_file_data(
     // dotted name for each signature, deduplicated the same way as the YAML formatter).
     {
         let mut stmt = tx.prepare_cached(
-            "INSERT OR REPLACE INTO methods (dotted_name, file_path, start_line, end_line)
-             VALUES (?1, ?2, ?3, ?4)",
+            "INSERT OR REPLACE INTO methods (dotted_name, file_path, start_line, end_line, kind)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
         )?;
         let mut seen = std::collections::HashSet::new();
         for entry in &meta.exports {
@@ -273,6 +277,7 @@ pub fn upsert_file_data(
                         rel_path,
                         entry.start_line as i64,
                         entry.end_line as i64,
+                        entry.kind,
                     ])?;
                 }
             }
@@ -346,6 +351,7 @@ pub fn load_files_map(conn: &Connection) -> Result<HashMap<String, FileEntry>> {
                 function_names,
                 named_imports,
                 namespace_imports,
+                ..Default::default()
             },
         );
     }

@@ -56,6 +56,16 @@ pub struct FileEntry {
     /// Source paths of namespace imports and wildcard re-exports. Populated from sidecar.
     #[serde(skip)]
     pub namespace_imports: Vec<String>,
+    /// ALP-922: depth-1 nested function declarations inside function bodies.
+    /// dotted_name (e.g. "createTypeChecker.getIndexType") -> line range.
+    /// Always shown in fmm_file_outline. Searchable via fmm_search.
+    #[serde(skip)]
+    pub nested_fns: HashMap<String, ExportLines>,
+    /// ALP-922: depth-1 non-trivial prologue var/const/let declarations.
+    /// dotted_name (e.g. "createTypeChecker.silentNeverType") -> line range.
+    /// Shown only when include_private: true in fmm_file_outline.
+    #[serde(skip)]
+    pub closure_state: HashMap<String, ExportLines>,
 }
 
 impl From<Metadata> for FileEntry {
@@ -63,17 +73,27 @@ impl From<Metadata> for FileEntry {
         let mut exports = Vec::new();
         let mut export_lines = Vec::new();
         let mut methods: HashMap<String, ExportLines> = HashMap::new();
+        let mut nested_fns: HashMap<String, ExportLines> = HashMap::new();
+        let mut closure_state: HashMap<String, ExportLines> = HashMap::new();
 
         for e in &metadata.exports {
-            if let Some(ref class) = e.parent_class {
-                let key = format!("{}.{}", class, e.name);
-                methods.insert(
-                    key,
-                    ExportLines {
-                        start: e.start_line,
-                        end: e.end_line,
-                    },
-                );
+            if let Some(ref parent) = e.parent_class {
+                let key = format!("{}.{}", parent, e.name);
+                let el = ExportLines {
+                    start: e.start_line,
+                    end: e.end_line,
+                };
+                match e.kind.as_deref() {
+                    Some("nested-fn") => {
+                        nested_fns.insert(key, el);
+                    }
+                    Some("closure-state") => {
+                        closure_state.insert(key, el);
+                    }
+                    _ => {
+                        methods.insert(key, el);
+                    }
+                }
             } else {
                 exports.push(e.name.clone());
                 export_lines.push(ExportLines {
@@ -99,6 +119,8 @@ impl From<Metadata> for FileEntry {
             function_names: Vec::new(),
             named_imports: metadata.named_imports,
             namespace_imports: metadata.namespace_imports,
+            nested_fns,
+            closure_state,
         }
     }
 }
@@ -206,11 +228,17 @@ impl Manifest {
                     self.export_all.remove(old_export);
                 }
             }
-            // Remove old method entries for this file
+            // Remove old method/nested-fn/closure-state entries for this file
             if let Some(ref old_methods) = old_entry.methods {
                 for key in old_methods.keys() {
                     self.method_index.remove(key);
                 }
+            }
+            for key in old_entry.nested_fns.keys() {
+                self.method_index.remove(key);
+            }
+            for key in old_entry.closure_state.keys() {
+                self.method_index.remove(key);
             }
         }
 
@@ -316,6 +344,12 @@ impl Manifest {
                 for key in methods.keys() {
                     self.method_index.remove(key);
                 }
+            }
+            for key in entry.nested_fns.keys() {
+                self.method_index.remove(key);
+            }
+            for key in entry.closure_state.keys() {
+                self.method_index.remove(key);
             }
         }
     }

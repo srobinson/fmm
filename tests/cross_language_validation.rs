@@ -857,9 +857,12 @@ function mergeConfig(base: Record<string, unknown>, overrides: Record<string, un
     let mut parser = TypeScriptParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
+    // ALP-922: nested extraction may add closure-state from non-exported functions;
+    // check that there are no top-level (non-nested) exports.
     assert!(
-        result.metadata.exports.is_empty(),
-        "internal module should have no exports"
+        result.metadata.export_names().is_empty(),
+        "internal module should have no top-level exports, got: {:?}",
+        result.metadata.export_names()
     );
     assert!(result.metadata.imports.contains(&"fs".to_string()));
     assert!(result.metadata.imports.contains(&"path".to_string()));

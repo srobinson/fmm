@@ -98,7 +98,43 @@ pub fn bare_search(manifest: &Manifest, term: &str, limit: Option<usize>) -> Bar
         seen_exports.insert(term.to_string());
     }
 
-    // 2. Fuzzy export matches — scored by relevance, capped at limit
+    // 2. Exact match in method_index (nested functions and class methods by dotted name).
+    // Handles "silentNeverType" matching "createTypeChecker.silentNeverType".
+    let method_exact = manifest
+        .method_index
+        .get(term)
+        .map(|loc| (term.to_string(), loc.clone()));
+    if let Some((name, loc)) = method_exact {
+        if !seen_exports.contains(&name) {
+            export_hits.push(export_hit_from_location(&name, &loc));
+            seen_exports.insert(name);
+        }
+    }
+
+    // 2b. Fuzzy method_index search — dotted names that contain the term.
+    // This is how "silentNeverType" finds "createTypeChecker.silentNeverType".
+    let mut method_fuzzy: Vec<(u32, String, &ExportLocation)> = manifest
+        .method_index
+        .iter()
+        .filter(|(name, _)| !seen_exports.contains(name.as_str()))
+        .filter(|(name, _)| {
+            let name_lower = name.to_lowercase();
+            name_lower.contains(&term_lower)
+        })
+        .map(|(name, loc)| {
+            // Score against the last component (after the dot) for better relevance
+            let short = name.rfind('.').map(|p| &name[p + 1..]).unwrap_or(name);
+            (export_match_score(short, &term_lower), name.clone(), loc)
+        })
+        .collect();
+    method_fuzzy.sort_by(|(sa, na, _), (sb, nb, _)| sb.cmp(sa).then(na.cmp(nb)));
+    for (_, name, loc) in method_fuzzy.into_iter().take(cap) {
+        if seen_exports.insert(name.clone()) {
+            export_hits.push(export_hit_from_location(&name, loc));
+        }
+    }
+
+    // 3. Fuzzy export matches — scored by relevance, capped at limit
     let mut fuzzy: Vec<(u32, &str, &ExportLocation)> = manifest
         .export_locations
         .iter()
@@ -114,6 +150,7 @@ pub fn bare_search(manifest: &Manifest, term: &str, limit: Option<usize>) -> Bar
 
     for (_, name, loc) in fuzzy.into_iter().take(cap) {
         export_hits.push(export_hit_from_location(name, loc));
+        seen_exports.insert(name.to_string());
     }
 
     // 3. File path matches

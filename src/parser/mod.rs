@@ -32,6 +32,12 @@ pub struct ExportEntry {
     /// The method renders under `methods:` in the sidecar as `ClassName.method: [start, end]`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_class: Option<String>,
+    /// ALP-922: kind tag for nested symbols inside function bodies.
+    /// "nested-fn" = depth-1 function declaration inside a function body.
+    /// "closure-state" = depth-1 non-trivial var/const/let prologue declaration.
+    /// None = regular top-level export or class method (existing behavior).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
 }
 
 impl ExportEntry {
@@ -41,6 +47,7 @@ impl ExportEntry {
             start_line,
             end_line,
             parent_class: None,
+            kind: None,
         }
     }
 
@@ -51,6 +58,34 @@ impl ExportEntry {
             start_line,
             end_line,
             parent_class: Some(parent_class),
+            kind: None,
+        }
+    }
+
+    /// Create a depth-1 nested function declaration inside a function body.
+    pub fn nested_fn(name: String, start_line: usize, end_line: usize, parent_fn: String) -> Self {
+        Self {
+            name,
+            start_line,
+            end_line,
+            parent_class: Some(parent_fn),
+            kind: Some("nested-fn".to_string()),
+        }
+    }
+
+    /// Create a depth-1 non-trivial var/const/let prologue declaration inside a function body.
+    pub fn closure_state(
+        name: String,
+        start_line: usize,
+        end_line: usize,
+        parent_fn: String,
+    ) -> Self {
+        Self {
+            name,
+            start_line,
+            end_line,
+            parent_class: Some(parent_fn),
+            kind: Some("closure-state".to_string()),
         }
     }
 }

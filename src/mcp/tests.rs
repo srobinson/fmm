@@ -1927,6 +1927,7 @@ fn glossary_layer2_filters_non_symbol_importers() {
         function_names: vec!["myFunc".to_string()],
         named_imports: HashMap::new(),
         namespace_imports: vec![],
+        ..Default::default()
     };
 
     let mut caller_named = HashMap::new();
@@ -1942,6 +1943,7 @@ fn glossary_layer2_filters_non_symbol_importers() {
         function_names: vec![],
         named_imports: caller_named,
         namespace_imports: vec![],
+        ..Default::default()
     };
 
     let mut bystander_named = HashMap::new();
@@ -1958,6 +1960,7 @@ fn glossary_layer2_filters_non_symbol_importers() {
         function_names: vec![],
         named_imports: bystander_named,
         namespace_imports: vec![],
+        ..Default::default()
     };
 
     manifest.files.insert("source.js".to_string(), source_entry);
