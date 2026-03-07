@@ -64,7 +64,11 @@ fn layer2_workspace_package_name_resolves_to_reverse_dep() {
     let manifest = load_manifest(root);
 
     assert!(
-        has_reverse_dep(&manifest, "packages/shared/utils.ts", "packages/app/index.ts"),
+        has_reverse_dep(
+            &manifest,
+            "packages/shared/utils.ts",
+            "packages/app/index.ts"
+        ),
         "expected packages/app/index.ts in reverse_deps[packages/shared/utils.ts], got: {:?}",
         manifest.reverse_deps.get("packages/shared/utils.ts")
     );

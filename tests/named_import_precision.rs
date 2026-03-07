@@ -56,7 +56,8 @@ fn setup_precision_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     std::fs::write(
         root.join("src/ReExporter.ts"),
         "export { scheduleUpdate } from './WorkLoop';\n",
-    ).unwrap();
+    )
+    .unwrap();
 
     // DeadImport.ts — named-imports scheduleUpdate but never calls it
     std::fs::write(

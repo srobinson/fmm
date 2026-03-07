@@ -245,8 +245,14 @@ fn file_outline_returns_symbols() {
     assert!(text.contains("createSession:"));
     assert!(text.contains("validateSession:"));
     assert!(text.contains("imports: [jwt, redis]"));
-    assert!(text.contains("../config"), "dependencies must include ../config; got: {text}");
-    assert!(text.contains("./types"), "dependencies must include ./types; got: {text}");
+    assert!(
+        text.contains("../config"),
+        "dependencies must include ../config; got: {text}"
+    );
+    assert!(
+        text.contains("./types"),
+        "dependencies must include ./types; got: {text}"
+    );
     assert!(text.contains("loc: 12"));
 }
 
@@ -1200,7 +1206,11 @@ fn go_stdlib_import_no_false_positive() {
 #[ignore]
 fn debug_large_class_output() {
     let (tmp, server) = setup_large_class_server();
-    let outline = call_tool_text(&server, "fmm_file_outline", json!({"file": "src/service.ts"}));
+    let outline = call_tool_text(
+        &server,
+        "fmm_file_outline",
+        json!({"file": "src/service.ts"}),
+    );
     println!("OUTLINE:\n{}", &outline[..outline.len().min(500)]);
     let text = call_tool_text(&server, "fmm_read_symbol", json!({"name": "BigService"}));
     println!("READ_SYMBOL:\n{}", &text[..text.len().min(500)]);

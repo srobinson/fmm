@@ -700,11 +700,7 @@ fn setup_disclosure_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     let root = tmp.path();
 
     // source.ts exports myFunc as a module-level function.
-    write_file(
-        root,
-        "src/source.ts",
-        "export function myFunc(): void {}\n",
-    );
+    write_file(root, "src/source.ts", "export function myFunc(): void {}\n");
 
     // caller.ts named-imports myFunc → stays in used_by.
     write_file(
@@ -753,4 +749,3 @@ fn glossary_layer2_disclosure_line_includes_symbol_name() {
         text
     );
 }
-
