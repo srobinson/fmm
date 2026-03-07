@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/typescript.rs
-fmm: v0.4+0.1.30
+fmm: v0.4+0.1.31
 exports:
   TypeScriptParser: [141, 161]
 methods:

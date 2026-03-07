@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/zig.rs
-fmm: v0.4+0.1.30
+fmm: v0.4+0.1.31
 exports:
   ZigParser: [8, 10]
 methods:

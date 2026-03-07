@@ -1,6 +1,6 @@
 ---
 file: build.rs
-fmm: v0.4+0.1.30
+fmm: v0.4+0.1.31
 imports: [indexmap, serde, std]
 loc: 361
 modified: 2026-03-07

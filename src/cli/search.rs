@@ -680,7 +680,10 @@ mod tests {
             .named_import_hits
             .iter()
             .find(|h| h.symbol == "createServerFn");
-        assert!(hit.is_some(), "fuzzy match on 'server' should hit createServerFn");
+        assert!(
+            hit.is_some(),
+            "fuzzy match on 'server' should hit createServerFn"
+        );
         // "Server" (uppercase) should also work
         let result2 = crate::search::bare_search(&m, "Server", None);
         let hit2 = result2
@@ -731,7 +734,10 @@ mod tests {
         let m = named_imports_manifest();
         let result = crate::search::bare_search(&m, "createServerFn", None);
         let text = crate::format::format_bare_search(&result, false);
-        assert!(text.contains("NAMED IMPORTS"), "output should have NAMED IMPORTS section");
+        assert!(
+            text.contains("NAMED IMPORTS"),
+            "output should have NAMED IMPORTS section"
+        );
         assert!(text.contains("createServerFn"));
         assert!(text.contains("@tanstack/react-start"));
     }

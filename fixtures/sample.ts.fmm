@@ -1,6 +1,6 @@
 ---
 file: fixtures/sample.ts
-fmm: v0.4+0.1.30
+fmm: v0.4+0.1.31
 exports:
   AppConfig: [6, 10]
   Handler: [12, 12]

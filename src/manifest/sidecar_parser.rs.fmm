@@ -1,6 +1,6 @@
 ---
 file: src/manifest/sidecar_parser.rs
-fmm: v0.4+0.1.30
+fmm: v0.4+0.1.31
 imports: [serde, std]
 loc: 384
 modified: 2026-03-07

@@ -1,6 +1,6 @@
 ---
 file: src/cli/commands/lookup.rs
-fmm: v0.4+0.1.30
+fmm: v0.4+0.1.31
 exports:
   lookup: [17, 89]
 imports: [anyhow, colored]

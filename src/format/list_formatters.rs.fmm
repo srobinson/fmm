@@ -1,6 +1,6 @@
 ---
 file: src/format/list_formatters.rs
-fmm: v0.4+0.1.30
+fmm: v0.4+0.1.31
 exports:
   format_list_exports_pattern: [13, 48]
   format_list_exports_file: [51, 57]
