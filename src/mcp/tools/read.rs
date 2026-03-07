@@ -39,9 +39,11 @@ pub(in crate::mcp) fn tool_read_symbol(
             .ok_or_else(|| {
                 format!(
                     "Symbol '{}' not found in '{}'. \
+                         Note: exported symbols (export function/const) must be read \
+                         by plain name — fmm_read_symbol(\"{}\"). \
                          Use fmm_file_outline(file: \"{}\", include_private: true) \
                          to see all top-level declarations.",
-                    symbol_part, file_part, file_part
+                    symbol_part, file_part, symbol_part, file_part
                 )
             })?;
             (
@@ -49,8 +51,9 @@ pub(in crate::mcp) fn tool_read_symbol(
                 Some(crate::manifest::ExportLines { start, end }),
             )
         } else {
-            // Doesn't look like a file path — fall through to normal resolution.
-            // Re-enter via dotted or plain lookup below.
+            // Doesn't look like a file path — reject rather than silently misrouting.
+            // Export names never contain colons; if the user omitted the path separator
+            // they should use 'path/to/file.ts:symbol' form.
             return Err(format!(
                 "Ambiguous name '{}'. For file:symbol notation, \
                  the file path must contain '/' or '.' (e.g. 'src/helpers.ts:myFn').",

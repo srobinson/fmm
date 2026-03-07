@@ -1,7 +1,7 @@
 ---
 file: src/mcp/tools/read.rs
-fmm: v0.4+0.1.32
+fmm: v0.4+0.1.33
 imports: [serde_json]
 dependencies: [../common, 'crate::manifest', 'crate::mcp::args']
-loc: 193
+loc: 195
 modified: 2026-03-07

@@ -42,9 +42,11 @@ pub fn read_symbol(
             .ok_or_else(|| {
                 anyhow::anyhow!(
                     "Symbol '{}' not found in '{}'. \
+                         Note: exported symbols must be read by plain name — {}. \
                          Use {} to see all top-level declarations.",
                     symbol_part,
                     file_part,
+                    format!("fmm read {}", symbol_part).bold(),
                     format!("fmm outline --include-private {}", file_part).bold()
                 )
             })?;

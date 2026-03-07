@@ -58,8 +58,9 @@ pub fn extract_top_level_functions(
 
 /// Find the line range `(start, end)` of a top-level function or class by name.
 ///
-/// Unlike `extract_top_level_functions`, this does NOT filter by exports — it
-/// locates any top-level declaration regardless of whether it is exported.
+/// Searches bare top-level declarations only (non-`export`-prefixed). Declarations
+/// written as `export function foo()` are wrapped in an `export_statement` node by
+/// tree-sitter and will NOT be found here; use the plain-name lookup path for those.
 /// Used by `fmm_read_symbol` for the `file:symbol` colon notation.
 pub fn find_top_level_function_range(
     root: &Path,

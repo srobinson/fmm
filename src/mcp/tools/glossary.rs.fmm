@@ -1,6 +1,6 @@
 ---
 file: src/mcp/tools/glossary.rs
-fmm: v0.4+0.1.31
+fmm: v0.4+0.1.33
 imports: [serde_json]
 dependencies: [../common/compute_import_specifiers, 'crate::manifest', 'crate::mcp::args']
 loc: 233
