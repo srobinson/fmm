@@ -21,9 +21,45 @@ pub(in crate::mcp) fn tool_read_symbol(
         );
     }
 
+    // Colon notation: path/to/file.ts:symbolName — on-demand tree-sitter parse
+    // for a non-exported (or any) top-level function in the named file.
+    // Checked before the dot notation to avoid ambiguity.
+    let (resolved_file, resolved_lines) = if let Some(colon_pos) = args.name.find(':') {
+        let file_part = &args.name[..colon_pos];
+        let symbol_part = &args.name[colon_pos + 1..];
+
+        // Require the file part to look like a path (contains '/' or '.')
+        // so bare symbol names with colons (unlikely) don't accidentally match.
+        if (file_part.contains('/') || file_part.contains('.')) && !symbol_part.is_empty() {
+            let (start, end) = crate::manifest::private_members::find_top_level_function_range(
+                root,
+                file_part,
+                symbol_part,
+            )
+            .ok_or_else(|| {
+                format!(
+                    "Symbol '{}' not found in '{}'. \
+                         Use fmm_file_outline(file: \"{}\", include_private: true) \
+                         to see all top-level declarations.",
+                    symbol_part, file_part, file_part
+                )
+            })?;
+            (
+                file_part.to_string(),
+                Some(crate::manifest::ExportLines { start, end }),
+            )
+        } else {
+            // Doesn't look like a file path — fall through to normal resolution.
+            // Re-enter via dotted or plain lookup below.
+            return Err(format!(
+                "Ambiguous name '{}'. For file:symbol notation, \
+                 the file path must contain '/' or '.' (e.g. 'src/helpers.ts:myFn').",
+                args.name
+            ));
+        }
     // Dotted notation: ClassName.method — look up in method_index first.
     // If not found (private method), fall back to on-demand tree-sitter extraction.
-    let (resolved_file, resolved_lines) = if args.name.contains('.') {
+    } else if args.name.contains('.') {
         if let Some(loc) = manifest.method_index.get(&args.name) {
             (loc.file.clone(), loc.lines.clone())
         } else {
@@ -111,10 +147,10 @@ pub(in crate::mcp) fn tool_read_symbol(
 
     let symbol_source = source_lines[start..end].join("\n");
 
-    // Bare class redirect: when a bare class name (no dot) would exceed the 10KB cap
-    // and truncate was not explicitly disabled, return an outline with redirect hints
-    // instead of a misleading partial view of the class body.
-    let is_bare_name = !args.name.contains('.');
+    // Bare class redirect: when a bare class name (no dot, no colon) would exceed
+    // the 10KB cap and truncate was not explicitly disabled, return an outline with
+    // redirect hints instead of a misleading partial view of the class body.
+    let is_bare_name = !args.name.contains('.') && !args.name.contains(':');
     let should_truncate = args.truncate.unwrap_or(true);
     if is_bare_name
         && should_truncate

@@ -28,8 +28,39 @@ pub fn read_symbol(
         anyhow::bail!("Symbol name must not be empty.");
     }
 
+    // Colon notation: path/to/file.ts:symbolName — on-demand top-level function lookup.
+    let (resolved_file, resolved_lines) = if let Some(colon_pos) = name.find(':') {
+        let file_part = &name[..colon_pos];
+        let symbol_part = &name[colon_pos + 1..];
+
+        if (file_part.contains('/') || file_part.contains('.')) && !symbol_part.is_empty() {
+            let (start, end) = crate::manifest::private_members::find_top_level_function_range(
+                &root,
+                file_part,
+                symbol_part,
+            )
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Symbol '{}' not found in '{}'. \
+                         Use {} to see all top-level declarations.",
+                    symbol_part,
+                    file_part,
+                    format!("fmm outline --include-private {}", file_part).bold()
+                )
+            })?;
+            (
+                file_part.to_string(),
+                Some(crate::manifest::ExportLines { start, end }),
+            )
+        } else {
+            anyhow::bail!(
+                "Ambiguous name '{}'. For file:symbol notation, \
+                 the file path must contain '/' or '.' (e.g. 'src/helpers.ts:myFn').",
+                name
+            );
+        }
     // Dotted notation: ClassName.method — look up in method_index.
-    let (resolved_file, resolved_lines) = if name.contains('.') {
+    } else if name.contains('.') {
         let loc = manifest.method_index.get(name).ok_or_else(|| {
             anyhow::anyhow!(
                 "Method '{}' not found. Use {} to see available methods.",
