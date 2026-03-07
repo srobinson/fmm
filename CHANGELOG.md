@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.33](https://github.com/srobinson/fmm/compare/v0.1.32...v0.1.33) (2026-03-07)
+
+
+### Bug Fixes
+
+* **glossary:** cross-package bare specifier matching + disclosure typo (#ALP-905) ([#97](https://github.com/srobinson/fmm/issues/97)) ([65015b4](https://github.com/srobinson/fmm/commit/65015b43964e1b1dacc97c106b3b820e79ea5416))
+
 ## [0.1.32](https://github.com/srobinson/fmm/compare/v0.1.31...v0.1.32) (2026-03-07)
 
 
