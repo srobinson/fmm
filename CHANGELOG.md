@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.36](https://github.com/srobinson/fmm/compare/v0.1.35...v0.1.36) (2026-03-07)
+
+
+### Bug Fixes
+
+* **glossary:** multi-line used_by format and truncate parameter (#ALP-919) ([15c34d1](https://github.com/srobinson/fmm/commit/15c34d1da1ae85ebf5f4191f5dacae5b9622d080))
+
 ## [0.1.35](https://github.com/srobinson/fmm/compare/v0.1.34...v0.1.35) (2026-03-07)
 
 
