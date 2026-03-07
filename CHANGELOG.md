@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.37](https://github.com/srobinson/fmm/compare/v0.1.36...v0.1.37) (2026-03-07)
+
+
+### Features
+
+* TypeScript scale — make fmm work on 39k+ file codebases (#ALP-923) ([#104](https://github.com/srobinson/fmm/issues/104)) ([a5767e8](https://github.com/srobinson/fmm/commit/a5767e88339e9595036275dd8d5d0827980e9def))
+
 ## [0.1.36](https://github.com/srobinson/fmm/compare/v0.1.35...v0.1.36) (2026-03-07)
 
 
