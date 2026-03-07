@@ -1,6 +1,6 @@
 ---
 file: src/format/helpers.rs
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 dependencies: ['crate::formatter::yaml_escape', 'crate::manifest']
 loc: 41
-modified: 2026-03-06
+modified: 2026-03-07

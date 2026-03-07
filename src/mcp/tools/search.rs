@@ -44,8 +44,22 @@ pub(in crate::mcp) fn tool_search(
                 h.files.retain(|f| filter_files.contains(f.as_str()));
             });
             result.imports.retain(|h| !h.files.is_empty());
+            // Stale truncation count is meaningless after filter intersection —
+            // exports were dropped because no matching files export them, not
+            // because the relevance cap was hit. Clear it to avoid a misleading
+            // "[N fuzzy matches — showing top 0]" notice.
+            result.total_exports = None;
         }
-        return Ok(crate::format::format_bare_search(&result, false));
+        let mut formatted = crate::format::format_bare_search(&result, false);
+        if has_filters && result.exports.is_empty() && !result.files.is_empty() {
+            formatted.push_str(&format!(
+                "\n[No exports matching '{}' found in the {} matching file{}]",
+                term,
+                result.files.len(),
+                if result.files.len() == 1 { "" } else { "s" }
+            ));
+        }
+        return Ok(formatted);
     }
 
     // Structured filter search (no term)

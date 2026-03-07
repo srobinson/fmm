@@ -1,6 +1,6 @@
 ---
 file: src/parser/builtin/go.rs
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   GoParser: [9, 19]
 methods:
@@ -8,7 +8,7 @@ methods:
 imports: [anyhow, std, streaming_iterator, tree_sitter]
 dependencies: [../query_helpers, 'crate::parser']
 loc: 509
-modified: 2026-03-06
+modified: 2026-03-07
 rust:
   lifetimes: ['''static']
   trait_impls: [Parser for GoParser]

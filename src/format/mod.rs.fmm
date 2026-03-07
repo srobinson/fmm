@@ -1,6 +1,6 @@
 ---
 file: src/format/mod.rs
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   list_formatters: [7, 7]
   search_formatters: [8, 8]
@@ -22,4 +22,4 @@ exports:
   format_read_symbol: [16, 16]
 imports: [list_formatters, search_formatters, yaml_formatters]
 loc: 19
-modified: 2026-03-06
+modified: 2026-03-07

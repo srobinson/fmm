@@ -1,6 +1,6 @@
 ---
 file: fixtures/python/with_all.py
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   APP_NAME: [7, 7]
   Config: [10, 12]
@@ -8,6 +8,6 @@ exports:
   process: [22, 24]
 imports: [dataclasses]
 loc: 35
-modified: 2026-03-06
+modified: 2026-03-07
 python:
   decorators: [dataclass]

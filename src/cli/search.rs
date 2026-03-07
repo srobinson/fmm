@@ -107,6 +107,11 @@ pub fn search(
                 h.files.retain(|f| filter_files.contains(f.as_str()));
             });
             result.imports.retain(|h| !h.files.is_empty());
+            // Stale truncation count is meaningless after filter intersection —
+            // exports were dropped because no matching files export them, not
+            // because the relevance cap was hit. Clear it to avoid a misleading
+            // "[N fuzzy matches — showing top 0]" notice.
+            result.total_exports = None;
             if json_output {
                 let json = BareSearchJson {
                     exports: result
@@ -130,7 +135,16 @@ pub fn search(
                 };
                 println!("{}", serde_json::to_string_pretty(&json)?);
             } else {
-                println!("{}", crate::format::format_bare_search(&result, true));
+                let mut formatted = crate::format::format_bare_search(&result, true);
+                if result.exports.is_empty() && !result.files.is_empty() {
+                    formatted.push_str(&format!(
+                        "\n[No exports matching '{}' found in the {} matching file{}]",
+                        search_term,
+                        result.files.len(),
+                        if result.files.len() == 1 { "" } else { "s" }
+                    ));
+                }
+                println!("{}", formatted);
             }
         } else {
             bare_search(&manifest, search_term, json_output)?;

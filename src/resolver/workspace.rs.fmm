@@ -1,12 +1,12 @@
 ---
 file: src/resolver/workspace.rs
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 exports:
   WorkspaceInfo: [12, 21]
   discover: [29, 76]
   read_package_name: [137, 142]
 imports: [std]
 loc: 358
-modified: 2026-03-06
+modified: 2026-03-07
 rust:
   derives: [Debug, Default]

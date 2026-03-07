@@ -293,13 +293,13 @@ cli_flag        = "--include-private"
 
 [tools.fmm_search]
 cli_name        = "search"
-mcp_description = "Universal codebase search. Use 'term' for smart search across exports, files, and imports. Use structured filters (export, imports, depends_on, LOC) for precise queries. Combine 'term' with filters to narrow results with AND semantics — only exports matching the term from files matching the filters are returned. Note: depends_on uses transitive matching (full import chain), not direct-only. For direct importers only, use fmm_dependency_graph with depth=1."
+mcp_description = "Universal codebase search. Use 'term' for smart search across codebase-defined exports, file paths, and import names. Note: term searches exports DEFINED in this codebase — it will not find call sites of externally-imported functions (e.g. createServerFn from @tanstack/react-start). For files that call an external function, use imports: package-name. Use structured filters (export, imports, depends_on, LOC) for precise queries. Combine 'term' with filters to narrow results with AND semantics. Note: depends_on uses transitive matching (full import chain), not direct-only. For direct importers only, use fmm_dependency_graph with depth=1."
 cli_about       = "Query the index — O(1) export lookup, dependency graphs, LOC filters.\n\nWith a bare term (no flags), searches across all dimensions: exports, file paths, and imports — with smart ranking. Exact export matches appear first.\n\nExport lookups use a reverse index for O(1) performance. Flags narrow the search to a single dimension and can be combined with AND logic."
 
 [[tools.fmm_search.params]]
 name            = "term"
 type            = "string"
-mcp_description = "Universal search term — searches exports (exact then fuzzy), file paths, and imports. Returns grouped results. Can be combined with structured filters to narrow results to matching files."
+mcp_description = "Search codebase-defined exports (exact then fuzzy), file paths, and external import names. Does NOT find call sites of externally-imported functions — for that, use imports: package-name (e.g. imports: @tanstack/react-start finds all files importing from that package). Can be combined with structured filters to narrow results to matching files."
 cli_help        = "Search term — searches exports, files, and imports (smart ranking)"
 cli_flag        = "term"
 
@@ -313,8 +313,8 @@ cli_flag        = "--export"
 [[tools.fmm_search.params]]
 name            = "imports"
 type            = "string"
-mcp_description = "Find all files that import this package/module (substring match)"
-cli_help        = "Find files that import a module"
+mcp_description = "Find all files that import an external package (npm, pip, crate, etc.) — substring match on the import name. For local file paths (e.g. src/db/client), use depends_on instead."
+cli_help        = "Find files that import an external package (use --depends-on for local paths)"
 cli_flag        = "--imports"
 
 [[tools.fmm_search.params]]

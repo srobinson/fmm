@@ -1,7 +1,7 @@
 ---
 file: src/mcp/tools/lookup.rs
-fmm: v0.4+0.1.29
+fmm: v0.4+0.1.30
 imports: [serde_json]
 dependencies: ['crate::manifest', 'crate::mcp::args']
 loc: 60
-modified: 2026-03-06
+modified: 2026-03-07
