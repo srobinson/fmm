@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.31](https://github.com/srobinson/fmm/compare/v0.1.30...v0.1.31) (2026-03-07)
+
+
+### Bug Fixes
+
+* **search:** fmm_search bug fixes from TanStack user feedback ([#90](https://github.com/srobinson/fmm/issues/90)) ([dd2af2a](https://github.com/srobinson/fmm/commit/dd2af2ab8d80a9a422e5456d74d471d1c899ad5a))
+
 ## [0.1.30](https://github.com/srobinson/fmm/compare/v0.1.29...v0.1.30) (2026-03-06)
 
 
