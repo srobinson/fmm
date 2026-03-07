@@ -1,9 +1,0 @@
----
-file: src/cli/status.rs
-fmm: v0.4+0.1.34
-exports:
-  status: [9, 67]
-imports: [anyhow, colored]
-dependencies: [../collect_files, 'crate::config', 'crate::db']
-loc: 67
-modified: 2026-03-07
