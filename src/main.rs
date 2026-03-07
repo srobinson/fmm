@@ -72,16 +72,20 @@ fn run() -> anyhow::Result<()> {
             dry_run,
             force,
         } => {
-            println!("{}", "Generating sidecars...".green().bold());
+            println!("{}", "Indexing source files...".green().bold());
             cli::generate(&paths, dry_run, force)?;
         }
         Commands::Validate { paths } => {
-            println!("{}", "Validating sidecars...".green().bold());
+            println!("{}", "Validating index...".green().bold());
             cli::validate(&paths)?;
         }
-        Commands::Clean { paths, dry_run } => {
-            println!("{}", "Cleaning sidecars...".green().bold());
-            cli::clean(&paths, dry_run)?;
+        Commands::Clean {
+            paths,
+            dry_run,
+            delete_db,
+        } => {
+            println!("{}", "Cleaning index...".green().bold());
+            cli::clean(&paths, dry_run, delete_db)?;
         }
         Commands::Watch { path, debounce } => {
             cli::watch(&path, debounce)?;

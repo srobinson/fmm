@@ -64,15 +64,15 @@ pub fn search(
     json_output: bool,
 ) -> Result<()> {
     let root = std::env::current_dir()?;
-    let manifest = Manifest::load_from_sidecars(&root)?;
+    let manifest = Manifest::load(&root)?;
 
     if manifest.files.is_empty() {
         println!(
-            "{} No .fmm sidecars found in the current directory",
+            "{} No fmm index found in the current directory",
             "!".yellow()
         );
         println!(
-            "\n  {} fmm search queries sidecar metadata. Run 'fmm generate' first to create them",
+            "\n  {} Run 'fmm generate' first to build the index",
             "hint:".cyan()
         );
         return Ok(());

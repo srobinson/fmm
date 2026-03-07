@@ -9,7 +9,7 @@ use notify::RecursiveMode;
 use notify_debouncer_full::{new_debouncer, DebounceEventResult};
 
 use crate::config::Config;
-use crate::extractor::{sidecar_path_for, FileProcessor};
+use crate::db;
 
 use super::{collect_files, resolve_root};
 
@@ -34,7 +34,7 @@ pub fn watch(path: &str, debounce_ms: u64) -> Result<()> {
     ctrlc::set_handler(move || {
         let count = updates_for_ctrlc.load(Ordering::Relaxed);
         eprintln!(
-            "\n{} Stopped watching. {} sidecar(s) updated.",
+            "\n{} Stopped watching. {} file(s) re-indexed.",
             "✓".green().bold(),
             count,
         );
@@ -43,7 +43,7 @@ pub fn watch(path: &str, debounce_ms: u64) -> Result<()> {
 
     let updates_for_handler = updates.clone();
     let config_for_handler = config.clone();
-    let root_for_handler = root.clone();
+    let root_for_handler = Arc::new(root.clone());
 
     // The debouncer callback runs on its own thread — we use a parking channel
     // to keep the main thread alive until Ctrl+C fires.
@@ -54,14 +54,12 @@ pub fn watch(path: &str, debounce_ms: u64) -> Result<()> {
         None,
         move |result: DebounceEventResult| {
             if let Ok(events) = result {
-                let processor = FileProcessor::new(&root_for_handler);
                 for event in events {
                     for event_path in &event.paths {
                         handle_event(
                             event_path,
                             &event.kind,
                             &config_for_handler,
-                            &processor,
                             &root_for_handler,
                             &updates_for_handler,
                         );
@@ -81,9 +79,11 @@ pub fn watch(path: &str, debounce_ms: u64) -> Result<()> {
 
 /// Returns true if a path should be processed by the watcher.
 fn is_watchable(path: &Path, config: &Config) -> bool {
+    // Skip SQLite database files
     if path
-        .extension()
-        .is_some_and(|ext| ext.to_str() == Some("fmm"))
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n == db::DB_FILENAME || n.ends_with("-wal") || n.ends_with("-shm"))
     {
         return false;
     }
@@ -101,16 +101,15 @@ fn handle_event(
     path: &Path,
     kind: &notify::EventKind,
     config: &Config,
-    processor: &FileProcessor,
-    root: &Path,
+    root: &std::path::PathBuf,
     updates: &AtomicUsize,
 ) {
     if !is_watchable(path, config) {
         return;
     }
 
-    let sidecar = sidecar_path_for(path);
-    let display = sidecar.strip_prefix(root).unwrap_or(&sidecar).display();
+    let rel = path.strip_prefix(root).unwrap_or(path);
+    let display = rel.display();
 
     use notify::EventKind::*;
     match kind {
@@ -118,37 +117,79 @@ fn handle_event(
             if !path.exists() {
                 return;
             }
-            match processor.process(path, false, false) {
-                Ok(Some(msg)) => {
-                    let verb = if msg.contains("Updated") {
-                        "Updated"
-                    } else {
-                        "Created"
-                    };
-                    println!("  {} {} {}", "✓".green(), verb, display);
+            match index_file(path, root) {
+                Ok(true) => {
+                    println!("  {} Re-indexed {}", "✓".green(), display);
                     updates.fetch_add(1, Ordering::Relaxed);
                 }
-                Ok(None) => {} // unchanged
+                Ok(false) => {} // unchanged
                 Err(e) => {
                     eprintln!("  {} {}: {}", "✗".red(), display, e);
                 }
             }
         }
-        Remove(_) => {
-            if sidecar.exists() {
-                match std::fs::remove_file(&sidecar) {
-                    Ok(()) => {
-                        println!("  {} Removed {}", "✓".green(), display);
-                        updates.fetch_add(1, Ordering::Relaxed);
-                    }
-                    Err(e) => {
-                        eprintln!("  {} Remove {}: {}", "✗".red(), display, e);
-                    }
-                }
+        Remove(_) => match remove_file_from_db(path, root) {
+            Ok(true) => {
+                println!("  {} Removed {} from index", "✓".green(), display);
+                updates.fetch_add(1, Ordering::Relaxed);
             }
-        }
+            Ok(false) => {} // not in DB
+            Err(e) => {
+                eprintln!("  {} Remove {}: {}", "✗".red(), display, e);
+            }
+        },
         _ => {}
     }
+}
+
+/// Re-index a single file in the SQLite DB. Returns true if the DB was updated.
+fn index_file(path: &Path, root: &std::path::PathBuf) -> anyhow::Result<bool> {
+    use crate::db::writer;
+    use crate::extractor::FileProcessor;
+
+    let rel = path
+        .strip_prefix(root)
+        .unwrap_or(path)
+        .display()
+        .to_string();
+
+    let mtime = writer::file_mtime_rfc3339(path);
+    let mut conn = db::open_or_create(root)?;
+
+    if writer::is_file_up_to_date(&conn, &rel, mtime.as_deref()) {
+        return Ok(false);
+    }
+
+    let processor = FileProcessor::new(root);
+    let result = processor.parse(path)?;
+
+    {
+        let tx = conn.transaction()?;
+        writer::upsert_file_data(&tx, &rel, &result, mtime.as_deref())?;
+        tx.commit()?;
+    }
+
+    writer::rebuild_and_write_reverse_deps(&mut conn, root)?;
+    Ok(true)
+}
+
+/// Remove a file's DB entry. Returns true if a row was deleted.
+fn remove_file_from_db(path: &Path, root: &std::path::PathBuf) -> anyhow::Result<bool> {
+    let rel = path
+        .strip_prefix(root)
+        .unwrap_or(path)
+        .display()
+        .to_string();
+
+    // Only act if the DB exists (watcher may fire before generate runs)
+    let db_path = root.join(db::DB_FILENAME);
+    if !db_path.exists() {
+        return Ok(false);
+    }
+
+    let conn = db::open_db(root)?;
+    let rows = conn.execute("DELETE FROM files WHERE path = ?1", rusqlite::params![rel])?;
+    Ok(rows > 0)
 }
 
 #[cfg(test)]
@@ -156,6 +197,7 @@ mod tests {
     use super::*;
     use notify::event::{CreateKind, ModifyKind, RemoveKind};
     use std::fs;
+    use std::sync::atomic::AtomicUsize;
     use tempfile::TempDir;
 
     fn setup_watch_project() -> (TempDir, Config) {
@@ -180,12 +222,12 @@ mod tests {
     }
 
     #[test]
-    fn is_watchable_rejects_fmm_sidecar_files() {
+    fn is_watchable_rejects_db_filename() {
         let tmp = TempDir::new().unwrap();
-        let fmm_file = tmp.path().join("foo.ts.fmm");
-        fs::write(&fmm_file, "").unwrap();
+        let db_file = tmp.path().join(db::DB_FILENAME);
+        fs::write(&db_file, "").unwrap();
         let config = Config::default();
-        assert!(!is_watchable(&fmm_file, &config));
+        assert!(!is_watchable(&db_file, &config));
     }
 
     #[test]
@@ -216,38 +258,50 @@ mod tests {
     }
 
     #[test]
-    fn handle_create_generates_sidecar() {
+    fn handle_create_indexes_file() {
         let (tmp, config) = setup_watch_project();
         let root = tmp.path().canonicalize().unwrap();
         let source = root.join("src/app.ts");
-        let processor = FileProcessor::new(&root);
         let updates = AtomicUsize::new(0);
 
         handle_event(
             &source,
             &notify::EventKind::Create(CreateKind::File),
             &config,
-            &processor,
             &root,
             &updates,
         );
 
-        assert!(sidecar_path_for(&source).exists());
+        let conn = db::open_db(&root).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM files WHERE path = 'src/app.ts'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
         assert_eq!(updates.load(Ordering::Relaxed), 1);
     }
 
     #[test]
-    fn handle_modify_updates_sidecar() {
+    fn handle_modify_reindexes_file() {
         let (tmp, config) = setup_watch_project();
         let root = tmp.path().canonicalize().unwrap();
         let source = root.join("src/app.ts");
-        let processor = FileProcessor::new(&root);
         let updates = AtomicUsize::new(0);
 
-        // Create initial sidecar
-        processor.process(&source, false, false).unwrap();
+        // Index initial state
+        handle_event(
+            &source,
+            &notify::EventKind::Create(CreateKind::File),
+            &config,
+            &root,
+            &updates,
+        );
 
-        // Modify source
+        // Modify source and give it a different mtime
+        std::thread::sleep(std::time::Duration::from_millis(10));
         fs::write(
             &source,
             "export function main() {}\nexport function newFunc() {}\n",
@@ -258,14 +312,20 @@ mod tests {
             &source,
             &notify::EventKind::Modify(ModifyKind::Data(notify::event::DataChange::Content)),
             &config,
-            &processor,
             &root,
             &updates,
         );
 
-        let sidecar_content = fs::read_to_string(sidecar_path_for(&source)).unwrap();
-        assert!(sidecar_content.contains("newFunc"));
-        assert_eq!(updates.load(Ordering::Relaxed), 1);
+        let conn = db::open_db(&root).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM exports WHERE name = 'newFunc'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(updates.load(Ordering::Relaxed), 2);
     }
 
     #[test]
@@ -273,70 +333,93 @@ mod tests {
         let (tmp, config) = setup_watch_project();
         let root = tmp.path().canonicalize().unwrap();
         let source = root.join("src/app.ts");
-        let processor = FileProcessor::new(&root);
         let updates = AtomicUsize::new(0);
 
-        // Create initial sidecar
-        processor.process(&source, false, false).unwrap();
+        // Index the file
+        handle_event(
+            &source,
+            &notify::EventKind::Create(CreateKind::File),
+            &config,
+            &root,
+            &updates,
+        );
+        assert_eq!(updates.load(Ordering::Relaxed), 1);
 
-        // Same content — should not increment updates
+        // Trigger modify without touching the file — mtime unchanged, no re-index
         handle_event(
             &source,
             &notify::EventKind::Modify(ModifyKind::Data(notify::event::DataChange::Content)),
             &config,
-            &processor,
             &root,
             &updates,
         );
 
-        assert_eq!(updates.load(Ordering::Relaxed), 0);
-    }
-
-    #[test]
-    fn handle_remove_deletes_orphaned_sidecar() {
-        let (tmp, config) = setup_watch_project();
-        let root = tmp.path().canonicalize().unwrap();
-        let source = root.join("src/app.ts");
-        let processor = FileProcessor::new(&root);
-        let updates = AtomicUsize::new(0);
-
-        // Create sidecar
-        processor.process(&source, false, false).unwrap();
-        let sidecar = sidecar_path_for(&source);
-        assert!(sidecar.exists());
-
-        // Delete source file
-        fs::remove_file(&source).unwrap();
-
-        handle_event(
-            &source,
-            &notify::EventKind::Remove(RemoveKind::File),
-            &config,
-            &processor,
-            &root,
-            &updates,
-        );
-
-        assert!(!sidecar.exists());
         assert_eq!(updates.load(Ordering::Relaxed), 1);
     }
 
     #[test]
-    fn handle_remove_noop_when_no_sidecar() {
+    fn handle_remove_removes_from_db() {
         let (tmp, config) = setup_watch_project();
         let root = tmp.path().canonicalize().unwrap();
         let source = root.join("src/app.ts");
-        let processor = FileProcessor::new(&root);
         let updates = AtomicUsize::new(0);
 
-        // No sidecar exists — remove should be a no-op
+        // Index the file first
+        handle_event(
+            &source,
+            &notify::EventKind::Create(CreateKind::File),
+            &config,
+            &root,
+            &updates,
+        );
+        {
+            let conn = db::open_db(&root).unwrap();
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM files WHERE path = 'src/app.ts'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 1);
+        }
+
+        // Delete source and trigger remove event
+        fs::remove_file(&source).unwrap();
+        handle_event(
+            &source,
+            &notify::EventKind::Remove(RemoveKind::File),
+            &config,
+            &root,
+            &updates,
+        );
+
+        let conn = db::open_db(&root).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM files WHERE path = 'src/app.ts'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+        assert_eq!(updates.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn handle_remove_noop_when_not_indexed() {
+        let (tmp, config) = setup_watch_project();
+        let root = tmp.path().canonicalize().unwrap();
+        let source = root.join("src/app.ts");
+        let updates = AtomicUsize::new(0);
+
+        // No DB — remove should be a no-op
         fs::remove_file(&source).unwrap();
 
         handle_event(
             &source,
             &notify::EventKind::Remove(RemoveKind::File),
             &config,
-            &processor,
             &root,
             &updates,
         );
@@ -345,19 +428,17 @@ mod tests {
     }
 
     #[test]
-    fn handle_event_ignores_fmm_files() {
+    fn handle_event_ignores_db_file() {
         let (tmp, config) = setup_watch_project();
         let root = tmp.path().canonicalize().unwrap();
-        let fmm_file = root.join("src/app.ts.fmm");
-        fs::write(&fmm_file, "file: src/app.ts\n").unwrap();
-        let processor = FileProcessor::new(&root);
+        let db_file = root.join(db::DB_FILENAME);
+        fs::write(&db_file, "not a real db").unwrap();
         let updates = AtomicUsize::new(0);
 
         handle_event(
-            &fmm_file,
+            &db_file,
             &notify::EventKind::Modify(ModifyKind::Data(notify::event::DataChange::Content)),
             &config,
-            &processor,
             &root,
             &updates,
         );
@@ -371,14 +452,12 @@ mod tests {
         let root = tmp.path().canonicalize().unwrap();
         let txt_file = root.join("notes.txt");
         fs::write(&txt_file, "some notes").unwrap();
-        let processor = FileProcessor::new(&root);
         let updates = AtomicUsize::new(0);
 
         handle_event(
             &txt_file,
             &notify::EventKind::Create(CreateKind::File),
             &config,
-            &processor,
             &root,
             &updates,
         );
@@ -387,27 +466,30 @@ mod tests {
     }
 
     #[test]
-    fn handle_create_new_file_generates_sidecar() {
+    fn handle_create_new_file_indexes_file() {
         let (tmp, config) = setup_watch_project();
         let root = tmp.path().canonicalize().unwrap();
         let new_file = root.join("src/new-component.ts");
         fs::write(&new_file, "export class Widget {}\n").unwrap();
-        let processor = FileProcessor::new(&root);
         let updates = AtomicUsize::new(0);
 
         handle_event(
             &new_file,
             &notify::EventKind::Create(CreateKind::File),
             &config,
-            &processor,
             &root,
             &updates,
         );
 
-        let sidecar = sidecar_path_for(&new_file);
-        assert!(sidecar.exists());
-        let content = fs::read_to_string(&sidecar).unwrap();
-        assert!(content.contains("Widget"));
+        let conn = db::open_db(&root).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM exports WHERE name = 'Widget'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
         assert_eq!(updates.load(Ordering::Relaxed), 1);
     }
 }

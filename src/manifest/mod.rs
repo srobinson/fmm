@@ -1,6 +1,5 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -12,10 +11,8 @@ pub mod private_members;
 
 mod dependency_matcher;
 mod glossary_builder;
-mod sidecar_parser;
 
 use dependency_matcher::build_reverse_deps;
-use sidecar_parser::parse_sidecar;
 
 // Re-export public API consumed by other modules.
 pub use dependency_matcher::{dep_matches, dotted_dep_matches, python_dep_matches};
@@ -113,8 +110,7 @@ pub struct ExportLocation {
     pub lines: Option<ExportLines>,
 }
 
-/// In-memory index built from sidecar files.
-/// No longer persisted to disk — built on-the-fly from `**/*.fmm` sidecars.
+/// In-memory index built from the SQLite database.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Manifest {
@@ -135,8 +131,8 @@ pub struct Manifest {
     #[serde(skip)]
     pub method_index: HashMap<String, ExportLocation>,
     /// Reverse dependency index: maps file path → all files that import it.
-    /// Built once during `load_from_sidecars` for O(1) downstream lookups.
-    /// Not persisted — rebuilt on each load.
+    /// Loaded from the pre-computed `reverse_deps` table for O(1) downstream lookups.
+    /// Not persisted in this struct — loaded from DB on each `Manifest::load()` call.
     #[serde(skip)]
     pub reverse_deps: HashMap<String, Vec<String>>,
     /// Maps export name → file location for confirmed module-level function declarations (TS/JS).
@@ -174,133 +170,21 @@ impl Manifest {
         }
     }
 
-    /// Build an in-memory index by reading all `*.fmm` sidecar files under root.
-    pub fn load_from_sidecars(root: &std::path::Path) -> Result<Self> {
-        let mut manifest = Self::new();
+    /// Load a complete `Manifest` from the SQLite database at `root/.fmm.db`.
+    ///
+    /// Populates all index fields (export_index, export_locations, export_all,
+    /// method_index, reverse_deps, function_index, workspace_packages).
+    pub fn load_from_sqlite(root: &std::path::Path) -> Result<Self> {
+        let conn = crate::db::open_db(root)?;
+        crate::db::reader::load_manifest_from_db(&conn, root)
+    }
 
-        // Sidecars are gitignored (users shouldn't commit them), but we still
-        // need to find them. Overrides take precedence over .gitignore rules
-        // while keeping node_modules/target/etc filtered out.
-        let mut overrides = ignore::overrides::OverrideBuilder::new(root);
-        overrides.add("*.fmm").expect("valid glob pattern");
-        let walker = WalkBuilder::new(root)
-            .standard_filters(true)
-            .overrides(overrides.build().expect("valid overrides"))
-            .build();
-
-        for entry in walker.filter_map(|e| e.ok()) {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("fmm") {
-                continue;
-            }
-
-            let content = match std::fs::read_to_string(path) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-
-            if let Some((file_path, file_entry)) = parse_sidecar(&content) {
-                let key = if !file_path.is_empty() {
-                    file_path
-                } else {
-                    let source_path = path.with_extension("");
-                    source_path
-                        .strip_prefix(root)
-                        .unwrap_or(&source_path)
-                        .display()
-                        .to_string()
-                };
-
-                for (i, export) in file_entry.exports.iter().enumerate() {
-                    let lines = file_entry
-                        .export_lines
-                        .as_ref()
-                        .and_then(|el| el.get(i))
-                        .cloned();
-
-                    // Unconditionally track all definitions for glossary
-                    manifest
-                        .export_all
-                        .entry(export.clone())
-                        .or_default()
-                        .push(ExportLocation {
-                            file: key.clone(),
-                            lines: lines.clone(),
-                        });
-
-                    if let Some(existing) = manifest.export_index.get(export) {
-                        if existing != &key {
-                            let existing_is_ts =
-                                existing.ends_with(".ts") || existing.ends_with(".tsx");
-                            let new_is_ts = key.ends_with(".ts") || key.ends_with(".tsx");
-                            let existing_is_js =
-                                existing.ends_with(".js") || existing.ends_with(".jsx");
-                            let new_is_js = key.ends_with(".js") || key.ends_with(".jsx");
-                            if existing_is_ts && new_is_js {
-                                // .js never overwrites .ts — expected, no warning
-                                continue;
-                            }
-                            if !(existing_is_js && new_is_ts) {
-                                eprintln!(
-                                    "warning: export '{}' in {} shadows {}",
-                                    export, key, existing
-                                );
-                            }
-                        }
-                    }
-                    manifest.export_index.insert(export.clone(), key.clone());
-                    manifest.export_locations.insert(
-                        export.clone(),
-                        ExportLocation {
-                            file: key.clone(),
-                            lines,
-                        },
-                    );
-                }
-                // Populate method_index from the methods: section
-                if let Some(ref methods) = file_entry.methods {
-                    for (dotted, lines) in methods {
-                        manifest.method_index.insert(
-                            dotted.clone(),
-                            ExportLocation {
-                                file: key.clone(),
-                                lines: Some(lines.clone()),
-                            },
-                        );
-                    }
-                }
-                // ALP-863: populate function_index for confirmed module-level function declarations.
-                if !file_entry.function_names.is_empty() {
-                    for (i, export) in file_entry.exports.iter().enumerate() {
-                        if file_entry.function_names.contains(export) {
-                            let lines = file_entry
-                                .export_lines
-                                .as_ref()
-                                .and_then(|el| el.get(i))
-                                .cloned();
-                            // First definition wins (consistent with export_locations).
-                            manifest.function_index.entry(export.clone()).or_insert(
-                                ExportLocation {
-                                    file: key.clone(),
-                                    lines,
-                                },
-                            );
-                        }
-                    }
-                }
-                manifest.files.insert(key, file_entry);
-            }
-        }
-
-        // Discover workspace packages before building reverse deps —
-        // workspace_packages and workspace_roots are consumed by the cross-package resolver.
-        let workspace_info = crate::resolver::workspace::discover(root);
-        manifest.workspace_packages = workspace_info.packages;
-        manifest.workspace_roots = workspace_info.roots;
-
-        manifest.reverse_deps = build_reverse_deps(&manifest);
-
-        Ok(manifest)
+    /// Load the `Manifest` from the SQLite index.
+    ///
+    /// Returns an error if `.fmm.db` does not exist — run `fmm generate` first.
+    /// All callers should use this method.
+    pub fn load(root: &std::path::Path) -> Result<Self> {
+        Self::load_from_sqlite(root)
     }
 
     /// Add or update a file entry in the index

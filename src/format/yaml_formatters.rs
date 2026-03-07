@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::formatter::yaml_escape;
+use crate::format::yaml_escape;
 use crate::manifest::private_members::{PrivateMember, TopLevelFunction};
 use crate::manifest::{ExportLines, FileEntry};
 

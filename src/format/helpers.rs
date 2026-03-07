@@ -1,6 +1,6 @@
 //! Shared YAML-building helpers used by multiple formatter sub-modules.
 
-use crate::formatter::yaml_escape;
+use crate::format::yaml_escape;
 use crate::manifest::ExportLines;
 
 /// Append an inline YAML list: `key: [item1, item2]`.

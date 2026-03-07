@@ -1,7 +1,0 @@
----
-file: src/mcp/generated_schema.rs
-fmm: v0.4+0.1.33
-exports:
-  generated_tool_list: [5, 262]
-loc: 262
-modified: 2026-03-07

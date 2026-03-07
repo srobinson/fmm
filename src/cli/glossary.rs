@@ -17,11 +17,11 @@ pub fn glossary(
     }
 
     let root = std::env::current_dir().context("Failed to get current directory")?;
-    let manifest = Manifest::load_from_sidecars(&root)?;
+    let manifest = Manifest::load(&root)?;
 
     if manifest.files.is_empty() {
         eprintln!(
-            "{} No sidecars found. Run {} first.",
+            "{} No index found. Run {} first.",
             "warning:".yellow(),
             "fmm generate".bold()
         );

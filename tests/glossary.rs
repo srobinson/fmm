@@ -1,7 +1,7 @@
 //! Integration tests for the fmm_glossary MCP tool.
 //!
-//! Tests setup temp dirs with sidecars (like mcp_tools.rs) and call through
-//! McpServer::call_tool to test the real JSON-RPC path.
+//! Tests setup temp dirs with real source files, call fmm::cli::generate() to
+//! populate the SQLite index, then exercise the tool via McpServer::call_tool.
 
 use serde_json::json;
 
@@ -9,53 +9,52 @@ use serde_json::json;
 // Fixture helpers
 // ---------------------------------------------------------------------------
 
-fn write_sidecar(dir: &std::path::Path, rel_path: &str, content: &str) {
+fn write_file(dir: &std::path::Path, rel_path: &str, content: &str) {
     let full = dir.join(rel_path);
     std::fs::create_dir_all(full.parent().unwrap()).unwrap();
-    std::fs::write(&full, "").unwrap(); // source placeholder
-    let sidecar = format!("{}.fmm", full.display());
-    std::fs::write(sidecar, content).unwrap();
+    std::fs::write(full, content).unwrap();
 }
 
 fn setup_glossary_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     let tmp = tempfile::TempDir::new().unwrap();
     let root = tmp.path();
 
-    // src/config/types.ts — exports Config [1-5]
-    write_sidecar(
+    // src/config/types.ts — exports Config
+    write_file(
         root,
         "src/config/types.ts",
-        "file: src/config/types.ts\nfmm: v0.3\nexports:\n  Config: [1, 5]\nimports: []\ndependencies: []\nloc: 10\n",
+        "export interface Config {\n  debug: boolean;\n  timeout: number;\n}\n",
     );
 
-    // src/config/defaults.ts — also exports Config [3-8] (duplicate)
-    write_sidecar(
+    // src/config/defaults.ts — also exports Config (duplicate symbol)
+    write_file(
         root,
         "src/config/defaults.ts",
-        "file: src/config/defaults.ts\nfmm: v0.3\nexports:\n  Config: [3, 8]\nimports: []\ndependencies: []\nloc: 15\n",
+        "export interface Config {\n  debug: boolean;\n  level: number;\n}\n",
     );
 
-    // src/app.ts — imports from config/types and config/defaults
-    write_sidecar(
+    // src/app.ts — depends on both config files
+    write_file(
         root,
         "src/app.ts",
-        "file: src/app.ts\nfmm: v0.3\nexports:\n  App: [1, 10]\nimports: []\ndependencies: [./config/types, ./config/defaults]\nloc: 30\n",
+        "import { Config } from './config/types';\nimport { Config as Config2 } from './config/defaults';\nexport class App {}\n",
     );
 
-    // src/server.ts — imports only from config/types
-    write_sidecar(
+    // src/server.ts — depends on config/types only
+    write_file(
         root,
         "src/server.ts",
-        "file: src/server.ts\nfmm: v0.3\nexports:\n  Server: [1, 20]\nimports: []\ndependencies: [./config/types]\nloc: 50\n",
+        "import { Config } from './config/types';\nexport class Server {}\n",
     );
 
     // src/utils.ts — exports something unrelated
-    write_sidecar(
+    write_file(
         root,
         "src/utils.ts",
-        "file: src/utils.ts\nfmm: v0.3\nexports:\n  formatDate: [1, 5]\nimports: []\ndependencies: []\nloc: 8\n",
+        "export function formatDate(): string { return ''; }\n",
     );
 
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
@@ -64,41 +63,43 @@ fn setup_glossary_server_with_tests() -> (tempfile::TempDir, fmm::mcp::McpServer
     let tmp = tempfile::TempDir::new().unwrap();
     let root = tmp.path();
 
-    // Normal Python source file with a real export and a test function
-    write_sidecar(
+    // Normal Python source file: one real export, one test_ export
+    write_file(
         root,
         "src/agent.py",
-        "file: src/agent.py\nfmm: v0.3\nexports:\n  run_dispatch: [1, 50]\n  test_run_dispatch: [52, 80]\nimports: []\ndependencies: []\nloc: 80\n",
+        "def run_dispatch(task):\n    pass\n\ndef test_run_dispatch():\n    pass\n",
     );
 
-    // Go test file (TestRunDispatch is a Go test)
-    write_sidecar(
+    // Go test file — TestRunDispatch has Go Test prefix
+    write_file(
         root,
         "agent_test.go",
-        "file: agent_test.go\nfmm: v0.3\nexports:\n  TestRunDispatch: [1, 20]\nimports: []\ndependencies: []\nloc: 20\n",
+        "package main\n\nimport \"testing\"\n\nfunc TestRunDispatch(t *testing.T) {}\n",
     );
 
     // tests/ directory export
-    write_sidecar(
+    write_file(
         root,
         "tests/helpers.py",
-        "file: tests/helpers.py\nfmm: v0.3\nexports:\n  helper_fixture: [1, 10]\nimports: []\ndependencies: []\nloc: 10\n",
+        "def helper_fixture():\n    pass\n",
     );
 
     // __tests__/ directory export (JS)
-    write_sidecar(
+    write_file(
         root,
         "__tests__/utils.ts",
-        "file: __tests__/utils.ts\nfmm: v0.3\nexports:\n  mockConfig: [1, 8]\nimports: []\ndependencies: []\nloc: 8\n",
+        "export const mockConfig = {};\n",
     );
 
-    // A test file that depends on src/agent.py — used to verify used_by filtering in mode=tests
-    write_sidecar(
+    // A test file that depends on src/agent.py via Python relative import
+    // from ..src.agent → ../src/agent (per dot_import_to_path)
+    write_file(
         root,
         "tests/agent_spec.py",
-        "file: tests/agent_spec.py\nfmm: v0.3\nexports:\n  test_dispatch_happy_path: [1, 15]\nimports: []\ndependencies: [../src/agent]\nloc: 15\n",
+        "from ..src.agent import run_dispatch\n\ndef test_dispatch_happy_path():\n    pass\n",
     );
 
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
@@ -384,11 +385,9 @@ fn glossary_default_limit_is_ten() {
     for i in 1..=11 {
         let filename = format!("src/mod{i}.ts");
         let export = format!("item{i}");
-        let content = format!(
-            "file: {filename}\nfmm: v0.3\nexports:\n  {export}: [1, 5]\nimports: []\ndependencies: []\nloc: 5\n"
-        );
-        write_sidecar(root, &filename, &content);
+        write_file(root, &filename, &format!("export const {export} = {i};\n"));
     }
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     let text = call_tool_text(&server, "fmm_glossary", json!({"pattern": "item"}));
     // 11 matches, default limit 10 → truncation notice
@@ -408,33 +407,34 @@ fn setup_method_glossary_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     let root = tmp.path();
 
     // src/injector.ts — exports Injector class with loadInstance method
-    write_sidecar(
+    write_file(
         root,
         "src/injector.ts",
-        "file: src/injector.ts\nfmm: v0.3\nexports:\n  Injector: [1, 200]\nmethods:\n  Injector.loadInstance: [10, 50]\nimports: []\ndependencies: []\nloc: 200\n",
+        "export class Injector {\n    loadInstance<T>(token: string): T {\n        return null as T;\n    }\n}\n",
     );
 
-    // src/app.ts — source file that depends on src/injector.ts
-    write_sidecar(
+    // src/app.ts — imports Injector but never calls loadInstance()
+    write_file(
         root,
         "src/app.ts",
-        "file: src/app.ts\nfmm: v0.3\nexports:\n  App: [1, 30]\nimports: []\ndependencies: [./injector]\nloc: 30\n",
+        "import { Injector } from './injector';\nexport class App {\n    injector: Injector = new Injector();\n}\n",
     );
 
-    // tests/injector.spec.ts — test file that depends on src/injector.ts
-    write_sidecar(
+    // tests/injector.spec.ts — test file that imports Injector
+    write_file(
         root,
         "tests/injector.spec.ts",
-        "file: tests/injector.spec.ts\nfmm: v0.3\nexports:\n  testLoadInstance: [1, 20]\nimports: []\ndependencies: [../src/injector]\nloc: 20\n",
+        "import { Injector } from '../src/injector';\nexport function testLoadInstance() {}\n",
     );
 
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
 
 #[test]
 fn glossary_dotted_query_empty_callers_shows_contextual_message() {
-    // Call-site refinement on an empty source file finds nothing.
+    // Call-site refinement on files that never call loadInstance() returns nothing.
     // The output should explain the silence, not just show used_by: [].
     let (_tmp, server) = setup_method_glossary_server();
     let text = call_tool_text(
@@ -482,14 +482,8 @@ fn glossary_dotted_query_empty_callers_shows_test_hint_when_test_callers_exist()
 #[test]
 fn glossary_dotted_query_non_empty_callers_unchanged() {
     // When call-site refinement finds callers, output must not include the contextual message.
+    // Confirmed by querying "Injector" (non-dotted) — file-level used_by is never empty.
     let (_tmp, server) = setup_method_glossary_server();
-    // mode=tests will show the test file as a file-level importer; after call-site
-    // refinement on the (empty) test source, used_by will be empty → triggers case 1.
-    // Use mode=all so we exercise the "all" mode label.
-    // For a non-empty test, we need actual source with call sites — not possible in
-    // fixture tests. Instead verify the format_glossary path is used when there ARE
-    // non-empty used_by (i.e. before refinement logic applies, the format is normal).
-    // Covered by existing tests; just confirm the new message is absent for non-dotted queries.
     let text = call_tool_text(
         &server,
         "fmm_glossary",
@@ -551,54 +545,34 @@ fn setup_bare_fn_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     let root = tmp.path();
 
     // The source file: exports scheduleUpdate as a function
-    let src_file = root.join("src/scheduler.ts");
-    std::fs::create_dir_all(src_file.parent().unwrap()).unwrap();
-    std::fs::write(&src_file, "export function scheduleUpdate() {}\n").unwrap();
-    std::fs::write(
-        src_file.with_extension("ts.fmm"),
-        "file: src/scheduler.ts\nfmm: v0.3\nexports:\n  scheduleUpdate: [1, 1]\ntypescript:\n  function_names: [scheduleUpdate]\nimports: []\ndependencies: []\nloc: 1\n",
-    )
-    .unwrap();
+    write_file(
+        root,
+        "src/scheduler.ts",
+        "export function scheduleUpdate() {}\n",
+    );
 
     // Caller 1: direct call
-    let caller1 = root.join("src/direct_caller.ts");
-    std::fs::write(
-        &caller1,
+    write_file(
+        root,
+        "src/direct_caller.ts",
         "import { scheduleUpdate } from './scheduler';\nscheduleUpdate();\n",
-    )
-    .unwrap();
-    std::fs::write(
-        caller1.with_extension("ts.fmm"),
-        "file: src/direct_caller.ts\nfmm: v0.3\nexports: {}\nimports: []\ndependencies: [./scheduler]\nloc: 2\n",
-    )
-    .unwrap();
+    );
 
     // Caller 2: aliased import
-    let caller2 = root.join("src/aliased_caller.ts");
-    std::fs::write(
-        &caller2,
+    write_file(
+        root,
+        "src/aliased_caller.ts",
         "import { scheduleUpdate as su } from './scheduler';\nsu();\n",
-    )
-    .unwrap();
-    std::fs::write(
-        caller2.with_extension("ts.fmm"),
-        "file: src/aliased_caller.ts\nfmm: v0.3\nexports: {}\nimports: []\ndependencies: [./scheduler]\nloc: 2\n",
-    )
-    .unwrap();
+    );
 
     // Importer-only: imports but never calls
-    let importer_only = root.join("src/importer_only.ts");
-    std::fs::write(
-        &importer_only,
+    write_file(
+        root,
+        "src/importer_only.ts",
         "import { scheduleUpdate } from './scheduler';\n// never calls it\n",
-    )
-    .unwrap();
-    std::fs::write(
-        importer_only.with_extension("ts.fmm"),
-        "file: src/importer_only.ts\nfmm: v0.3\nexports: {}\nimports: []\ndependencies: [./scheduler]\nloc: 2\n",
-    )
-    .unwrap();
+    );
 
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
@@ -646,30 +620,31 @@ fn setup_workspace_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     )
     .unwrap();
 
-    // packages/shared/ReactFeatureFlags.js — exports enableTransitionTracing as a function.
-    write_sidecar(
+    // packages/shared/ReactFeatureFlags.js — exports enableTransitionTracing as a function
+    write_file(
         root,
         "packages/shared/ReactFeatureFlags.js",
-        "file: packages/shared/ReactFeatureFlags.js\nfmm: v0.4\nexports:\n  enableTransitionTracing: [1, 1]\ntypescript:\n  function_names: [enableTransitionTracing]\nimports: []\ndependencies: []\nloc: 1\n",
+        "export function enableTransitionTracing() {}\n",
     );
 
     // packages/reconciler/src/Worker.js — cross-package import via bare specifier.
-    // dependencies uses the resolved relative path so reverse_deps is populated.
-    // named_imports stores the bare specifier exactly as written in source.
-    write_sidecar(
+    // The bare specifier 'shared/ReactFeatureFlags' gets into imports[]; Layer 3 creates reverse dep.
+    // named_imports captures the specific symbol for Layer 2 filtering.
+    write_file(
         root,
         "packages/reconciler/src/Worker.js",
-        "file: packages/reconciler/src/Worker.js\nfmm: v0.4\nexports: {}\nimports: []\ndependencies: [../../shared/ReactFeatureFlags]\nloc: 3\nnamed_imports:\n  shared/ReactFeatureFlags:\n    - enableTransitionTracing\n",
+        "import { enableTransitionTracing } from 'shared/ReactFeatureFlags';\nenableTransitionTracing();\n",
     );
 
-    // packages/shared/other.js — imports source but NOT enableTransitionTracing.
-    // This should appear in the disclosure count (Layer 2 excluded), not in used_by.
-    write_sidecar(
+    // packages/shared/other.js — imports ReactFeatureFlags but NOT enableTransitionTracing.
+    // This should appear in the disclosure count, not in used_by.
+    write_file(
         root,
         "packages/shared/other.js",
-        "file: packages/shared/other.js\nfmm: v0.4\nexports: {}\nimports: []\ndependencies: [./ReactFeatureFlags]\nloc: 2\nnamed_imports:\n  ./ReactFeatureFlags:\n    - otherFlag\n",
+        "import { otherFlag } from './ReactFeatureFlags';\n",
     );
 
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
@@ -725,26 +700,23 @@ fn setup_disclosure_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     let root = tmp.path();
 
     // source.ts exports myFunc as a module-level function.
-    write_sidecar(
-        root,
-        "src/source.ts",
-        "file: src/source.ts\nfmm: v0.4\nexports:\n  myFunc: [1, 5]\ntypescript:\n  function_names: [myFunc]\nimports: []\ndependencies: []\nloc: 5\n",
-    );
+    write_file(root, "src/source.ts", "export function myFunc(): void {}\n");
 
     // caller.ts named-imports myFunc → stays in used_by.
-    write_sidecar(
+    write_file(
         root,
         "src/caller.ts",
-        "file: src/caller.ts\nfmm: v0.4\nexports: {}\nimports: []\ndependencies: [./source]\nloc: 2\nnamed_imports:\n  ./source:\n    - myFunc\n",
+        "import { myFunc } from './source';\n",
     );
 
     // bystander.ts imports otherThing, not myFunc → excluded by Layer 2.
-    write_sidecar(
+    write_file(
         root,
         "src/bystander.ts",
-        "file: src/bystander.ts\nfmm: v0.4\nexports: {}\nimports: []\ndependencies: [./source]\nloc: 2\nnamed_imports:\n  ./source:\n    - otherThing\n",
+        "import { otherThing } from './source';\n",
     );
 
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
     let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
     (tmp, server)
 }

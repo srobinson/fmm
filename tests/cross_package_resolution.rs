@@ -18,20 +18,13 @@ fn write_file(base: &Path, rel: &str, content: &str) {
     fs::write(p, content).unwrap();
 }
 
-/// Write a source file and its .fmm sidecar in one call.
-fn write_sidecar(base: &Path, rel_source: &str, sidecar_content: &str) {
-    let p = base.join(rel_source);
-    fs::create_dir_all(p.parent().unwrap()).unwrap();
-    fs::write(&p, "// source").unwrap();
-    let sidecar = format!("{}.fmm", p.to_string_lossy());
-    fs::write(sidecar, sidecar_content).unwrap();
-}
-
 fn load_manifest(root: &Path) -> fmm::manifest::Manifest {
-    fmm::manifest::Manifest::load_from_sidecars(root).unwrap()
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false)
+        .expect("generate failed");
+    fmm::manifest::Manifest::load(root).unwrap_or_default()
 }
 
-/// Check whether `target` is in `reverse_deps[source]`.
+/// Check whether `importer` is in `reverse_deps[target]`.
 fn has_reverse_dep(manifest: &fmm::manifest::Manifest, target: &str, importer: &str) -> bool {
     manifest
         .reverse_deps
@@ -58,43 +51,26 @@ fn layer2_workspace_package_name_resolves_to_reverse_dep() {
         "packages/shared/package.json",
         r#"{"name": "shared"}"#,
     );
-    write_sidecar(
-        root,
-        "packages/shared/utils.ts",
-        &format!(
-            "file: {}\nfmm: v0.3\nexports:\n  x: [1, 1]\nimports: []\ndependencies: []\nloc: 1\n",
-            root.join("packages/shared/utils.ts").to_string_lossy()
-        ),
-    );
+    write_file(root, "packages/shared/utils.ts", "export const x = 1;\n");
 
     // packages/app — imports from 'shared/utils'
     write_file(root, "packages/app/package.json", r#"{"name": "app"}"#);
-    write_sidecar(
+    write_file(
         root,
         "packages/app/index.ts",
-        &format!(
-            "file: {}\nfmm: v0.3\nexports: []\nimports: [shared/utils]\ndependencies: []\nloc: 1\n",
-            root.join("packages/app/index.ts").to_string_lossy()
-        ),
+        "import { x } from 'shared/utils';\n",
     );
 
     let manifest = load_manifest(root);
 
-    let target = root
-        .join("packages/shared/utils.ts")
-        .to_string_lossy()
-        .to_string();
-    let importer = root
-        .join("packages/app/index.ts")
-        .to_string_lossy()
-        .to_string();
-
     assert!(
-        has_reverse_dep(&manifest, &target, &importer),
-        "expected {} in reverse_deps[{}], got: {:?}",
-        importer,
-        target,
-        manifest.reverse_deps.get(&target)
+        has_reverse_dep(
+            &manifest,
+            "packages/shared/utils.ts",
+            "packages/app/index.ts"
+        ),
+        "expected packages/app/index.ts in reverse_deps[packages/shared/utils.ts], got: {:?}",
+        manifest.reverse_deps.get("packages/shared/utils.ts")
     );
 }
 
@@ -111,44 +87,29 @@ fn layer3_directory_prefix_resolves_unnamed_package() {
     write_file(root, "package.json", r#"{"workspaces": ["packages/*"]}"#);
 
     // The target file — in unnamed package directory
-    write_sidecar(
+    write_file(
         root,
         "packages/shared/ReactFeatureFlags.js",
-        &format!(
-            "file: {}\nfmm: v0.3\nexports: []\nimports: []\ndependencies: []\nloc: 1\n",
-            root.join("packages/shared/ReactFeatureFlags.js")
-                .to_string_lossy()
-        ),
+        "// feature flags\n",
     );
 
     // The importer — uses moduleDirectories-style import 'shared/ReactFeatureFlags'
-    write_sidecar(
+    write_file(
         root,
         "packages/react-reconciler/src/ReactFiberWorkLoop.js",
-        &format!(
-            "file: {}\nfmm: v0.3\nexports: []\nimports: [shared/ReactFeatureFlags]\ndependencies: []\nloc: 1\n",
-            root.join("packages/react-reconciler/src/ReactFiberWorkLoop.js")
-                .to_string_lossy()
-        ),
+        "import something from 'shared/ReactFeatureFlags';\n",
     );
 
     let manifest = load_manifest(root);
 
-    let target = root
-        .join("packages/shared/ReactFeatureFlags.js")
-        .to_string_lossy()
-        .to_string();
-    let importer = root
-        .join("packages/react-reconciler/src/ReactFiberWorkLoop.js")
-        .to_string_lossy()
-        .to_string();
-
     assert!(
-        has_reverse_dep(&manifest, &target, &importer),
-        "Layer 3 heuristic failed: expected {} in reverse_deps[{}], got: {:?}",
-        importer,
-        target,
-        manifest.reverse_deps.get(&target)
+        has_reverse_dep(
+            &manifest,
+            "packages/shared/ReactFeatureFlags.js",
+            "packages/react-reconciler/src/ReactFiberWorkLoop.js"
+        ),
+        "Layer 3 heuristic failed: expected packages/react-reconciler/src/ReactFiberWorkLoop.js in reverse_deps[packages/shared/ReactFeatureFlags.js], got: {:?}",
+        manifest.reverse_deps.get("packages/shared/ReactFeatureFlags.js")
     );
 }
 
@@ -168,46 +129,25 @@ fn pnpm_workspace_package_resolves_scoped_name() {
         "packages/lib/package.json",
         r#"{"name": "@myorg/lib"}"#,
     );
-    write_sidecar(
-        root,
-        "packages/lib/index.ts",
-        &format!(
-            "file: {}\nfmm: v0.3\nexports:\n  lib: [1, 1]\nimports: []\ndependencies: []\nloc: 1\n",
-            root.join("packages/lib/index.ts").to_string_lossy()
-        ),
-    );
+    write_file(root, "packages/lib/index.ts", "export const lib = 1;\n");
 
     write_file(
         root,
         "packages/consumer/package.json",
         r#"{"name": "@myorg/consumer", "dependencies": {"@myorg/lib": "workspace:*"}}"#,
     );
-    write_sidecar(
+    write_file(
         root,
         "packages/consumer/main.ts",
-        &format!(
-            "file: {}\nfmm: v0.3\nexports: []\nimports: ['@myorg/lib']\ndependencies: []\nloc: 1\n",
-            root.join("packages/consumer/main.ts").to_string_lossy()
-        ),
+        "import { lib } from '@myorg/lib';\n",
     );
 
     let manifest = load_manifest(root);
 
-    let target = root
-        .join("packages/lib/index.ts")
-        .to_string_lossy()
-        .to_string();
-    let importer = root
-        .join("packages/consumer/main.ts")
-        .to_string_lossy()
-        .to_string();
-
     assert!(
-        has_reverse_dep(&manifest, &target, &importer),
-        "pnpm scoped package not resolved: expected {} in reverse_deps[{}], got: {:?}",
-        importer,
-        target,
-        manifest.reverse_deps.get(&target)
+        has_reverse_dep(&manifest, "packages/lib/index.ts", "packages/consumer/main.ts"),
+        "pnpm scoped package not resolved: expected packages/consumer/main.ts in reverse_deps[packages/lib/index.ts], got: {:?}",
+        manifest.reverse_deps.get("packages/lib/index.ts")
     );
 }
 
@@ -224,23 +164,13 @@ fn external_package_import_does_not_create_reverse_dep() {
 
     // Local react package (same name as npm react — still resolves as local)
     write_file(root, "packages/react/package.json", r#"{"name": "react"}"#);
-    write_sidecar(
-        root,
-        "packages/react/index.js",
-        &format!(
-            "file: {}\nfmm: v0.3\nexports: []\nimports: []\ndependencies: []\nloc: 1\n",
-            root.join("packages/react/index.js").to_string_lossy()
-        ),
-    );
+    write_file(root, "packages/react/index.js", "// local react\n");
 
     // App imports 'lodash' — NOT in manifest, must not appear as reverse dep
-    write_sidecar(
+    write_file(
         root,
         "packages/app/index.ts",
-        &format!(
-            "file: {}\nfmm: v0.3\nexports: []\nimports: [lodash]\ndependencies: []\nloc: 1\n",
-            root.join("packages/app/index.ts").to_string_lossy()
-        ),
+        "import lodash from 'lodash';\n",
     );
 
     let manifest = load_manifest(root);
@@ -271,31 +201,19 @@ fn no_workspace_config_does_not_crash_and_relative_deps_still_work() {
     let root = tmp.path();
 
     // No package.json / pnpm-workspace.yaml — pure relative-import codebase
-    write_sidecar(
+    write_file(
         root,
         "src/a.ts",
-        &format!(
-            "file: {}\nfmm: v0.3\nexports:\n  a: [1, 1]\nimports: [some-external-package]\ndependencies: []\nloc: 1\n",
-            root.join("src/a.ts").to_string_lossy()
-        ),
+        "import something from 'some-external-package';\nexport const a = 1;\n",
     );
-    write_sidecar(
-        root,
-        "src/b.ts",
-        &format!(
-            "file: {}\nfmm: v0.3\nexports: []\nimports: []\ndependencies: [./a]\nloc: 1\n",
-            root.join("src/b.ts").to_string_lossy()
-        ),
-    );
+    write_file(root, "src/b.ts", "import { a } from './a';\n");
 
     // Must not panic
     let manifest = load_manifest(root);
 
     // Relative dep still works
-    let target = root.join("src/a.ts").to_string_lossy().to_string();
-    let importer = root.join("src/b.ts").to_string_lossy().to_string();
     assert!(
-        has_reverse_dep(&manifest, &target, &importer),
+        has_reverse_dep(&manifest, "src/a.ts", "src/b.ts"),
         "relative dep should still resolve without workspace config"
     );
 
@@ -382,8 +300,8 @@ fn react_shared_downstream_count() {
         .expect("REACT_SRC environment variable must be set to the React repo root");
     let root = PathBuf::from(root_str);
 
-    let manifest = fmm::manifest::Manifest::load_from_sidecars(&root)
-        .expect("failed to load React manifest — run fmm index first");
+    let manifest = fmm::manifest::Manifest::load(&root)
+        .expect("failed to load React manifest — run fmm generate first");
 
     let feature_flags = "packages/shared/ReactFeatureFlags.js";
     let downstream = manifest

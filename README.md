@@ -10,36 +10,22 @@
 npx frontmatter-matters init
 ```
 
-|                          | Without fmm                                 | With fmm                                       |
-| ------------------------ | ------------------------------------------- | ---------------------------------------------- |
-| **How LLM navigates**    | grep → read entire file → summarize, repeat | Read sidecar metadata → open only needed files |
-| **Tokens for 500 files** | ~50,000                                     | ~2,000                                         |
-| **Reduction**            | —                                           | **88-97%**                                     |
+|                          | Without fmm                                 | With fmm                                         |
+| ------------------------ | ------------------------------------------- | ------------------------------------------------ |
+| **How LLM navigates**    | grep → read entire file → summarize, repeat | Query SQLite index → open only needed files      |
+| **Tokens for 500 files** | ~50,000                                     | ~2,000                                           |
+| **Reduction**            | —                                           | **88-97%**                                       |
 
 ## What it does
 
-fmm generates a `.fmm` sidecar file alongside each source file. The sidecar is a tiny YAML file listing exports, imports, dependencies, and line count:
+fmm maintains a single SQLite database (`.fmm.db`) at the project root. Each indexed file contributes its exports, imports, dependencies, and line count. The database supports incremental updates — only changed files are re-parsed.
 
 ```
-src/auth/session.ts      ← 234 lines of source
-src/auth/session.ts.fmm  ← 7 lines of metadata
+src/auth/session.ts   ← 234 lines of source
+.fmm.db               ← single index for the entire project
 ```
 
-```yaml
----
-file: src/auth/session.ts
-fmm: v0.3+0.1.12
-exports:
-  createSession: [12, 45]
-  validateSession: [47, 89]
-  destroySession: [91, 110]
-imports: [jsonwebtoken]
-dependencies: [../config, ../db/users]
-loc: 234
-modified: 2024-01-15
-```
-
-LLMs read sidecars first, then open source files only when they need to edit.
+LLMs query the index first via MCP tools, then open source files only when they need to edit.
 
 ## Installation
 
@@ -56,7 +42,7 @@ npm install -g frontmatter-matters
 ```bash
 fmm init                              # One-command setup
 fmm generate && fmm validate          # CI pipeline
-fmm watch                             # Live sidecar regeneration
+fmm watch                             # Live index updates on file change
 fmm search --export createStore       # O(1) symbol lookup
 fmm search --depends-on src/auth.ts   # Impact analysis
 fmm search --loc ">500"              # Find large files
@@ -67,17 +53,17 @@ That's it. Your AI coding assistant now navigates via metadata instead of brute-
 
 ## Commands
 
-| Command               | Purpose                                                       |
-| --------------------- | ------------------------------------------------------------- |
-| `fmm init`            | Set up config, Claude skill, and MCP server                   |
-| `fmm generate [path]` | Create and update .fmm sidecars (exports, imports, deps, LOC) |
-| `fmm watch [path]`    | Watch source files and regenerate sidecars on change          |
-| `fmm validate [path]` | Check sidecars are current (CI-friendly, exit 1 if stale)     |
-| `fmm search`          | Query the index (O(1) export lookup, dependency graphs)       |
-| `fmm glossary`        | Symbol-level impact analysis — who imports this export?       |
-| `fmm mcp`             | Start MCP server (9 tools for LLM navigation)                 |
-| `fmm status`          | Show config and workspace stats                               |
-| `fmm clean [path]`    | Remove all .fmm sidecars                                      |
+| Command               | Purpose                                                            |
+| --------------------- | ------------------------------------------------------------------ |
+| `fmm init`            | Set up config, Claude skill, and MCP server                        |
+| `fmm generate [path]` | Index source files into `.fmm.db` (exports, imports, deps, LOC)   |
+| `fmm watch [path]`    | Watch source files and update the index on change                  |
+| `fmm validate [path]` | Check the index is current (CI-friendly, exit 1 if stale)          |
+| `fmm search`          | Query the index (O(1) export lookup, dependency graphs)            |
+| `fmm glossary`        | Symbol-level impact analysis — who imports this export?            |
+| `fmm mcp`             | Start MCP server (9 tools for LLM navigation)                      |
+| `fmm status`          | Show config and workspace stats                                    |
+| `fmm clean [path]`    | Clear the fmm index database                                       |
 
 Run `fmm --help` for workflows and examples, or `fmm <command> --help` for detailed per-command help.
 
@@ -113,13 +99,13 @@ fmm includes a built-in MCP server with 9 tools. Configure via `fmm init --mcp` 
                         ┌──────────────────────────────────────────────────────┐
                         │                     fmm pipeline                     │
                         │                                                      │
-  Source Files          │   ┌───────-───┐    ┌───────────┐    ┌────────────┐   │    LLM / MCP Client
-  ─────────────────────►│   │  Parser   │───►│ Extractor │───►│  Sidecar   │   │◄──────────────────
+  Source Files          │   ┌───────────┐    ┌───────────┐    ┌────────────┐   │    LLM / MCP Client
+  ─────────────────────►│   │  Parser   │───►│ Extractor │───►│  SQLite    │   │◄──────────────────
   .ts .py .rs .go .c    │   │(tree-sit) │    │           │    │  Writer    │   │   fmm_lookup_export
-  .java .cpp .cs .rb    │   └────────-──┘    └───────────┘    └─────┬──────┘   │   fmm_read_symbol
+  .java .cpp .cs .rb    │   └───────────┘    └───────────┘    └─────┬──────┘   │   fmm_read_symbol
   .dart .lua .zig .sc   │                                     ┌─────▼──────┐   │   fmm_dependency_graph
-                        │                                     │   .fmm     │   │   fmm_file_outline
-                        │                                     │  sidecars  │   │   fmm_list_exports
+                        │                                     │  .fmm.db   │   │   fmm_file_outline
+                        │                                     │  (SQLite)  │   │   fmm_list_exports
                         │                                     └─────┬──────┘   │   fmm_search
                         │                                           │          │   fmm_list_files
                         │                                           │          │   fmm_glossary
@@ -132,8 +118,8 @@ fmm includes a built-in MCP server with 9 tools. Configure via `fmm init --mcp` 
 
 1. **Parse** — tree-sitter parses source into AST
 2. **Extract** — identifies exports, imports, dependencies per file
-3. **Generate** — writes `.fmm` sidecar alongside each source file
-4. **Query** — MCP server or CLI reads sidecars on demand, builds in-memory index
+3. **Generate** — upserts file data into `.fmm.db` (incremental, mtime-based)
+4. **Query** — MCP server or CLI loads the index from SQLite in milliseconds
 
 ## Supported Languages
 
@@ -173,7 +159,7 @@ All languages extract: **exports**, **imports**, **dependencies**, **LOC**.
 
 ```yaml
 # GitHub Actions
-- name: Validate fmm sidecars
+- name: Validate fmm index
   run: |
     npx frontmatter-matters validate
 ```

@@ -22,7 +22,6 @@ fn call_tool_text(server: &fmm::mcp::McpServer, tool: &str, args: serde_json::Va
 }
 
 /// Build and return a (TempDir, McpServer) for the named-import-precision fixture.
-/// All sidecars use v0.4+ format with named_imports populated.
 fn setup_precision_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     let tmp = tempfile::TempDir::new().unwrap();
     let root = tmp.path().to_path_buf();
@@ -34,19 +33,11 @@ fn setup_precision_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
         root.join("src/WorkLoop.ts"),
         "export function scheduleUpdate(root: any) {}\nexport function requestLane(root: any) { return 0; }\nexport function peekLane() { return 0; }\n",
     ).unwrap();
-    std::fs::write(
-        root.join("src/WorkLoop.ts.fmm"),
-        "file: src/WorkLoop.ts\nfmm: v0.4+\nexports:\n  scheduleUpdate: [1, 1]\n  requestLane: [2, 2]\n  peekLane: [3, 3]\nloc: 3\ntypescript:\n  function_names: [scheduleUpdate, requestLane, peekLane]\nimports: []\ndependencies: []\n",
-    ).unwrap();
 
     // HooksModule.ts — named-imports scheduleUpdate, calls it
     std::fs::write(
         root.join("src/HooksModule.ts"),
         "import { scheduleUpdate } from './WorkLoop';\nexport function mountEffect(fiber: any) { scheduleUpdate(fiber); }\n",
-    ).unwrap();
-    std::fs::write(
-        root.join("src/HooksModule.ts.fmm"),
-        "file: src/HooksModule.ts\nfmm: v0.4+\nexports:\n  mountEffect: [2, 2]\nloc: 2\nimports: []\ndependencies: [./WorkLoop]\nnamed_imports:\n  ./WorkLoop:\n    - scheduleUpdate\n",
     ).unwrap();
 
     // ProfilerTimer.ts — named-imports requestLane only (NOT scheduleUpdate)
@@ -54,19 +45,11 @@ fn setup_precision_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
         root.join("src/ProfilerTimer.ts"),
         "import { requestLane } from './WorkLoop';\nexport function getTimerLane() { return requestLane(null); }\n",
     ).unwrap();
-    std::fs::write(
-        root.join("src/ProfilerTimer.ts.fmm"),
-        "file: src/ProfilerTimer.ts\nfmm: v0.4+\nexports:\n  getTimerLane: [2, 2]\nloc: 2\nimports: []\ndependencies: [./WorkLoop]\nnamed_imports:\n  ./WorkLoop:\n    - requestLane\n",
-    ).unwrap();
 
     // ClassComponent.ts — named-imports both scheduleUpdate and requestLane, calls both
     std::fs::write(
         root.join("src/ClassComponent.ts"),
         "import { scheduleUpdate, requestLane } from './WorkLoop';\nexport function updateComponent(comp: any) {\n  const lane = requestLane(comp);\n  scheduleUpdate(comp);\n}\n",
-    ).unwrap();
-    std::fs::write(
-        root.join("src/ClassComponent.ts.fmm"),
-        "file: src/ClassComponent.ts\nfmm: v0.4+\nexports:\n  updateComponent: [2, 5]\nloc: 5\nimports: []\ndependencies: [./WorkLoop]\nnamed_imports:\n  ./WorkLoop:\n    - scheduleUpdate\n    - requestLane\n",
     ).unwrap();
 
     // ReExporter.ts — re-exports scheduleUpdate; no call site
@@ -75,19 +58,11 @@ fn setup_precision_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
         "export { scheduleUpdate } from './WorkLoop';\n",
     )
     .unwrap();
-    std::fs::write(
-        root.join("src/ReExporter.ts.fmm"),
-        "file: src/ReExporter.ts\nfmm: v0.4+\nexports:\n  scheduleUpdate: [1, 1]\nloc: 1\nimports: []\ndependencies: [./WorkLoop]\nnamed_imports:\n  ./WorkLoop:\n    - scheduleUpdate\n",
-    ).unwrap();
 
     // DeadImport.ts — named-imports scheduleUpdate but never calls it
     std::fs::write(
         root.join("src/DeadImport.ts"),
         "import { scheduleUpdate } from './WorkLoop';\n// intentionally never called\nexport const MARKER = 42;\n",
-    ).unwrap();
-    std::fs::write(
-        root.join("src/DeadImport.ts.fmm"),
-        "file: src/DeadImport.ts\nfmm: v0.4+\nexports:\n  MARKER: [3, 3]\nloc: 3\nimports: []\ndependencies: [./WorkLoop]\nnamed_imports:\n  ./WorkLoop:\n    - scheduleUpdate\n",
     ).unwrap();
 
     // NamespaceUser.ts — namespace import; calls WL.scheduleUpdate()
@@ -95,11 +70,8 @@ fn setup_precision_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
         root.join("src/NamespaceUser.ts"),
         "import * as WL from './WorkLoop';\nexport function debugSchedule(root: any) { WL.scheduleUpdate(root); }\n",
     ).unwrap();
-    std::fs::write(
-        root.join("src/NamespaceUser.ts.fmm"),
-        "file: src/NamespaceUser.ts\nfmm: v0.4+\nexports:\n  debugSchedule: [2, 2]\nloc: 2\nimports: []\ndependencies: [./WorkLoop]\nnamespace_imports:\n  - ./WorkLoop\n",
-    ).unwrap();
 
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false).unwrap();
     (tmp, fmm::mcp::McpServer::with_root(root.to_path_buf()))
 }
 

@@ -54,18 +54,18 @@ impl Default for McpServer {
 
 impl McpServer {
     pub fn new() -> Self {
-        // Safe default: empty path is harmless; MCP server will report "no sidecars" if cwd fails
+        // Safe default: empty path is harmless; MCP server will report "no index" if cwd fails
         let root = std::env::current_dir().unwrap_or_default();
         Self::with_root(root)
     }
 
     pub fn with_root(root: PathBuf) -> Self {
-        let manifest = Manifest::load_from_sidecars(&root).ok();
+        let manifest = Manifest::load(&root).ok();
         Self { manifest, root }
     }
 
     fn reload(&mut self) {
-        self.manifest = Manifest::load_from_sidecars(&self.root).ok();
+        self.manifest = Manifest::load(&self.root).ok();
     }
 
     /// Call a tool by name with JSON arguments. Useful for testing.
@@ -101,7 +101,7 @@ impl McpServer {
     fn require_manifest(&self) -> Result<&Manifest, String> {
         self.manifest
             .as_ref()
-            .ok_or_else(|| "No sidecars found. Run 'fmm generate' first.".to_string())
+            .ok_or_else(|| "No index found. Run 'fmm generate' first.".to_string())
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -133,7 +133,7 @@ impl McpServer {
                 }
             };
 
-            // Rebuild index from sidecars before handling tool calls
+            // Reload index before handling tool calls
             if request.method == "tools/call" {
                 self.reload();
             }

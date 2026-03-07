@@ -1,6 +1,6 @@
 //! List exports and list files formatters.
 
-use crate::formatter::yaml_escape;
+use crate::format::yaml_escape;
 use crate::manifest::FileEntry;
 
 use super::helpers::push_exports_map;

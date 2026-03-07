@@ -1,7 +1,0 @@
----
-file: src/mcp/tools/search.rs
-fmm: v0.4+0.1.33
-imports: [serde_json]
-dependencies: ['crate::manifest', 'crate::mcp::args']
-loc: 101
-modified: 2026-03-07

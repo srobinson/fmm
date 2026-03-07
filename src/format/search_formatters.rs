@@ -1,6 +1,6 @@
 //! Search result formatters: bare search, filter search, glossary.
 
-use crate::formatter::yaml_escape;
+use crate::format::yaml_escape;
 use crate::manifest::GlossaryEntry;
 use crate::search::{BareSearchResult, ExportHitCompact, FileSearchResult};
 

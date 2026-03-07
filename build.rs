@@ -340,22 +340,16 @@ fn generate_skill_md(skill: Option<&SkillConfig>, tools: &IndexMap<String, ToolD
     out.push_str("8. **Read source only when editing** — MCP tools tell you everything you need for navigation\n");
     out.push_str("9. **Trust the index** — it updates automatically after every file write\n\n");
 
-    // Fallback section.
-    out.push_str("## Sidecar Fallback\n\n");
-    out.push_str(
-        "If MCP tools are unavailable, `.fmm` sidecar files exist alongside source files:\n\n",
-    );
-    out.push_str("```yaml\n");
-    out.push_str("file: src/core/pipeline.ts\n");
-    out.push_str("fmm: v0.3+0.1.11\n");
-    out.push_str("exports:\n");
-    out.push_str("  createPipeline: [10, 45]\n");
-    out.push_str("  PipelineConfig: [47, 52]\n");
-    out.push_str("imports: [./engine, ./validators, lodash, zod]\n");
-    out.push_str("loc: 142\n");
-    out.push_str("modified: 2026-03-06\n");
+    // CLI fallback section.
+    out.push_str("## CLI Fallback\n\n");
+    out.push_str("If MCP tools are unavailable, use the CLI directly:\n\n");
+    out.push_str("```bash\n");
+    out.push_str("fmm lookup createPipeline      # Find where a symbol is defined\n");
+    out.push_str("fmm read createPipeline        # Extract exact source\n");
+    out.push_str("fmm deps src/core/pipeline.ts  # Dependency graph\n");
+    out.push_str("fmm outline src/core/pipeline.ts  # Table of contents with line ranges\n");
     out.push_str("```\n\n");
-    out.push_str("Line ranges enable surgical reads: `Read(file, offset=10, limit=36)`.\n");
+    out.push_str("Line ranges from `fmm outline` enable surgical reads: `Read(file, offset=10, limit=36)`.\n");
 
     out
 }
