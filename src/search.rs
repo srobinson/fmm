@@ -27,11 +27,20 @@ pub struct ImportHit {
     pub files: Vec<String>,
 }
 
+/// A named-import call-site hit: files that import `symbol` by name from `source`.
+pub struct NamedImportHit {
+    pub symbol: String,
+    pub source: String,
+    pub files: Vec<String>,
+}
+
 /// Result of a bare term search (grouped by type).
 pub struct BareSearchResult {
     pub exports: Vec<ExportHit>,
     pub files: Vec<String>,
     pub imports: Vec<ImportHit>,
+    /// Files that import the matched symbol by name from an external package.
+    pub named_import_hits: Vec<NamedImportHit>,
     /// Total fuzzy export hits before the limit was applied. None = no limit applied.
     pub total_exports: Option<usize>,
 }
@@ -137,10 +146,40 @@ pub fn bare_search(manifest: &Manifest, term: &str, limit: Option<usize>) -> Bar
         .map(|(package, files)| ImportHit { package, files })
         .collect();
 
+    // 5. Named-import call-site matches — files that import `term` by name from any source.
+    // Groups by (symbol, source_package) so the caller sees which package each symbol came from.
+    // Key: (symbol, source) → files
+    let mut named_import_map: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
+    for (file_path, entry) in &manifest.files {
+        for (source, symbols) in &entry.named_imports {
+            for symbol in symbols {
+                if symbol.to_lowercase().contains(&term_lower) {
+                    named_import_map
+                        .entry((symbol.clone(), source.clone()))
+                        .or_default()
+                        .push(file_path.clone());
+                }
+            }
+        }
+    }
+    for files in named_import_map.values_mut() {
+        files.sort();
+    }
+
+    let named_import_hits: Vec<NamedImportHit> = named_import_map
+        .into_iter()
+        .map(|((symbol, source), files)| NamedImportHit {
+            symbol,
+            source,
+            files,
+        })
+        .collect();
+
     BareSearchResult {
         exports: export_hits,
         files: file_matches,
         imports: import_hits,
+        named_import_hits,
         total_exports: if capped { Some(total_fuzzy) } else { None },
     }
 }

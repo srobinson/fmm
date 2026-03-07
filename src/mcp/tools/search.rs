@@ -44,6 +44,10 @@ pub(in crate::mcp) fn tool_search(
                 h.files.retain(|f| filter_files.contains(f.as_str()));
             });
             result.imports.retain(|h| !h.files.is_empty());
+            result.named_import_hits.iter_mut().for_each(|h| {
+                h.files.retain(|f| filter_files.contains(f.as_str()));
+            });
+            result.named_import_hits.retain(|h| !h.files.is_empty());
             // Stale truncation count is meaningless after filter intersection —
             // exports were dropped because no matching files export them, not
             // because the relevance cap was hit. Clear it to avoid a misleading
