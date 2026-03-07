@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.35](https://github.com/srobinson/fmm/compare/v0.1.34...v0.1.35) (2026-03-07)
+
+
+### Features
+
+* SQLite manifest store — replace per-file YAML sidecars (#ALP-912) ([#101](https://github.com/srobinson/fmm/issues/101)) ([dabc5f3](https://github.com/srobinson/fmm/commit/dabc5f327de8b6b85a5e4ca5e06aa3a72bf136e4))
+
 ## [0.1.34](https://github.com/srobinson/fmm/compare/v0.1.33...v0.1.34) (2026-03-07)
 
 
