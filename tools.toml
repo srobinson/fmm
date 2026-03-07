@@ -117,10 +117,27 @@ Results include class methods (e.g., `Injector.loadInstance`) as distinct entrie
 ```
 1. fmm_search(imports: "rxjs", min_loc: 500) → files matching ALL criteria with full metadata
 2. fmm_search(depends_on: "src/core/injector.ts") → all files in the transitive dependency chain
-3. fmm_search(term: "Injector") → EXPORTS + FILES + IMPORTS grouped by type
+3. fmm_search(term: "Injector") → EXPORTS + FILES + NAMED IMPORTS grouped by type
 ```
 
 `depends_on` uses **transitive** matching — it returns the full downstream closure, not just direct importers. For direct importers only, use `fmm_dependency_graph(depth: 1)` and read `downstream`.
+
+**`term` vs `export`:** Use `export: "SymbolName"` for a known symbol — returns the file profile instantly with no noise. Use `term: "name"` for discovery — returns EXPORTS (fuzzy), FILES (path match), and NAMED IMPORTS (call sites). Generic terms produce noisy EXPORTS; the NAMED IMPORTS section is the valuable part for understanding usage.
+
+### "Who calls function X from an external package?"
+
+```
+fmm_search(term: "createServerFn") →
+  NAMED IMPORTS:
+    createServerFn from @tanstack/react-start
+      src/utils/docs.ts
+      src/utils/feed.functions.ts
+      ... (all call sites)
+```
+
+`term` traces named imports across the entire codebase regardless of whether the symbol is local or external. Results group by import source path — multiple relative paths to the same module appear as separate groups, showing exactly which files import from which depth.
+
+**Use this instead of grep for "which files use X".** A single call returns every import site with file paths, no regex required.
 
 ### "What would break if I rename/change X?"
 
@@ -131,6 +148,15 @@ Results include class methods (e.g., `Injector.loadInstance`) as distinct entrie
 ```
 
 **The dotted pattern is the contract.** `fmm_glossary(pattern: "loadInstance")` returns every file that imports `injector.ts` — a superset. `fmm_glossary(pattern: "Injector.loadInstance")` runs a tree-sitter second pass and returns only files with an actual call site. Use the dotted form for rename safety.
+
+**Re-export annotation.** When a file re-exports a symbol without calling it, glossary marks it: `# re-exports only (1 file — rename required but no call site)`. This means a rename must update the re-export chain, but no call-site edits are needed. Distinct from a true caller.
+
+**`precision: named` and `precision: call-site` may return identical results.** This is correct — it means every named importer is also a real caller. The call-site pass confirmed all imports. Not a failure.
+
+**Known gaps — use `fmm_dependency_graph` instead:**
+
+- **React JSX components.** `<Navbar />` compiles to a createElement call that tree-sitter does not recognise as a named import. `fmm_glossary` returns `used_by: []` for components used only via JSX. Use `fmm_dependency_graph(file: "src/components/Navbar.tsx")` to find all files that import the component file.
+- **`createServerFn` wrappers.** Server functions invoked through an RPC mechanism do not appear as named call sites. `fmm_glossary` returning `used_by: []` on a server function export does not mean dead code — it means the caller is the framework runtime, not a direct import.
 
 ### "What tests cover X?"
 
