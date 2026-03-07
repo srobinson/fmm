@@ -39,7 +39,29 @@ pub fn open_db(root: &Path) -> Result<Connection> {
     let conn = Connection::open(&db_path)
         .with_context(|| format!("Failed to open database at {}", db_path.display()))?;
     apply_pragmas(&conn)?;
+    check_version_match(&conn)?;
     Ok(conn)
+}
+
+fn check_version_match(conn: &Connection) -> Result<()> {
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT value FROM meta WHERE key='fmm_version'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+    let running = env!("CARGO_PKG_VERSION");
+    if let Some(ref v) = stored {
+        if v != running {
+            anyhow::bail!(
+                "Index was built with fmm v{} but you are running v{}. Run `fmm generate --force` to rebuild.",
+                v,
+                running
+            );
+        }
+    }
+    Ok(())
 }
 
 fn apply_pragmas(conn: &Connection) -> Result<()> {
