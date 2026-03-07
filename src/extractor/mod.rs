@@ -99,6 +99,15 @@ impl FileProcessor {
         Ok(Some(result.metadata))
     }
 
+    /// Parse a source file and return the full ParseResult (metadata + custom_fields).
+    ///
+    /// Unlike `extract_metadata`, this preserves custom_fields (e.g. TypeScript
+    /// function_names, decorators) needed by the SQLite write path.
+    pub fn parse(&self, path: &Path) -> Result<ParseResult> {
+        let content = fs::read_to_string(path)?;
+        self.parse_content(path, &content)
+    }
+
     /// Single-pass parse: metadata + custom fields from one tree-sitter invocation.
     fn parse_content(&self, path: &Path, content: &str) -> Result<ParseResult> {
         let extension = path

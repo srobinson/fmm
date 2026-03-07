@@ -1,3 +1,5 @@
+pub mod writer;
+
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::path::Path;

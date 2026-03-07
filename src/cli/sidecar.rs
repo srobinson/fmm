@@ -1,9 +1,12 @@
 use anyhow::Result;
+use chrono::Utc;
 use colored::Colorize;
 use rayon::prelude::*;
 
 use crate::config::Config;
+use crate::db;
 use crate::extractor::{sidecar_path_for, FileProcessor};
+use crate::resolver;
 
 use super::{collect_files_multi, resolve_root_multi};
 
@@ -34,6 +37,74 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool) -> Result<()> {
     println!("Found {} files to process", files.len());
 
     let processor = FileProcessor::new(&root);
+
+    // --- SQLite write path ---
+    // Runs before the sidecar path so a fresh DB is available on next load.
+    // Both paths are kept during this transition phase; ALP-917 removes sidecars.
+    if !dry_run {
+        let mut conn = db::open_or_create(&root)?;
+
+        // Store workspace packages so the read path can resolve cross-package imports.
+        let workspace_info = resolver::workspace::discover(&root);
+        db::writer::upsert_workspace_packages(&conn, &workspace_info.packages)?;
+
+        // Phase 1 (sequential): determine which files are stale in the DB.
+        // mtime comparison is O(1) per file and fast even at 4,673 files.
+        let dirty_files: Vec<&std::path::PathBuf> = files
+            .iter()
+            .filter(|file| {
+                if force {
+                    return true;
+                }
+                let rel = file
+                    .strip_prefix(&root)
+                    .unwrap_or(file)
+                    .display()
+                    .to_string();
+                let mtime = db::writer::file_mtime_rfc3339(file);
+                !db::writer::is_file_up_to_date(&conn, &rel, mtime.as_deref())
+            })
+            .collect();
+
+        if !dirty_files.is_empty() {
+            // Phase 2 (parallel): parse all stale files.
+            let parse_results: Vec<(std::path::PathBuf, crate::parser::ParseResult)> = dirty_files
+                .par_iter()
+                .filter_map(|file| match processor.parse(file) {
+                    Ok(result) => Some(((*file).clone(), result)),
+                    Err(e) => {
+                        eprintln!("{} {}: {}", "error:".red().bold(), file.display(), e);
+                        None
+                    }
+                })
+                .collect();
+
+            // Phase 3 (transacted): write all parsed results to DB in one commit.
+            {
+                let tx = conn.transaction()?;
+                for (abs_path, result) in &parse_results {
+                    let rel = abs_path
+                        .strip_prefix(&root)
+                        .unwrap_or(abs_path)
+                        .display()
+                        .to_string();
+                    let mtime = db::writer::file_mtime_rfc3339(abs_path);
+                    db::writer::upsert_file_data(&tx, &rel, result, mtime.as_deref())?;
+                }
+                tx.commit()?;
+            }
+
+            // Phase 4: rebuild the pre-computed reverse dependency graph.
+            db::writer::rebuild_and_write_reverse_deps(&mut conn, &root)?;
+        }
+
+        db::writer::write_meta(&conn, "fmm_version", env!("CARGO_PKG_VERSION"))?;
+        db::writer::write_meta(&conn, "generated_at", &Utc::now().to_rfc3339())?;
+    }
+
+    // --- Sidecar write path (kept for backward compatibility) ---
+    // Parses all files independently; shares no state with the SQLite path above.
+    // Will be removed entirely in ALP-917.
     let results: Vec<_> = files
         .par_iter()
         .filter_map(|file| match processor.process(file, dry_run, force) {
