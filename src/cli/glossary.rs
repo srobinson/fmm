@@ -21,7 +21,7 @@ pub fn glossary(
 
     if manifest.files.is_empty() {
         eprintln!(
-            "{} No sidecars found. Run {} first.",
+            "{} No index found. Run {} first.",
             "warning:".yellow(),
             "fmm generate".bold()
         );

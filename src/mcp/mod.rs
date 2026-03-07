@@ -101,7 +101,7 @@ impl McpServer {
     fn require_manifest(&self) -> Result<&Manifest, String> {
         self.manifest
             .as_ref()
-            .ok_or_else(|| "No sidecars found. Run 'fmm generate' first.".to_string())
+            .ok_or_else(|| "No index found. Run 'fmm generate' first.".to_string())
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -133,7 +133,7 @@ impl McpServer {
                 }
             };
 
-            // Rebuild index from sidecars before handling tool calls
+            // Reload index before handling tool calls
             if request.method == "tools/call" {
                 self.reload();
             }

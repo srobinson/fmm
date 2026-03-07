@@ -17,12 +17,12 @@ pub const SHORT_HELP: &str = cstr!(
 
 <bold><underline>Project</underline></bold>
   <bold>init</bold>          Set up config, Claude skill, and MCP server
-  <bold>generate</bold>      Create and update .fmm sidecars (exports, imports, deps, LOC)
-  <bold>watch</bold>         Watch source files and regenerate sidecars on change
-  <bold>validate</bold>      Check sidecars are current (CI-friendly, exit 1 if stale)
+  <bold>generate</bold>      Index source files into the SQLite database (exports, imports, deps, LOC)
+  <bold>watch</bold>         Watch source files and update the index on change
+  <bold>validate</bold>      Check the index is current (CI-friendly, exit 1 if stale)
   <bold>mcp</bold>           Start MCP server (9 tools for LLM navigation)
   <bold>status</bold>        Show config and workspace stats
-  <bold>clean</bold>         Remove all .fmm sidecars
+  <bold>clean</bold>         Clear the fmm index database
 
 Use <bold>--help</bold> for workflows and examples.
 https://github.com/srobinson/fmm"#
@@ -42,12 +42,12 @@ pub const LONG_HELP: &str = cstr!(
 
 <bold><underline>Project Commands</underline></bold>
   <bold>init</bold>          Set up config, Claude skill, and MCP server
-  <bold>generate</bold>      Create and update .fmm sidecars (exports, imports, deps, LOC)
-  <bold>watch</bold>         Watch source files and regenerate sidecars on change
-  <bold>validate</bold>      Check sidecars are current (CI-friendly, exit 1 if stale)
+  <bold>generate</bold>      Index source files into the SQLite database (exports, imports, deps, LOC)
+  <bold>watch</bold>         Watch source files and update the index on change
+  <bold>validate</bold>      Check the index is current (CI-friendly, exit 1 if stale)
   <bold>mcp</bold>           Start MCP server (9 tools for LLM navigation)
   <bold>status</bold>        Show config and workspace stats
-  <bold>clean</bold>         Remove all .fmm sidecars
+  <bold>clean</bold>         Clear the fmm index database
 
 <bold><underline>Navigation Examples</underline></bold>
   <dim>$</dim> <bold>fmm lookup Injector</bold>                         <dim># File + line range + deps</dim>

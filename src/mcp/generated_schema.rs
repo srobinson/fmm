@@ -81,7 +81,7 @@ serde_json::from_str(r##"{
     },
     {
       "name": "fmm_read_symbol",
-      "description": "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Requires line-range data from v0.3 sidecars. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Use `path/to/file.ts:helperFunction` notation to read a non-exported top-level function via on-demand tree-sitter parse. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.",
+      "description": "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Use `path/to/file.ts:helperFunction` notation to read a non-exported top-level function via on-demand tree-sitter parse. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.",
       "inputSchema": {
         "type": "object",
         "properties": {

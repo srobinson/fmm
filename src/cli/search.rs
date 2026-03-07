@@ -68,11 +68,11 @@ pub fn search(
 
     if manifest.files.is_empty() {
         println!(
-            "{} No .fmm sidecars found in the current directory",
+            "{} No fmm index found in the current directory",
             "!".yellow()
         );
         println!(
-            "\n  {} fmm search queries sidecar metadata. Run 'fmm generate' first to create them",
+            "\n  {} Run 'fmm generate' first to build the index",
             "hint:".cyan()
         );
         return Ok(());

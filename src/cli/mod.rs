@@ -56,13 +56,13 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Create and update .fmm sidecar files for source files
+    /// Index source files into the SQLite database
     #[command(
         alias = "update",
-        long_about = "Create and update .fmm sidecar files from source.\n\n\
-            Each sidecar captures the file's exports, imports, dependencies, and line count \
-            in a compact YAML format. New files get sidecars created; existing sidecars are \
-            updated only when content has actually changed.",
+        long_about = "Index source files into the SQLite database.\n\n\
+            Captures each file's exports, imports, dependencies, and line count. \
+            New files are indexed; existing entries are updated only when the source \
+            file has changed (mtime-based incremental).",
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm generate</bold>             <dim># All files in current directory</dim>
@@ -81,8 +81,8 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm generate && fmm validate</bold>        <dim># Generate then verify</dim>
 
 <bold><underline>Notes</underline></bold>
-  Creates new sidecars and updates stale ones in a single pass.
-  Unchanged files are skipped — no unnecessary writes.
+  Indexes new files and updates stale entries in a single pass.
+  Unchanged files are skipped (mtime check) — no unnecessary work.
   Respects .gitignore and .fmmignore for file exclusion.
   Supports: TypeScript, JavaScript, Python, Rust, Go, Java, C++, C#, Ruby."#),
     )]
@@ -95,38 +95,38 @@ pub enum Commands {
         #[arg(short = 'n', long)]
         dry_run: bool,
 
-        /// Regenerate all sidecars, bypassing content comparison
+        /// Re-index all files, bypassing mtime comparison
         #[arg(short, long)]
         force: bool,
     },
 
-    /// Check sidecars are up to date (CI-friendly, exit 1 if stale)
+    /// Check the index is current (CI-friendly, exit 1 if stale)
     #[command(
-        long_about = "Validate that all .fmm sidecars match their source files.\n\n\
-            Returns exit code 0 if all sidecars are current, or 1 if any are stale or \
+        long_about = "Validate that all source files are up to date in the index.\n\n\
+            Returns exit code 0 if the index is current, or 1 if any files are stale or \
             missing. Designed for CI pipelines — add to your pre-commit hooks or GitHub Actions.",
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm validate</bold>             <dim># Check all sidecars</dim>
+  <dim>$</dim> <bold>fmm validate</bold>             <dim># Check all indexed files</dim>
   <dim>$</dim> <bold>fmm validate src/</bold>         <dim># Check specific directory</dim>"#),
         after_long_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm validate</bold>                       <dim># Check all sidecars</dim>
+  <dim>$</dim> <bold>fmm validate</bold>                       <dim># Check all indexed files</dim>
   <dim>$</dim> <bold>fmm validate src/</bold>                   <dim># Check specific directory</dim>
 
   <dim># CI pipeline:</dim>
-  <dim>$</dim> <bold>fmm generate && fmm validate</bold>        <dim># Generate then verify</dim>
+  <dim>$</dim> <bold>fmm generate && fmm validate</bold>        <dim># Index then verify</dim>
 
   <dim># GitHub Actions step:</dim>
   <dim>- run: npx frontmatter-matters validate</dim>
 
   <dim># Pre-commit hook (.husky/pre-commit):</dim>
-  <dim>fmm validate || (echo "Stale sidecars — run 'fmm generate'" && exit 1)</dim>
+  <dim>fmm validate || (echo "Stale index — run 'fmm generate'" && exit 1)</dim>
 
 <bold><underline>Notes</underline></bold>
-  Exit code 0: all sidecars are current.
-  Exit code 1: stale or missing sidecars found.
-  Run 'fmm generate' to create missing or update stale sidecars."#),
+  Exit code 0: index is current.
+  Exit code 1: stale or un-indexed files found.
+  Run 'fmm generate' to update the index."#),
     )]
     Validate {
         /// Paths to files or directories (defaults to current directory)
@@ -168,9 +168,9 @@ pub enum Commands {
         delete_db: bool,
     },
 
-    /// Watch source files and regenerate sidecars on change
+    /// Watch source files and update the index on change
     #[command(
-        long_about = "Watch source files for changes and regenerate affected sidecars automatically.\n\n\
+        long_about = "Watch source files for changes and update the index automatically.\n\n\
             Runs an initial generate pass on startup, then watches for file create, modify, and \
             delete events. Debounces rapid changes (default: 300ms) to avoid redundant work.",
         after_help = cstr!(
@@ -185,9 +185,8 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm watch --debounce 500</bold>            <dim># Custom debounce (500ms)</dim>
 
 <bold><underline>Notes</underline></bold>
-  Runs 'fmm generate' on startup to ensure all sidecars exist.
-  Only prints when a sidecar actually changes — quiet by default.
-  Changes to .fmm files are ignored (no feedback loops).
+  Runs 'fmm generate' on startup to ensure the index is current.
+  Only prints when a file is re-indexed — quiet by default.
   Respects .gitignore and .fmmignore for file exclusion.
   Press Ctrl+C to stop watching."#),
     )]
@@ -210,16 +209,16 @@ pub enum Commands {
             Run with no flags for the standard setup, or use flags to install individual components.",
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm init</bold>                 <dim># Config + MCP + generate sidecars</dim>
+  <dim>$</dim> <bold>fmm init</bold>                 <dim># Config + MCP + index source files</dim>
   <dim>$</dim> <bold>fmm init --skill</bold>          <dim># Also install Claude Code skill</dim>
   <dim>$</dim> <bold>fmm init --mcp</bold>            <dim># MCP server config only</dim>"#),
         after_long_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm init</bold>                           <dim># Config + MCP + generate sidecars</dim>
+  <dim>$</dim> <bold>fmm init</bold>                           <dim># Config + MCP + index source files</dim>
   <dim>$</dim> <bold>fmm init --skill</bold>                    <dim># Also install Claude Code skill (.claude/)</dim>
   <dim>$</dim> <bold>fmm init --all</bold>                      <dim># Everything including skill</dim>
   <dim>$</dim> <bold>fmm init --mcp</bold>                      <dim># MCP server config only</dim>
-  <dim>$</dim> <bold>fmm init --all --no-generate</bold>        <dim># Config files only, skip sidecar gen</dim>
+  <dim>$</dim> <bold>fmm init --all --no-generate</bold>        <dim># Config files only, skip indexing</dim>
 
 <bold><underline>What gets created</underline></bold>
   <bold>.fmmrc.json</bold>                           Project configuration
@@ -246,7 +245,7 @@ pub enum Commands {
         #[arg(long)]
         all: bool,
 
-        /// Skip auto-generating sidecars (config files only)
+        /// Skip auto-indexing (config files only)
         #[arg(long)]
         no_generate: bool,
     },
@@ -254,13 +253,13 @@ pub enum Commands {
     /// Show config, supported languages, and workspace stats
     #[command(
         long_about = "Display the current fmm configuration, supported languages, and \
-            workspace statistics including source file and sidecar counts.",
+            workspace statistics including source file and index counts.",
         after_long_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm status</bold>                         <dim># Show config and stats</dim>
 
 <bold><underline>Notes</underline></bold>
-  Shows: config file location, supported languages, file/sidecar counts.
+  Shows: config file location, supported languages, indexed file counts.
   Useful for verifying fmm is set up correctly in a project."#),
     )]
     Status,
@@ -600,7 +599,7 @@ pub enum Commands {
 
 <bold><underline>Notes</underline></bold>
   Communicates over stdio using the MCP JSON-RPC protocol.
-  Requires sidecars to be generated first ('fmm generate').
+  Requires the index to be built first ('fmm generate').
   88-97% token reduction vs reading source files directly."#),
     )]
     Mcp,
@@ -630,7 +629,7 @@ pub enum Commands {
 /// Resolve the root directory from the target path.
 /// If a directory, use it directly. If a file, walk up from its parent
 /// looking for project root markers (.git, .fmmrc.json) so that relative
-/// paths in sidecar output are consistent regardless of whether `fmm generate`
+/// paths in the index are consistent regardless of whether `fmm generate`
 /// targets a single file or the whole repo.
 /// Falls back to the file's parent directory, then CWD.
 fn resolve_root(path: &str) -> Result<PathBuf> {

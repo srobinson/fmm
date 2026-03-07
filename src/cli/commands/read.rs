@@ -96,7 +96,7 @@ pub fn read_symbol(
 
     let lines = resolved_lines.ok_or_else(|| {
         anyhow::anyhow!(
-            "No line range for '{}' in '{}' — regenerate sidecars with 'fmm generate'.",
+            "No line range for '{}' in '{}' — run 'fmm generate' to re-index.",
             name,
             resolved_file
         )

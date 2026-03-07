@@ -160,16 +160,22 @@ formatPort :: Int -> String
 formatPort p = ":" <> show p
 ```
 
-### Step 7 — Generate the sidecar
+### Step 7 — Generate the index
 
 ```bash
-cargo run -- sidecar fixtures/sample.hs
+cargo run -- generate fixtures/
 ```
 
-This creates `fixtures/sample.hs.fmm`. Inspect it and verify:
+Then query the index to verify:
 
-- `exports:` lists the symbols you expected
-- `imports:` and `dependencies:` are correct
+```bash
+cargo run -- outline fixtures/sample.hs
+```
+
+Check that:
+
+- Exports list the symbols you expected
+- Imports and dependencies are correct
 - No obvious omissions or false positives
 
 If the output looks wrong, go back to Step 3 and adjust your extraction logic.
@@ -214,7 +220,7 @@ just test
 [ ] 4. pub mod <lang>; added to src/parser/builtin/mod.rs
 [ ] 5. Parser registered in ParserRegistry::register_builtin() in src/parser/mod.rs
 [ ] 6. fixtures/sample.<ext> created with 50-150 LOC of real code
-[ ] 7. cargo run -- sidecar fixtures/sample.<ext> succeeds and output looks correct
+[ ] 7. cargo run -- generate fixtures/ && cargo run -- outline fixtures/sample.<ext> shows correct exports
 [ ] 8. validate_<lang>_fixture() test added to tests/fixture_validation.rs; just test passes
 ```
 

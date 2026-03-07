@@ -253,7 +253,7 @@ Get a file's dependency graph: upstream dependencies (what it imports) and downs
 
 ### `fmm_read_symbol`
 
-Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Requires line-range data from v0.3 sidecars. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: "Injector.loadInstance")`. Use `path/to/file.ts:helperFunction` notation to read a non-exported top-level function via on-demand tree-sitter parse. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.
+Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: "Injector.loadInstance")`. Use `path/to/file.ts:helperFunction` notation to read a non-exported top-level function via on-demand tree-sitter parse. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -322,19 +322,15 @@ Symbol-level impact analysis. Given a symbol name or pattern, returns all defini
 8. **Read source only when editing** — MCP tools tell you everything you need for navigation
 9. **Trust the index** — it updates automatically after every file write
 
-## Sidecar Fallback
+## CLI Fallback
 
-If MCP tools are unavailable, `.fmm` sidecar files exist alongside source files:
+If MCP tools are unavailable, use the CLI directly:
 
-```yaml
-file: src/core/pipeline.ts
-fmm: v0.3+0.1.11
-exports:
-  createPipeline: [10, 45]
-  PipelineConfig: [47, 52]
-imports: [./engine, ./validators, lodash, zod]
-loc: 142
-modified: 2026-03-06
+```bash
+fmm lookup createPipeline      # Find where a symbol is defined
+fmm read createPipeline        # Extract exact source
+fmm deps src/core/pipeline.ts  # Dependency graph
+fmm outline src/core/pipeline.ts  # Table of contents with line ranges
 ```
 
-Line ranges enable surgical reads: `Read(file, offset=10, limit=36)`.
+Line ranges from `fmm outline` enable surgical reads: `Read(file, offset=10, limit=36)`.

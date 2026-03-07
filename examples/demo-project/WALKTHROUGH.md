@@ -1,6 +1,6 @@
 # Demo Project Walkthrough
 
-This is a small Express.js web application with authentication, database access, and API routes. All 8 source files have pre-generated `.fmm` sidecars.
+This is a small Express.js web application with authentication, database access, and API routes. Run `fmm generate` to build the index, then try the commands below.
 
 ## Project structure
 
@@ -80,7 +80,7 @@ src/auth/session.ts
 
 ## What an LLM sees
 
-Instead of reading 214 lines of source code across 8 files, an LLM reads 8 sidecars totaling ~56 lines of YAML. It knows every export, import, and dependency — enough to navigate to exactly the right file.
+Instead of reading 214 lines of source code across 8 files, an LLM queries the fmm index. It knows every export, import, and dependency — enough to navigate to exactly the right file.
 
 **Without fmm:** ~4,000 tokens to read all source files
-**With fmm:** ~200 tokens to read all sidecars
+**With fmm:** ~200 tokens to query the index

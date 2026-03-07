@@ -125,7 +125,7 @@ pub(in crate::mcp) fn tool_read_symbol(
 
     let lines = resolved_lines.ok_or_else(|| {
         format!(
-            "No line range for '{}' in '{}' — regenerate sidecars with 'fmm generate' for v0.3 format",
+            "No line range for '{}' in '{}' — run 'fmm generate' to re-index",
             args.name, resolved_file,
         )
     })?;
