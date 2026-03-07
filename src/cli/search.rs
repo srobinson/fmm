@@ -708,7 +708,10 @@ mod tests {
         });
         result.named_import_hits.retain(|h| !h.files.is_empty());
         assert_eq!(result.named_import_hits.len(), 1);
-        assert_eq!(result.named_import_hits[0].files, vec!["src/api/actions.ts"]);
+        assert_eq!(
+            result.named_import_hits[0].files,
+            vec!["src/api/actions.ts"]
+        );
     }
 
     #[test]
