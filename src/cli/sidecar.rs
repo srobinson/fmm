@@ -279,7 +279,9 @@ pub fn clean(paths: &[String], dry_run: bool, delete_db: bool) -> Result<()> {
             let count: i64 = conn
                 .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
                 .unwrap_or(0);
-            conn.execute_batch("DELETE FROM files; DELETE FROM workspace_packages;")?;
+            conn.execute_batch(
+                "DELETE FROM files; DELETE FROM reverse_deps; DELETE FROM workspace_packages;",
+            )?;
             println!(
                 "{} Cleared {} file(s) from index ({})",
                 "✓".green(),
