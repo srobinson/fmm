@@ -2,5 +2,5 @@
 file: src/mcp/tools/common.rs
 fmm: v0.4+0.1.31
 dependencies: ['crate::manifest']
-loc: 193
+loc: 229
 modified: 2026-03-07

@@ -1759,7 +1759,12 @@ fn list_exports_invalid_regex_returns_error() {
 #[test]
 fn compute_import_specifiers_same_directory() {
     // Two files in the same directory — should produce `./BaseName` and `./BaseName.js`
-    let specs = compute_import_specifiers("src/ReactFiberHooks.js", "src/ReactFiberWorkLoop.js");
+    let specs = compute_import_specifiers(
+        "src/ReactFiberHooks.js",
+        "src/ReactFiberWorkLoop.js",
+        &[],
+        std::path::Path::new(""),
+    );
     assert!(
         specs.contains(&"./ReactFiberWorkLoop".to_string()),
         "expected ./ReactFiberWorkLoop in {:?}",
@@ -1778,6 +1783,8 @@ fn compute_import_specifiers_cross_directory() {
     let specs = compute_import_specifiers(
         "packages/react-dom/src/ReactDOMRenderer.js",
         "packages/react-reconciler/src/ReactFiberWorkLoop.js",
+        &[],
+        std::path::Path::new(""),
     );
     assert!(
         specs.contains(&"../../react-reconciler/src/ReactFiberWorkLoop".to_string()),
@@ -1795,7 +1802,8 @@ fn compute_import_specifiers_cross_directory() {
 fn compute_import_specifiers_file_in_root() {
     // Candidate in repo root importing from a subdirectory file.
     // Must produce ./src/utils (not src/utils) — bare specifiers are package lookups.
-    let specs = compute_import_specifiers("index.js", "src/utils.js");
+    let specs =
+        compute_import_specifiers("index.js", "src/utils.js", &[], std::path::Path::new(""));
     assert!(
         specs.contains(&"./src/utils".to_string()),
         "expected ./src/utils in {:?}",
@@ -1812,7 +1820,12 @@ fn compute_import_specifiers_file_in_root() {
 fn compute_import_specifiers_into_subdirectory() {
     // Candidate and source share a common ancestor; source is one level deeper.
     // e.g. src/a/file.ts → src/a/deep/module.ts should yield ./deep/module[.ts].
-    let specs = compute_import_specifiers("src/a/file.ts", "src/a/deep/module.ts");
+    let specs = compute_import_specifiers(
+        "src/a/file.ts",
+        "src/a/deep/module.ts",
+        &[],
+        std::path::Path::new(""),
+    );
     assert!(
         specs.contains(&"./deep/module".to_string()),
         "expected ./deep/module in {:?}",
@@ -1828,11 +1841,67 @@ fn compute_import_specifiers_into_subdirectory() {
 #[test]
 fn compute_import_specifiers_no_extension() {
     // Source file with no extension — base and ext forms should be identical
-    let specs = compute_import_specifiers("src/foo.js", "src/bar");
+    let specs = compute_import_specifiers("src/foo.js", "src/bar", &[], std::path::Path::new(""));
     assert_eq!(
         specs,
         vec!["./bar".to_string()],
         "no-ext: single form expected"
+    );
+}
+
+#[test]
+fn compute_import_specifiers_workspace_bare_specifier() {
+    // ALP-906: cross-package import uses bare workspace specifier `shared/ReactFeatureFlags`.
+    // The candidate (ReactFiberWorkLoop.js) is in packages/react-reconciler; the source
+    // (ReactFeatureFlags.js) is in packages/shared. workspace_roots contains the absolute
+    // path of the `shared` package root.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let project_root = tmp.path();
+
+    // Create the workspace package directory so strip_prefix resolves correctly.
+    let shared_root = project_root.join("packages").join("shared");
+
+    let specs = compute_import_specifiers(
+        "packages/react-reconciler/src/ReactFiberWorkLoop.js",
+        "packages/shared/ReactFeatureFlags.js",
+        &[shared_root],
+        project_root,
+    );
+
+    // Relative specifier is still generated (intra-tree traversal).
+    assert!(
+        specs.contains(&"../../shared/ReactFeatureFlags".to_string()),
+        "expected relative specifier in {:?}",
+        specs
+    );
+    // Workspace-relative bare specifier (no extension).
+    assert!(
+        specs.contains(&"shared/ReactFeatureFlags".to_string()),
+        "expected bare workspace specifier without ext in {:?}",
+        specs
+    );
+    // Workspace-relative bare specifier (with extension).
+    assert!(
+        specs.contains(&"shared/ReactFeatureFlags.js".to_string()),
+        "expected bare workspace specifier with ext in {:?}",
+        specs
+    );
+}
+
+#[test]
+fn compute_import_specifiers_workspace_no_double_bare_specifier() {
+    // ALP-906: when workspace_roots is empty, no bare specifiers should be generated.
+    let specs = compute_import_specifiers(
+        "packages/react-reconciler/src/ReactFiberWorkLoop.js",
+        "packages/shared/ReactFeatureFlags.js",
+        &[],
+        std::path::Path::new(""),
+    );
+    // Only relative specifiers.
+    assert!(
+        !specs.iter().any(|s| s == "shared/ReactFeatureFlags"),
+        "no bare specifier expected without workspace_roots, got {:?}",
+        specs
     );
 }
 

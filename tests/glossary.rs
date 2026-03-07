@@ -630,3 +630,150 @@ fn glossary_bare_function_call_site_precision_filters_non_callers() {
         text
     );
 }
+
+// ---------------------------------------------------------------------------
+// ALP-906: cross-package bare workspace specifier Layer 2 fix
+// ---------------------------------------------------------------------------
+
+fn setup_workspace_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path();
+
+    // pnpm-workspace.yaml so workspace discovery populates workspace_roots.
+    std::fs::write(
+        root.join("pnpm-workspace.yaml"),
+        "packages:\n  - 'packages/*'\n",
+    )
+    .unwrap();
+
+    // packages/shared/ReactFeatureFlags.js — exports enableTransitionTracing as a function.
+    write_sidecar(
+        root,
+        "packages/shared/ReactFeatureFlags.js",
+        "file: packages/shared/ReactFeatureFlags.js\nfmm: v0.4\nexports:\n  enableTransitionTracing: [1, 1]\ntypescript:\n  function_names: [enableTransitionTracing]\nimports: []\ndependencies: []\nloc: 1\n",
+    );
+
+    // packages/reconciler/src/Worker.js — cross-package import via bare specifier.
+    // dependencies uses the resolved relative path so reverse_deps is populated.
+    // named_imports stores the bare specifier exactly as written in source.
+    write_sidecar(
+        root,
+        "packages/reconciler/src/Worker.js",
+        "file: packages/reconciler/src/Worker.js\nfmm: v0.4\nexports: {}\nimports: []\ndependencies: [../../shared/ReactFeatureFlags]\nloc: 3\nnamed_imports:\n  shared/ReactFeatureFlags:\n    - enableTransitionTracing\n",
+    );
+
+    // packages/shared/other.js — imports source but NOT enableTransitionTracing.
+    // This should appear in the disclosure count (Layer 2 excluded), not in used_by.
+    write_sidecar(
+        root,
+        "packages/shared/other.js",
+        "file: packages/shared/other.js\nfmm: v0.4\nexports: {}\nimports: []\ndependencies: [./ReactFeatureFlags]\nloc: 2\nnamed_imports:\n  ./ReactFeatureFlags:\n    - otherFlag\n",
+    );
+
+    let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
+    (tmp, server)
+}
+
+#[test]
+fn glossary_layer2_cross_package_bare_specifier_included_in_used_by() {
+    // ALP-906: a file importing via bare workspace specifier (e.g. `shared/ReactFeatureFlags`)
+    // must appear in used_by, not be silently dropped into the Layer 2 disclosure count.
+    let (_tmp, server) = setup_workspace_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_glossary",
+        json!({"pattern": "enableTransitionTracing"}),
+    );
+    assert!(
+        text.contains("packages/reconciler/src/Worker.js"),
+        "cross-package caller should appear in used_by; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn glossary_layer2_intra_package_relative_import_unchanged() {
+    // ALP-906 regression guard: intra-package relative import still works after the fix.
+    // packages/shared/other.js imports from ./ReactFeatureFlags but not enableTransitionTracing —
+    // it should appear in the disclosure count, not in used_by.
+    let (_tmp, server) = setup_workspace_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_glossary",
+        json!({"pattern": "enableTransitionTracing"}),
+    );
+    // other.js imports the module but not the specific symbol — excluded by Layer 2.
+    assert!(
+        !text.contains("packages/shared/other.js"),
+        "intra-package non-symbol importer must not appear in used_by; got:\n{}",
+        text
+    );
+    // Disclosure count should mention the excluded file.
+    assert!(
+        text.contains("additional file") || text.contains("additional files"),
+        "disclosure count should mention excluded intra-package importer; got:\n{}",
+        text
+    );
+}
+
+// ---------------------------------------------------------------------------
+// ALP-907: disclosure line wording fix (no duplicate "import")
+// ---------------------------------------------------------------------------
+
+fn setup_disclosure_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path();
+
+    // source.ts exports myFunc as a module-level function.
+    write_sidecar(
+        root,
+        "src/source.ts",
+        "file: src/source.ts\nfmm: v0.4\nexports:\n  myFunc: [1, 5]\ntypescript:\n  function_names: [myFunc]\nimports: []\ndependencies: []\nloc: 5\n",
+    );
+
+    // caller.ts named-imports myFunc → stays in used_by.
+    write_sidecar(
+        root,
+        "src/caller.ts",
+        "file: src/caller.ts\nfmm: v0.4\nexports: {}\nimports: []\ndependencies: [./source]\nloc: 2\nnamed_imports:\n  ./source:\n    - myFunc\n",
+    );
+
+    // bystander.ts imports otherThing, not myFunc → excluded by Layer 2.
+    write_sidecar(
+        root,
+        "src/bystander.ts",
+        "file: src/bystander.ts\nfmm: v0.4\nexports: {}\nimports: []\ndependencies: [./source]\nloc: 2\nnamed_imports:\n  ./source:\n    - otherThing\n",
+    );
+
+    let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
+    (tmp, server)
+}
+
+#[test]
+fn glossary_layer2_disclosure_line_no_duplicate_import() {
+    // ALP-907: the disclosure line must not contain "import import".
+    let (_tmp, server) = setup_disclosure_server();
+    let text = call_tool_text(&server, "fmm_glossary", json!({"pattern": "myFunc"}));
+    assert!(
+        !text.contains("import import"),
+        "disclosure line must not duplicate 'import'; got:\n{}",
+        text
+    );
+}
+
+#[test]
+fn glossary_layer2_disclosure_line_includes_symbol_name() {
+    // ALP-907: disclosure line includes the queried symbol name for scannability.
+    let (_tmp, server) = setup_disclosure_server();
+    let text = call_tool_text(&server, "fmm_glossary", json!({"pattern": "myFunc"}));
+    assert!(
+        text.contains("myFunc"),
+        "disclosure line should include the symbol name; got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("specifically"),
+        "disclosure should end with 'specifically'; got:\n{}",
+        text
+    );
+}
