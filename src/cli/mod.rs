@@ -134,22 +134,24 @@ pub enum Commands {
         paths: Vec<String>,
     },
 
-    /// Remove all .fmm sidecar files
+    /// Remove the fmm index database
     #[command(
-        long_about = "Remove all .fmm sidecar files from the project.\n\n\
-            Use this to cleanly uninstall fmm from a project or to start fresh.",
+        long_about = "Remove the fmm index database from the project.\n\n\
+            Clears all indexed data from .fmm.db. Use --db to delete the database file \
+            entirely. Use this to reset the index or cleanly uninstall fmm.",
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm clean</bold>               <dim># Remove all sidecars</dim>
+  <dim>$</dim> <bold>fmm clean</bold>               <dim># Clear all indexed data</dim>
+  <dim>$</dim> <bold>fmm clean --db</bold>           <dim># Delete .fmm.db file entirely</dim>
   <dim>$</dim> <bold>fmm clean -n</bold>             <dim># Preview what would be removed</dim>"#),
         after_long_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm clean</bold>                          <dim># Remove all sidecars</dim>
-  <dim>$</dim> <bold>fmm clean src/</bold>                      <dim># Remove from specific directory</dim>
+  <dim>$</dim> <bold>fmm clean</bold>                          <dim># Clear all indexed data from .fmm.db</dim>
+  <dim>$</dim> <bold>fmm clean --db</bold>                     <dim># Delete the .fmm.db file entirely</dim>
   <dim>$</dim> <bold>fmm clean -n</bold>                        <dim># Preview what would be removed</dim>
 
 <bold><underline>Notes</underline></bold>
-  Removes .fmm sidecar files only — source files are never touched.
+  Removes indexed data only — source files are never touched.
   Safe to re-run: 'fmm generate' recreates everything from source."#),
     )]
     Clean {
@@ -160,6 +162,10 @@ pub enum Commands {
         /// Show what would be removed without deleting files
         #[arg(short = 'n', long)]
         dry_run: bool,
+
+        /// Delete the .fmm.db file entirely instead of just clearing its contents
+        #[arg(long = "db")]
+        delete_db: bool,
     },
 
     /// Watch source files and regenerate sidecars on change

@@ -113,14 +113,21 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
         println!("  MCP:      .claude/fmm.local.json");
     }
 
+    if install_config {
+        println!(
+            "  {} Add '.fmm.db' to your .gitignore — the index is regeneratable",
+            "hint:".cyan()
+        );
+    }
+
     if no_generate || specific {
         println!(
-            "\n  {} Run 'fmm generate' to create sidecars — your AI assistant will navigate via metadata",
+            "\n  {} Run 'fmm generate' to index your codebase",
             "next:".cyan()
         );
     } else {
         println!(
-            "\n  {} Your AI assistant now navigates this codebase via metadata sidecars",
+            "\n  {} Your AI assistant now navigates this codebase via the fmm index",
             "✓".green()
         );
     }

@@ -2,6 +2,7 @@ use anyhow::Result;
 use chrono::Utc;
 use colored::Colorize;
 use rayon::prelude::*;
+use rusqlite::params;
 
 use crate::config::Config;
 use crate::db;
@@ -171,32 +172,53 @@ pub fn validate(paths: &[String]) -> Result<()> {
         return Ok(());
     }
 
-    println!("Validating {} files...", files.len());
+    let db_path = root.join(db::DB_FILENAME);
+    if !db_path.exists() {
+        println!("{} No fmm database found", "✗".red().bold());
+        println!("\n  {} Run 'fmm generate' first", "fix:".cyan());
+        anyhow::bail!("Validation failed: no database");
+    }
 
-    let processor = FileProcessor::new(&root);
+    let conn = db::open_db(&root)?;
+
+    println!("Validating {} files against index...", files.len());
+
     let invalid: Vec<_> = files
-        .par_iter()
-        .filter_map(|file| match processor.validate(file) {
-            Ok(true) => None,
-            Ok(false) => {
-                let sidecar = sidecar_path_for(file);
-                let reason = if sidecar.exists() {
-                    "sidecar out of date"
-                } else {
-                    "missing sidecar"
-                };
-                Some((file.to_path_buf(), reason.to_string()))
+        .iter()
+        .filter_map(|file| {
+            let rel = file
+                .strip_prefix(&root)
+                .unwrap_or(file)
+                .display()
+                .to_string();
+            let mtime = db::writer::file_mtime_rfc3339(file);
+            if db::writer::is_file_up_to_date(&conn, &rel, mtime.as_deref()) {
+                None
+            } else {
+                let reason = conn
+                    .query_row(
+                        "SELECT indexed_at FROM files WHERE path = ?1",
+                        params![rel],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .ok()
+                    .map(|_| "stale".to_string())
+                    .unwrap_or_else(|| "not indexed".to_string());
+                Some((file.to_path_buf(), reason))
             }
-            Err(e) => Some((file.to_path_buf(), format!("Error: {}", e))),
         })
         .collect();
 
     if invalid.is_empty() {
-        println!("{} All sidecars are up to date!", "✓".green().bold());
+        println!(
+            "{} All {} files are indexed and up to date",
+            "✓".green().bold(),
+            files.len()
+        );
         Ok(())
     } else {
         println!(
-            "{} {} file(s) need updating:",
+            "{} {} file(s) need re-indexing:",
             "✗".red().bold(),
             invalid.len()
         );
@@ -205,79 +227,92 @@ pub fn validate(paths: &[String]) -> Result<()> {
             println!("  {} {}: {}", "✗".red(), rel.display(), msg.dimmed());
         }
         println!(
-            "\n  {} Run 'fmm generate' to regenerate stale sidecars",
+            "\n  {} Run 'fmm generate' to update the index",
             "fix:".cyan()
         );
-        anyhow::bail!("Sidecar validation failed");
+        anyhow::bail!("Validation failed");
     }
 }
 
-pub fn clean(paths: &[String], dry_run: bool) -> Result<()> {
-    let config = Config::load().unwrap_or_default();
-    let files = collect_files_multi(paths, &config)?;
+pub fn clean(paths: &[String], dry_run: bool, delete_db: bool) -> Result<()> {
     let root = resolve_root_multi(paths)?;
+    let db_path = root.join(db::DB_FILENAME);
+    let legacy_dir = root.join(".fmm");
 
-    let processor = FileProcessor::new(&root);
-    let results: Vec<_> = files
-        .par_iter()
-        .filter_map(|file| {
-            let sidecar = sidecar_path_for(file);
-            if !sidecar.exists() {
-                return None;
-            }
-            let display = sidecar
-                .strip_prefix(&root)
-                .unwrap_or(&sidecar)
-                .display()
-                .to_string();
-            if dry_run {
-                return Some((display, true));
-            }
-            match processor.clean(file) {
-                Ok(true) => Some((display, true)),
-                Ok(false) => None,
-                Err(e) => {
-                    eprintln!(
-                        "{} {}: {}\n  {} Check file permissions",
-                        "error:".red().bold(),
-                        file.display(),
-                        e,
-                        "hint:".cyan()
-                    );
-                    None
-                }
-            }
-        })
-        .collect();
+    let has_db = db_path.exists();
+    let has_legacy = legacy_dir.is_dir();
 
-    for (display, _) in &results {
-        if dry_run {
-            println!("  Would remove: {}", display);
+    if !has_db && !has_legacy {
+        println!("{} Nothing to clean — no fmm database found", "!".yellow());
+        return Ok(());
+    }
+
+    if dry_run {
+        if has_db {
+            if delete_db {
+                println!("  Would remove: {}", db::DB_FILENAME);
+            } else {
+                let conn = db::open_db(&root)?;
+                let count: i64 = conn
+                    .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
+                    .unwrap_or(0);
+                println!(
+                    "  Would clear {} indexed file(s) from {}",
+                    count,
+                    db::DB_FILENAME
+                );
+            }
+        }
+        if has_legacy {
+            println!("  Would remove legacy directory: .fmm/");
+        }
+        println!("\n{} (dry run — nothing removed)", "!".yellow());
+        return Ok(());
+    }
+
+    if has_db {
+        if delete_db {
+            std::fs::remove_file(&db_path)?;
+            println!("{} Removed {}", "✓".green(), db::DB_FILENAME);
         } else {
-            println!("{} Removed {}", "✓".green(), display);
+            let conn = db::open_db(&root)?;
+            let count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
+                .unwrap_or(0);
+            conn.execute_batch("DELETE FROM files; DELETE FROM workspace_packages;")?;
+            println!(
+                "{} Cleared {} file(s) from index ({})",
+                "✓".green(),
+                count,
+                db::DB_FILENAME
+            );
         }
     }
 
-    // Also clean legacy .fmm/ directory
-    let legacy_dir = root.join(".fmm");
-    if legacy_dir.is_dir() {
-        if dry_run {
-            println!("  Would remove legacy directory: .fmm/");
-        } else {
-            std::fs::remove_dir_all(&legacy_dir)?;
-            println!("{} Removed legacy .fmm/ directory", "✓".green());
+    if has_legacy {
+        std::fs::remove_dir_all(&legacy_dir)?;
+        println!("{} Removed legacy .fmm/ directory", "✓".green());
+    }
+
+    // Transition: also remove any per-file .fmm sidecar files.
+    // ALP-917 removes this block when the sidecar write path is deleted.
+    if !delete_db {
+        let config = Config::load().unwrap_or_default();
+        let files = collect_files_multi(paths, &config).unwrap_or_default();
+        let processor = FileProcessor::new(&root);
+        let removed: usize = files
+            .iter()
+            .filter_map(|f| processor.clean(f).ok())
+            .filter(|&ok| ok)
+            .count();
+        if removed > 0 {
+            println!("{} Removed {} legacy sidecar file(s)", "✓".green(), removed);
         }
     }
 
     println!(
-        "\n{} {} sidecar(s) {}",
-        "✓".green().bold(),
-        results.len(),
-        if dry_run {
-            "would be removed"
-        } else {
-            "removed"
-        }
+        "\n  {} Run 'fmm generate' to rebuild the index",
+        "next:".cyan()
     );
 
     Ok(())

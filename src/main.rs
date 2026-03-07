@@ -79,9 +79,13 @@ fn run() -> anyhow::Result<()> {
             println!("{}", "Validating sidecars...".green().bold());
             cli::validate(&paths)?;
         }
-        Commands::Clean { paths, dry_run } => {
-            println!("{}", "Cleaning sidecars...".green().bold());
-            cli::clean(&paths, dry_run)?;
+        Commands::Clean {
+            paths,
+            dry_run,
+            delete_db,
+        } => {
+            println!("{}", "Cleaning index...".green().bold());
+            cli::clean(&paths, dry_run, delete_db)?;
         }
         Commands::Watch { path, debounce } => {
             cli::watch(&path, debounce)?;

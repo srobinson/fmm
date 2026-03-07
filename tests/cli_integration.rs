@@ -196,7 +196,7 @@ fn clean_removes_all_sidecars() {
     fmm::cli::generate(&[path.to_string()], false, false).unwrap();
     assert!(sidecar_exists(tmp.path(), "src/auth.ts"));
 
-    fmm::cli::clean(&[path.to_string()], false).unwrap();
+    fmm::cli::clean(&[path.to_string()], false, false).unwrap();
 
     assert!(!sidecar_exists(tmp.path(), "src/auth.ts"));
     assert!(!sidecar_exists(tmp.path(), "src/db.ts"));
@@ -210,7 +210,7 @@ fn clean_dry_run_preserves_files() {
 
     fmm::cli::generate(&[path.to_string()], false, false).unwrap();
 
-    fmm::cli::clean(&[path.to_string()], true).unwrap();
+    fmm::cli::clean(&[path.to_string()], true, false).unwrap();
 
     // Files should still exist
     assert!(sidecar_exists(tmp.path(), "src/auth.ts"));
@@ -242,7 +242,7 @@ fn full_workflow_generate_validate_clean() {
     fmm::cli::validate(&[path.to_string()]).unwrap();
 
     // Clean
-    fmm::cli::clean(&[path.to_string()], false).unwrap();
+    fmm::cli::clean(&[path.to_string()], false, false).unwrap();
     assert!(!sidecar_exists(tmp.path(), "src/auth.ts"));
     assert!(!sidecar_exists(tmp.path(), "src/db.ts"));
 }

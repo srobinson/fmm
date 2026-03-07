@@ -25,7 +25,7 @@ fn load_manifest() -> Result<(std::path::PathBuf, Manifest)> {
 
 fn warn_no_sidecars() {
     println!(
-        "{} No .fmm sidecars found. Run {} first.",
+        "{} No fmm index found. Run {} first.",
         "!".yellow(),
         "fmm generate".bold()
     );
