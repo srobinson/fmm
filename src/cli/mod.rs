@@ -669,15 +669,19 @@ fn find_project_root(start: &Path) -> Option<PathBuf> {
     }
 }
 
-fn collect_files(path: &str, config: &Config) -> Result<Vec<PathBuf>> {
+/// Returns `(kept_files, skipped_count)`.
+///
+/// Files exceeding `config.max_lines` are excluded from `kept_files` and
+/// counted in `skipped_count`. The caller is responsible for reporting skips.
+fn collect_files(path: &str, config: &Config) -> Result<(Vec<PathBuf>, usize)> {
     let path = Path::new(path);
 
     if path.is_file() {
         let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
         if config.max_lines > 0 && !file_within_line_limit(&canonical, config.max_lines) {
-            return Ok(vec![]);
+            return Ok((vec![], 1));
         }
-        return Ok(vec![canonical]);
+        return Ok((vec![canonical], 0));
     }
 
     // Pre-compile exclude glob patterns (relative to the walk root).
@@ -687,7 +691,7 @@ fn collect_files(path: &str, config: &Config) -> Result<Vec<PathBuf>> {
         .filter_map(|p| glob::Pattern::new(p).ok())
         .collect();
 
-    let files: Vec<PathBuf> = WalkBuilder::new(path)
+    let candidates: Vec<PathBuf> = WalkBuilder::new(path)
         .standard_filters(true)
         .add_custom_ignore_filename(".fmmignore")
         .build()
@@ -724,15 +728,17 @@ fn collect_files(path: &str, config: &Config) -> Result<Vec<PathBuf>> {
                 .canonicalize()
                 .unwrap_or_else(|_| entry.path().to_path_buf())
         })
-        .filter(|canonical| {
-            if config.max_lines == 0 {
-                return true; // 0 disables the limit
-            }
-            file_within_line_limit(canonical, config.max_lines)
-        })
         .collect();
 
-    Ok(files)
+    if config.max_lines == 0 {
+        return Ok((candidates, 0));
+    }
+
+    let (files, skipped): (Vec<PathBuf>, Vec<PathBuf>) = candidates
+        .into_iter()
+        .partition(|canonical| file_within_line_limit(canonical, config.max_lines));
+    let skip_count = skipped.len();
+    Ok((files, skip_count))
 }
 
 /// Returns true if the file has at most `max_lines` lines.
@@ -756,17 +762,7 @@ fn file_within_line_limit(path: &Path, max_lines: usize) -> bool {
         return true; // cannot read: include and let the parser decide
     };
     let line_count = bytecount_newlines(&bytes);
-    if line_count > max_lines {
-        eprintln!(
-            "skipped: {} ({} lines exceeds max_lines {})",
-            path.display(),
-            line_count,
-            max_lines
-        );
-        false
-    } else {
-        true
-    }
+    line_count <= max_lines
 }
 
 /// Count lines in a byte slice by counting `\n` characters.
@@ -789,14 +785,17 @@ fn bytecount_newlines(bytes: &[u8]) -> usize {
     }
 }
 
-fn collect_files_multi(paths: &[String], config: &Config) -> Result<Vec<PathBuf>> {
+fn collect_files_multi(paths: &[String], config: &Config) -> Result<(Vec<PathBuf>, usize)> {
     let mut all_files = Vec::new();
+    let mut total_skipped = 0usize;
     for path in paths {
-        all_files.extend(collect_files(path, config)?);
+        let (files, skipped) = collect_files(path, config)?;
+        all_files.extend(files);
+        total_skipped += skipped;
     }
     all_files.sort();
     all_files.dedup();
-    Ok(all_files)
+    Ok((all_files, total_skipped))
 }
 
 /// Resolve root from multiple paths: common ancestor if all exist, else CWD.
@@ -891,7 +890,7 @@ mod tests {
         std::fs::write(src.join("util.ts"), "export const b = 2;").unwrap();
 
         let config = Config::default();
-        let files = collect_files(tmp.path().to_str().unwrap(), &config).unwrap();
+        let (files, _) = collect_files(tmp.path().to_str().unwrap(), &config).unwrap();
 
         assert!(!files.is_empty());
         for file in &files {
@@ -906,7 +905,7 @@ mod tests {
         std::fs::write(&file_path, "export function main() {}").unwrap();
 
         let config = Config::default();
-        let files = collect_files(file_path.to_str().unwrap(), &config).unwrap();
+        let (files, _) = collect_files(file_path.to_str().unwrap(), &config).unwrap();
 
         assert_eq!(files.len(), 1);
         assert!(files[0].is_absolute());
@@ -957,11 +956,14 @@ mod tests {
         std::fs::write(tmp.path().join("big.ts"), &big).unwrap();
         std::fs::write(tmp.path().join("small.ts"), "export const x = 1;\n").unwrap();
 
-        let mut config = Config::default();
-        config.max_lines = 3; // big.ts has 5 lines, small.ts has 1
+        let config = Config {
+            max_lines: 3,
+            ..Default::default()
+        }; // big.ts has 5 lines, small.ts has 1
 
-        let files = collect_files(tmp.path().to_str().unwrap(), &config).unwrap();
+        let (files, skipped) = collect_files(tmp.path().to_str().unwrap(), &config).unwrap();
         assert_eq!(files.len(), 1, "only small.ts should be collected");
+        assert_eq!(skipped, 1, "big.ts should be counted as skipped");
         assert!(files[0].to_string_lossy().contains("small.ts"));
     }
 
@@ -971,10 +973,13 @@ mod tests {
         let big: String = (0..200).map(|i| format!("line{}\n", i)).collect();
         std::fs::write(tmp.path().join("big.ts"), &big).unwrap();
 
-        let mut config = Config::default();
-        config.max_lines = 0; // disabled
+        let config = Config {
+            max_lines: 0,
+            ..Default::default()
+        }; // 0 disables the limit
 
-        let files = collect_files(tmp.path().to_str().unwrap(), &config).unwrap();
+        let (files, skipped) = collect_files(tmp.path().to_str().unwrap(), &config).unwrap();
         assert_eq!(files.len(), 1);
+        assert_eq!(skipped, 0);
     }
 }

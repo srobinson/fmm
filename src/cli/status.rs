@@ -53,7 +53,7 @@ pub fn status() -> Result<()> {
     };
 
     match collect_files(".", &config) {
-        Ok(files) => {
+        Ok((files, _)) => {
             println!(
                 "  {} source files, {} indexed",
                 files.len().to_string().white().bold(),

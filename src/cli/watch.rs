@@ -24,7 +24,7 @@ pub fn watch(path: &str, debounce_ms: u64) -> Result<()> {
     println!("{}", "Running initial generate pass...".green().bold());
     super::generate(&[path.to_string()], false, false, false)?;
 
-    let file_count = collect_files(path, &config)?.len();
+    let file_count = collect_files(path, &config)?.0.len();
     println!("\nWatching {} files in {} ...\n", file_count, path);
 
     let updates = Arc::new(AtomicUsize::new(0));

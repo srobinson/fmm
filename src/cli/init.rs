@@ -39,7 +39,7 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
     if full_setup && !no_generate {
         println!();
         let config = Config::load().unwrap_or_default();
-        let files = collect_files(".", &config)?;
+        let (files, _) = collect_files(".", &config)?;
 
         if !files.is_empty() {
             // Detect languages present

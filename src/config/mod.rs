@@ -72,9 +72,6 @@ impl Config {
 
         let json_path = dir.join(".fmmrc.json");
         if json_path.exists() {
-            eprintln!(
-                "warning: .fmmrc.json is deprecated — migrate to .fmmrc.toml (run: fmm init)"
-            );
             let content = std::fs::read_to_string(&json_path)
                 .with_context(|| format!("Failed to read {}", json_path.display()))?;
             let config: Config = serde_json::from_str(&content)

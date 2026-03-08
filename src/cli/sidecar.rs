@@ -37,7 +37,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
         None
     };
 
-    let files = collect_files_multi(paths, &config)?;
+    let (files, skipped) = collect_files_multi(paths, &config)?;
     let root = resolve_root_multi(paths)?;
 
     if let Some(sp) = &scan_sp {
@@ -143,11 +143,21 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
 
     if dirty_files.is_empty() {
         let elapsed = total_start.elapsed();
-        println!(
-            "Found {} files · all up to date  ({:.1}s)",
-            files.len(),
-            elapsed.as_secs_f64()
-        );
+        let total = files.len() + skipped;
+        if skipped > 0 {
+            println!(
+                "Found {} files · {} skipped · all up to date  ({:.1}s)",
+                total,
+                skipped,
+                elapsed.as_secs_f64()
+            );
+        } else {
+            println!(
+                "Found {} files · all up to date  ({:.1}s)",
+                total,
+                elapsed.as_secs_f64()
+            );
+        }
         db::writer::write_meta(&conn, "fmm_version", env!("CARGO_PKG_VERSION"))?;
         db::writer::write_meta(&conn, "generated_at", &Utc::now().to_rfc3339())?;
         return Ok(());
@@ -156,11 +166,17 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     let show_progress = !quiet && dirty_files.len() >= PROGRESS_THRESHOLD;
 
     if !quiet {
-        println!(
-            "Found {} files · {} changed",
-            files.len(),
-            dirty_files.len()
-        );
+        let total = files.len() + skipped;
+        if skipped > 0 {
+            println!(
+                "Found {} files · {} skipped · {} changed",
+                total,
+                skipped,
+                dirty_files.len()
+            );
+        } else {
+            println!("Found {} files · {} changed", total, dirty_files.len());
+        }
     }
 
     // Phase 2 (parallel): parse all stale files.
@@ -380,7 +396,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
 
 pub fn validate(paths: &[String]) -> Result<()> {
     let config = Config::load().unwrap_or_default();
-    let files = collect_files_multi(paths, &config)?;
+    let (files, _) = collect_files_multi(paths, &config)?;
     let root = resolve_root_multi(paths)?;
 
     if files.is_empty() {
