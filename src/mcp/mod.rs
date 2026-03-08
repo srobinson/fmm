@@ -43,6 +43,7 @@ pub struct JsonRpcError {
 
 pub struct McpServer {
     manifest: Option<Manifest>,
+    load_error: Option<String>,
     root: PathBuf,
 }
 
@@ -60,12 +61,28 @@ impl McpServer {
     }
 
     pub fn with_root(root: PathBuf) -> Self {
-        let manifest = Manifest::load(&root).ok();
-        Self { manifest, root }
+        let (manifest, load_error) = match Manifest::load(&root) {
+            Ok(m) => (Some(m), None),
+            Err(e) => (None, Some(e.to_string())),
+        };
+        Self {
+            manifest,
+            load_error,
+            root,
+        }
     }
 
     fn reload(&mut self) {
-        self.manifest = Manifest::load(&self.root).ok();
+        match Manifest::load(&self.root) {
+            Ok(m) => {
+                self.manifest = Some(m);
+                self.load_error = None;
+            }
+            Err(e) => {
+                self.manifest = None;
+                self.load_error = Some(e.to_string());
+            }
+        }
     }
 
     /// Call a tool by name with JSON arguments. Useful for testing.
@@ -99,9 +116,11 @@ impl McpServer {
     }
 
     fn require_manifest(&self) -> Result<&Manifest, String> {
-        self.manifest
-            .as_ref()
-            .ok_or_else(|| "No index found. Run 'fmm generate' first.".to_string())
+        self.manifest.as_ref().ok_or_else(|| {
+            self.load_error
+                .clone()
+                .unwrap_or_else(|| "No index found. Run 'fmm generate' first.".to_string())
+        })
     }
 
     pub fn run(&mut self) -> Result<()> {

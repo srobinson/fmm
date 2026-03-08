@@ -49,6 +49,7 @@ fn dependency_graph_directory_path_returns_helpful_error() {
     use crate::manifest::Manifest;
     let server = McpServer {
         manifest: Some(Manifest::new()),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     };
     let result = server
@@ -75,6 +76,7 @@ fn read_symbol_empty_name_returns_helpful_error() {
     use crate::manifest::Manifest;
     let server = McpServer {
         manifest: Some(Manifest::new()),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     };
     let result = server
@@ -98,6 +100,7 @@ fn file_outline_directory_path_returns_helpful_error() {
     use crate::manifest::Manifest;
     let server = McpServer {
         manifest: Some(Manifest::new()),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     };
     let result = server
@@ -147,6 +150,7 @@ fn read_symbol_dotted_notation_returns_method_source() {
 
     let server = McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: dir.path().to_path_buf(),
     };
 
@@ -190,6 +194,7 @@ fn read_symbol_dotted_not_found_gives_helpful_error() {
     use crate::manifest::Manifest;
     let server = McpServer {
         manifest: Some(Manifest::new()),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     };
     let result = server
@@ -268,6 +273,7 @@ fn read_symbol_follows_reexport_to_concrete_definition() {
     // __init__.py wins the export_index (last writer wins), but we want agent.py
     let server = McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: dir.path().to_path_buf(),
     };
 
@@ -350,6 +356,7 @@ fn list_files_tool_no_args() {
 
     let server = McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     };
 
@@ -395,6 +402,7 @@ fn list_files_tool_with_directory() {
 
     let server = McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     };
 
@@ -431,6 +439,7 @@ fn list_files_tool_pagination_limit_and_offset() {
 
     let server = McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     };
 
@@ -548,6 +557,7 @@ fn dependency_filter_manifest() -> McpServer {
     manifest.rebuild_reverse_deps();
     McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     }
 }
@@ -683,6 +693,7 @@ fn list_files_sort_manifest() -> McpServer {
     );
     McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     }
 }
@@ -947,6 +958,7 @@ fn group_by_directory_manifest() -> McpServer {
     }
     McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     }
 }
@@ -1064,6 +1076,7 @@ fn list_files_filter_source_excludes_test_files() {
 
     let server = McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     };
 
@@ -1117,6 +1130,7 @@ fn list_files_filter_tests_returns_only_test_files() {
 
     let server = McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     };
 
@@ -1205,6 +1219,7 @@ fn list_files_modified_manifest() -> McpServer {
     );
     McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     }
 }
@@ -1294,6 +1309,7 @@ fn lookup_export_dotted_name_resolves_via_method_index() {
 
     let server = McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     };
 
@@ -1346,6 +1362,7 @@ fn lookup_export_flat_name_still_works_after_method_index_added() {
 
     let server = McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     };
 
@@ -1369,6 +1386,7 @@ fn lookup_export_unknown_dotted_name_returns_error() {
     use crate::manifest::Manifest;
     let server = McpServer {
         manifest: Some(Manifest::new()),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     };
     let result = server
@@ -1416,6 +1434,7 @@ fn list_exports_pattern_includes_method_index_matches() {
 
     let server = McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     };
 
@@ -1479,6 +1498,7 @@ fn list_exports_pattern_directory_filter_applies_to_methods() {
 
     let server = McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     };
 
@@ -1525,6 +1545,7 @@ fn list_exports_truncation_notice_shown_when_limit_reached() {
     }
     let server = McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     };
 
@@ -1573,6 +1594,7 @@ fn list_exports_no_truncation_notice_when_all_fit() {
     }
     let server = McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     };
 
@@ -1620,6 +1642,7 @@ fn regex_exports_manifest() -> McpServer {
     }
     McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     }
 }
@@ -1999,6 +2022,7 @@ fn glossary_layer2_filters_non_symbol_importers() {
 
     let server = McpServer {
         manifest: Some(manifest),
+        load_error: None,
         root: std::path::PathBuf::from("/tmp"),
     };
     let result = server
