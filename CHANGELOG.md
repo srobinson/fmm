@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.40](https://github.com/srobinson/fmm/compare/v0.1.39...v0.1.40) (2026-03-08)
+
+
+### Bug Fixes
+
+* surface version mismatch error instead of generic "No index found" ([72f9bb9](https://github.com/srobinson/fmm/commit/72f9bb9a7d81854ce81bb583e538cd419671ac6e))
+
 ## [0.1.39](https://github.com/srobinson/fmm/compare/v0.1.38...v0.1.39) (2026-03-08)
 
 
