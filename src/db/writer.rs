@@ -156,41 +156,66 @@ pub fn serialize_file_data(
 ///
 /// Unlike `upsert_file_data`, this takes already-serialized JSON strings so
 /// the CPU-bound serialization work can be done outside the transaction.
-pub fn upsert_preserialized(tx: &Transaction<'_>, row: &PreserializedRow) -> Result<()> {
-    tx.execute(
-        "INSERT OR REPLACE INTO files
-             (path, loc, modified, imports, dependencies, named_imports,
-              namespace_imports, function_names, indexed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        params![
-            row.rel_path,
-            row.loc,
-            row.mtime,
-            row.imports_json,
-            row.deps_json,
-            row.named_imports_json,
-            row.namespace_imports_json,
-            row.function_names_json,
-            row.indexed_at,
-        ],
-    )
-    .context("Failed to upsert file row")?;
+///
+/// `plain_insert` — when `true`, use plain `INSERT` (caller must have deleted
+/// the file rows beforehand via `delete_all_files`); when `false`, use
+/// `INSERT OR REPLACE` which triggers CASCADE deletes per row. The
+/// `prepare_cached` path caches the statement across the 39k-row loop.
+pub fn upsert_preserialized(
+    tx: &Transaction<'_>,
+    row: &PreserializedRow,
+    plain_insert: bool,
+) -> Result<()> {
+    {
+        let sql = if plain_insert {
+            "INSERT INTO files
+                 (path, loc, modified, imports, dependencies, named_imports,
+                  namespace_imports, function_names, indexed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+        } else {
+            "INSERT OR REPLACE INTO files
+                 (path, loc, modified, imports, dependencies, named_imports,
+                  namespace_imports, function_names, indexed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+        };
+        tx.prepare_cached(sql)?
+            .execute(params![
+                row.rel_path,
+                row.loc,
+                row.mtime,
+                row.imports_json,
+                row.deps_json,
+                row.named_imports_json,
+                row.namespace_imports_json,
+                row.function_names_json,
+                row.indexed_at,
+            ])
+            .context("Failed to upsert file row")?;
+    }
 
     {
-        let mut stmt = tx.prepare_cached(
+        let sql = if plain_insert {
+            "INSERT INTO exports (name, file_path, start_line, end_line)
+             VALUES (?1, ?2, ?3, ?4)"
+        } else {
             "INSERT OR REPLACE INTO exports (name, file_path, start_line, end_line)
-             VALUES (?1, ?2, ?3, ?4)",
-        )?;
+             VALUES (?1, ?2, ?3, ?4)"
+        };
+        let mut stmt = tx.prepare_cached(sql)?;
         for e in &row.exports {
             stmt.execute(params![e.name, row.rel_path, e.start_line, e.end_line])?;
         }
     }
 
     {
-        let mut stmt = tx.prepare_cached(
+        let sql = if plain_insert {
+            "INSERT INTO methods (dotted_name, file_path, start_line, end_line, kind)
+             VALUES (?1, ?2, ?3, ?4, ?5)"
+        } else {
             "INSERT OR REPLACE INTO methods (dotted_name, file_path, start_line, end_line, kind)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-        )?;
+             VALUES (?1, ?2, ?3, ?4, ?5)"
+        };
+        let mut stmt = tx.prepare_cached(sql)?;
         for m in &row.methods {
             stmt.execute(params![
                 m.dotted_name,
@@ -203,6 +228,14 @@ pub fn upsert_preserialized(tx: &Transaction<'_>, row: &PreserializedRow) -> Res
     }
 
     Ok(())
+}
+
+/// Delete all rows from `files` (CASCADE clears `exports` and `methods`).
+///
+/// Used before a full-generate bulk INSERT to avoid per-row CASCADE overhead.
+pub fn delete_all_files(tx: &Transaction<'_>) -> Result<()> {
+    tx.execute_batch("DELETE FROM files")
+        .context("Failed to delete all files")
 }
 
 /// Insert or replace a complete file record plus its exports and methods.
@@ -715,5 +748,162 @@ mod tests {
         assert_eq!(entry.imports, vec!["react"]);
         assert_eq!(entry.dependencies, vec!["./helpers"]);
         assert_eq!(entry.loc, 10);
+    }
+
+    #[test]
+    fn delete_all_files_cascades_exports_and_methods() {
+        let dir = TempDir::new().unwrap();
+        let mut conn = open_or_create(dir.path()).unwrap();
+
+        let result = make_parse_result(
+            vec![
+                ExportEntry::new("Foo".into(), 1, 5),
+                ExportEntry::method("bar".into(), 6, 10, "Foo".into()),
+            ],
+            vec![],
+            vec![],
+        );
+
+        {
+            let tx = conn.transaction().unwrap();
+            upsert_file_data(&tx, "src/a.ts", &result, None).unwrap();
+            tx.commit().unwrap();
+        }
+
+        // Precondition: rows exist.
+        let files: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(files, 1);
+        let exports: i64 = conn
+            .query_row("SELECT COUNT(*) FROM exports", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(exports, 1);
+        let methods: i64 = conn
+            .query_row("SELECT COUNT(*) FROM methods", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(methods, 1);
+
+        {
+            let tx = conn.transaction().unwrap();
+            delete_all_files(&tx).unwrap();
+            tx.commit().unwrap();
+        }
+
+        // All three tables must be empty after CASCADE.
+        let files: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(files, 0);
+        let exports: i64 = conn
+            .query_row("SELECT COUNT(*) FROM exports", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(exports, 0);
+        let methods: i64 = conn
+            .query_row("SELECT COUNT(*) FROM methods", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(methods, 0);
+    }
+
+    #[test]
+    fn upsert_preserialized_plain_insert_roundtrip() {
+        let dir = TempDir::new().unwrap();
+        let mut conn = open_or_create(dir.path()).unwrap();
+
+        let result = make_parse_result(
+            vec![
+                ExportEntry::new("Alpha".into(), 1, 10),
+                ExportEntry::method("go".into(), 12, 20, "Alpha".into()),
+            ],
+            vec!["react".into()],
+            vec!["./util".into()],
+        );
+        let row =
+            serialize_file_data("src/comp.ts", &result, Some("2026-01-01T00:00:00+00:00")).unwrap();
+
+        {
+            let tx = conn.transaction().unwrap();
+            upsert_preserialized(&tx, &row, true).unwrap();
+            tx.commit().unwrap();
+        }
+
+        let loc: i64 = conn
+            .query_row("SELECT loc FROM files WHERE path='src/comp.ts'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(loc, 10);
+
+        let export_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM exports WHERE file_path='src/comp.ts'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(export_count, 1);
+
+        let method_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM methods WHERE file_path='src/comp.ts'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(method_count, 1);
+    }
+
+    #[test]
+    fn full_generate_bulk_write_path() {
+        // Simulate the full-generate sequence: existing data → delete_all_files →
+        // upsert_preserialized(plain_insert=true) for a fresh set of rows.
+        let dir = TempDir::new().unwrap();
+        let mut conn = open_or_create(dir.path()).unwrap();
+
+        // Seed the DB with stale data for two files.
+        let old = make_parse_result(vec![ExportEntry::new("Old".into(), 1, 5)], vec![], vec![]);
+        {
+            let tx = conn.transaction().unwrap();
+            upsert_file_data(&tx, "src/a.ts", &old, None).unwrap();
+            upsert_file_data(&tx, "src/b.ts", &old, None).unwrap();
+            tx.commit().unwrap();
+        }
+
+        // Full generate: delete everything, then write only the new set.
+        let new_result = make_parse_result(
+            vec![ExportEntry::new("New".into(), 1, 8)],
+            vec!["lodash".into()],
+            vec![],
+        );
+        let row_a = serialize_file_data("src/a.ts", &new_result, Some("2026-06-01T00:00:00+00:00"))
+            .unwrap();
+
+        {
+            let tx = conn.transaction().unwrap();
+            delete_all_files(&tx).unwrap();
+            // Only src/a.ts is re-inserted (src/b.ts simulates a deleted file).
+            upsert_preserialized(&tx, &row_a, true).unwrap();
+            tx.commit().unwrap();
+        }
+
+        // src/a.ts must reflect the new data.
+        let export_name: String = conn
+            .query_row(
+                "SELECT name FROM exports WHERE file_path='src/a.ts'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(export_name, "New");
+
+        // src/b.ts must be gone (not re-inserted after bulk delete).
+        let b_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM files WHERE path='src/b.ts'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(b_count, 0);
     }
 }

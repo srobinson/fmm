@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -34,6 +34,14 @@ pub struct Config {
     /// Patterns for detecting test files (used by fmm_list_files filter parameter)
     #[serde(default)]
     pub test_patterns: TestPatterns,
+    /// Maximum number of lines per file. Files exceeding this limit are skipped during indexing.
+    /// Default: 100,000. Set to 0 to disable the limit.
+    #[serde(default = "default_max_lines")]
+    pub max_lines: usize,
+    /// Glob patterns (relative to project root) to exclude from indexing,
+    /// in addition to .gitignore and .fmmignore rules.
+    #[serde(default)]
+    pub exclude: Vec<String>,
 }
 
 impl Default for Config {
@@ -41,6 +49,8 @@ impl Default for Config {
         Self {
             languages: default_languages(),
             test_patterns: TestPatterns::default(),
+            max_lines: default_max_lines(),
+            exclude: Vec::new(),
         }
     }
 }
@@ -51,14 +61,25 @@ impl Config {
     }
 
     pub fn load_from_dir(dir: &Path) -> Result<Self> {
-        let path = dir.join(".fmmrc.json");
-        if !path.exists() {
-            return Ok(Self::default());
+        let toml_path = dir.join(".fmmrc.toml");
+        if toml_path.exists() {
+            let content = std::fs::read_to_string(&toml_path)
+                .with_context(|| format!("Failed to read {}", toml_path.display()))?;
+            let config: Config = toml::from_str(&content)
+                .with_context(|| format!("Failed to parse {}", toml_path.display()))?;
+            return Ok(config);
         }
 
-        let content = std::fs::read_to_string(path)?;
-        let config: Config = serde_json::from_str(&content)?;
-        Ok(config)
+        let json_path = dir.join(".fmmrc.json");
+        if json_path.exists() {
+            let content = std::fs::read_to_string(&json_path)
+                .with_context(|| format!("Failed to read {}", json_path.display()))?;
+            let config: Config = serde_json::from_str(&content)
+                .with_context(|| format!("Failed to parse {}", json_path.display()))?;
+            return Ok(config);
+        }
+
+        Ok(Self::default())
     }
 
     pub fn is_supported_language(&self, extension: &str) -> bool {
@@ -83,6 +104,10 @@ impl Config {
         }
         false
     }
+}
+
+fn default_max_lines() -> usize {
+    100_000
 }
 
 fn default_test_path_contains() -> Vec<String> {
@@ -296,5 +321,124 @@ mod tests {
         let json = serde_json::to_string(&config).unwrap();
         let deserialized: Config = serde_json::from_str(&json).unwrap();
         assert_eq!(config.languages, deserialized.languages);
+    }
+
+    // max_lines and exclude tests
+
+    #[test]
+    fn default_max_lines_is_100k() {
+        let config = Config::default();
+        assert_eq!(config.max_lines, 100_000);
+    }
+
+    #[test]
+    fn default_exclude_is_empty() {
+        let config = Config::default();
+        assert!(config.exclude.is_empty());
+    }
+
+    #[test]
+    fn loads_max_lines_from_toml() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".fmmrc.toml"), "max_lines = 50000\n").unwrap();
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.max_lines, 50_000);
+    }
+
+    #[test]
+    fn loads_exclude_from_toml() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join(".fmmrc.toml"),
+            r#"exclude = ["vendor/**", "benchmarks/fixtures/**"]"#,
+        )
+        .unwrap();
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.exclude.len(), 2);
+        assert_eq!(config.exclude[0], "vendor/**");
+        assert_eq!(config.exclude[1], "benchmarks/fixtures/**");
+    }
+
+    #[test]
+    fn loads_max_lines_from_json() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".fmmrc.json"), r#"{ "max_lines": 5000 }"#).unwrap();
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.max_lines, 5_000);
+    }
+
+    #[test]
+    fn loads_exclude_from_json() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join(".fmmrc.json"),
+            r#"{ "exclude": ["dist/**"] }"#,
+        )
+        .unwrap();
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.exclude, vec!["dist/**"]);
+    }
+
+    // TOML loading tests
+
+    #[test]
+    fn loads_toml_config_with_languages() {
+        let tmp = TempDir::new().unwrap();
+        let toml = r#"languages = ["rs", "py"]"#;
+        fs::write(tmp.path().join(".fmmrc.toml"), toml).unwrap();
+
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.languages.len(), 2);
+        assert!(config.languages.contains("rs"));
+        assert!(config.languages.contains("py"));
+    }
+
+    #[test]
+    fn toml_takes_precedence_over_json() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".fmmrc.toml"), r#"languages = ["rs"]"#).unwrap();
+        fs::write(
+            tmp.path().join(".fmmrc.json"),
+            r#"{ "languages": ["py", "go"] }"#,
+        )
+        .unwrap();
+
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.languages.len(), 1);
+        assert!(config.languages.contains("rs"));
+    }
+
+    #[test]
+    fn handles_invalid_toml_as_error() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".fmmrc.toml"), "not = toml = at = all %%%").unwrap();
+        let result = Config::load_from_dir(tmp.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn empty_toml_gives_defaults() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".fmmrc.toml"), "").unwrap();
+
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.languages.len(), 29);
+    }
+
+    #[test]
+    fn toml_test_patterns_configurable() {
+        let tmp = TempDir::new().unwrap();
+        let toml = r#"
+[test_patterns]
+path_contains = ["/custom_tests/"]
+filename_suffixes = [".myspec.ts"]
+"#;
+        fs::write(tmp.path().join(".fmmrc.toml"), toml).unwrap();
+
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert!(config.is_test_file("src/custom_tests/foo.ts"));
+        assert!(config.is_test_file("src/bar.myspec.ts"));
+        assert!(!config.is_test_file("src/auth.spec.ts"));
+        assert!(!config.is_test_file("src/test/foo.ts"));
     }
 }

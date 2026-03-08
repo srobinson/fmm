@@ -7,18 +7,21 @@ use crate::db;
 use super::collect_files;
 
 pub fn status() -> Result<()> {
-    let config_path = std::path::Path::new(".fmmrc.json");
-    let config_exists = config_path.exists();
     let config = Config::load().unwrap_or_default();
 
     println!("{}", "fmm Status".cyan().bold());
     println!("{}", "=".repeat(40).dimmed());
 
     println!("\n{}", "Configuration:".yellow().bold());
-    if config_exists {
-        println!("  {} .fmmrc.json found", "✓".green());
+    if std::path::Path::new(".fmmrc.toml").exists() {
+        println!("  {} .fmmrc.toml found", "✓".green());
+    } else if std::path::Path::new(".fmmrc.json").exists() {
+        println!(
+            "  {} .fmmrc.json found (deprecated — migrate to .fmmrc.toml)",
+            "!".yellow()
+        );
     } else {
-        println!("  {} No .fmmrc.json (using defaults)", "!".yellow());
+        println!("  {} No config file (using defaults)", "!".yellow());
     }
 
     println!("\n{}", "Supported Languages:".yellow().bold());
@@ -50,7 +53,7 @@ pub fn status() -> Result<()> {
     };
 
     match collect_files(".", &config) {
-        Ok(files) => {
+        Ok((files, _)) => {
             println!(
                 "  {} source files, {} indexed",
                 files.len().to_string().white().bold(),

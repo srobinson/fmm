@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use crate::parser::{Metadata, ParseResult, ParserRegistry};
+use crate::parser::{Metadata, ParseResult, Parser, ParserRegistry};
 
 pub struct FileProcessor {
     registry: ParserRegistry,
@@ -40,5 +41,50 @@ impl FileProcessor {
 
         let mut parser = self.registry.get_parser(extension)?;
         parser.parse_file(content, path)
+    }
+}
+
+/// Per-thread parser cache for the parallel parse phase.
+///
+/// Constructed once per rayon worker thread via `map_init`. Holds one parser
+/// instance per extension so tree-sitter setup and query compilation happen
+/// at most once per thread instead of once per file.
+pub struct ParserCache {
+    registry: ParserRegistry,
+    parsers: HashMap<String, Box<dyn Parser>>,
+}
+
+impl Default for ParserCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ParserCache {
+    pub fn new() -> Self {
+        Self {
+            registry: ParserRegistry::with_builtins(),
+            parsers: HashMap::new(),
+        }
+    }
+
+    /// Parse `path`, reusing the cached parser for its extension.
+    pub fn parse_file(&mut self, path: &Path) -> Result<ParseResult> {
+        let content = fs::read_to_string(path)?;
+        let extension = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .context("Invalid file extension")?
+            .to_string();
+
+        if !self.parsers.contains_key(&extension) {
+            let parser = self.registry.get_parser(&extension)?;
+            self.parsers.insert(extension.clone(), parser);
+        }
+
+        self.parsers
+            .get_mut(&extension)
+            .unwrap()
+            .parse_file(&content, path)
     }
 }

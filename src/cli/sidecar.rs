@@ -1,15 +1,18 @@
 use anyhow::Result;
 use chrono::Utc;
 use colored::Colorize;
-use indicatif::ParallelProgressIterator;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use rusqlite::params;
-use std::time::{Duration, Instant};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::config::Config;
 use crate::db;
-use crate::extractor::FileProcessor;
+use crate::extractor::ParserCache;
 use crate::resolver;
 
 use super::{collect_files_multi, resolve_root_multi};
@@ -34,7 +37,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
         None
     };
 
-    let files = collect_files_multi(paths, &config)?;
+    let (files, skipped) = collect_files_multi(paths, &config)?;
     let root = resolve_root_multi(paths)?;
 
     if let Some(sp) = &scan_sp {
@@ -140,11 +143,21 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
 
     if dirty_files.is_empty() {
         let elapsed = total_start.elapsed();
-        println!(
-            "Found {} files · all up to date  ({:.1}s)",
-            files.len(),
-            elapsed.as_secs_f64()
-        );
+        let total = files.len() + skipped;
+        if skipped > 0 {
+            println!(
+                "Found {} files · {} skipped · all up to date  ({:.1}s)",
+                total,
+                skipped,
+                elapsed.as_secs_f64()
+            );
+        } else {
+            println!(
+                "Found {} files · all up to date  ({:.1}s)",
+                total,
+                elapsed.as_secs_f64()
+            );
+        }
         db::writer::write_meta(&conn, "fmm_version", env!("CARGO_PKG_VERSION"))?;
         db::writer::write_meta(&conn, "generated_at", &Utc::now().to_rfc3339())?;
         return Ok(());
@@ -153,48 +166,122 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     let show_progress = !quiet && dirty_files.len() >= PROGRESS_THRESHOLD;
 
     if !quiet {
-        println!(
-            "Found {} files · {} changed",
-            files.len(),
-            dirty_files.len()
-        );
+        let total = files.len() + skipped;
+        if skipped > 0 {
+            println!(
+                "Found {} files · {} skipped · {} changed",
+                total,
+                skipped,
+                dirty_files.len()
+            );
+        } else {
+            println!("Found {} files · {} changed", total, dirty_files.len());
+        }
     }
 
-    let processor = FileProcessor::new(&root);
-
     // Phase 2 (parallel): parse all stale files.
+    // map_init creates one ParserCache per rayon worker thread — parsers and
+    // compiled queries are reused across files instead of constructed per-file.
     let phase2_start = Instant::now();
     let parse_results: Vec<(std::path::PathBuf, crate::parser::ParseResult)> = if show_progress {
         let pb = ProgressBar::new(dirty_files.len() as u64);
         pb.set_style(
             ProgressStyle::with_template(
-                "Parsing  {wide_bar:.cyan/blue} {pos}/{len}  {per_sec}  ETA {eta}",
+                "Parsing  {wide_bar:.cyan/blue} {pos}/{len}  {per_sec}  {msg}",
             )
             .expect("valid template"),
         );
-        let results = dirty_files
-            .par_iter()
-            .progress_with(pb.clone())
-            .filter_map(|file| match processor.parse(file) {
-                Ok(result) => Some(((*file).clone(), result)),
-                Err(e) => {
-                    eprintln!("{} {}: {}", "error:".red().bold(), file.display(), e);
-                    None
+        pb.set_message("starting...");
+        // Steady tick redraws the bar even when no completions arrive (e.g. during
+        // long-running parses of large files). Without this the display freezes.
+        pb.enable_steady_tick(Duration::from_millis(100));
+
+        // Watcher thread: switches from "ETA Xs" to "N remaining (Xs)" when the
+        // bar stalls at the tail. Large files like checker.ts (54k lines) can keep
+        // one rayon worker busy for minutes after the rest of the corpus finishes.
+        // The plain ETA formula produces "ETA 0s" in that situation — misleading.
+        let last_inc_ms = Arc::new(AtomicU64::new(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64,
+        ));
+        let pb_w = pb.clone();
+        let last_inc_w = Arc::clone(&last_inc_ms);
+        let watcher = std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_millis(200));
+            let pos = pb_w.position();
+            let len = pb_w.length().unwrap_or(pos);
+            if pos >= len {
+                break;
+            }
+            let now_ms = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            let stall_secs = now_ms.saturating_sub(last_inc_w.load(Ordering::Relaxed)) / 1000;
+            if stall_secs >= 2 {
+                // Stalled: show remaining count + elapsed wait so the user knows
+                // we are still alive and parsing, not hung.
+                pb_w.set_message(format!("{} remaining  ({}s)", len - pos, stall_secs));
+            } else {
+                let eta = pb_w.eta();
+                let secs = eta.as_secs();
+                if secs > 1 {
+                    let msg = if secs >= 60 {
+                        format!("ETA {}m{}s", secs / 60, secs % 60)
+                    } else {
+                        format!("ETA {}s", secs)
+                    };
+                    pb_w.set_message(msg);
+                } else {
+                    pb_w.set_message("finishing...");
                 }
+            }
+        });
+
+        let results = dirty_files
+            .iter()
+            .par_bridge()
+            .map_init(ParserCache::new, |cache, file| {
+                let r = match cache.parse_file(file) {
+                    Ok(result) => Some(((*file).clone(), result)),
+                    Err(e) => {
+                        eprintln!("{} {}: {}", "error:".red().bold(), file.display(), e);
+                        None
+                    }
+                };
+                // Stamp completion time BEFORE inc so the watcher sees fresh
+                // state as soon as the counter changes.
+                last_inc_ms.store(
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as u64,
+                    Ordering::Relaxed,
+                );
+                pb.inc(1);
+                r
             })
+            .filter_map(|x| x)
             .collect();
         pb.finish_and_clear();
+        let _ = watcher.join();
         results
     } else {
         dirty_files
-            .par_iter()
-            .filter_map(|file| match processor.parse(file) {
-                Ok(result) => Some(((*file).clone(), result)),
-                Err(e) => {
-                    eprintln!("{} {}: {}", "error:".red().bold(), file.display(), e);
-                    None
+            .iter()
+            .par_bridge()
+            .map_init(ParserCache::new, |cache, file| {
+                match cache.parse_file(file) {
+                    Ok(result) => Some(((*file).clone(), result)),
+                    Err(e) => {
+                        eprintln!("{} {}: {}", "error:".red().bold(), file.display(), e);
+                        None
+                    }
                 }
             })
+            .filter_map(|x| x)
             .collect()
     };
     let phase2_elapsed = phase2_start.elapsed();
@@ -230,9 +317,18 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
 
     // Phase 3 (transacted): write pre-serialized rows to DB in one commit.
     // JSON serialization already done in parallel — this loop is pure SQLite I/O.
+    //
+    // Full generates (force or entire repo dirty): DELETE all files in one
+    // statement (CASCADE clears exports/methods), then use plain INSERT.
+    // Avoids 39k per-row DELETE+INSERT cycles from INSERT OR REPLACE.
+    // Incremental generates: keep INSERT OR REPLACE (handles CASCADE per dirty file).
+    let is_full_generate = force || dirty_files.len() == files.len();
     let phase3_start = Instant::now();
     {
         let tx = conn.transaction()?;
+        if is_full_generate {
+            db::writer::delete_all_files(&tx)?;
+        }
         if show_progress {
             let pb = ProgressBar::new(serialized_rows.len() as u64);
             pb.set_style(
@@ -240,13 +336,13 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
                     .expect("valid template"),
             );
             for row in &serialized_rows {
-                db::writer::upsert_preserialized(&tx, row)?;
+                db::writer::upsert_preserialized(&tx, row, is_full_generate)?;
                 pb.inc(1);
             }
             pb.finish_and_clear();
         } else {
             for row in &serialized_rows {
-                db::writer::upsert_preserialized(&tx, row)?;
+                db::writer::upsert_preserialized(&tx, row, is_full_generate)?;
             }
         }
         tx.commit()?;
@@ -300,7 +396,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
 
 pub fn validate(paths: &[String]) -> Result<()> {
     let config = Config::load().unwrap_or_default();
-    let files = collect_files_multi(paths, &config)?;
+    let (files, _) = collect_files_multi(paths, &config)?;
     let root = resolve_root_multi(paths)?;
 
     if files.is_empty() {

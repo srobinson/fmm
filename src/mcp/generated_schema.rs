@@ -210,7 +210,7 @@ serde_json::from_str(r##"{
           },
           "filter": {
             "type": "string",
-            "description": "File type filter. 'all' (default): no filtering. 'source': exclude test files. 'tests': return only test files. Detection heuristic uses path segments (/test/, /e2e/, /__tests__/) and filename suffixes (.spec.ts, .test.ts, _test.go, etc.), configurable via test_patterns in .fmmrc.json.",
+            "description": "File type filter. 'all' (default): no filtering. 'source': exclude test files. 'tests': return only test files. Detection heuristic uses path segments (/test/, /e2e/, /__tests__/) and filename suffixes (.spec.ts, .test.ts, _test.go, etc.), configurable via test_patterns in .fmmrc.toml.",
             "enum": [
               "all",
               "source",
