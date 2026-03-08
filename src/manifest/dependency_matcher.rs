@@ -258,6 +258,36 @@ pub(crate) fn try_resolve_local_dep(
     None
 }
 
+/// Extract the name-stem index key for a non-relative dependency string.
+///
+/// Maps a dep to the last filename stem so it can be looked up in the
+/// `by_stem` index built from manifest file paths:
+/// - `"._run"` / `".b"` → `"_run"` / `"b"` (Python relative: strip leading dots)
+/// - `"crate::parser::builtin"` → `"builtin"` (last `::` segment)
+/// - `"github.com/user/project/internal/handler"` → `"handler"` (last `/` segment)
+/// - `"crypto.utils.js"` → `"crypto.utils"` (strip `.js` source ext)
+/// - `"utils"` → `"utils"` (bare identifier, unchanged)
+#[inline]
+fn dep_stem_key(dep: &str) -> &str {
+    if dep.starts_with('.') && !dep.starts_with("./") && !dep.starts_with("../") {
+        // Python-style relative import (e.g. "._run", ".b", "..models.user").
+        // Strip leading dots, then take the last dotted segment as the filename key.
+        let after_dots = dep.trim_start_matches('.');
+        if after_dots.is_empty() {
+            return dep; // bare "." — cannot extract a useful key
+        }
+        after_dots.rsplit('.').next().unwrap_or(after_dots)
+    } else if dep.contains("::") {
+        // Rust-style module path: take the last `::` segment
+        let last = dep.rsplit("::").next().unwrap_or(dep);
+        strip_source_ext(last)
+    } else {
+        // Path-like or bare identifier: take the last `/` segment then strip source ext
+        let last = dep.rsplit('/').next().unwrap_or(dep);
+        strip_source_ext(last)
+    }
+}
+
 /// Build the reverse dependency index from a fully-loaded manifest.
 ///
 /// Maps each file to the set of files that directly import it. Built once at
@@ -270,35 +300,87 @@ pub(crate) fn try_resolve_local_dep(
 /// - `entry.imports` (JS/TS cross-package bare specifiers): resolved via the
 ///   three-layer `CrossPackageResolver` (tsconfig paths + workspace aliases + directory
 ///   prefix heuristic)
+///
+/// ## Complexity
+///
+/// Pass 1 (non-relative deps) and Pass 2a (Python dotted imports) were previously
+/// O(N²): for each dep, all N manifest files were scanned. We now build a
+/// `by_stem` index (`filename_stem → [paths]`) up front and use it to narrow
+/// each dep's candidate set to O(1) bucket lookups. Both passes then run in
+/// parallel via Rayon.
 pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<String>> {
-    let mut rev: HashMap<String, Vec<String>> = HashMap::new();
+    // Build name-stem index: last filename stem → [full paths].
+    //   "src/utils.ts"        → "utils"  → ["src/utils.ts", ...]
+    //   "agno/models/message.py" → "message" → [...]
+    // Reduces the O(N) inner scan per dep to an O(1) bucket lookup.
+    let mut by_stem: HashMap<String, Vec<String>> = HashMap::new();
+    for path in manifest.files.keys() {
+        let last = path.rsplit('/').next().unwrap_or(path);
+        let stem = strip_source_ext(last);
+        by_stem
+            .entry(stem.to_string())
+            .or_default()
+            .push(path.clone());
+    }
 
-    // Pass 1: relative and non-relative dependencies (unchanged behavior)
-    for (source, entry) in &manifest.files {
-        for dep in &entry.dependencies {
-            if dep.starts_with("./") || dep.starts_with("../") {
-                // Relative: try_resolve_local_dep gives the single canonical target
-                if let Some(target) = try_resolve_local_dep(dep, source, manifest) {
-                    rev.entry(target).or_default().push(source.clone());
-                }
-            } else {
-                // Non-relative: mirror dep_matches + python_dep_matches (same as dep_targets_file)
-                for target in manifest.files.keys() {
-                    if dep_matches(dep, target, source) || python_dep_matches(dep, target, source) {
-                        rev.entry(target.clone()).or_default().push(source.clone());
+    // Pass 1 + 2a: collect (target, source) edges in parallel.
+    // `by_stem` is immutable after construction — safe to share across Rayon threads.
+    let edges_1_2a: Vec<(String, String)> = manifest
+        .files
+        .par_iter()
+        .flat_map(|(source, entry)| {
+            let mut local: Vec<(String, String)> = Vec::new();
+
+            // Pass 1: resolve dependencies
+            for dep in &entry.dependencies {
+                if dep.starts_with("./") || dep.starts_with("../") {
+                    // Relative: try_resolve_local_dep gives the single canonical target
+                    if let Some(target) = try_resolve_local_dep(dep, source, manifest) {
+                        local.push((target, source.clone()));
+                    }
+                } else {
+                    // Non-relative: O(1) stem-index lookup narrows the candidate set
+                    let key = dep_stem_key(dep);
+                    if let Some(candidates) = by_stem.get(key) {
+                        for target in candidates {
+                            if dep_matches(dep, target, source)
+                                || python_dep_matches(dep, target, source)
+                            {
+                                local.push((target.clone(), source.clone()));
+                            }
+                        }
                     }
                 }
             }
-        }
 
-        // Pass 2a: Python dotted absolute imports (existing behavior preserved)
-        for imp in &entry.imports {
-            for target in manifest.files.keys() {
-                if dotted_dep_matches(imp, target) {
-                    rev.entry(target.clone()).or_default().push(source.clone());
+            // Pass 2a: Python dotted absolute imports (e.g. "agno.models.message").
+            // dotted_dep_matches only fires when: no leading '.', has '.', no '/', no '::'
+            for imp in &entry.imports {
+                if !imp.starts_with('.')
+                    && imp.contains('.')
+                    && !imp.contains('/')
+                    && !imp.contains("::")
+                {
+                    // Index key: last dotted segment → "agno.models.message" → "message"
+                    let last_seg = imp.rsplit('.').next().unwrap_or(imp);
+                    if let Some(candidates) = by_stem.get(last_seg) {
+                        for target in candidates {
+                            if dotted_dep_matches(imp, target) {
+                                local.push((target.clone(), source.clone()));
+                            }
+                        }
+                    }
                 }
             }
-        }
+
+            local
+        })
+        .collect();
+
+    // Merge Pass 1+2a edges using HashSet to eliminate duplicates during collection.
+    let mut rev: HashMap<String, HashSet<String>> = HashMap::new();
+    for (target, source) in edges_1_2a {
+        rev.entry(target).or_default().insert(source);
     }
 
     // Pass 2b: JS/TS cross-package bare specifiers via three-layer resolver.
@@ -391,15 +473,18 @@ pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<Str
 
         // Merge cross-package edges into reverse index
         for (target, importer) in cross_package_edges {
-            rev.entry(target).or_default().push(importer);
+            rev.entry(target).or_default().insert(importer);
         }
     }
 
-    for v in rev.values_mut() {
-        v.sort();
-        v.dedup();
-    }
-    rev
+    // Convert HashSet → sorted Vec (stable output for deterministic DB writes)
+    rev.into_iter()
+        .map(|(k, set)| {
+            let mut v: Vec<String> = set.into_iter().collect();
+            v.sort();
+            (k, v)
+        })
+        .collect()
 }
 
 #[cfg(test)]
