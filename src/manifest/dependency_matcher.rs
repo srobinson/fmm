@@ -310,10 +310,16 @@ fn dep_stem_key(dep: &str) -> &str {
 /// parallel via Rayon.
 pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<String>> {
     // Build name-stem index: last filename stem → [full paths].
-    //   "src/utils.ts"        → "utils"  → ["src/utils.ts", ...]
+    //   "src/utils.ts"           → "utils"   → ["src/utils.ts", ...]
     //   "agno/models/message.py" → "message" → [...]
     // Reduces the O(N) inner scan per dep to an O(1) bucket lookup.
     let mut by_stem: HashMap<String, Vec<String>> = HashMap::new();
+    // Package-directory index for Python __init__ files:
+    //   "agno/models/__init__.py" → "models" → ["agno/models/__init__.py"]
+    // Without this, dotted imports like "agno.models" would miss targets that
+    // are packages (directories with __init__.py) because the by_stem key for
+    // those files is "__init__", not "models".
+    let mut by_package_dir: HashMap<String, Vec<String>> = HashMap::new();
     for path in manifest.files.keys() {
         let last = path.rsplit('/').next().unwrap_or(path);
         let stem = strip_source_ext(last);
@@ -321,6 +327,20 @@ pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<Str
             .entry(stem.to_string())
             .or_default()
             .push(path.clone());
+        // Index __init__.py (and __init__.pyi) under the parent directory name.
+        if stem == "__init__" {
+            // "agno/models/__init__.py" → parent segment = "models"
+            if let Some(parent_seg) = path
+                .rsplit('/')
+                .nth(1)
+                .map(|s| strip_source_ext(s).to_string())
+            {
+                by_package_dir
+                    .entry(parent_seg)
+                    .or_default()
+                    .push(path.clone());
+            }
+        }
     }
 
     // Pass 1 + 2a: collect (target, source) edges in parallel.
@@ -363,8 +383,19 @@ pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<Str
                 {
                     // Index key: last dotted segment → "agno.models.message" → "message"
                     let last_seg = imp.rsplit('.').next().unwrap_or(imp);
+                    // Primary: files named `<last_seg>.py` (e.g. "models.py")
                     if let Some(candidates) = by_stem.get(last_seg) {
                         for target in candidates {
+                            if dotted_dep_matches(imp, target) {
+                                local.push((target.clone(), source.clone()));
+                            }
+                        }
+                    }
+                    // Secondary: packages where `<last_seg>/__init__.py` exists.
+                    // "agno.models" → last_seg="models" → by_package_dir["models"]
+                    // → ["agno/models/__init__.py"] → dotted_dep_matches verifies.
+                    if let Some(pkg_candidates) = by_package_dir.get(last_seg) {
+                        for target in pkg_candidates {
                             if dotted_dep_matches(imp, target) {
                                 local.push((target.clone(), source.clone()));
                             }
@@ -604,6 +635,51 @@ mod tests {
         ));
         // No false positives
         assert!(!dep_matches("crate::config", "src/other.rs", "src/main.rs"));
+    }
+
+    #[test]
+    fn build_reverse_deps_python_package_init() {
+        // Regression: "agno.models" in imports should resolve to
+        // "agno/models/__init__.py" via the by_package_dir index.
+        // The stem of __init__.py is "__init__", not "models", so without
+        // the secondary index the edge was silently dropped.
+        use crate::manifest::{FileEntry, Manifest};
+        use std::collections::HashMap;
+
+        let mut files = HashMap::new();
+        // The importer
+        files.insert(
+            "agno/agent.py".to_string(),
+            FileEntry {
+                imports: vec!["agno.models".to_string()],
+                ..Default::default()
+            },
+        );
+        // Target: a Python package (directory with __init__.py)
+        files.insert("agno/models/__init__.py".to_string(), FileEntry::default());
+        // Unrelated file that must not match
+        files.insert("agno/other.py".to_string(), FileEntry::default());
+
+        let manifest = Manifest {
+            files,
+            ..Default::default()
+        };
+
+        let rev = build_reverse_deps(&manifest);
+
+        assert!(
+            rev.contains_key("agno/models/__init__.py"),
+            "agno/models/__init__.py should appear as a reverse-dep target"
+        );
+        let importers = &rev["agno/models/__init__.py"];
+        assert!(
+            importers.contains(&"agno/agent.py".to_string()),
+            "agno/agent.py should be listed as an importer of agno/models/__init__.py"
+        );
+        assert!(
+            !rev.contains_key("agno/other.py"),
+            "agno/other.py should not be a reverse-dep target"
+        );
     }
 
     #[test]
