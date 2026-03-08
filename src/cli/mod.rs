@@ -728,12 +728,6 @@ fn collect_files(path: &str, config: &Config) -> Result<(Vec<PathBuf>, usize)> {
                 .canonicalize()
                 .unwrap_or_else(|_| entry.path().to_path_buf())
         })
-        .filter(|canonical| {
-            if config.max_lines == 0 {
-                return true; // 0 disables the limit
-            }
-            file_within_line_limit(canonical, config.max_lines)
-        })
         .collect();
 
     if config.max_lines == 0 {
