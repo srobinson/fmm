@@ -434,7 +434,7 @@ cli_flag        = "--group-by"
 name            = "filter"
 type            = "string"
 enum            = ["all", "source", "tests"]
-mcp_description = "File type filter. 'all' (default): no filtering. 'source': exclude test files. 'tests': return only test files. Detection heuristic uses path segments (/test/, /e2e/, /__tests__/) and filename suffixes (.spec.ts, .test.ts, _test.go, etc.), configurable via test_patterns in .fmmrc.json."
+mcp_description = "File type filter. 'all' (default): no filtering. 'source': exclude test files. 'tests': return only test files. Detection heuristic uses path segments (/test/, /e2e/, /__tests__/) and filename suffixes (.spec.ts, .test.ts, _test.go, etc.), configurable via test_patterns in .fmmrc.toml."
 cli_help        = "File type filter: all (default), source (exclude tests), tests (only tests)"
 cli_flag        = "--filter"
 

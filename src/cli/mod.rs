@@ -207,7 +207,7 @@ pub enum Commands {
     /// Set up config, Claude skill, and MCP server
     #[command(
         long_about = "Set up fmm in the current project.\n\n\
-            Creates .fmmrc.json config and configures the MCP server in .claude/fmm.local.json. \
+            Creates .fmmrc.toml config and configures the MCP server in .claude/fmm.local.json. \
             The Claude Code skill is opt-in via --skill (avoid creating a project-level \
             .claude/ directory which overrides global plugin config). \
             Run with no flags for the standard setup, or use flags to install individual components.",
@@ -225,7 +225,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm init --all --no-generate</bold>        <dim># Config files only, skip indexing</dim>
 
 <bold><underline>What gets created</underline></bold>
-  <bold>.fmmrc.json</bold>                           Project configuration
+  <bold>.fmmrc.toml</bold>                           Project configuration
   <bold>.claude/fmm.local.json</bold>                 MCP server config (gitignored, local scope)
   <bold>.claude/skills/fmm-navigate/SKILL.md</bold>   Claude Code skill (opt-in via --skill)
 
@@ -632,7 +632,7 @@ pub enum Commands {
 
 /// Resolve the root directory from the target path.
 /// If a directory, use it directly. If a file, walk up from its parent
-/// looking for project root markers (.git, .fmmrc.json) so that relative
+/// looking for project root markers (.git, .fmmrc.toml, .fmmrc.json) so that relative
 /// paths in the index are consistent regardless of whether `fmm generate`
 /// targets a single file or the whole repo.
 /// Falls back to the file's parent directory, then CWD.
@@ -653,11 +653,14 @@ fn resolve_root(path: &str) -> Result<PathBuf> {
 }
 
 /// Walk up from `start` looking for project root markers.
-/// Returns the first directory containing `.git` or `.fmmrc.json`.
+/// Returns the first directory containing `.git`, `.fmmrc.toml`, or `.fmmrc.json`.
 fn find_project_root(start: &Path) -> Option<PathBuf> {
     let mut current = start.to_path_buf();
     loop {
-        if current.join(".git").exists() || current.join(".fmmrc.json").exists() {
+        if current.join(".git").exists()
+            || current.join(".fmmrc.toml").exists()
+            || current.join(".fmmrc.json").exists()
+        {
             return Some(current);
         }
         if !current.pop() {

@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -51,14 +51,28 @@ impl Config {
     }
 
     pub fn load_from_dir(dir: &Path) -> Result<Self> {
-        let path = dir.join(".fmmrc.json");
-        if !path.exists() {
-            return Ok(Self::default());
+        let toml_path = dir.join(".fmmrc.toml");
+        if toml_path.exists() {
+            let content = std::fs::read_to_string(&toml_path)
+                .with_context(|| format!("Failed to read {}", toml_path.display()))?;
+            let config: Config = toml::from_str(&content)
+                .with_context(|| format!("Failed to parse {}", toml_path.display()))?;
+            return Ok(config);
         }
 
-        let content = std::fs::read_to_string(path)?;
-        let config: Config = serde_json::from_str(&content)?;
-        Ok(config)
+        let json_path = dir.join(".fmmrc.json");
+        if json_path.exists() {
+            eprintln!(
+                "warning: .fmmrc.json is deprecated — migrate to .fmmrc.toml (run: fmm init)"
+            );
+            let content = std::fs::read_to_string(&json_path)
+                .with_context(|| format!("Failed to read {}", json_path.display()))?;
+            let config: Config = serde_json::from_str(&content)
+                .with_context(|| format!("Failed to parse {}", json_path.display()))?;
+            return Ok(config);
+        }
+
+        Ok(Self::default())
     }
 
     pub fn is_supported_language(&self, extension: &str) -> bool {
@@ -296,5 +310,68 @@ mod tests {
         let json = serde_json::to_string(&config).unwrap();
         let deserialized: Config = serde_json::from_str(&json).unwrap();
         assert_eq!(config.languages, deserialized.languages);
+    }
+
+    // TOML loading tests
+
+    #[test]
+    fn loads_toml_config_with_languages() {
+        let tmp = TempDir::new().unwrap();
+        let toml = r#"languages = ["rs", "py"]"#;
+        fs::write(tmp.path().join(".fmmrc.toml"), toml).unwrap();
+
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.languages.len(), 2);
+        assert!(config.languages.contains("rs"));
+        assert!(config.languages.contains("py"));
+    }
+
+    #[test]
+    fn toml_takes_precedence_over_json() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".fmmrc.toml"), r#"languages = ["rs"]"#).unwrap();
+        fs::write(
+            tmp.path().join(".fmmrc.json"),
+            r#"{ "languages": ["py", "go"] }"#,
+        )
+        .unwrap();
+
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.languages.len(), 1);
+        assert!(config.languages.contains("rs"));
+    }
+
+    #[test]
+    fn handles_invalid_toml_as_error() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".fmmrc.toml"), "not = toml = at = all %%%").unwrap();
+        let result = Config::load_from_dir(tmp.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn empty_toml_gives_defaults() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".fmmrc.toml"), "").unwrap();
+
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.languages.len(), 29);
+    }
+
+    #[test]
+    fn toml_test_patterns_configurable() {
+        let tmp = TempDir::new().unwrap();
+        let toml = r#"
+[test_patterns]
+path_contains = ["/custom_tests/"]
+filename_suffixes = [".myspec.ts"]
+"#;
+        fs::write(tmp.path().join(".fmmrc.toml"), toml).unwrap();
+
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert!(config.is_test_file("src/custom_tests/foo.ts"));
+        assert!(config.is_test_file("src/bar.myspec.ts"));
+        assert!(!config.is_test_file("src/auth.spec.ts"));
+        assert!(!config.is_test_file("src/test/foo.ts"));
     }
 }

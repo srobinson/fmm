@@ -95,7 +95,7 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
     println!();
     println!("{}", "Setup complete!".green().bold());
     if install_config {
-        println!("  Config:   .fmmrc.json");
+        println!("  Config:   .fmmrc.toml");
     }
     if install_skill {
         println!("  Skill:    .claude/skills/fmm-navigate/SKILL.md");
@@ -107,6 +107,10 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
     if install_config {
         println!(
             "  {} Add '.fmm.db' to your .gitignore — the index is regeneratable",
+            "hint:".cyan()
+        );
+        println!(
+            "  {} .fmmrc.toml is optional — delete it to use built-in defaults",
             "hint:".cyan()
         );
     }
@@ -126,21 +130,43 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
     Ok(())
 }
 
+const FMMRC_TEMPLATE: &str = r#"# fmm configuration
+# Only include fields you want to override — defaults apply for everything else.
+
+# Maximum lines per file. Files exceeding this limit are skipped during indexing.
+# Default: 100000
+# max_lines = 100_000
+
+# Glob patterns to exclude (in addition to .gitignore and .fmmignore).
+# exclude = ["benchmarks/fixtures/**", "vendor/**"]
+
+# Override which file extensions to index (default: 29 languages).
+# languages = ["ts", "tsx", "js", "jsx", "py", "rs"]
+
+# Test file detection patterns.
+# [test_patterns]
+# path_contains = ["/test/", "/tests/", "/spec/", "/e2e/", "/__tests__/"]
+# filename_suffixes = [".spec.ts", ".test.ts", ".test.js", "_test.go", "_test.rs"]
+"#;
+
 fn init_config() -> Result<()> {
-    let config_path = Path::new(".fmmrc.json");
-    if config_path.exists() {
-        println!("{} .fmmrc.json already exists (skipping)", "!".yellow());
+    let toml_path = Path::new(".fmmrc.toml");
+    if toml_path.exists() {
+        println!("{} .fmmrc.toml already exists (skipping)", "!".yellow());
+        return Ok(());
+    }
+    let json_path = Path::new(".fmmrc.json");
+    if json_path.exists() {
+        println!(
+            "{} .fmmrc.json found — consider migrating to .fmmrc.toml (skipping)",
+            "!".yellow()
+        );
         return Ok(());
     }
 
-    let default_config = Config::default();
-    let json = serde_json::to_string_pretty(&default_config)?;
-    std::fs::write(config_path, format!("{}\n", json)).context("Failed to write .fmmrc.json")?;
+    std::fs::write(toml_path, FMMRC_TEMPLATE).context("Failed to write .fmmrc.toml")?;
 
-    println!(
-        "{} Created .fmmrc.json with default configuration",
-        "✓".green()
-    );
+    println!("{} Created .fmmrc.toml", "✓".green());
     Ok(())
 }
 
