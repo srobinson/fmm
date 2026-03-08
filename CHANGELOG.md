@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.39](https://github.com/srobinson/fmm/compare/v0.1.38...v0.1.39) (2026-03-08)
+
+
+### Performance
+
+* parallelize fmm generate for large codebases ([#107](https://github.com/srobinson/fmm/issues/107)) ([84f09f7](https://github.com/srobinson/fmm/commit/84f09f7816c1447a6a79c34a6a38237e4c10a507))
+
 ## [0.1.38](https://github.com/srobinson/fmm/compare/v0.1.37...v0.1.38) (2026-03-07)
 
 
