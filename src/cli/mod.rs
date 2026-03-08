@@ -674,15 +674,23 @@ fn collect_files(path: &str, config: &Config) -> Result<Vec<PathBuf>> {
 
     if path.is_file() {
         let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        if config.max_lines > 0 && !file_within_line_limit(&canonical, config.max_lines) {
+            return Ok(vec![]);
+        }
         return Ok(vec![canonical]);
     }
 
-    let walker = WalkBuilder::new(path)
+    // Pre-compile exclude glob patterns (relative to the walk root).
+    let exclude_patterns: Vec<glob::Pattern> = config
+        .exclude
+        .iter()
+        .filter_map(|p| glob::Pattern::new(p).ok())
+        .collect();
+
+    let files: Vec<PathBuf> = WalkBuilder::new(path)
         .standard_filters(true)
         .add_custom_ignore_filename(".fmmignore")
-        .build();
-
-    let files: Vec<PathBuf> = walker
+        .build()
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.file_type().is_some_and(|ft| ft.is_file()))
         .filter(|entry| {
@@ -692,15 +700,86 @@ fn collect_files(path: &str, config: &Config) -> Result<Vec<PathBuf>> {
                 false
             }
         })
+        .filter(|entry| {
+            if exclude_patterns.is_empty() {
+                return true;
+            }
+            // Normalize the entry path: strip leading "./" so patterns like
+            // "vendor/**" match both "vendor/foo.js" and "./vendor/foo.js".
+            let raw = entry.path().to_string_lossy();
+            let rel = raw.strip_prefix("./").unwrap_or(&raw);
+            !exclude_patterns.iter().any(|pat| {
+                pat.matches_with(
+                    rel,
+                    glob::MatchOptions {
+                        require_literal_separator: false,
+                        ..Default::default()
+                    },
+                )
+            })
+        })
         .map(|entry| {
             entry
                 .path()
                 .canonicalize()
                 .unwrap_or_else(|_| entry.path().to_path_buf())
         })
+        .filter(|canonical| {
+            if config.max_lines == 0 {
+                return true; // 0 disables the limit
+            }
+            file_within_line_limit(canonical, config.max_lines)
+        })
         .collect();
 
     Ok(files)
+}
+
+/// Returns true if the file has at most `max_lines` lines.
+///
+/// Uses a byte-size lower bound to avoid reading most files: any file with
+/// fewer bytes than `max_lines` cannot possibly have more than `max_lines`
+/// lines (every line needs at least one byte for the newline character).
+/// Files that exceed this threshold are read as raw bytes and their newlines
+/// counted — no UTF-8 decoding required.
+fn file_within_line_limit(path: &Path, max_lines: usize) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return true; // cannot stat: include and let the parser decide
+    };
+    // Fast path: if file_bytes <= max_lines, it cannot have more than max_lines
+    // lines regardless of content.
+    if meta.len() <= max_lines as u64 {
+        return true;
+    }
+    // Slow path: count newlines by reading raw bytes (no UTF-8 overhead).
+    let Ok(bytes) = std::fs::read(path) else {
+        return true; // cannot read: include and let the parser decide
+    };
+    let line_count = bytecount_newlines(&bytes);
+    if line_count > max_lines {
+        eprintln!(
+            "skipped: {} ({} lines exceeds max_lines {})",
+            path.display(),
+            line_count,
+            max_lines
+        );
+        false
+    } else {
+        true
+    }
+}
+
+/// Count lines in a byte slice by counting `\n` characters.
+/// A file with no trailing newline still counts as at least 1 line.
+#[inline]
+fn bytecount_newlines(bytes: &[u8]) -> usize {
+    let newlines = bytes.iter().filter(|&&b| b == b'\n').count();
+    // Files with content but no trailing newline: 0 newlines → 1 line.
+    if bytes.is_empty() {
+        0
+    } else {
+        newlines.max(1)
+    }
 }
 
 fn collect_files_multi(paths: &[String], config: &Config) -> Result<Vec<PathBuf>> {

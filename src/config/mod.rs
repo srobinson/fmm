@@ -34,6 +34,14 @@ pub struct Config {
     /// Patterns for detecting test files (used by fmm_list_files filter parameter)
     #[serde(default)]
     pub test_patterns: TestPatterns,
+    /// Maximum number of lines per file. Files exceeding this limit are skipped during indexing.
+    /// Default: 100,000. Set to 0 to disable the limit.
+    #[serde(default = "default_max_lines")]
+    pub max_lines: usize,
+    /// Glob patterns (relative to project root) to exclude from indexing,
+    /// in addition to .gitignore and .fmmignore rules.
+    #[serde(default)]
+    pub exclude: Vec<String>,
 }
 
 impl Default for Config {
@@ -41,6 +49,8 @@ impl Default for Config {
         Self {
             languages: default_languages(),
             test_patterns: TestPatterns::default(),
+            max_lines: default_max_lines(),
+            exclude: Vec::new(),
         }
     }
 }
@@ -97,6 +107,10 @@ impl Config {
         }
         false
     }
+}
+
+fn default_max_lines() -> usize {
+    100_000
 }
 
 fn default_test_path_contains() -> Vec<String> {
@@ -310,6 +324,62 @@ mod tests {
         let json = serde_json::to_string(&config).unwrap();
         let deserialized: Config = serde_json::from_str(&json).unwrap();
         assert_eq!(config.languages, deserialized.languages);
+    }
+
+    // max_lines and exclude tests
+
+    #[test]
+    fn default_max_lines_is_100k() {
+        let config = Config::default();
+        assert_eq!(config.max_lines, 100_000);
+    }
+
+    #[test]
+    fn default_exclude_is_empty() {
+        let config = Config::default();
+        assert!(config.exclude.is_empty());
+    }
+
+    #[test]
+    fn loads_max_lines_from_toml() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".fmmrc.toml"), "max_lines = 50000\n").unwrap();
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.max_lines, 50_000);
+    }
+
+    #[test]
+    fn loads_exclude_from_toml() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join(".fmmrc.toml"),
+            r#"exclude = ["vendor/**", "benchmarks/fixtures/**"]"#,
+        )
+        .unwrap();
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.exclude.len(), 2);
+        assert_eq!(config.exclude[0], "vendor/**");
+        assert_eq!(config.exclude[1], "benchmarks/fixtures/**");
+    }
+
+    #[test]
+    fn loads_max_lines_from_json() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".fmmrc.json"), r#"{ "max_lines": 5000 }"#).unwrap();
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.max_lines, 5_000);
+    }
+
+    #[test]
+    fn loads_exclude_from_json() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join(".fmmrc.json"),
+            r#"{ "exclude": ["dist/**"] }"#,
+        )
+        .unwrap();
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.exclude, vec!["dist/**"]);
     }
 
     // TOML loading tests
