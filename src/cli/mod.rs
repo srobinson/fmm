@@ -770,15 +770,22 @@ fn file_within_line_limit(path: &Path, max_lines: usize) -> bool {
 }
 
 /// Count lines in a byte slice by counting `\n` characters.
-/// A file with no trailing newline still counts as at least 1 line.
+///
+/// Each `\n` terminates exactly one line. A file with content but no trailing
+/// newline has one more line than it has newlines (the unterminated final line).
+///
+/// Examples: `""` → 0, `"hello"` → 1, `"a\nb"` → 2, `"a\nb\n"` → 2.
 #[inline]
 fn bytecount_newlines(bytes: &[u8]) -> usize {
     let newlines = bytes.iter().filter(|&&b| b == b'\n').count();
-    // Files with content but no trailing newline: 0 newlines → 1 line.
     if bytes.is_empty() {
         0
+    } else if bytes.last() == Some(&b'\n') {
+        // Every newline terminates exactly one line.
+        newlines
     } else {
-        newlines.max(1)
+        // Final line has no terminating newline — add 1.
+        newlines + 1
     }
 }
 
@@ -904,5 +911,70 @@ mod tests {
         assert_eq!(files.len(), 1);
         assert!(files[0].is_absolute());
         assert_eq!(files[0], file_path.canonicalize().unwrap());
+    }
+
+    // bytecount_newlines unit tests
+
+    #[test]
+    fn bytecount_newlines_empty() {
+        assert_eq!(bytecount_newlines(b""), 0);
+    }
+
+    #[test]
+    fn bytecount_newlines_single_line_no_trailing_newline() {
+        assert_eq!(bytecount_newlines(b"hello"), 1);
+    }
+
+    #[test]
+    fn bytecount_newlines_single_line_with_trailing_newline() {
+        assert_eq!(bytecount_newlines(b"hello\n"), 1);
+    }
+
+    #[test]
+    fn bytecount_newlines_two_lines_with_trailing_newline() {
+        assert_eq!(bytecount_newlines(b"hello\nworld\n"), 2);
+    }
+
+    #[test]
+    fn bytecount_newlines_two_lines_no_trailing_newline() {
+        // This was the previously failing case: 1 newline → max(1,1) = 1, wrong.
+        assert_eq!(bytecount_newlines(b"hello\nworld"), 2);
+    }
+
+    #[test]
+    fn bytecount_newlines_only_newlines() {
+        assert_eq!(bytecount_newlines(b"\n\n\n"), 3);
+    }
+
+    // collect_files respects max_lines
+
+    #[test]
+    fn collect_files_excludes_file_exceeding_max_lines() {
+        let tmp = TempDir::new().unwrap();
+        // Write a file with 6 lines (3 newline-terminated + 1 content line with no trailing \n
+        // → easier: just write 5 lines with trailing newlines).
+        let big: String = (0..5).map(|i| format!("line{}\n", i)).collect();
+        std::fs::write(tmp.path().join("big.ts"), &big).unwrap();
+        std::fs::write(tmp.path().join("small.ts"), "export const x = 1;\n").unwrap();
+
+        let mut config = Config::default();
+        config.max_lines = 3; // big.ts has 5 lines, small.ts has 1
+
+        let files = collect_files(tmp.path().to_str().unwrap(), &config).unwrap();
+        assert_eq!(files.len(), 1, "only small.ts should be collected");
+        assert!(files[0].to_string_lossy().contains("small.ts"));
+    }
+
+    #[test]
+    fn collect_files_max_lines_zero_disables_limit() {
+        let tmp = TempDir::new().unwrap();
+        let big: String = (0..200).map(|i| format!("line{}\n", i)).collect();
+        std::fs::write(tmp.path().join("big.ts"), &big).unwrap();
+
+        let mut config = Config::default();
+        config.max_lines = 0; // disabled
+
+        let files = collect_files(tmp.path().to_str().unwrap(), &config).unwrap();
+        assert_eq!(files.len(), 1);
     }
 }
