@@ -1,20 +1,21 @@
 # fmm — Frontmatter Matters
 
-**80-90% fewer file reads for LLM agents.**
+**Structural intelligence for codebases.**
 
 [![CI](https://github.com/srobinson/fmm/actions/workflows/ci.yml/badge.svg)](https://github.com/srobinson/fmm/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Languages](https://img.shields.io/badge/languages-17-informational.svg)](#supported-languages)
 
 ```bash
 npx frontmatter-matters init
 ```
 
-|                          | Without fmm                                 | With fmm                                         |
+|                          | Native tooling                              | fmm                                              |
 | ------------------------ | ------------------------------------------- | ------------------------------------------------ |
-| **How LLM navigates**    | grep → read entire file → summarize, repeat | Query SQLite index → open only needed files      |
-| **Tokens for 500 files** | ~50,000                                     | ~2,000                                           |
-| **Reduction**            | —                                           | **88-97%**                                       |
+| **Best at**              | Local truth: text search, call sites, variable definitions, exact in-file matches | Codebase shape: topology, exports, outlines, dependency graphs, blast radius |
+| **First question**       | "What is in this repo?" answered by `ls`, `grep`, and file reads | Query indexed structure before opening source |
+| **What you learn first** | Individual files, one at a time             | Directory shape, largest files, exports, and high-risk files |
+| **Reading pattern**      | Search text, then inspect files             | Start with structure, then open only the files that matter |
+| **Result**               | Precise local inspection                    | Faster orientation and targeted navigation       |
 
 ## What it does
 
@@ -25,7 +26,13 @@ src/auth/session.ts   ← 234 lines of source
 .fmm.db               ← single index for the entire project
 ```
 
-LLMs query the index first via MCP tools, then open source files only when they need to edit.
+fmm turns a repo into queryable structure: file topology, exports, imports, dependencies, LOC, and file outlines with line ranges.
+
+The main value is faster orientation. Agents can see what the codebase contains, where the intellectual weight lives, and which files have the biggest blast radius before they start opening source.
+
+fmm is not a replacement for `grep`, editor search, or reading source files. Native tools are still better for intra-file call sites, variable definitions, and exact text matches. fmm is the index you query first when the question is about codebase shape.
+
+LLMs query the index first via MCP tools, then open source files when they need source-level detail.
 
 ## Installation
 
@@ -49,7 +56,12 @@ fmm search --loc ">500"              # Find large files
 fmm search --imports react --json     # Structured output
 ```
 
-That's it. Your AI coding assistant now navigates via metadata instead of brute-force file reads.
+That's it. Your AI coding assistant can now start with structure instead of blind file-by-file exploration.
+
+Use native tooling alongside fmm:
+
+- Use `fmm` for orientation, symbol lookup, dependency analysis, outlines, and blast radius.
+- Use `rg`, editor search, or file reads for local pattern search, non-indexed variables, and intra-file call sites.
 
 ## Commands
 
@@ -59,9 +71,9 @@ That's it. Your AI coding assistant now navigates via metadata instead of brute-
 | `fmm generate [path]` | Index source files into `.fmm.db` (exports, imports, deps, LOC)   |
 | `fmm watch [path]`    | Watch source files and update the index on change                  |
 | `fmm validate [path]` | Check the index is current (CI-friendly, exit 1 if stale)          |
-| `fmm search`          | Query the index (O(1) export lookup, dependency graphs)            |
+| `fmm search`          | Query indexed structure: exports, imports, dependencies, LOC, and file-level matches |
 | `fmm glossary`        | Symbol-level impact analysis — who imports this export?            |
-| `fmm mcp`             | Start MCP server (9 tools for LLM navigation)                      |
+| `fmm mcp`             | Start MCP server (8 tools for LLM navigation)                      |
 | `fmm status`          | Show config and workspace stats                                    |
 | `fmm clean [path]`    | Clear the fmm index database                                       |
 
@@ -69,7 +81,7 @@ Run `fmm --help` for workflows and examples, or `fmm <command> --help` for detai
 
 ## MCP Tools
 
-fmm includes a built-in MCP server with 9 tools. Configure via `fmm init --mcp` or manually:
+fmm includes a built-in MCP server with 8 tools. Configure via `fmm init --mcp` or manually:
 
 ```json
 {
@@ -89,7 +101,7 @@ fmm includes a built-in MCP server with 9 tools. Configure via `fmm init --mcp` 
 | `fmm_dependency_graph` | Intra-project deps (`local_deps`), external packages, and downstream blast radius. `filter: "source"` excludes test files; `filter: "tests"` shows test coverage |
 | `fmm_file_outline`     | Table of contents with line ranges; `include_private: true` shows private/protected members |
 | `fmm_list_exports`     | Search exports by pattern — substring (case-insensitive) or regex (auto-detected: `^handle`, `Service$`, `^[A-Z]`) |
-| `fmm_search`           | Multi-criteria AND queries with relevance scoring                             |
+| `fmm_search`           | Indexed structural queries across exports, files, imports, and dependencies   |
 | `fmm_list_files`       | List all indexed files under a directory path                                 |
 | `fmm_glossary`         | Symbol-level blast radius — all definitions of X + files that import each one |
 
@@ -121,9 +133,17 @@ fmm includes a built-in MCP server with 9 tools. Configure via `fmm init --mcp` 
 3. **Generate** — upserts file data into `.fmm.db` (incremental, mtime-based)
 4. **Query** — MCP server or CLI loads the index from SQLite in milliseconds
 
-## Supported Languages
+## When to Use It
 
-TypeScript · JavaScript · Python · Rust · Go · Java · C · C++ · C# · Ruby · PHP · Swift · Kotlin · Dart · Elixir · Lua · Scala · Zig
+- Use `fmm` when you need repo-wide structure: "What lives here?", "Which files define this API?", "What depends on this module?", "Where is the blast radius?"
+- Use native tools when you need local truth: "Where is this variable assigned?", "What calls this helper inside the same file?", "Show every textual match in checker.ts."
+- Use both together: start with `fmm` to narrow the search space, then switch to `rg`, editor search, or direct file reads for detailed inspection.
+
+## Language Coverage
+
+TypeScript is the most mature and fully tested language in fmm today. Python and Rust have meaningful coverage but are less battle-tested. The remaining language parsers exist and may be useful, but they have not yet had the same level of validation.
+
+If you rely on one of the less-tested languages, contributions are welcome: parser fixes, edge-case fixtures, validation passes, and real-world case studies all help tighten support.
 
 | Language   | Extensions                                   | Custom Fields                                                             |
 | ---------- | -------------------------------------------- | ------------------------------------------------------------------------- |
@@ -146,7 +166,7 @@ TypeScript · JavaScript · Python · Rust · Go · Java · C · C++ · C# · Ru
 | Scala      | `.scala`, `.sc`                              | `case_classes`, `implicits`, `annotations`                                |
 | Zig        | `.zig`                                       | `comptime_blocks`, `test_blocks`                                          |
 
-All languages extract: **exports**, **imports**, **dependencies**, **LOC**.
+Across languages, fmm aims to extract: **exports**, **imports**, **dependencies**, and **LOC**. The depth and reliability of extraction currently varies by language maturity.
 
 ## Performance
 
@@ -164,7 +184,7 @@ All languages extract: **exports**, **imports**, **dependencies**, **LOC**.
     npx frontmatter-matters validate
 ```
 
-88-97% token reduction measured on real codebases.
+The practical win is better navigation: quicker orientation and more precise follow-up reads.
 
 ## Contributing
 
@@ -172,7 +192,7 @@ PRs welcome. Especially:
 
 - New language parsers
 - LLM integration examples
-- Token reduction benchmarks
+- Large-repo workflows and case studies
 
 ## License
 
