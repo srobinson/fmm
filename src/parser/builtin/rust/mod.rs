@@ -173,6 +173,7 @@ impl RustParser {
             exports.sort_by_key(|e| e.start_line);
         }
         let dependencies = self.extract_dependencies(source, root_node);
+        let (named_imports, namespace_imports) = self.extract_named_imports(source, root_node);
         let loc = source.lines().count();
 
         let unsafe_count = self.count_unsafe_blocks(source, root_node);
@@ -241,8 +242,9 @@ impl RustParser {
                 exports,
                 imports,
                 dependencies,
+                named_imports,
+                namespace_imports,
                 loc,
-                ..Default::default()
             },
             custom_fields,
         })
