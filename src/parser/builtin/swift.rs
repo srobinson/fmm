@@ -437,3 +437,13 @@ mod tests {
         assert_eq!(lines, sorted);
     }
 }
+
+impl crate::parser::LanguageDescriptor for SwiftParser {
+    fn language_id(&self) -> &'static str {
+        "swift"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["swift"]
+    }
+}

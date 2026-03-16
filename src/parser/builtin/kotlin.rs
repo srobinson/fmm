@@ -493,3 +493,13 @@ mod tests {
         assert_eq!(lines, sorted);
     }
 }
+
+impl crate::parser::LanguageDescriptor for KotlinParser {
+    fn language_id(&self) -> &'static str {
+        "kotlin"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["kt", "kts"]
+    }
+}

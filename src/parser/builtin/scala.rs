@@ -438,3 +438,13 @@ mod tests {
         assert!(result.metadata.imports.is_empty());
     }
 }
+
+impl crate::parser::LanguageDescriptor for ScalaParser {
+    fn language_id(&self) -> &'static str {
+        "scala"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["scala", "sc"]
+    }
+}

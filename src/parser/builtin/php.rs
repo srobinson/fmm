@@ -403,3 +403,13 @@ mod tests {
             .contains(&"Status".to_string()));
     }
 }
+
+impl crate::parser::LanguageDescriptor for PhpParser {
+    fn language_id(&self) -> &'static str {
+        "php"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["php"]
+    }
+}

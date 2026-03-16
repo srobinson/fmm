@@ -402,3 +402,13 @@ mod tests {
         assert_eq!(lines, sorted);
     }
 }
+
+impl crate::parser::LanguageDescriptor for DartParser {
+    fn language_id(&self) -> &'static str {
+        "dart"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["dart"]
+    }
+}

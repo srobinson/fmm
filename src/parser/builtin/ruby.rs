@@ -330,3 +330,13 @@ end
         assert!(result.metadata.imports.is_empty());
     }
 }
+
+impl crate::parser::LanguageDescriptor for RubyParser {
+    fn language_id(&self) -> &'static str {
+        "ruby"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["rb"]
+    }
+}

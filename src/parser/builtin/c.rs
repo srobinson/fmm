@@ -416,3 +416,13 @@ mod tests {
         assert!(result.metadata.imports.is_empty());
     }
 }
+
+impl crate::parser::LanguageDescriptor for CParser {
+    fn language_id(&self) -> &'static str {
+        "c"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["c", "h"]
+    }
+}

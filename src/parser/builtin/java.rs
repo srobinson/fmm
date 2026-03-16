@@ -406,3 +406,13 @@ public enum Status {
         assert!(result.metadata.imports.is_empty());
     }
 }
+
+impl crate::parser::LanguageDescriptor for JavaParser {
+    fn language_id(&self) -> &'static str {
+        "java"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["java"]
+    }
+}

@@ -348,3 +348,13 @@ class Container {
         assert!(result.metadata.imports.is_empty());
     }
 }
+
+impl crate::parser::LanguageDescriptor for CppParser {
+    fn language_id(&self) -> &'static str {
+        "cpp"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["cpp", "hpp", "cc", "hh", "cxx", "hxx"]
+    }
+}

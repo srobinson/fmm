@@ -271,3 +271,13 @@ mod tests {
         assert!(result.metadata.imports.is_empty());
     }
 }
+
+impl crate::parser::LanguageDescriptor for LuaParser {
+    fn language_id(&self) -> &'static str {
+        "lua"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["lua"]
+    }
+}

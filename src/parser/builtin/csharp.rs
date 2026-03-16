@@ -338,3 +338,13 @@ public class Config {
         assert!(result.metadata.imports.is_empty());
     }
 }
+
+impl crate::parser::LanguageDescriptor for CSharpParser {
+    fn language_id(&self) -> &'static str {
+        "csharp"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["cs"]
+    }
+}

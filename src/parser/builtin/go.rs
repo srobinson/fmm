@@ -507,3 +507,21 @@ import (
         assert_eq!(result, Some("github.com/example/myproject".to_string()));
     }
 }
+
+impl crate::parser::LanguageDescriptor for GoParser {
+    fn language_id(&self) -> &'static str {
+        "go"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["go"]
+    }
+
+    fn test_file_patterns(&self) -> crate::parser::LanguageTestPatterns {
+        crate::parser::LanguageTestPatterns {
+            filename_suffixes: &["_test.go"],
+            filename_prefixes: &[],
+            test_symbol_prefixes: &["Test"],
+        }
+    }
+}

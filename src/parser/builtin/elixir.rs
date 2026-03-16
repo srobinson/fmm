@@ -389,3 +389,13 @@ mod tests {
         assert_eq!(lines, sorted);
     }
 }
+
+impl crate::parser::LanguageDescriptor for ElixirParser {
+    fn language_id(&self) -> &'static str {
+        "elixir"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["ex", "exs"]
+    }
+}
