@@ -99,7 +99,8 @@ fn python_custom_fields_decorators() {
 #[test]
 fn python_no_custom_fields_when_no_decorators() {
     let mut parser = PythonParser::new().unwrap();
-    let source = "def foo():\n    pass\n";
+    // Use source with no functions and no decorators to get None custom_fields
+    let source = "BAR = 42\n";
     let result = parser.parse(source).unwrap();
     assert!(result.custom_fields.is_none());
 }
@@ -566,4 +567,61 @@ import os.path as osp
         "os.path aliased in namespace; got: {:?}",
         ns
     );
+}
+
+// --- ALP-1422: function_names custom field ---
+
+#[test]
+fn function_names_populated() {
+    let mut parser = PythonParser::new().unwrap();
+    let source = "def foo():\n    pass\n\ndef bar():\n    pass\n\nclass Baz:\n    pass\n";
+    let result = parser.parse(source).unwrap();
+    let cf = result.custom_fields.expect("custom_fields should be Some");
+    let fn_names = cf.get("function_names").expect("function_names key");
+    let names: Vec<&str> = fn_names
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"foo"), "foo missing: {names:?}");
+    assert!(names.contains(&"bar"), "bar missing: {names:?}");
+    assert!(
+        !names.contains(&"Baz"),
+        "class should not be in function_names: {names:?}"
+    );
+}
+
+#[test]
+fn function_names_excludes_private() {
+    let mut parser = PythonParser::new().unwrap();
+    let source = "def public():\n    pass\n\ndef _private():\n    pass\n";
+    let result = parser.parse(source).unwrap();
+    let cf = result.custom_fields.expect("custom_fields should be Some");
+    let fn_names = cf.get("function_names").expect("function_names key");
+    let names: Vec<&str> = fn_names
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"public"), "public missing: {names:?}");
+    assert!(
+        !names.contains(&"_private"),
+        "_private should be excluded: {names:?}"
+    );
+}
+
+#[test]
+fn function_names_empty_for_no_functions() {
+    let mut parser = PythonParser::new().unwrap();
+    let source = "class Foo:\n    pass\n\nBAR = 42\n";
+    let result = parser.parse(source).unwrap();
+    // custom_fields may be None or may not have function_names
+    let has_fn = result
+        .custom_fields
+        .as_ref()
+        .and_then(|cf| cf.get("function_names"))
+        .is_some();
+    assert!(!has_fn, "no functions should mean no function_names key");
 }

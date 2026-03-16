@@ -393,6 +393,27 @@ impl PythonParser {
         (named, namespace)
     }
 
+    /// Collect top-level function definition names for `function_index`.
+    ///
+    /// Returns names from `function_definition` nodes at module scope,
+    /// excluding private names (prefixed with `_`).
+    fn extract_function_names(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
+        let source_bytes = source.as_bytes();
+        let mut names = Vec::new();
+        let mut cursor = QueryCursor::new();
+        let mut iter = cursor.matches(&self.func_query, root_node, source_bytes);
+        while let Some(m) = iter.next() {
+            for capture in m.captures {
+                if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                    if !text.starts_with('_') {
+                        names.push(text.to_string());
+                    }
+                }
+            }
+        }
+        names
+    }
+
     fn extract_dependencies(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
         collect_matches(&self.relative_import_query, root_node, source.as_bytes())
             .into_iter()
@@ -438,19 +459,34 @@ impl Parser for PythonParser {
         exports.sort_by_key(|e| e.start_line);
 
         let decorators = self.extract_decorators(source, root_node);
-        let custom_fields = if decorators.is_empty() {
+        let function_names = self.extract_function_names(source, root_node);
+        let has_custom = !decorators.is_empty() || !function_names.is_empty();
+        let custom_fields = if !has_custom {
             None
         } else {
             let mut fields = HashMap::new();
-            fields.insert(
-                "decorators".to_string(),
-                serde_json::Value::Array(
-                    decorators
-                        .into_iter()
-                        .map(serde_json::Value::String)
-                        .collect(),
-                ),
-            );
+            if !decorators.is_empty() {
+                fields.insert(
+                    "decorators".to_string(),
+                    serde_json::Value::Array(
+                        decorators
+                            .into_iter()
+                            .map(serde_json::Value::String)
+                            .collect(),
+                    ),
+                );
+            }
+            if !function_names.is_empty() {
+                fields.insert(
+                    "function_names".to_string(),
+                    serde_json::Value::Array(
+                        function_names
+                            .into_iter()
+                            .map(serde_json::Value::String)
+                            .collect(),
+                    ),
+                );
+            }
             Some(fields)
         };
 
