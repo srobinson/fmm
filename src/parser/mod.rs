@@ -602,4 +602,79 @@ mod tests {
             registry.descriptors().len()
         );
     }
+
+    /// Guard: every parser factory extension must have a corresponding descriptor.
+    ///
+    /// If this test fails, a parser was registered via `register()` without a
+    /// matching `register_descriptor_ref()` call. Use the `register_language!`
+    /// macro to ensure both are always paired.
+    #[test]
+    fn all_parsers_have_descriptors() {
+        let registry = ParserRegistry::with_builtins();
+        let descriptor_exts: HashSet<&str> = registry
+            .descriptors()
+            .iter()
+            .flat_map(|d| d.extensions.iter().copied())
+            .collect();
+
+        for ext in registry.extensions() {
+            assert!(
+                descriptor_exts.contains(ext),
+                "Extension '{ext}' has a parser factory but no descriptor. \
+                 Use register_language!() to register both together."
+            );
+        }
+    }
+
+    /// Guard: descriptor extensions and parser factory extensions must be identical.
+    ///
+    /// Catches stale descriptors that reference extensions removed from factory
+    /// registration, or typos in descriptor extension lists.
+    #[test]
+    fn descriptor_extensions_match_parser_extensions() {
+        let registry = ParserRegistry::with_builtins();
+        let factory_exts: HashSet<&str> = registry.extensions().into_iter().collect();
+        let descriptor_exts: HashSet<&str> = registry
+            .descriptors()
+            .iter()
+            .flat_map(|d| d.extensions.iter().copied())
+            .collect();
+
+        for ext in &descriptor_exts {
+            assert!(
+                factory_exts.contains(ext),
+                "Descriptor declares extension '{ext}' but no parser factory is registered for it."
+            );
+        }
+
+        for ext in &factory_exts {
+            assert!(
+                descriptor_exts.contains(ext),
+                "Factory registered extension '{ext}' but no descriptor declares it."
+            );
+        }
+
+        assert_eq!(
+            factory_exts, descriptor_exts,
+            "Factory extensions and descriptor extensions must be identical sets."
+        );
+    }
+
+    /// Guard: the hardcoded `default_languages()` in config must stay in sync
+    /// with the extensions reported by all registered builtin parsers.
+    ///
+    /// Cross-module verification; config/mod.rs has the canonical version but
+    /// this test provides a safety net at the parser layer.
+    #[test]
+    fn default_languages_matches_registry() {
+        let registry = ParserRegistry::with_builtins();
+        let from_registry: std::collections::BTreeSet<String> =
+            registry.source_extensions().iter().cloned().collect();
+        let config = crate::config::Config::default();
+
+        assert_eq!(
+            from_registry, config.languages,
+            "ParserRegistry source_extensions() is out of sync with Config::default().languages"
+        );
+    }
 }
