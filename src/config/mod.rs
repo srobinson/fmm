@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::Path;
 
+use crate::parser::ParserRegistry;
+
 /// Patterns used to classify test vs. source files.
 ///
 /// A file is classified as a test if its path contains any `path_contains`
@@ -56,6 +58,18 @@ impl Default for Config {
 }
 
 impl Config {
+    /// Construct a default `Config` whose `languages` are derived from the registry.
+    ///
+    /// Preferred over `Config::default()` when a `ParserRegistry` is already
+    /// available: the language set is always in sync with registered parsers
+    /// without touching the hardcoded `default_languages()` fallback.
+    pub fn default_with_registry(registry: &ParserRegistry) -> Self {
+        Self {
+            languages: registry.source_extensions().iter().cloned().collect(),
+            ..Default::default()
+        }
+    }
+
     pub fn load() -> Result<Self> {
         Self::load_from_dir(Path::new("."))
     }
@@ -148,8 +162,34 @@ fn default_languages() -> BTreeSet<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser::ParserRegistry;
     use std::fs;
     use tempfile::TempDir;
+
+    /// Guard: the hardcoded `default_languages()` fallback must stay in sync with
+    /// the extensions reported by all registered builtin parsers.
+    ///
+    /// If this test fails, update `default_languages()` to match the registry.
+    #[test]
+    fn default_languages_matches_registry() {
+        let registry = ParserRegistry::with_builtins();
+        let from_registry: BTreeSet<String> =
+            registry.source_extensions().iter().cloned().collect();
+        let from_hardcoded = default_languages();
+        assert_eq!(
+            from_registry, from_hardcoded,
+            "default_languages() is out of sync with ParserRegistry — update one or the other"
+        );
+    }
+
+    /// Registry-derived config contains exactly the registered extensions.
+    #[test]
+    fn default_with_registry_uses_registry_extensions() {
+        let registry = ParserRegistry::with_builtins();
+        let config = Config::default_with_registry(&registry);
+        let expected: BTreeSet<String> = registry.source_extensions().iter().cloned().collect();
+        assert_eq!(config.languages, expected);
+    }
 
     #[test]
     fn default_config_has_expected_languages() {

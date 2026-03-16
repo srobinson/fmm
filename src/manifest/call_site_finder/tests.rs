@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
     use crate::manifest::call_site_finder::{
-        find_bare_function_callers, find_call_sites, is_valid_identifier, BareCallSiteResult,
+        find_bare_function_callers, find_call_sites, is_valid_identifier,
     };
     use std::io::Write;
     use tempfile::TempDir;
