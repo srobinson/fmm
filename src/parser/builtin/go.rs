@@ -224,6 +224,18 @@ impl Parser for GoParser {
     }
 }
 
+pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
+    crate::parser::RegisteredLanguage {
+        language_id: "go",
+        extensions: &["go"],
+        reexport_filenames: &[],
+        test_patterns: crate::parser::LanguageTestPatterns {
+            filename_suffixes: &["_test.go"],
+            filename_prefixes: &[],
+            test_symbol_prefixes: &["Test"],
+        },
+    };
+
 #[cfg(test)]
 mod tests {
     use super::*;

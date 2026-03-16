@@ -1,6 +1,8 @@
 use serde::Serialize;
 
-use super::dependency_matcher::{dep_matches, dotted_dep_matches, python_dep_matches};
+use super::dependency_matcher::{
+    builtin_source_extensions, dep_matches, dotted_dep_matches, python_dep_matches,
+};
 use super::{ExportLines, Manifest};
 
 /// Controls which exports are included when building the glossary.
@@ -47,20 +49,27 @@ pub struct GlossarySource {
     pub reexport_files: Vec<String>,
 }
 
+/// Return a reference to the lazily-initialised `ParserRegistry` used for
+/// test file and test symbol detection.
+fn builtin_registry() -> &'static crate::parser::ParserRegistry {
+    use std::sync::OnceLock;
+    static REGISTRY: OnceLock<crate::parser::ParserRegistry> = OnceLock::new();
+    REGISTRY.get_or_init(crate::parser::ParserRegistry::with_builtins)
+}
+
 /// Returns true if a file path is a test file (by path conventions only, ignoring symbol name).
 ///
-/// - File is under a test directory: `tests/`, `test/`, `__tests__/`
-/// - File matches test file patterns: `_test.go`, `test_*.py`, `*_test.py`
+/// Two layers of detection:
+/// 1. **Language-specific**: delegates to `ParserRegistry::is_language_test_file()`,
+///    which checks filename suffixes/prefixes declared by each language descriptor.
+///    Adding `test_file_patterns()` to a new parser automatically extends this.
+/// 2. **Directory-based** (language-neutral): `tests/`, `test/`, `__tests__/` path segments.
 fn is_test_file(file: &str) -> bool {
-    let filename = file.rsplit('/').next().unwrap_or(file);
-    if filename.ends_with("_test.go") {
+    // Language-specific filename patterns (from registry descriptors)
+    if builtin_registry().is_language_test_file(file) {
         return true;
     }
-    if filename.ends_with(".py")
-        && (filename.starts_with("test_") || filename.ends_with("_test.py"))
-    {
-        return true;
-    }
+    // Language-neutral directory conventions
     file.starts_with("tests/")
         || file.starts_with("test/")
         || file.starts_with("__tests__/")
@@ -71,12 +80,17 @@ fn is_test_file(file: &str) -> bool {
 
 /// Returns true if an export should be classified as a test artifact.
 ///
-/// Checks symbol name conventions and file path conventions:
-/// - Symbol starts with `test_` (Python) or `Test` (Go)
-/// - File path matches test file/directory conventions (see `is_test_file`)
+/// Checks symbol name conventions (from registry `test_symbol_prefixes`)
+/// and file path conventions (see `is_test_file`).
 fn is_test_export(name: &str, file: &str) -> bool {
-    if name.starts_with("test_") || name.starts_with("Test") {
-        return true;
+    // Check symbol name against all registered test symbol prefixes
+    let registry = builtin_registry();
+    for desc in registry.descriptors() {
+        for prefix in desc.test_patterns.test_symbol_prefixes {
+            if name.starts_with(prefix) {
+                return true;
+            }
+        }
     }
     is_test_file(file)
 }
@@ -207,8 +221,10 @@ impl Manifest {
                 if path == target_file {
                     return false;
                 }
+                let exts = builtin_source_extensions();
                 entry.dependencies.iter().any(|d| {
-                    dep_matches(d, target_file, path) || python_dep_matches(d, target_file, path)
+                    dep_matches(d, target_file, path, exts)
+                        || python_dep_matches(d, target_file, path)
                 }) || entry
                     .imports
                     .iter()

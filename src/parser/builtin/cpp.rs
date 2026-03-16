@@ -225,6 +225,18 @@ impl Parser for CppParser {
     }
 }
 
+pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
+    crate::parser::RegisteredLanguage {
+        language_id: "cpp",
+        extensions: &["cpp", "hpp", "cc", "hh", "cxx", "hxx"],
+        reexport_filenames: &[],
+        test_patterns: crate::parser::LanguageTestPatterns {
+            filename_suffixes: &[],
+            filename_prefixes: &[],
+            test_symbol_prefixes: &[],
+        },
+    };
+
 #[cfg(test)]
 mod tests {
     use super::*;
