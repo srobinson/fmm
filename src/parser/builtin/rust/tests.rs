@@ -151,7 +151,8 @@ fn rust_custom_fields_derives() {
 #[test]
 fn rust_no_custom_fields_when_clean() {
     let mut parser = RustParser::new().unwrap();
-    let source = "pub fn hello() {}";
+    // No pub functions, no unsafe, no derives, no traits, no lifetimes, no async
+    let source = "pub struct Empty {}";
     let result = parser.parse(source).unwrap();
     assert!(result.custom_fields.is_none());
 }
@@ -887,4 +888,60 @@ use anyhow::Result as AnyhowResult;
         ni.get("anyhow").map(Vec::as_slice),
         Some(vec!["Result".to_string()].as_slice()),
     );
+}
+
+// --- ALP-1423: function_names custom field ---
+
+#[test]
+fn function_names_populated() {
+    let mut parser = RustParser::new().unwrap();
+    let source = "pub fn foo() {}\npub fn bar() {}\npub struct Baz {}\n";
+    let result = parser.parse(source).unwrap();
+    let cf = result.custom_fields.expect("custom_fields should be Some");
+    let fn_names = cf.get("function_names").expect("function_names key");
+    let names: Vec<&str> = fn_names
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"foo"), "foo missing: {names:?}");
+    assert!(names.contains(&"bar"), "bar missing: {names:?}");
+    assert!(
+        !names.contains(&"Baz"),
+        "struct should not be in function_names: {names:?}"
+    );
+}
+
+#[test]
+fn function_names_excludes_private() {
+    let mut parser = RustParser::new().unwrap();
+    let source = "pub fn exported() {}\nfn private_helper() {}\n";
+    let result = parser.parse(source).unwrap();
+    let cf = result.custom_fields.expect("custom_fields should be Some");
+    let fn_names = cf.get("function_names").expect("function_names key");
+    let names: Vec<&str> = fn_names
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"exported"), "exported missing: {names:?}");
+    assert!(
+        !names.contains(&"private_helper"),
+        "private should be excluded: {names:?}"
+    );
+}
+
+#[test]
+fn function_names_empty_for_no_functions() {
+    let mut parser = RustParser::new().unwrap();
+    let source = "pub struct Foo {}\npub enum Bar { A, B }\n";
+    let result = parser.parse(source).unwrap();
+    let has_fn = result
+        .custom_fields
+        .as_ref()
+        .and_then(|cf| cf.get("function_names"))
+        .is_some();
+    assert!(!has_fn, "no functions should mean no function_names key");
 }

@@ -176,6 +176,10 @@ impl RustParser {
         let (named_imports, namespace_imports) = self.extract_named_imports(source, root_node);
         let loc = source.lines().count();
 
+        // Collect pub function names (top-level only, not impl methods).
+        // Uses the first export query which matches source_file > function_item.
+        let function_names = self.extract_function_names(source, root_node);
+
         let unsafe_count = self.count_unsafe_blocks(source, root_node);
         let derives = self.extract_derives(source, root_node);
         let trait_impls = self.extract_trait_impls(source, root_node);
@@ -186,7 +190,8 @@ impl RustParser {
             || !derives.is_empty()
             || !trait_impls.is_empty()
             || !lifetimes.is_empty()
-            || async_count > 0;
+            || async_count > 0
+            || !function_names.is_empty();
 
         let custom_fields = if !has_custom {
             None
@@ -232,6 +237,17 @@ impl RustParser {
                 fields.insert(
                     "async_functions".to_string(),
                     serde_json::Value::Number(async_count.into()),
+                );
+            }
+            if !function_names.is_empty() {
+                fields.insert(
+                    "function_names".to_string(),
+                    serde_json::Value::Array(
+                        function_names
+                            .into_iter()
+                            .map(serde_json::Value::String)
+                            .collect(),
+                    ),
                 );
             }
             Some(fields)

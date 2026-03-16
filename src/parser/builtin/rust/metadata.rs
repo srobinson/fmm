@@ -137,4 +137,36 @@ impl RustParser {
         derives.dedup();
         derives
     }
+
+    /// Extract pub function names at module scope for `function_index`.
+    ///
+    /// Uses the first export query which matches `source_file > function_item`
+    /// with a visibility_modifier. Returns function names only (not structs,
+    /// enums, traits, or impl methods).
+    pub(super) fn extract_function_names(
+        &self,
+        source: &str,
+        root_node: tree_sitter::Node,
+    ) -> Vec<String> {
+        use streaming_iterator::StreamingIterator;
+
+        let source_bytes = source.as_bytes();
+        let mut names = Vec::new();
+        let query = &self.export_queries[0]; // function_item query
+
+        let mut cursor = tree_sitter::QueryCursor::new();
+        let name_idx = query.capture_index_for_name("name").unwrap_or(u32::MAX);
+        let mut iter = cursor.matches(query, root_node, source_bytes);
+        while let Some(m) = iter.next() {
+            for cap in m.captures {
+                if cap.index == name_idx {
+                    if let Ok(text) = cap.node.utf8_text(source_bytes) {
+                        names.push(text.to_string());
+                    }
+                }
+            }
+        }
+
+        names
+    }
 }
