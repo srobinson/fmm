@@ -253,3 +253,146 @@ fn bare_fn_unrelated_import_from_same_module_is_excluded() {
     );
     assert!(ns.is_empty());
 }
+
+// --- ALP-1421: Rust bare function call-site tests ---
+
+/// Direct `use path::fn_name;` + `fn_name()` call -> DirectCaller.
+#[test]
+fn rs_bare_fn_direct_call_is_confirmed() {
+    let dir = TempDir::new().unwrap();
+    let caller = write_file(
+        &dir,
+        "caller.rs",
+        "use crate::scheduler::schedule_update;\nfn main() { schedule_update(); }\n",
+    );
+    let (confirmed, ns) =
+        find_bare_function_callers(dir.path(), "schedule_update", std::slice::from_ref(&caller));
+    assert!(
+        confirmed.contains(&caller),
+        "direct Rust caller should be confirmed"
+    );
+    assert!(ns.is_empty());
+}
+
+/// Import without call -> NotACaller.
+#[test]
+fn rs_bare_fn_import_without_call_is_excluded() {
+    let dir = TempDir::new().unwrap();
+    let importer = write_file(
+        &dir,
+        "importer.rs",
+        "use crate::scheduler::schedule_update;\nfn main() { let x = 42; }\n",
+    );
+    let (confirmed, ns) = find_bare_function_callers(
+        dir.path(),
+        "schedule_update",
+        std::slice::from_ref(&importer),
+    );
+    assert!(
+        !confirmed.contains(&importer),
+        "importer-without-call should be excluded"
+    );
+    assert!(ns.is_empty());
+}
+
+/// Glob import `use path::*` -> NamespaceCaller.
+#[test]
+fn rs_bare_fn_glob_import_becomes_namespace_caller() {
+    let dir = TempDir::new().unwrap();
+    let glob_user = write_file(
+        &dir,
+        "glob_user.rs",
+        "use crate::scheduler::*;\nfn main() { /* might call schedule_update */ }\n",
+    );
+    let (confirmed, ns) = find_bare_function_callers(
+        dir.path(),
+        "schedule_update",
+        std::slice::from_ref(&glob_user),
+    );
+    assert!(
+        !confirmed.contains(&glob_user),
+        "glob user should NOT be in confirmed"
+    );
+    assert!(
+        ns.iter().any(|(f, _)| f == &glob_user),
+        "glob user should be in namespace callers; got: {ns:?}"
+    );
+}
+
+/// Aliased import `use path::fn_name as alias;` + `alias()` -> DirectCaller.
+#[test]
+fn rs_bare_fn_aliased_import_is_resolved() {
+    let dir = TempDir::new().unwrap();
+    let aliased = write_file(
+        &dir,
+        "aliased.rs",
+        "use crate::scheduler::schedule_update as su;\nfn main() { su(); }\n",
+    );
+    let (confirmed, ns) = find_bare_function_callers(
+        dir.path(),
+        "schedule_update",
+        std::slice::from_ref(&aliased),
+    );
+    assert!(
+        confirmed.contains(&aliased),
+        "aliased Rust caller should be confirmed"
+    );
+    assert!(ns.is_empty());
+}
+
+/// Import in use_list: `use path::{fn_name, other}` + `fn_name()` -> DirectCaller.
+#[test]
+fn rs_bare_fn_grouped_import_call_is_confirmed() {
+    let dir = TempDir::new().unwrap();
+    let caller = write_file(
+        &dir,
+        "caller.rs",
+        "use crate::scheduler::{schedule_update, other_fn};\nfn main() { schedule_update(); }\n",
+    );
+    let (confirmed, ns) =
+        find_bare_function_callers(dir.path(), "schedule_update", std::slice::from_ref(&caller));
+    assert!(
+        confirmed.contains(&caller),
+        "grouped import + call should be confirmed"
+    );
+    assert!(ns.is_empty());
+}
+
+/// Same-module function call (no use statement) -> DirectCaller.
+#[test]
+fn rs_bare_fn_same_module_call_is_confirmed() {
+    let dir = TempDir::new().unwrap();
+    let caller = write_file(
+        &dir,
+        "lib.rs",
+        "fn schedule_update() {}\nfn main() { schedule_update(); }\n",
+    );
+    let (confirmed, ns) =
+        find_bare_function_callers(dir.path(), "schedule_update", std::slice::from_ref(&caller));
+    assert!(
+        confirmed.contains(&caller),
+        "same-module caller should be confirmed"
+    );
+    assert!(ns.is_empty());
+}
+
+/// File with no reference to fn_name at all -> NotACaller.
+#[test]
+fn rs_bare_fn_no_reference_is_excluded() {
+    let dir = TempDir::new().unwrap();
+    let unrelated = write_file(
+        &dir,
+        "unrelated.rs",
+        "use crate::other::other_fn;\nfn main() { other_fn(); }\n",
+    );
+    let (confirmed, ns) = find_bare_function_callers(
+        dir.path(),
+        "schedule_update",
+        std::slice::from_ref(&unrelated),
+    );
+    assert!(
+        !confirmed.contains(&unrelated),
+        "unrelated file should be excluded"
+    );
+    assert!(ns.is_empty());
+}
