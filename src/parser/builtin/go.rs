@@ -224,6 +224,36 @@ impl Parser for GoParser {
     }
 }
 
+pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
+    crate::parser::RegisteredLanguage {
+        language_id: "go",
+        extensions: &["go"],
+        reexport_filenames: &[],
+        test_patterns: crate::parser::LanguageTestPatterns {
+            filename_suffixes: &["_test.go"],
+            filename_prefixes: &[],
+            test_symbol_prefixes: &["Test"],
+        },
+    };
+
+impl crate::parser::LanguageDescriptor for GoParser {
+    fn language_id(&self) -> &'static str {
+        "go"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["go"]
+    }
+
+    fn test_file_patterns(&self) -> crate::parser::LanguageTestPatterns {
+        crate::parser::LanguageTestPatterns {
+            filename_suffixes: &["_test.go"],
+            filename_prefixes: &[],
+            test_symbol_prefixes: &["Test"],
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -505,23 +535,5 @@ import (
         let source_file = dir.path().join("main.go");
         let result = find_go_mod_module(&source_file);
         assert_eq!(result, Some("github.com/example/myproject".to_string()));
-    }
-}
-
-impl crate::parser::LanguageDescriptor for GoParser {
-    fn language_id(&self) -> &'static str {
-        "go"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["go"]
-    }
-
-    fn test_file_patterns(&self) -> crate::parser::LanguageTestPatterns {
-        crate::parser::LanguageTestPatterns {
-            filename_suffixes: &["_test.go"],
-            filename_prefixes: &[],
-            test_symbol_prefixes: &["Test"],
-        }
     }
 }

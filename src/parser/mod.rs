@@ -73,44 +73,35 @@ pub trait LanguageDescriptor {
 /// Register a language parser, its language-id mapping, and its descriptor in one atomic call.
 ///
 /// Guarantees that `register()`, `register_language_id()`, and `register_descriptor()` are
-/// always called together — it is impossible to add a language via this macro without also
+/// always called together. It is impossible to add a language via this macro without also
 /// capturing its descriptor.
+///
+/// The descriptor is a `const RegisteredLanguage` defined in each parser module, so
+/// registration never constructs a parser instance. Tree-sitter grammar init only
+/// happens when `get_parser()` is called at parse time.
 ///
 /// Usage:
 /// ```ignore
-/// register_language!(self, builtin::rust, RustParser, &["rs"], "rust");
+/// register_language!(self, builtin::rust, RustParser, DESCRIPTOR);
 /// ```
 macro_rules! register_language {
-    ($registry:expr, $module:path, $parser:ident, $extensions:expr, $lang_id:expr) => {{
+    ($registry:expr, $module:path, $parser:ident, $descriptor:ident) => {{
         use $module as _m;
-        $registry.register($extensions, || Ok(Box::new(_m::$parser::new()?)));
-        $registry.register_language_id($extensions, $lang_id);
-        // Construct a temporary instance to read static descriptor data.
-        // Parser construction is cheap (tree-sitter grammar init happens here anyway).
-        let _probe = _m::$parser::new().expect(concat!(
-            "Failed to construct ",
-            stringify!($parser),
-            " for descriptor registration"
-        ));
-        use crate::parser::LanguageDescriptor;
-        $registry.register_descriptor(crate::parser::RegisteredLanguage {
-            language_id: LanguageDescriptor::language_id(&_probe),
-            extensions: LanguageDescriptor::extensions(&_probe),
-            reexport_filenames: LanguageDescriptor::reexport_filenames(&_probe),
-            test_patterns: LanguageDescriptor::test_file_patterns(&_probe),
-        });
+        let desc = &_m::$descriptor;
+        $registry.register(desc.extensions, || Ok(Box::new(_m::$parser::new()?)));
+        $registry.register_language_id(desc.extensions, desc.language_id);
+        $registry.register_descriptor_ref(desc);
     }};
 }
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-/// Frozen snapshot of a [`LanguageDescriptor`], stored as owned data inside
-/// [`ParserRegistry`].
+/// Static snapshot of language metadata, stored inside [`ParserRegistry`].
 ///
-/// We do not store `dyn LanguageDescriptor` trait objects because descriptors
-/// contain only static data — constructing a temporary parser instance to read
-/// it is the simplest approach and happens once at startup.
+/// Each parser module defines a `pub(crate) const DESCRIPTOR: RegisteredLanguage`
+/// with all fields populated from static data. No parser instance is constructed
+/// during registration.
 #[derive(Debug)]
 pub struct RegisteredLanguage {
     /// Canonical language identifier (e.g. `"rust"`, `"python"`).
@@ -294,69 +285,41 @@ impl ParserRegistry {
     }
 
     /// Register all builtin parsers.
+    ///
+    /// Each language provides a `const DESCRIPTOR: RegisteredLanguage` with static
+    /// metadata. No parser instances are constructed during registration; tree-sitter
+    /// grammar init only happens lazily when `get_parser()` is called at parse time.
     fn register_builtin(&mut self) {
-        use crate::parser::LanguageDescriptor;
         // TypeScript / JavaScript (ALP-753: split TS and TSX into separate parsers)
-        register_language!(
-            self,
-            builtin::typescript,
-            TypeScriptParser,
-            &["ts", "js"],
-            "typescript"
-        );
+        register_language!(self, builtin::typescript, TypeScriptParser, TS_DESCRIPTOR);
 
         // TSX / JSX uses LANGUAGE_TSX grammar for correct angle-bracket parsing.
-        // Handled manually because the constructor is new_tsx(), not new().
-        self.register(&["tsx", "jsx"], || {
-            Ok(Box::new(builtin::typescript::TypeScriptParser::new_tsx()?))
-        });
-        self.register_language_id(&["tsx", "jsx"], "tsx");
-        // TSX descriptor: register manually, same as above.
+        // Handled separately because the constructor is new_tsx(), not new().
         {
-            let tsx_probe = builtin::typescript::TypeScriptParser::new_tsx()
-                .expect("Failed to construct TypeScriptParser (tsx) for descriptor");
-            self.register_descriptor(RegisteredLanguage {
-                language_id: LanguageDescriptor::language_id(&tsx_probe),
-                extensions: LanguageDescriptor::extensions(&tsx_probe),
-                reexport_filenames: LanguageDescriptor::reexport_filenames(&tsx_probe),
-                test_patterns: LanguageDescriptor::test_file_patterns(&tsx_probe),
+            let desc = &builtin::typescript::TSX_DESCRIPTOR;
+            self.register(desc.extensions, || {
+                Ok(Box::new(builtin::typescript::TypeScriptParser::new_tsx()?))
             });
+            self.register_language_id(desc.extensions, desc.language_id);
+            self.register_descriptor_ref(desc);
         }
 
-        register_language!(self, builtin::python, PythonParser, &["py"], "python");
-        register_language!(self, builtin::rust, RustParser, &["rs"], "rust");
-        register_language!(self, builtin::go, GoParser, &["go"], "go");
-        register_language!(self, builtin::java, JavaParser, &["java"], "java");
-        register_language!(
-            self,
-            builtin::cpp,
-            CppParser,
-            &["cpp", "hpp", "cc", "hh", "cxx", "hxx"],
-            "cpp"
-        );
-        register_language!(self, builtin::csharp, CSharpParser, &["cs"], "csharp");
-        register_language!(self, builtin::ruby, RubyParser, &["rb"], "ruby");
-        register_language!(self, builtin::php, PhpParser, &["php"], "php");
-        register_language!(self, builtin::c, CParser, &["c", "h"], "c");
-        register_language!(self, builtin::zig, ZigParser, &["zig"], "zig");
-        register_language!(self, builtin::lua, LuaParser, &["lua"], "lua");
-        register_language!(self, builtin::scala, ScalaParser, &["scala", "sc"], "scala");
-        register_language!(self, builtin::swift, SwiftParser, &["swift"], "swift");
-        register_language!(
-            self,
-            builtin::kotlin,
-            KotlinParser,
-            &["kt", "kts"],
-            "kotlin"
-        );
-        register_language!(self, builtin::dart, DartParser, &["dart"], "dart");
-        register_language!(
-            self,
-            builtin::elixir,
-            ElixirParser,
-            &["ex", "exs"],
-            "elixir"
-        );
+        register_language!(self, builtin::python, PythonParser, DESCRIPTOR);
+        register_language!(self, builtin::rust, RustParser, DESCRIPTOR);
+        register_language!(self, builtin::go, GoParser, DESCRIPTOR);
+        register_language!(self, builtin::java, JavaParser, DESCRIPTOR);
+        register_language!(self, builtin::cpp, CppParser, DESCRIPTOR);
+        register_language!(self, builtin::csharp, CSharpParser, DESCRIPTOR);
+        register_language!(self, builtin::ruby, RubyParser, DESCRIPTOR);
+        register_language!(self, builtin::php, PhpParser, DESCRIPTOR);
+        register_language!(self, builtin::c, CParser, DESCRIPTOR);
+        register_language!(self, builtin::zig, ZigParser, DESCRIPTOR);
+        register_language!(self, builtin::lua, LuaParser, DESCRIPTOR);
+        register_language!(self, builtin::scala, ScalaParser, DESCRIPTOR);
+        register_language!(self, builtin::swift, SwiftParser, DESCRIPTOR);
+        register_language!(self, builtin::kotlin, KotlinParser, DESCRIPTOR);
+        register_language!(self, builtin::dart, DartParser, DESCRIPTOR);
+        register_language!(self, builtin::elixir, ElixirParser, DESCRIPTOR);
     }
 
     fn register_language_id(&mut self, extensions: &[&str], language_id: &'static str) {
@@ -365,9 +328,21 @@ impl ParserRegistry {
         }
     }
 
-    /// Store a [`RegisteredLanguage`] descriptor captured at registration time.
-    fn register_descriptor(&mut self, desc: RegisteredLanguage) {
-        self.descriptors.push(desc);
+    /// Store a [`RegisteredLanguage`] descriptor from a const reference.
+    ///
+    /// Copies the static data from the const into the descriptor vec. No parser
+    /// instance is needed since all descriptor fields are `&'static`.
+    fn register_descriptor_ref(&mut self, desc: &RegisteredLanguage) {
+        self.descriptors.push(RegisteredLanguage {
+            language_id: desc.language_id,
+            extensions: desc.extensions,
+            reexport_filenames: desc.reexport_filenames,
+            test_patterns: LanguageTestPatterns {
+                filename_suffixes: desc.test_patterns.filename_suffixes,
+                filename_prefixes: desc.test_patterns.filename_prefixes,
+                test_symbol_prefixes: desc.test_patterns.test_symbol_prefixes,
+            },
+        });
     }
 
     /// Build derived O(1) lookup tables from the collected descriptors.
@@ -597,31 +572,69 @@ mod tests {
         let registry = ParserRegistry::with_builtins();
         let exts = registry.source_extensions();
         // Spot-check a selection across all language families
-        for ext in ["ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "cpp", "cs",
-                    "rb", "php", "c", "h", "zig", "lua", "scala", "swift", "kt", "dart", "ex"] {
-            assert!(exts.contains(&ext.to_string()), "source_extensions missing: .{ext}");
+        for ext in [
+            "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "cpp", "cs", "rb", "php", "c", "h",
+            "zig", "lua", "scala", "swift", "kt", "dart", "ex",
+        ] {
+            assert!(
+                exts.contains(&ext.to_string()),
+                "source_extensions missing: .{ext}"
+            );
         }
     }
 
     #[test]
     fn registry_is_reexport_file_detects_hubs() {
         let registry = ParserRegistry::with_builtins();
-        assert!(registry.is_reexport_file("__init__.py"), "__init__.py should be reexport hub");
-        assert!(registry.is_reexport_file("mod.rs"), "mod.rs should be reexport hub");
-        assert!(registry.is_reexport_file("index.ts"), "index.ts should be reexport hub");
-        assert!(registry.is_reexport_file("index.js"), "index.js should be reexport hub");
-        assert!(!registry.is_reexport_file("main.rs"), "main.rs should NOT be reexport hub");
-        assert!(!registry.is_reexport_file("lib.py"), "lib.py should NOT be reexport hub");
+        assert!(
+            registry.is_reexport_file("__init__.py"),
+            "__init__.py should be reexport hub"
+        );
+        assert!(
+            registry.is_reexport_file("mod.rs"),
+            "mod.rs should be reexport hub"
+        );
+        assert!(
+            registry.is_reexport_file("index.ts"),
+            "index.ts should be reexport hub"
+        );
+        assert!(
+            registry.is_reexport_file("index.js"),
+            "index.js should be reexport hub"
+        );
+        assert!(
+            !registry.is_reexport_file("main.rs"),
+            "main.rs should NOT be reexport hub"
+        );
+        assert!(
+            !registry.is_reexport_file("lib.py"),
+            "lib.py should NOT be reexport hub"
+        );
     }
 
     #[test]
     fn registry_is_language_test_file_detects_patterns() {
         let registry = ParserRegistry::with_builtins();
-        assert!(registry.is_language_test_file("src/foo_test.go"), "_test.go suffix");
-        assert!(registry.is_language_test_file("src/foo_test.rs"), "_test.rs suffix");
-        assert!(registry.is_language_test_file("src/test_foo.py"), "test_ prefix in .py");
-        assert!(!registry.is_language_test_file("src/main.rs"), "main.rs not a test");
-        assert!(!registry.is_language_test_file("src/server.go"), "server.go not a test");
+        assert!(
+            registry.is_language_test_file("src/foo_test.go"),
+            "_test.go suffix"
+        );
+        assert!(
+            registry.is_language_test_file("src/foo_test.rs"),
+            "_test.rs suffix"
+        );
+        assert!(
+            registry.is_language_test_file("src/test_foo.py"),
+            "test_ prefix in .py"
+        );
+        assert!(
+            !registry.is_language_test_file("src/main.rs"),
+            "main.rs not a test"
+        );
+        assert!(
+            !registry.is_language_test_file("src/server.go"),
+            "server.go not a test"
+        );
     }
 
     #[test]

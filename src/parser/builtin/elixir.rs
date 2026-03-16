@@ -307,6 +307,28 @@ impl Parser for ElixirParser {
     }
 }
 
+pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
+    crate::parser::RegisteredLanguage {
+        language_id: "elixir",
+        extensions: &["ex", "exs"],
+        reexport_filenames: &[],
+        test_patterns: crate::parser::LanguageTestPatterns {
+            filename_suffixes: &[],
+            filename_prefixes: &[],
+            test_symbol_prefixes: &[],
+        },
+    };
+
+impl crate::parser::LanguageDescriptor for ElixirParser {
+    fn language_id(&self) -> &'static str {
+        "elixir"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["ex", "exs"]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -387,15 +409,5 @@ mod tests {
         let mut sorted = lines.clone();
         sorted.sort();
         assert_eq!(lines, sorted);
-    }
-}
-
-impl crate::parser::LanguageDescriptor for ElixirParser {
-    fn language_id(&self) -> &'static str {
-        "elixir"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["ex", "exs"]
     }
 }

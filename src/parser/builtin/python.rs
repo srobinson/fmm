@@ -480,6 +480,40 @@ impl Parser for PythonParser {
     }
 }
 
+pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
+    crate::parser::RegisteredLanguage {
+        language_id: "python",
+        extensions: &["py"],
+        reexport_filenames: &["__init__.py"],
+        test_patterns: crate::parser::LanguageTestPatterns {
+            filename_suffixes: &["_test.py"],
+            filename_prefixes: &["test_"],
+            test_symbol_prefixes: &["test_"],
+        },
+    };
+
+impl crate::parser::LanguageDescriptor for PythonParser {
+    fn language_id(&self) -> &'static str {
+        "python"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["py"]
+    }
+
+    fn reexport_filenames(&self) -> &'static [&'static str] {
+        &["__init__.py"]
+    }
+
+    fn test_file_patterns(&self) -> crate::parser::LanguageTestPatterns {
+        crate::parser::LanguageTestPatterns {
+            filename_suffixes: &["_test.py"],
+            filename_prefixes: &["test_"],
+            test_symbol_prefixes: &["test_"],
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -894,27 +928,5 @@ def also_public():
             .metadata
             .export_names()
             .contains(&"also_public".to_string()));
-    }
-}
-
-impl crate::parser::LanguageDescriptor for PythonParser {
-    fn language_id(&self) -> &'static str {
-        "python"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["py"]
-    }
-
-    fn reexport_filenames(&self) -> &'static [&'static str] {
-        &["__init__.py"]
-    }
-
-    fn test_file_patterns(&self) -> crate::parser::LanguageTestPatterns {
-        crate::parser::LanguageTestPatterns {
-            filename_suffixes: &["_test.py"],
-            filename_prefixes: &["test_"],
-            test_symbol_prefixes: &["test_"],
-        }
     }
 }

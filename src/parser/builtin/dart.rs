@@ -288,6 +288,28 @@ impl Parser for DartParser {
     }
 }
 
+pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
+    crate::parser::RegisteredLanguage {
+        language_id: "dart",
+        extensions: &["dart"],
+        reexport_filenames: &[],
+        test_patterns: crate::parser::LanguageTestPatterns {
+            filename_suffixes: &[],
+            filename_prefixes: &[],
+            test_symbol_prefixes: &[],
+        },
+    };
+
+impl crate::parser::LanguageDescriptor for DartParser {
+    fn language_id(&self) -> &'static str {
+        "dart"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["dart"]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -400,15 +422,5 @@ mod tests {
         let mut sorted = lines.clone();
         sorted.sort();
         assert_eq!(lines, sorted);
-    }
-}
-
-impl crate::parser::LanguageDescriptor for DartParser {
-    fn language_id(&self) -> &'static str {
-        "dart"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["dart"]
     }
 }

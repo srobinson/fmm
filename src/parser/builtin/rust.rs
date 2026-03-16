@@ -974,6 +974,40 @@ impl Parser for RustParser {
     }
 }
 
+pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
+    crate::parser::RegisteredLanguage {
+        language_id: "rust",
+        extensions: &["rs"],
+        reexport_filenames: &["mod.rs"],
+        test_patterns: crate::parser::LanguageTestPatterns {
+            filename_suffixes: &["_test.rs"],
+            filename_prefixes: &[],
+            test_symbol_prefixes: &[],
+        },
+    };
+
+impl crate::parser::LanguageDescriptor for RustParser {
+    fn language_id(&self) -> &'static str {
+        "rust"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["rs"]
+    }
+
+    fn reexport_filenames(&self) -> &'static [&'static str] {
+        &["mod.rs"]
+    }
+
+    fn test_file_patterns(&self) -> crate::parser::LanguageTestPatterns {
+        crate::parser::LanguageTestPatterns {
+            filename_suffixes: &["_test.rs"],
+            filename_prefixes: &[],
+            test_symbol_prefixes: &[],
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1690,27 +1724,5 @@ pub fn my_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             "expected my_macro in {:?}",
             names
         );
-    }
-}
-
-impl crate::parser::LanguageDescriptor for RustParser {
-    fn language_id(&self) -> &'static str {
-        "rust"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["rs"]
-    }
-
-    fn reexport_filenames(&self) -> &'static [&'static str] {
-        &["mod.rs"]
-    }
-
-    fn test_file_patterns(&self) -> crate::parser::LanguageTestPatterns {
-        crate::parser::LanguageTestPatterns {
-            filename_suffixes: &["_test.rs"],
-            filename_prefixes: &[],
-            test_symbol_prefixes: &[],
-        }
     }
 }

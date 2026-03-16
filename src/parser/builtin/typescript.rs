@@ -900,6 +900,82 @@ impl TypeScriptParser {
     }
 }
 
+pub(crate) const TS_DESCRIPTOR: crate::parser::RegisteredLanguage =
+    crate::parser::RegisteredLanguage {
+        language_id: "typescript",
+        extensions: &["ts", "js"],
+        reexport_filenames: &["index.ts", "index.js", "index.tsx", "index.jsx"],
+        test_patterns: crate::parser::LanguageTestPatterns {
+            filename_suffixes: &[
+                ".spec.ts",
+                ".test.ts",
+                ".spec.js",
+                ".test.js",
+                ".spec.tsx",
+                ".test.tsx",
+            ],
+            filename_prefixes: &[],
+            test_symbol_prefixes: &[],
+        },
+    };
+
+pub(crate) const TSX_DESCRIPTOR: crate::parser::RegisteredLanguage =
+    crate::parser::RegisteredLanguage {
+        language_id: "tsx",
+        extensions: &["tsx", "jsx"],
+        reexport_filenames: &["index.ts", "index.js", "index.tsx", "index.jsx"],
+        test_patterns: crate::parser::LanguageTestPatterns {
+            filename_suffixes: &[
+                ".spec.ts",
+                ".test.ts",
+                ".spec.js",
+                ".test.js",
+                ".spec.tsx",
+                ".test.tsx",
+            ],
+            filename_prefixes: &[],
+            test_symbol_prefixes: &[],
+        },
+    };
+
+impl crate::parser::LanguageDescriptor for TypeScriptParser {
+    fn language_id(&self) -> &'static str {
+        if self.is_tsx {
+            "tsx"
+        } else {
+            "typescript"
+        }
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        if self.is_tsx {
+            &["tsx", "jsx"]
+        } else {
+            &["ts", "js"]
+        }
+    }
+
+    fn reexport_filenames(&self) -> &'static [&'static str] {
+        // Both TS and TSX variants share the same index.* re-export convention.
+        &["index.ts", "index.js", "index.tsx", "index.jsx"]
+    }
+
+    fn test_file_patterns(&self) -> crate::parser::LanguageTestPatterns {
+        crate::parser::LanguageTestPatterns {
+            filename_suffixes: &[
+                ".spec.ts",
+                ".test.ts",
+                ".spec.js",
+                ".test.js",
+                ".spec.tsx",
+                ".test.tsx",
+            ],
+            filename_prefixes: &[],
+            test_symbol_prefixes: &[],
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2007,29 +2083,5 @@ function internalHelper(): void {
             names.contains(&"state"),
             "state closure-state should be extracted"
         );
-    }
-}
-
-impl crate::parser::LanguageDescriptor for TypeScriptParser {
-    fn language_id(&self) -> &'static str {
-        if self.is_tsx { "tsx" } else { "typescript" }
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        if self.is_tsx { &["tsx", "jsx"] } else { &["ts", "js"] }
-    }
-
-    fn reexport_filenames(&self) -> &'static [&'static str] {
-        // Both TS and TSX variants share the same index.* re-export convention.
-        &["index.ts", "index.js", "index.tsx", "index.jsx"]
-    }
-
-    fn test_file_patterns(&self) -> crate::parser::LanguageTestPatterns {
-        crate::parser::LanguageTestPatterns {
-            filename_suffixes: &[".spec.ts", ".test.ts", ".spec.js", ".test.js",
-                                 ".spec.tsx", ".test.tsx"],
-            filename_prefixes: &[],
-            test_symbol_prefixes: &[],
-        }
     }
 }

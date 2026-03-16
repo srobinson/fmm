@@ -241,6 +241,28 @@ impl Parser for JavaParser {
     }
 }
 
+pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
+    crate::parser::RegisteredLanguage {
+        language_id: "java",
+        extensions: &["java"],
+        reexport_filenames: &[],
+        test_patterns: crate::parser::LanguageTestPatterns {
+            filename_suffixes: &[],
+            filename_prefixes: &[],
+            test_symbol_prefixes: &[],
+        },
+    };
+
+impl crate::parser::LanguageDescriptor for JavaParser {
+    fn language_id(&self) -> &'static str {
+        "java"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["java"]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -404,15 +426,5 @@ public enum Status {
         let result = parser.parse("").unwrap();
         assert!(result.metadata.exports.is_empty());
         assert!(result.metadata.imports.is_empty());
-    }
-}
-
-impl crate::parser::LanguageDescriptor for JavaParser {
-    fn language_id(&self) -> &'static str {
-        "java"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["java"]
     }
 }

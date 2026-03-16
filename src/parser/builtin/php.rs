@@ -311,6 +311,28 @@ impl Parser for PhpParser {
     }
 }
 
+pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
+    crate::parser::RegisteredLanguage {
+        language_id: "php",
+        extensions: &["php"],
+        reexport_filenames: &[],
+        test_patterns: crate::parser::LanguageTestPatterns {
+            filename_suffixes: &[],
+            filename_prefixes: &[],
+            test_symbol_prefixes: &[],
+        },
+    };
+
+impl crate::parser::LanguageDescriptor for PhpParser {
+    fn language_id(&self) -> &'static str {
+        "php"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["php"]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -401,15 +423,5 @@ mod tests {
             .metadata
             .export_names()
             .contains(&"Status".to_string()));
-    }
-}
-
-impl crate::parser::LanguageDescriptor for PhpParser {
-    fn language_id(&self) -> &'static str {
-        "php"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["php"]
     }
 }

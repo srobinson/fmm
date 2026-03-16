@@ -225,6 +225,28 @@ impl Parser for CppParser {
     }
 }
 
+pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
+    crate::parser::RegisteredLanguage {
+        language_id: "cpp",
+        extensions: &["cpp", "hpp", "cc", "hh", "cxx", "hxx"],
+        reexport_filenames: &[],
+        test_patterns: crate::parser::LanguageTestPatterns {
+            filename_suffixes: &[],
+            filename_prefixes: &[],
+            test_symbol_prefixes: &[],
+        },
+    };
+
+impl crate::parser::LanguageDescriptor for CppParser {
+    fn language_id(&self) -> &'static str {
+        "cpp"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["cpp", "hpp", "cc", "hh", "cxx", "hxx"]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -346,15 +368,5 @@ class Container {
         let result = parser.parse("").unwrap();
         assert!(result.metadata.exports.is_empty());
         assert!(result.metadata.imports.is_empty());
-    }
-}
-
-impl crate::parser::LanguageDescriptor for CppParser {
-    fn language_id(&self) -> &'static str {
-        "cpp"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["cpp", "hpp", "cc", "hh", "cxx", "hxx"]
     }
 }
