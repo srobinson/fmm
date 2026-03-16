@@ -277,8 +277,8 @@ fn py_non_exported_function() {
 #[test]
 fn top_level_unsupported_extension_returns_empty() {
     let tmp = tempfile::TempDir::new().unwrap();
-    std::fs::write(tmp.path().join("foo.rs"), "fn helper() {}").unwrap();
-    let result = extract_top_level_functions(tmp.path(), "foo.rs", &[]);
+    std::fs::write(tmp.path().join("foo.go"), "func helper() {}").unwrap();
+    let result = extract_top_level_functions(tmp.path(), "foo.go", &[]);
     assert!(result.is_empty());
 }
 
@@ -300,5 +300,175 @@ fn ts_class_with_only_hash_fields_no_keyword_private() {
         !names.contains(&"add"),
         "public method 'add' should not appear: {:?}",
         names
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Rust extraction tests (ALP-1420)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rs_top_level_private_fn_extracted() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let src = "pub fn exported() {}\nfn private_helper() {}\nfn another() {}\n";
+    std::fs::write(tmp.path().join("lib.rs"), src).unwrap();
+
+    let result = extract_top_level_functions(tmp.path(), "lib.rs", &["exported"]);
+    let names: Vec<&str> = result.iter().map(|f| f.name.as_str()).collect();
+    assert!(
+        names.contains(&"private_helper"),
+        "private_helper missing: {names:?}"
+    );
+    assert!(names.contains(&"another"), "another missing: {names:?}");
+    assert!(
+        !names.contains(&"exported"),
+        "exported should be excluded: {names:?}"
+    );
+}
+
+#[test]
+fn rs_top_level_pub_crate_excluded() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let src = "pub(crate) fn semi_public() {}\nfn private() {}\n";
+    std::fs::write(tmp.path().join("lib.rs"), src).unwrap();
+
+    let result = extract_top_level_functions(tmp.path(), "lib.rs", &[]);
+    let names: Vec<&str> = result.iter().map(|f| f.name.as_str()).collect();
+    assert!(
+        names.contains(&"private"),
+        "private should be extracted: {names:?}"
+    );
+    assert!(
+        !names.contains(&"semi_public"),
+        "pub(crate) should not be extracted: {names:?}"
+    );
+}
+
+#[test]
+fn rs_impl_private_methods_extracted() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let src = r#"
+pub struct Parser {}
+
+impl Parser {
+    pub fn parse(&self) {}
+    fn helper(&self) {}
+    fn validate(&self) -> bool { true }
+}
+"#;
+    std::fs::write(tmp.path().join("lib.rs"), src).unwrap();
+
+    let result = extract_private_members(tmp.path(), "lib.rs", &["Parser"]);
+    let members = result
+        .get("Parser")
+        .expect("Parser should have private members");
+    let names: Vec<&str> = members.iter().map(|m| m.name.as_str()).collect();
+    assert!(names.contains(&"helper"), "helper missing: {names:?}");
+    assert!(names.contains(&"validate"), "validate missing: {names:?}");
+    assert!(
+        !names.contains(&"parse"),
+        "pub parse should not appear: {names:?}"
+    );
+    assert!(members.iter().all(|m| m.is_method));
+}
+
+#[test]
+fn rs_impl_all_pub_returns_empty() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let src = "pub struct Foo {}\nimpl Foo {\n    pub fn bar(&self) {}\n}\n";
+    std::fs::write(tmp.path().join("lib.rs"), src).unwrap();
+
+    let result = extract_private_members(tmp.path(), "lib.rs", &["Foo"]);
+    assert!(
+        result.is_empty() || result.get("Foo").map(|v| v.is_empty()).unwrap_or(true),
+        "all-pub impl should return empty"
+    );
+}
+
+#[test]
+fn rs_impl_unknown_type_returns_empty() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let src = "pub struct Foo {}\nimpl Foo {\n    fn helper(&self) {}\n}\n";
+    std::fs::write(tmp.path().join("lib.rs"), src).unwrap();
+
+    let result = extract_private_members(tmp.path(), "lib.rs", &["Bar"]);
+    assert!(result.is_empty(), "unknown type should return empty");
+}
+
+#[test]
+fn rs_find_private_method_range() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let src =
+        "pub struct Svc {}\nimpl Svc {\n    fn internal(&self) {\n        // body\n    }\n}\n";
+    std::fs::write(tmp.path().join("lib.rs"), src).unwrap();
+
+    let range = find_private_method_range(tmp.path(), "lib.rs", "Svc", "internal");
+    assert!(range.is_some(), "should find internal method range");
+    let (start, end) = range.unwrap();
+    assert_eq!(start, 3, "should start on line 3");
+    assert_eq!(end, 5, "should end on line 5");
+}
+
+#[test]
+fn rs_find_top_level_function_range() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let src = "fn helper() {\n    // body\n}\n";
+    std::fs::write(tmp.path().join("lib.rs"), src).unwrap();
+
+    let range = find_top_level_function_range(tmp.path(), "lib.rs", "helper");
+    assert!(range.is_some(), "should find helper range");
+    let (start, end) = range.unwrap();
+    assert_eq!(start, 1, "should start on line 1");
+    assert_eq!(end, 3, "should end on line 3");
+}
+
+#[test]
+fn rs_trait_impl_private_methods() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let src = r#"
+pub struct MyType {}
+
+impl std::fmt::Display for MyType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "MyType")
+    }
+}
+"#;
+    std::fs::write(tmp.path().join("lib.rs"), src).unwrap();
+
+    let result = extract_private_members(tmp.path(), "lib.rs", &["MyType"]);
+    let members = result.get("MyType").expect("MyType should have members");
+    let names: Vec<&str> = members.iter().map(|m| m.name.as_str()).collect();
+    assert!(
+        names.contains(&"fmt"),
+        "trait impl method should be extracted as private: {names:?}"
+    );
+}
+
+#[test]
+fn rs_generic_impl_extracted() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let src = r#"
+pub struct Container<T> { items: Vec<T> }
+
+impl<T> Container<T> {
+    pub fn new() -> Self { Self { items: vec![] } }
+    fn internal_add(&mut self, item: T) { self.items.push(item); }
+}
+"#;
+    std::fs::write(tmp.path().join("lib.rs"), src).unwrap();
+
+    let result = extract_private_members(tmp.path(), "lib.rs", &["Container"]);
+    let members = result
+        .get("Container")
+        .expect("Container should have members");
+    let names: Vec<&str> = members.iter().map(|m| m.name.as_str()).collect();
+    assert!(
+        names.contains(&"internal_add"),
+        "generic impl private method should be extracted: {names:?}"
+    );
+    assert!(
+        !names.contains(&"new"),
+        "pub method should not appear: {names:?}"
     );
 }

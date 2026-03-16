@@ -9,6 +9,7 @@
 //! in a per-language file and register it in `extractors()`.
 
 mod python;
+mod rust;
 mod typescript;
 
 #[cfg(test)]
@@ -80,6 +81,7 @@ fn extractors() -> Vec<Box<dyn PrivateMemberExtractor>> {
     vec![
         Box::new(typescript::TsPrivateMemberExtractor),
         Box::new(python::PyPrivateMemberExtractor),
+        Box::new(rust::RsPrivateMemberExtractor),
     ]
 }
 
