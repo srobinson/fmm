@@ -2,14 +2,33 @@
 
 use crate::manifest::Manifest;
 
+/// Return a reference to the lazily-initialised set of reexport hub filenames
+/// from the builtin `ParserRegistry`.
+///
+/// Initialised once on first call; subsequent calls are lock-free reads.
+fn builtin_reexport_filenames() -> &'static std::collections::HashSet<String> {
+    use std::collections::HashSet;
+    use std::sync::OnceLock;
+    static FILENAMES: OnceLock<HashSet<String>> = OnceLock::new();
+    FILENAMES.get_or_init(|| {
+        let registry = crate::parser::ParserRegistry::with_builtins();
+        registry
+            .descriptors()
+            .iter()
+            .flat_map(|d| d.reexport_filenames.iter().map(|s| (*s).to_string()))
+            .collect()
+    })
+}
+
 /// Return true if a file path is a conventional re-export hub (index/init file).
 /// These files aggregate symbols from sub-modules and are not the definition site.
+///
+/// Checks against all `reexport_filenames` declared by registered language
+/// descriptors. Adding a new language with reexport conventions automatically
+/// extends this check.
 pub(crate) fn is_reexport_file(file_path: &str) -> bool {
     let filename = file_path.rsplit('/').next().unwrap_or(file_path);
-    matches!(
-        filename,
-        "__init__.py" | "index.ts" | "index.tsx" | "index.js" | "index.jsx" | "mod.rs"
-    )
+    builtin_reexport_filenames().contains(filename)
 }
 
 /// Given that `symbol` was found in a re-export hub, search the manifest for a
