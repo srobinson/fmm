@@ -280,6 +280,119 @@ impl PythonParser {
         imports
     }
 
+    /// Extract named imports and namespace imports from Python import statements.
+    ///
+    /// Returns `(named_imports, namespace_imports)`:
+    /// - `from X import A, B` -> `named_imports["X"] = ["A", "B"]`
+    /// - `from X import *` -> `namespace_imports.push("X")`
+    /// - `import module` -> `namespace_imports.push("module")`
+    /// - `from .pkg import A` -> `named_imports[".pkg"] = ["A"]` (raw dot notation)
+    fn extract_named_imports(
+        &self,
+        source: &str,
+        root_node: tree_sitter::Node,
+    ) -> (HashMap<String, Vec<String>>, Vec<String>) {
+        let source_bytes = source.as_bytes();
+        let mut named: HashMap<String, Vec<String>> = HashMap::new();
+        let mut namespace: Vec<String> = Vec::new();
+        let mut namespace_seen: HashSet<String> = HashSet::new();
+
+        let mut cursor = root_node.walk();
+        for child in root_node.children(&mut cursor) {
+            match child.kind() {
+                "import_from_statement" => {
+                    // Extract module source: dotted_name or relative_import
+                    let module_name = child
+                        .child_by_field_name("module_name")
+                        .and_then(|n| n.utf8_text(source_bytes).ok())
+                        .map(|s| s.to_string());
+                    let Some(module) = module_name else {
+                        continue;
+                    };
+
+                    // Check for wildcard: `from X import *`
+                    let mut wc = child.walk();
+                    let has_wildcard = child
+                        .children(&mut wc)
+                        .any(|c| c.kind() == "wildcard_import");
+
+                    if has_wildcard {
+                        if namespace_seen.insert(module.clone()) {
+                            namespace.push(module);
+                        }
+                        continue;
+                    }
+
+                    // Collect imported names from `name` fields and aliased_import nodes
+                    let mut names: Vec<String> = Vec::new();
+                    let mut inner = child.walk();
+                    for c in child.children(&mut inner) {
+                        match c.kind() {
+                            "dotted_name" | "identifier" => {
+                                // Skip the module_name node itself
+                                if child.child_by_field_name("module_name") == Some(c) {
+                                    continue;
+                                }
+                                // Check parent field: "name" fields are imported symbols
+                                if let Ok(text) = c.utf8_text(source_bytes) {
+                                    names.push(text.to_string());
+                                }
+                            }
+                            "aliased_import" => {
+                                // `A as B` -> store the original name A
+                                if let Some(name_node) = c.child_by_field_name("name") {
+                                    if let Ok(text) = name_node.utf8_text(source_bytes) {
+                                        names.push(text.to_string());
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    if !names.is_empty() {
+                        named.entry(module).or_default().extend(names);
+                    }
+                }
+                "import_statement" => {
+                    // `import module` or `import module as alias`
+                    let mut inner = child.walk();
+                    for c in child.children(&mut inner) {
+                        match c.kind() {
+                            "dotted_name" => {
+                                if let Ok(text) = c.utf8_text(source_bytes) {
+                                    if namespace_seen.insert(text.to_string()) {
+                                        namespace.push(text.to_string());
+                                    }
+                                }
+                            }
+                            "aliased_import" => {
+                                if let Some(name_node) = c.child_by_field_name("name") {
+                                    if let Ok(text) = name_node.utf8_text(source_bytes) {
+                                        if namespace_seen.insert(text.to_string()) {
+                                            namespace.push(text.to_string());
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Deduplicate named import values per source
+        for names in named.values_mut() {
+            names.sort();
+            names.dedup();
+        }
+        namespace.sort();
+
+        (named, namespace)
+    }
+
     fn extract_dependencies(&self, source: &str, root_node: tree_sitter::Node) -> Vec<String> {
         collect_matches(&self.relative_import_query, root_node, source.as_bytes())
             .into_iter()
@@ -311,6 +424,7 @@ impl Parser for PythonParser {
         let mut exports = self.extract_exports(source, root_node);
         let imports = self.extract_imports(source, root_node);
         let dependencies = self.extract_dependencies(source, root_node);
+        let (named_imports, namespace_imports) = self.extract_named_imports(source, root_node);
         let loc = source.lines().count();
 
         // ALP-769: extract public methods from exported classes
@@ -346,7 +460,8 @@ impl Parser for PythonParser {
                 imports,
                 dependencies,
                 loc,
-                ..Default::default()
+                named_imports,
+                namespace_imports,
             },
             custom_fields,
         })
