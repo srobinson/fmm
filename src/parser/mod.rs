@@ -2,6 +2,74 @@ pub mod builtin;
 
 use anyhow::Result;
 
+/// Language-specific test file naming conventions.
+///
+/// These supplement the configurable `test_patterns` in `.fmmrc.toml`.
+/// Language parsers provide these patterns so downstream subsystems (glossary,
+/// file listing) can classify test files without knowing each language's
+/// conventions.
+#[derive(Debug, Clone, Default)]
+pub struct LanguageTestPatterns {
+    /// Filename suffixes that indicate a test file (e.g. `"_test.go"`).
+    pub filename_suffixes: &'static [&'static str],
+    /// Filename prefixes that indicate a test file (e.g. `"test_"`).
+    pub filename_prefixes: &'static [&'static str],
+    /// Symbol name prefixes that indicate a test export (e.g. `"test_"`, `"Test"`).
+    pub test_symbol_prefixes: &'static [&'static str],
+}
+
+/// Static metadata about a language that enables downstream subsystems
+/// (config, dependency resolution, glossary, call-site analysis) to handle
+/// the language without hardcoded match arms.
+///
+/// Every `Parser` implementation should also implement `LanguageDescriptor`.
+/// The descriptor is registered alongside the parser factory in `ParserRegistry`
+/// and queried at runtime by subsystems that currently use hardcoded extension
+/// lists.
+///
+/// # Examples
+///
+/// ```ignore
+/// impl LanguageDescriptor for PythonParser {
+///     fn language_id(&self) -> &'static str { "python" }
+///     fn extensions(&self) -> &'static [&'static str] { &["py"] }
+///     fn reexport_filenames(&self) -> &'static [&'static str] { &["__init__.py"] }
+///     fn test_file_patterns(&self) -> LanguageTestPatterns {
+///         LanguageTestPatterns {
+///             filename_suffixes: &["_test.py"],
+///             filename_prefixes: &["test_"],
+///             test_symbol_prefixes: &["test_"],
+///         }
+///     }
+/// }
+/// ```
+pub trait LanguageDescriptor {
+    /// Canonical language identifier (e.g. `"rust"`, `"python"`, `"typescript"`).
+    ///
+    /// Must match the value returned by [`Parser::language_id`].
+    fn language_id(&self) -> &'static str;
+
+    /// All file extensions this language handles, without the leading dot.
+    ///
+    /// e.g. `&["ts", "js"]` for TypeScript.
+    fn extensions(&self) -> &'static [&'static str];
+
+    /// Filenames that serve as re-export hubs for this language.
+    ///
+    /// e.g. `&["__init__.py"]` for Python, `&["mod.rs"]` for Rust.
+    /// Returns an empty slice if the language has no re-export hub convention.
+    fn reexport_filenames(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    /// Test file detection patterns specific to this language.
+    ///
+    /// These supplement the configurable `test_patterns` in `.fmmrc.toml`.
+    fn test_file_patterns(&self) -> LanguageTestPatterns {
+        LanguageTestPatterns::default()
+    }
+}
+
 /// Register a language parser and its language-id mapping in one atomic call.
 ///
 /// Guarantees that `register()` and `register_language_id()` are always paired —
