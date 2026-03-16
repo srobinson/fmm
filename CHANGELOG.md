@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.41](https://github.com/srobinson/fmm/compare/v0.1.40...v0.1.41) (2026-03-16)
+
+
+### Features
+
+* multi-language architecture with LanguageDescriptor, per-lang modules, and named imports ([#110](https://github.com/srobinson/fmm/issues/110)) ([b15d1fb](https://github.com/srobinson/fmm/commit/b15d1fb537e47ffa55f58cd06eacb09ff1ef7a81))
+
 ## [0.1.40](https://github.com/srobinson/fmm/compare/v0.1.39...v0.1.40) (2026-03-08)
 
 
