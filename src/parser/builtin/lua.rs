@@ -230,16 +230,6 @@ pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
         },
     };
 
-impl crate::parser::LanguageDescriptor for LuaParser {
-    fn language_id(&self) -> &'static str {
-        "lua"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["lua"]
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

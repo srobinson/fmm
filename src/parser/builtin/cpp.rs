@@ -237,16 +237,6 @@ pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
         },
     };
 
-impl crate::parser::LanguageDescriptor for CppParser {
-    fn language_id(&self) -> &'static str {
-        "cpp"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["cpp", "hpp", "cc", "hh", "cxx", "hxx"]
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -325,16 +325,6 @@ pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
         },
     };
 
-impl crate::parser::LanguageDescriptor for SwiftParser {
-    fn language_id(&self) -> &'static str {
-        "swift"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["swift"]
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

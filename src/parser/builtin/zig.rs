@@ -245,16 +245,6 @@ pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
         },
     };
 
-impl crate::parser::LanguageDescriptor for ZigParser {
-    fn language_id(&self) -> &'static str {
-        "zig"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["zig"]
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

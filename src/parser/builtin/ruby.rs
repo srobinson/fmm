@@ -221,16 +221,6 @@ pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
         },
     };
 
-impl crate::parser::LanguageDescriptor for RubyParser {
-    fn language_id(&self) -> &'static str {
-        "ruby"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["rb"]
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

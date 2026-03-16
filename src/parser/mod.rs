@@ -18,58 +18,6 @@ pub struct LanguageTestPatterns {
     pub test_symbol_prefixes: &'static [&'static str],
 }
 
-/// Static metadata about a language that enables downstream subsystems
-/// (config, dependency resolution, glossary, call-site analysis) to handle
-/// the language without hardcoded match arms.
-///
-/// Every `Parser` implementation should also implement `LanguageDescriptor`.
-/// The descriptor is registered alongside the parser factory in `ParserRegistry`
-/// and queried at runtime by subsystems that currently use hardcoded extension
-/// lists.
-///
-/// # Examples
-///
-/// ```ignore
-/// impl LanguageDescriptor for PythonParser {
-///     fn language_id(&self) -> &'static str { "python" }
-///     fn extensions(&self) -> &'static [&'static str] { &["py"] }
-///     fn reexport_filenames(&self) -> &'static [&'static str] { &["__init__.py"] }
-///     fn test_file_patterns(&self) -> LanguageTestPatterns {
-///         LanguageTestPatterns {
-///             filename_suffixes: &["_test.py"],
-///             filename_prefixes: &["test_"],
-///             test_symbol_prefixes: &["test_"],
-///         }
-///     }
-/// }
-/// ```
-pub trait LanguageDescriptor {
-    /// Canonical language identifier (e.g. `"rust"`, `"python"`, `"typescript"`).
-    ///
-    /// Must match the value returned by [`Parser::language_id`].
-    fn language_id(&self) -> &'static str;
-
-    /// All file extensions this language handles, without the leading dot.
-    ///
-    /// e.g. `&["ts", "js"]` for TypeScript.
-    fn extensions(&self) -> &'static [&'static str];
-
-    /// Filenames that serve as re-export hubs for this language.
-    ///
-    /// e.g. `&["__init__.py"]` for Python, `&["mod.rs"]` for Rust.
-    /// Returns an empty slice if the language has no re-export hub convention.
-    fn reexport_filenames(&self) -> &'static [&'static str] {
-        &[]
-    }
-
-    /// Test file detection patterns specific to this language.
-    ///
-    /// These supplement the configurable `test_patterns` in `.fmmrc.toml`.
-    fn test_file_patterns(&self) -> LanguageTestPatterns {
-        LanguageTestPatterns::default()
-    }
-}
-
 /// Register a language parser, its language-id mapping, and its descriptor in one atomic call.
 ///
 /// Guarantees that `register()`, `register_language_id()`, and `register_descriptor()` are
@@ -99,9 +47,15 @@ use std::path::Path;
 
 /// Static snapshot of language metadata, stored inside [`ParserRegistry`].
 ///
-/// Each parser module defines a `pub(crate) const DESCRIPTOR: RegisteredLanguage`
-/// with all fields populated from static data. No parser instance is constructed
-/// during registration.
+/// This is the authoritative contract for adding a new language to fmm. Each
+/// parser module must define `pub(crate) const DESCRIPTOR: RegisteredLanguage`
+/// with all fields populated from static data. The `register_language!` macro
+/// reads from this const during `ParserRegistry::register_builtin()`, so no
+/// parser instance is constructed until parse time.
+///
+/// Downstream subsystems (config, dependency resolution, glossary, call-site
+/// analysis) consume descriptors from the registry instead of hardcoded match
+/// arms, so adding a new `DESCRIPTOR` const automatically extends them.
 #[derive(Debug)]
 pub struct RegisteredLanguage {
     /// Canonical language identifier (e.g. `"rust"`, `"python"`).

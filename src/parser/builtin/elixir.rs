@@ -319,16 +319,6 @@ pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
         },
     };
 
-impl crate::parser::LanguageDescriptor for ElixirParser {
-    fn language_id(&self) -> &'static str {
-        "elixir"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["ex", "exs"]
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

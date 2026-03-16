@@ -372,25 +372,3 @@ pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
             test_symbol_prefixes: &["test_"],
         },
     };
-
-impl crate::parser::LanguageDescriptor for PythonParser {
-    fn language_id(&self) -> &'static str {
-        "python"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["py"]
-    }
-
-    fn reexport_filenames(&self) -> &'static [&'static str] {
-        &["__init__.py"]
-    }
-
-    fn test_file_patterns(&self) -> crate::parser::LanguageTestPatterns {
-        crate::parser::LanguageTestPatterns {
-            filename_suffixes: &["_test.py"],
-            filename_prefixes: &["test_"],
-            test_symbol_prefixes: &["test_"],
-        }
-    }
-}

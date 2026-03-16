@@ -300,16 +300,6 @@ pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
         },
     };
 
-impl crate::parser::LanguageDescriptor for DartParser {
-    fn language_id(&self) -> &'static str {
-        "dart"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["dart"]
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

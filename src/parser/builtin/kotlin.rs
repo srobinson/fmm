@@ -314,16 +314,6 @@ pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
         },
     };
 
-impl crate::parser::LanguageDescriptor for KotlinParser {
-    fn language_id(&self) -> &'static str {
-        "kotlin"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["kt", "kts"]
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

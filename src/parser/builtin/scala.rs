@@ -384,16 +384,6 @@ pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
         },
     };
 
-impl crate::parser::LanguageDescriptor for ScalaParser {
-    fn language_id(&self) -> &'static str {
-        "scala"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["scala", "sc"]
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -288,25 +288,3 @@ pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
             test_symbol_prefixes: &[],
         },
     };
-
-impl crate::parser::LanguageDescriptor for RustParser {
-    fn language_id(&self) -> &'static str {
-        "rust"
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["rs"]
-    }
-
-    fn reexport_filenames(&self) -> &'static [&'static str] {
-        &["mod.rs"]
-    }
-
-    fn test_file_patterns(&self) -> crate::parser::LanguageTestPatterns {
-        crate::parser::LanguageTestPatterns {
-            filename_suffixes: &["_test.rs"],
-            filename_prefixes: &[],
-            test_symbol_prefixes: &[],
-        }
-    }
-}
