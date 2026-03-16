@@ -131,7 +131,9 @@ fn file_calls_method(root: &Path, rel_path: &str, method_name: &str) -> bool {
         .to_lowercase();
 
     match find_verifier(&ext) {
-        Some(verifier) => verifier.method_call_exists(&source, method_name).unwrap_or(true),
+        Some(verifier) => verifier
+            .method_call_exists(&source, method_name)
+            .unwrap_or(true),
         None => true,
     }
 }

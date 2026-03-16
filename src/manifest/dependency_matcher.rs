@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::sync::OnceLock;
 
 use rayon::prelude::*;
 
@@ -7,16 +8,29 @@ use crate::resolver::{resolve_by_directory_prefix, CrossPackageResolver};
 
 use super::Manifest;
 
-/// Strip a file extension from a path only when the suffix is a recognized source-file
+/// Return a reference to the lazily-initialised set of source-file extensions
+/// from the builtin `ParserRegistry`.
+///
+/// Initialised once on first call; subsequent calls are lock-free reads.
+pub(crate) fn builtin_source_extensions() -> &'static HashSet<String> {
+    static EXTS: OnceLock<HashSet<String>> = OnceLock::new();
+    EXTS.get_or_init(|| {
+        let registry = crate::parser::ParserRegistry::with_builtins();
+        registry.source_extensions().clone()
+    })
+}
+
+/// Strip a file extension from `path` when the suffix is a recognised source-file
 /// extension. Returns the original string unchanged for compound names like
 /// `runtime.exception` or `crypto.utils` where the dot is part of the filename.
-pub(crate) fn strip_source_ext(path: &str) -> &str {
+///
+/// Pass `builtin_source_extensions()` at call sites that do not have a live registry.
+pub(crate) fn strip_source_ext<'a>(path: &'a str, known_extensions: &HashSet<String>) -> &'a str {
     if let Some((stem, ext)) = path.rsplit_once('.') {
-        match ext {
-            "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "py" | "go" | "rs" | "java" | "kt"
-            | "swift" | "dart" | "rb" | "php" | "cs" | "cpp" | "c" | "h" | "lua" | "zig" | "ex"
-            | "exs" | "scala" | "cr" => stem,
-            _ => path,
+        if known_extensions.contains(ext) {
+            stem
+        } else {
+            path
         }
     } else {
         path
@@ -26,7 +40,15 @@ pub(crate) fn strip_source_ext(path: &str) -> &str {
 /// Check if a dependency path from `dependent_file` resolves to `target_file`.
 /// Dependencies are stored as relative paths like "../utils/crypto.utils.js"
 /// and need to be resolved against the dependent file's directory.
-pub fn dep_matches(dep: &str, target_file: &str, dependent_file: &str) -> bool {
+///
+/// `known_extensions` is the set of recognised source-file extensions (without
+/// the leading dot), typically from `ParserRegistry::source_extensions()`.
+pub fn dep_matches(
+    dep: &str,
+    target_file: &str,
+    dependent_file: &str,
+    known_extensions: &HashSet<String>,
+) -> bool {
     // Resolve the dependency path relative to the dependent file's directory
     let dep_dir = dependent_file
         .rsplit_once('/')
@@ -55,7 +77,7 @@ pub fn dep_matches(dep: &str, target_file: &str, dependent_file: &str) -> bool {
     // For the resolved dep, only strip if the suffix is a known source-file extension —
     // NestJS-style compound names like `runtime.exception` use `.exception` as part of the
     // filename, not as an extension, and stripping it would produce a wrong stem.
-    let resolved_stem = strip_source_ext(&resolved);
+    let resolved_stem = strip_source_ext(&resolved, known_extensions);
     let target_stem = target_file
         .rsplit_once('.')
         .map(|(stem, _)| stem)
@@ -166,10 +188,14 @@ pub fn dotted_dep_matches(dep: &str, target_file: &str) -> bool {
 ///
 /// Handles Python-style relative imports (`._run`, `..config`), JS/TS-style relative
 /// paths (`./utils`, `../config`), Go module paths, and Rust `crate::` paths.
+///
+/// `known_extensions` is the set of recognised source-file extensions (without
+/// the leading dot), typically from `ParserRegistry::source_extensions()`.
 pub(crate) fn try_resolve_local_dep(
     dep: &str,
     source_file: &str,
     manifest: &Manifest,
+    known_extensions: &HashSet<String>,
 ) -> Option<String> {
     // Python-style relative imports: start with . but NOT ./ or ../
     if dep.starts_with('.') && !dep.starts_with("./") && !dep.starts_with("../") {
@@ -191,7 +217,7 @@ pub(crate) fn try_resolve_local_dep(
         if let Some(found) = manifest
             .files
             .keys()
-            .find(|path| dep_matches(dep, path, source_file))
+            .find(|path| dep_matches(dep, path, source_file, known_extensions))
         {
             return Some(found.clone());
         }
@@ -229,7 +255,7 @@ pub(crate) fn try_resolve_local_dep(
         return manifest
             .files
             .keys()
-            .find(|path| dep_matches(dep, path, source_file))
+            .find(|path| dep_matches(dep, path, source_file, known_extensions))
             .cloned();
     }
     // Dotted module path: Python absolute self-imports (e.g. `agno.models.message`).
@@ -272,19 +298,22 @@ pub(crate) fn try_resolve_local_dep(
 ///   prefix heuristic)
 pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<String>> {
     let mut rev: HashMap<String, Vec<String>> = HashMap::new();
+    let exts = builtin_source_extensions();
 
     // Pass 1: relative and non-relative dependencies (unchanged behavior)
     for (source, entry) in &manifest.files {
         for dep in &entry.dependencies {
             if dep.starts_with("./") || dep.starts_with("../") {
                 // Relative: try_resolve_local_dep gives the single canonical target
-                if let Some(target) = try_resolve_local_dep(dep, source, manifest) {
+                if let Some(target) = try_resolve_local_dep(dep, source, manifest, exts) {
                     rev.entry(target).or_default().push(source.clone());
                 }
             } else {
                 // Non-relative: mirror dep_matches + python_dep_matches (same as dep_targets_file)
                 for target in manifest.files.keys() {
-                    if dep_matches(dep, target, source) || python_dep_matches(dep, target, source) {
+                    if dep_matches(dep, target, source, exts)
+                        || python_dep_matches(dep, target, source)
+                    {
                         rev.entry(target.clone()).or_default().push(source.clone());
                     }
                 }
@@ -406,12 +435,31 @@ pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<Str
 mod tests {
     use super::*;
 
+    fn exts() -> &'static HashSet<String> {
+        builtin_source_extensions()
+    }
+
     #[test]
     fn dep_matches_relative_path() {
         // dep "./types" from "src/index.ts" resolves to "src/types"
-        assert!(dep_matches("./types", "src/types.ts", "src/index.ts"));
-        assert!(dep_matches("./config", "src/config.ts", "src/index.ts"));
-        assert!(!dep_matches("./types", "src/other.ts", "src/index.ts"));
+        assert!(dep_matches(
+            "./types",
+            "src/types.ts",
+            "src/index.ts",
+            exts()
+        ));
+        assert!(dep_matches(
+            "./config",
+            "src/config.ts",
+            "src/index.ts",
+            exts()
+        ));
+        assert!(!dep_matches(
+            "./types",
+            "src/other.ts",
+            "src/index.ts",
+            exts()
+        ));
     }
 
     #[test]
@@ -422,18 +470,21 @@ mod tests {
         assert!(dep_matches(
             "../errors/exceptions/runtime.exception",
             "packages/core/errors/exceptions/runtime.exception.ts",
-            "packages/core/injector/injector.ts"
+            "packages/core/injector/injector.ts",
+            exts(),
         ));
         assert!(dep_matches(
             "../errors/exceptions/undefined-dependency.exception",
             "packages/core/errors/exceptions/undefined-dependency.exception.ts",
-            "packages/core/injector/injector.ts"
+            "packages/core/injector/injector.ts",
+            exts(),
         ));
         // Regular dep with an actual .js extension should still resolve to .ts
         assert!(dep_matches(
             "../utils/crypto.utils.js",
             "pkg/src/utils/crypto.utils.ts",
-            "pkg/src/services/auth.service.ts"
+            "pkg/src/services/auth.service.ts",
+            exts(),
         ));
     }
 
@@ -443,12 +494,14 @@ mod tests {
         assert!(dep_matches(
             "./utils/helpers",
             "src/utils/helpers.ts",
-            "src/index.ts"
+            "src/index.ts",
+            exts(),
         ));
         assert!(!dep_matches(
             "./utils/helpers",
             "src/utils/other.ts",
-            "src/index.ts"
+            "src/index.ts",
+            exts(),
         ));
     }
 
@@ -459,12 +512,14 @@ mod tests {
         assert!(dep_matches(
             "../utils/crypto.utils.js",
             "pkg/src/utils/crypto.utils.ts",
-            "pkg/src/services/auth.service.ts"
+            "pkg/src/services/auth.service.ts",
+            exts(),
         ));
         assert!(!dep_matches(
             "../utils/crypto.utils.js",
             "pkg/src/services/other.ts",
-            "pkg/src/services/auth.service.ts"
+            "pkg/src/services/auth.service.ts",
+            exts(),
         ));
     }
 
@@ -475,13 +530,14 @@ mod tests {
         assert!(dep_matches(
             "../../../utils/crypto.utils.js",
             "pkg/src/utils/crypto.utils.ts",
-            "pkg/src/tests/unit/auth/test.ts"
+            "pkg/src/tests/unit/auth/test.ts",
+            exts(),
         ));
     }
 
     #[test]
     fn dep_matches_without_prefix() {
-        assert!(dep_matches("types", "src/types.ts", "src/index.ts"));
+        assert!(dep_matches("types", "src/types.ts", "src/index.ts", exts()));
     }
 
     #[test]
@@ -490,35 +546,54 @@ mod tests {
         assert!(dep_matches(
             "./utils",
             "src/utils/__init__.py",
-            "src/service.py"
+            "src/service.py",
+            exts(),
         ));
         // `../models` should resolve to `models/__init__.py` one level up
         assert!(dep_matches(
             "../models",
             "models/__init__.py",
-            "src/service.py"
+            "src/service.py",
+            exts(),
         ));
         // Should still match plain module file
-        assert!(dep_matches("./utils", "src/utils.py", "src/service.py"));
+        assert!(dep_matches(
+            "./utils",
+            "src/utils.py",
+            "src/service.py",
+            exts()
+        ));
         // No false positive: different package
         assert!(!dep_matches(
             "./utils",
             "src/auth/__init__.py",
-            "src/service.py"
+            "src/service.py",
+            exts(),
         ));
     }
 
     #[test]
     fn dep_matches_crate_path() {
         // Rust crate:: paths resolve via suffix matching
-        assert!(dep_matches("crate::config", "src/config.rs", "src/main.rs"));
+        assert!(dep_matches(
+            "crate::config",
+            "src/config.rs",
+            "src/main.rs",
+            exts()
+        ));
         assert!(dep_matches(
             "crate::parser::builtin",
             "src/parser/builtin.rs",
-            "src/main.rs"
+            "src/main.rs",
+            exts(),
         ));
         // No false positives
-        assert!(!dep_matches("crate::config", "src/other.rs", "src/main.rs"));
+        assert!(!dep_matches(
+            "crate::config",
+            "src/other.rs",
+            "src/main.rs",
+            exts()
+        ));
     }
 
     #[test]
@@ -527,13 +602,15 @@ mod tests {
         assert!(dep_matches(
             "github.com/user/project/internal/handler",
             "internal/handler/handler.go",
-            "cmd/main.go"
+            "cmd/main.go",
+            exts(),
         ));
         // Stdlib short paths don't match unrelated files
         assert!(!dep_matches(
             "fmt",
             "internal/format/format.go",
-            "cmd/main.go"
+            "cmd/main.go",
+            exts(),
         ));
     }
 }

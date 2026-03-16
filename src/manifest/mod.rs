@@ -15,8 +15,10 @@ mod glossary_builder;
 use dependency_matcher::build_reverse_deps;
 
 // Re-export public API consumed by other modules.
+pub(crate) use dependency_matcher::{
+    builtin_source_extensions, strip_source_ext, try_resolve_local_dep,
+};
 pub use dependency_matcher::{dep_matches, dotted_dep_matches, python_dep_matches};
-pub(crate) use dependency_matcher::{strip_source_ext, try_resolve_local_dep};
 pub use glossary_builder::{GlossaryEntry, GlossaryMode, GlossarySource};
 
 /// Line range for an export symbol.

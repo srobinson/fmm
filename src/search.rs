@@ -6,8 +6,8 @@
 use std::collections::{BTreeMap, HashSet};
 
 use crate::manifest::{
-    dep_matches, dotted_dep_matches, python_dep_matches, strip_source_ext, try_resolve_local_dep,
-    ExportLocation, FileEntry, Manifest,
+    builtin_source_extensions, dep_matches, dotted_dep_matches, python_dep_matches,
+    strip_source_ext, try_resolve_local_dep, ExportLocation, FileEntry, Manifest,
 };
 
 // ---------------------------------------------------------------------------
@@ -301,7 +301,8 @@ pub fn filter_search(manifest: &Manifest, filters: &SearchFilters) -> Vec<FileSe
     // `imports: src/db/client` works even though deps are stored as relative paths.
     if let Some(ref import_name) = filters.imports {
         let looks_like_local = import_name.contains('/') && !import_name.contains("://");
-        let dep_stem = strip_source_ext(import_name);
+        let exts = builtin_source_extensions();
+        let dep_stem = strip_source_ext(import_name, exts);
         file_set.retain(|(file_path, entry)| {
             let in_imports = entry
                 .imports
@@ -309,7 +310,8 @@ pub fn filter_search(manifest: &Manifest, filters: &SearchFilters) -> Vec<FileSe
                 .any(|i| i.contains(import_name.as_str()));
             let in_deps = looks_like_local
                 && entry.dependencies.iter().any(|d| {
-                    dep_targets_file(d, import_name, file_path, manifest) || d.contains(dep_stem)
+                    dep_targets_file(d, import_name, file_path, manifest, exts)
+                        || d.contains(dep_stem)
                 });
             in_imports || in_deps
         });
@@ -320,16 +322,15 @@ pub fn filter_search(manifest: &Manifest, filters: &SearchFilters) -> Vec<FileSe
     // Go/Rust module paths all resolve via dep_targets_file; substring fallback handles
     // bare fragment queries (e.g. "config" matches "../config").
     if let Some(ref dep_path) = filters.depends_on {
-        let dep_stem = strip_source_ext(dep_path);
+        let exts = builtin_source_extensions();
+        let dep_stem = strip_source_ext(dep_path, exts);
         file_set.retain(|(file_path, entry)| {
-            entry
-                .dependencies
+            entry.dependencies.iter().any(|d| {
+                dep_targets_file(d, dep_path, file_path, manifest, exts) || d.contains(dep_stem)
+            }) || entry
+                .imports
                 .iter()
-                .any(|d| dep_targets_file(d, dep_path, file_path, manifest) || d.contains(dep_stem))
-                || entry
-                    .imports
-                    .iter()
-                    .any(|i| dotted_dep_matches(i, dep_path))
+                .any(|i| dotted_dep_matches(i, dep_path))
         });
     }
 
@@ -389,9 +390,10 @@ pub fn dependency_graph<'a>(
 ) -> (Vec<String>, Vec<String>, Vec<&'a String>) {
     let mut local: Vec<String> = Vec::new();
     let mut external: Vec<String> = Vec::new();
+    let exts = builtin_source_extensions();
 
     for dep in &entry.dependencies {
-        if let Some(resolved) = try_resolve_local_dep(dep, file, manifest) {
+        if let Some(resolved) = try_resolve_local_dep(dep, file, manifest, exts) {
             if !local.contains(&resolved) {
                 local.push(resolved);
             }
@@ -407,7 +409,7 @@ pub fn dependency_graph<'a>(
     // imports like `agno.models.message`).
     for imp in &entry.imports {
         if !imp.contains('/') {
-            if let Some(resolved) = try_resolve_local_dep(imp, file, manifest) {
+            if let Some(resolved) = try_resolve_local_dep(imp, file, manifest, exts) {
                 if !local.contains(&resolved) {
                     local.push(resolved);
                 }
@@ -461,9 +463,10 @@ pub fn dependency_graph_transitive(
     visited_up.insert(file.to_string());
     let mut external_set: BTreeSet<String> = BTreeSet::new();
 
+    let exts = builtin_source_extensions();
     let mut queue_up: VecDeque<(String, i32)> = VecDeque::new();
     for dep in &entry.dependencies {
-        if let Some(resolved) = try_resolve_local_dep(dep, file, manifest) {
+        if let Some(resolved) = try_resolve_local_dep(dep, file, manifest, exts) {
             if !visited_up.contains(&resolved) {
                 queue_up.push_back((resolved, 1));
             }
@@ -473,7 +476,7 @@ pub fn dependency_graph_transitive(
     }
     for imp in &entry.imports {
         if !imp.contains('/') {
-            if let Some(resolved) = try_resolve_local_dep(imp, file, manifest) {
+            if let Some(resolved) = try_resolve_local_dep(imp, file, manifest, exts) {
                 if !visited_up.contains(&resolved) {
                     queue_up.push_back((resolved, 1));
                 }
@@ -493,7 +496,7 @@ pub fn dependency_graph_transitive(
         if depth == -1 || d < depth {
             if let Some(e) = manifest.files.get(&current) {
                 for dep in &e.dependencies {
-                    if let Some(resolved) = try_resolve_local_dep(dep, &current, manifest) {
+                    if let Some(resolved) = try_resolve_local_dep(dep, &current, manifest, exts) {
                         if !visited_up.contains(&resolved) {
                             queue_up.push_back((resolved, d + 1));
                         }
@@ -503,7 +506,8 @@ pub fn dependency_graph_transitive(
                 }
                 for imp in &e.imports {
                     if !imp.contains('/') {
-                        if let Some(resolved) = try_resolve_local_dep(imp, &current, manifest) {
+                        if let Some(resolved) = try_resolve_local_dep(imp, &current, manifest, exts)
+                        {
                             if !visited_up.contains(&resolved) {
                                 queue_up.push_back((resolved, d + 1));
                             }
@@ -566,15 +570,23 @@ pub fn dependency_graph_transitive(
 /// For relative imports (`./` or `../`), delegates to `try_resolve_local_dep` which handles
 /// extension-agnostic matching AND index-file fallback (`./module` → `module/index.ts`).
 /// For all other dep types, delegates to `dep_matches` and `python_dep_matches`.
-fn dep_targets_file(dep: &str, target: &str, source: &str, manifest: &Manifest) -> bool {
+fn dep_targets_file(
+    dep: &str,
+    target: &str,
+    source: &str,
+    manifest: &Manifest,
+    known_extensions: &HashSet<String>,
+) -> bool {
     if dep.starts_with("./") || dep.starts_with("../") {
-        if let Some(resolved) = try_resolve_local_dep(dep, source, manifest) {
-            strip_source_ext(&resolved) == strip_source_ext(target)
+        if let Some(resolved) = try_resolve_local_dep(dep, source, manifest, known_extensions) {
+            strip_source_ext(&resolved, known_extensions)
+                == strip_source_ext(target, known_extensions)
         } else {
             false
         }
     } else {
-        dep_matches(dep, target, source) || python_dep_matches(dep, target, source)
+        dep_matches(dep, target, source, known_extensions)
+            || python_dep_matches(dep, target, source)
     }
 }
 
