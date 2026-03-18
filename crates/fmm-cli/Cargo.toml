@@ -46,7 +46,7 @@ chrono.workspace = true
 # Error handling
 anyhow.workspace = true
 
-# Pattern matching
+# Pattern matching (used via fully-qualified paths in CLI commands and MCP tools)
 regex.workspace = true
 glob.workspace = true
 

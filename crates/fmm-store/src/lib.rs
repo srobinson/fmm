@@ -21,5 +21,5 @@ pub use sqlite_store::SqliteStore;
 #[cfg(any(test, feature = "test-support"))]
 pub use memory_store::{InMemoryStore, MemoryStoreError};
 
-// Transitional re-exports: connection management
-pub use connection::{open_db, open_or_create};
+// Used by fmm-cli status.rs and init.rs for lightweight DB queries
+pub use connection::open_db;
