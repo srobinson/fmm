@@ -2021,3 +2021,85 @@ fn glossary_layer2_filters_non_symbol_importers() {
         text
     );
 }
+
+// --- ALP-1492: InMemoryStore-backed MCP server validates the generic pattern ---
+
+#[test]
+fn in_memory_store_mcp_list_exports() {
+    use fmm_core::parser::{ExportEntry, Metadata, ParseResult};
+    use fmm_core::types::serialize_file_data;
+    use fmm_store::InMemoryStore;
+
+    let store = InMemoryStore::new();
+
+    let result = ParseResult {
+        metadata: Metadata {
+            exports: vec![
+                ExportEntry::new("createApp".into(), 1, 10),
+                ExportEntry::new("AppConfig".into(), 12, 20),
+            ],
+            imports: vec!["react".into()],
+            dependencies: vec!["./config".into()],
+            loc: 25,
+            ..Default::default()
+        },
+        custom_fields: None,
+    };
+    let row = serialize_file_data("src/app.ts", &result, None).unwrap();
+    store.write_indexed_files(&[row], true).unwrap();
+
+    let root = std::path::PathBuf::from("/test-project");
+    let server = McpServer::from_store(store, root);
+
+    // fmm_list_exports should return the indexed exports
+    let response = server
+        .call_tool(
+            "fmm_list_exports",
+            serde_json::json!({"file": "src/app.ts"}),
+        )
+        .unwrap();
+    let text = response["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("createApp"),
+        "InMemoryStore-backed server must find createApp export; got:\n{text}"
+    );
+    assert!(
+        text.contains("AppConfig"),
+        "InMemoryStore-backed server must find AppConfig export; got:\n{text}"
+    );
+}
+
+#[test]
+fn in_memory_store_mcp_lookup_export() {
+    use fmm_core::parser::{ExportEntry, Metadata, ParseResult};
+    use fmm_core::types::serialize_file_data;
+    use fmm_store::InMemoryStore;
+
+    let store = InMemoryStore::new();
+
+    let result = ParseResult {
+        metadata: Metadata {
+            exports: vec![ExportEntry::new("Logger".into(), 5, 30)],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 35,
+            ..Default::default()
+        },
+        custom_fields: None,
+    };
+    let row = serialize_file_data("src/logger.ts", &result, None).unwrap();
+    store.write_indexed_files(&[row], true).unwrap();
+
+    let root = std::path::PathBuf::from("/test-project");
+    let server = McpServer::from_store(store, root);
+
+    // fmm_lookup_export should resolve Logger to its file
+    let response = server
+        .call_tool("fmm_lookup_export", serde_json::json!({"name": "Logger"}))
+        .unwrap();
+    let text = response["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("src/logger.ts"),
+        "InMemoryStore-backed lookup must resolve to src/logger.ts; got:\n{text}"
+    );
+}

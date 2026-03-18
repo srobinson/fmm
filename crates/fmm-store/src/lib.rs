@@ -7,6 +7,8 @@
 
 pub mod connection;
 pub mod error;
+#[cfg(any(test, feature = "test-support"))]
+pub mod memory_store;
 pub mod reader;
 mod schema;
 pub mod sqlite_store;
@@ -16,6 +18,9 @@ pub mod writer;
 pub use connection::DB_FILENAME;
 pub use error::StoreError;
 pub use sqlite_store::SqliteStore;
+
+#[cfg(any(test, feature = "test-support"))]
+pub use memory_store::{InMemoryStore, MemoryStoreError};
 
 // Transitional re-exports: connection management
 pub use connection::{open_db, open_or_create};

@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[features]
+test-support = []
+
 [dependencies]
 fmm-core.workspace = true
 rusqlite.workspace = true

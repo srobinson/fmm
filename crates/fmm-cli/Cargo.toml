@@ -75,6 +75,7 @@ indexmap.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 rusqlite = { workspace = true, features = [] }
+fmm-store = { workspace = true, features = ["test-support"] }
 
 [[bin]]
 name = "fmm"
