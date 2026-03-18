@@ -1,0 +1,69 @@
+[package]
+name = "fmm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Auto-generate code metadata sidecars for LLM-optimized navigation"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../../README.md"
+keywords = ["llm", "code-analysis", "ast", "mcp", "sidecar"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = [".nancy/", "docs/"]
+
+[dependencies]
+# Core domain logic (parser, search, manifest, format)
+fmm-core.workspace = true
+# Persistence layer (SQLite store, FmmStore trait impl)
+fmm-store.workspace = true
+
+# CLI
+clap.workspace = true
+clap_complete.workspace = true
+clap_mangen.workspace = true
+clap-markdown.workspace = true
+color-print.workspace = true
+colored.workspace = true
+
+# File handling
+ignore.workspace = true
+notify.workspace = true
+notify-debouncer-full.workspace = true
+ctrlc.workspace = true
+
+# Parallelism
+rayon.workspace = true
+indicatif.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Date/time
+chrono.workspace = true
+
+# Error handling
+anyhow.workspace = true
+
+# Pattern matching (used via fully-qualified paths in CLI commands and MCP tools)
+regex.workspace = true
+glob.workspace = true
+
+[build-dependencies]
+toml.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+rusqlite = { workspace = true, features = [] }
+fmm-store = { workspace = true, features = ["test-support"] }
+insta.workspace = true
+assert_cmd.workspace = true
+
+[[bin]]
+name = "fmm"
+path = "src/main.rs"
+

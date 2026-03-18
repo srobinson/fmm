@@ -1,0 +1,54 @@
+[package]
+name = "fmm-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Core domain logic for frontmatter-matters: parsing, search, manifest operations"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+# Parsing
+tree-sitter.workspace = true
+tree-sitter-typescript.workspace = true
+tree-sitter-python.workspace = true
+tree-sitter-rust.workspace = true
+tree-sitter-go.workspace = true
+tree-sitter-java.workspace = true
+tree-sitter-cpp.workspace = true
+tree-sitter-c-sharp.workspace = true
+tree-sitter-ruby.workspace = true
+tree-sitter-php.workspace = true
+tree-sitter-c.workspace = true
+tree-sitter-zig.workspace = true
+tree-sitter-lua.workspace = true
+tree-sitter-scala.workspace = true
+tree-sitter-swift.workspace = true
+tree-sitter-kotlin-ng.workspace = true
+tree-sitter-elixir.workspace = true
+tree-sitter-dart-orchard.workspace = true
+streaming-iterator.workspace = true
+
+# Serialization (domain types derive Serialize/Deserialize)
+serde.workspace = true
+serde_json.workspace = true
+
+# Error handling
+anyhow.workspace = true
+thiserror.workspace = true
+
+# Domain logic deps
+chrono.workspace = true
+glob.workspace = true
+rayon.workspace = true
+toml.workspace = true
+oxc_resolver.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+tempfile.workspace = true
+
+[[bench]]
+name = "parser_benchmarks"
+harness = false

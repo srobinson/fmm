@@ -1,0 +1,6 @@
+---
+source: crates/fmm-cli/src/mcp/snapshot_tests.rs
+expression: extract_text(&response)
+---
+AppConfig  src/app.ts  [17, 25]
+createApp  src/app.ts  [1, 15]

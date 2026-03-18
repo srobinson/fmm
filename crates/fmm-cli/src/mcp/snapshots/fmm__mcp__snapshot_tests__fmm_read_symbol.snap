@@ -1,0 +1,12 @@
+---
+source: crates/fmm-cli/src/mcp/snapshot_tests.rs
+expression: extract_text(&response)
+---
+---
+symbol: greet
+file: src/hello.ts
+lines: [1, 3]
+---
+export function greet(name: string): string {
+  return `Hello, ${name}!`;
+}

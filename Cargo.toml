@@ -1,19 +1,21 @@
-[package]
-name = "fmm"
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
 version = "0.1.41"
-edition = "2021"
+edition = "2024"
 authors = ["Stuart Robinson <stuart@alphabio.com>"]
-description = "Auto-generate code metadata sidecars for LLM-optimized navigation"
 license = "MIT"
 repository = "https://github.com/srobinson/fmm"
 homepage = "https://srobinson.github.io/fmm/"
-readme = "README.md"
-keywords = ["llm", "code-analysis", "ast", "mcp", "sidecar"]
-categories = ["command-line-utilities", "development-tools"]
-exclude = [".nancy/", "docs/"]
 
-[dependencies]
-# Core parsing
+[workspace.dependencies]
+# Internal crates
+fmm-core = { path = "crates/fmm-core" }
+fmm-store = { path = "crates/fmm-store" }
+
+# Parsing
 tree-sitter = "0.26"
 tree-sitter-typescript = "0.23"
 tree-sitter-python = "0.25"
@@ -43,7 +45,7 @@ color-print = "0.3"
 colored = "3.0"
 
 # File handling
-ignore = "0.4"                # Respects .gitignore
+ignore = "0.4"
 notify = "8.2"
 notify-debouncer-full = "0.7"
 ctrlc = "3.4"
@@ -59,6 +61,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = { version = "0.8", features = ["parse"] }
+indexmap = { version = "2", features = ["serde"] }
 
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
@@ -71,28 +74,14 @@ thiserror = "2.0"
 regex = "1"
 glob = "0.3"
 
-# Cross-package import resolution
+# Cross-package resolution
 oxc_resolver = "11"
 
-
-[build-dependencies]
-toml = { version = "0.8", features = ["parse"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-indexmap = { version = "2", features = ["serde"] }
-
-[dev-dependencies]
+# Testing
 tempfile = "3.14"
 criterion = { version = "0.5", features = ["html_reports"] }
-rusqlite = "0.32"
-
-[[bin]]
-name = "fmm"
-path = "src/main.rs"
-
-[[bench]]
-name = "parser_benchmarks"
-harness = false
+insta = "1.42"
+assert_cmd = "2.0"
 
 [profile.release]
 lto = true

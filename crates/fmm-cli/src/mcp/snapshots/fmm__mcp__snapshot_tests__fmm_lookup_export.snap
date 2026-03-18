@@ -1,0 +1,14 @@
+---
+source: crates/fmm-cli/src/mcp/snapshot_tests.rs
+expression: extract_text(&response)
+---
+---
+symbol: createApp
+file: src/app.ts
+lines: [1, 15]
+exports:
+  createApp: [1, 15]
+  AppConfig: [17, 25]
+imports: [react]
+dependencies: [./config, ./utils]
+loc: 30

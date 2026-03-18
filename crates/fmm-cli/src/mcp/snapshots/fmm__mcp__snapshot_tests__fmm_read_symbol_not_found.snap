@@ -1,0 +1,5 @@
+---
+source: crates/fmm-cli/src/mcp/snapshot_tests.rs
+expression: extract_text(&response)
+---
+ERROR: Export 'MissingSymbol' not found. Use fmm_list_exports or fmm_search to discover available symbols.

@@ -1,0 +1,22 @@
+[package]
+name = "fmm-store"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+test-support = []
+
+[dependencies]
+fmm-core.workspace = true
+rusqlite.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
