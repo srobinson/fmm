@@ -13,7 +13,11 @@
 
 use serde_json::json;
 
-fn call_tool_text(server: &fmm::mcp::McpServer, tool: &str, args: serde_json::Value) -> String {
+fn call_tool_text(
+    server: &fmm::mcp::SqliteMcpServer,
+    tool: &str,
+    args: serde_json::Value,
+) -> String {
     let result = server.call_tool(tool, args).unwrap();
     result["content"][0]["text"]
         .as_str()
@@ -22,7 +26,7 @@ fn call_tool_text(server: &fmm::mcp::McpServer, tool: &str, args: serde_json::Va
 }
 
 /// Build and return a (TempDir, McpServer) for the named-import-precision fixture.
-fn setup_precision_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+fn setup_precision_server() -> (tempfile::TempDir, fmm::mcp::SqliteMcpServer) {
     let tmp = tempfile::TempDir::new().unwrap();
     let root = tmp.path().to_path_buf();
     let root = root.as_path();
@@ -72,7 +76,10 @@ fn setup_precision_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     ).unwrap();
 
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
-    (tmp, fmm::mcp::McpServer::with_root(root.to_path_buf()))
+    (
+        tmp,
+        fmm::mcp::SqliteMcpServer::with_root(root.to_path_buf()),
+    )
 }
 
 // ── Layer 2 tests (default precision: "named") ─────────────────────────────
@@ -241,7 +248,7 @@ fn layer3_namespace_user_still_annotated() {
 fn schedule_update_precision_react() {
     let react_src =
         std::env::var("REACT_SRC").expect("REACT_SRC must point to an indexed React source tree");
-    let server = fmm::mcp::McpServer::with_root(std::path::PathBuf::from(&react_src));
+    let server = fmm::mcp::SqliteMcpServer::with_root(std::path::PathBuf::from(&react_src));
     let text = call_tool_text(
         &server,
         "fmm_glossary",

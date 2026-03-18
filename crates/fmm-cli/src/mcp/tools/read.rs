@@ -155,10 +155,7 @@ pub(in crate::mcp) fn tool_read_symbol(
     // redirect hints instead of a misleading partial view of the class body.
     let is_bare_name = !args.name.contains('.') && !args.name.contains(':');
     let should_truncate = args.truncate.unwrap_or(true);
-    if is_bare_name
-        && should_truncate
-        && symbol_source.len() > crate::mcp::McpServer::MAX_RESPONSE_BYTES
-    {
+    if is_bare_name && should_truncate && symbol_source.len() > crate::mcp::MAX_RESPONSE_BYTES {
         // Check if this class has methods registered in the file entry.
         if let Some(file_entry) = manifest.files.get(&resolved_file) {
             let prefix = format!("{}.", args.name);

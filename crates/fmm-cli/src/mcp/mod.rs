@@ -1,6 +1,6 @@
 use crate::manifest::Manifest;
-use crate::manifest_ext::load_manifest;
 use anyhow::Result;
+use fmm_core::store::FmmStore;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::io::{self, BufRead, Write};
@@ -13,6 +13,30 @@ mod tests;
 pub(crate) mod tools;
 
 const PROTOCOL_VERSION: &str = "2024-11-05";
+
+/// Cap MCP tool responses to prevent context bombs.
+/// Large responses get truncated to disk by Claude, defeating the purpose.
+pub(crate) const MAX_RESPONSE_BYTES: usize = 10_240;
+
+fn cap_response(text: String, truncate: bool) -> String {
+    if !truncate || text.len() <= MAX_RESPONSE_BYTES {
+        return text;
+    }
+    // Find a valid UTF-8 boundary at or before MAX_RESPONSE_BYTES
+    let byte_limit = MAX_RESPONSE_BYTES;
+    let safe_limit = text.floor_char_boundary(byte_limit);
+    let truncated = &text[..safe_limit];
+    // Find last newline to avoid cutting mid-line
+    let cut_point = truncated.rfind('\n').unwrap_or(safe_limit);
+    let mut result = text[..cut_point].to_string();
+    let total_lines = text.lines().count();
+    let shown_lines = result.lines().count();
+    result.push_str(&format!(
+        "\n\n[Truncated — showing {}/{} lines. Use truncate: false to get the full source.]",
+        shown_lines, total_lines
+    ));
+    result
+}
 
 #[derive(Debug, Deserialize)]
 struct JsonRpcRequest {
@@ -42,31 +66,72 @@ pub struct JsonRpcError {
     pub data: Option<Value>,
 }
 
-pub struct McpServer {
-    manifest: Option<Manifest>,
-    load_error: Option<String>,
-    root: PathBuf,
+/// MCP server generic over a store backend.
+///
+/// The `store` field is `Option<S>` to support two construction paths:
+/// - Production: `from_store(store, root)` provides a concrete store for live reload.
+/// - Testing: direct struct construction with `store: None` and an injected manifest.
+///
+/// When `store` is `None`, `reload()` is a no-op and the server uses whatever
+/// manifest was set at construction time.
+pub struct McpServer<S: FmmStore> {
+    pub(crate) store: Option<S>,
+    pub(crate) manifest: Option<Manifest>,
+    pub(crate) load_error: Option<String>,
+    pub(crate) root: PathBuf,
 }
 
-impl Default for McpServer {
+/// Type alias for the SQLite-backed MCP server (production default).
+pub type SqliteMcpServer = McpServer<fmm_store::SqliteStore>;
+
+// --- SqliteStore-specific constructors (backward-compatible API) ---
+
+impl Default for McpServer<fmm_store::SqliteStore> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl McpServer {
+impl McpServer<fmm_store::SqliteStore> {
+    /// Create an MCP server rooted at the current working directory.
+    ///
+    /// Opens (or gracefully handles the absence of) a SQLite store at `$CWD/.fmm.db`.
     pub fn new() -> Self {
-        // Safe default: empty path is harmless; MCP server will report "no index" if cwd fails
         let root = std::env::current_dir().unwrap_or_default();
         Self::with_root(root)
     }
 
+    /// Create an MCP server rooted at `root`.
+    ///
+    /// Attempts to open an existing SQLite store. If the database does not exist,
+    /// the server starts without a store and reports the error on tool calls.
     pub fn with_root(root: PathBuf) -> Self {
-        let (manifest, load_error) = match load_manifest(&root) {
+        match fmm_store::SqliteStore::open(&root) {
+            Ok(store) => Self::from_store(store, root),
+            Err(e) => Self {
+                store: None,
+                manifest: None,
+                load_error: Some(e.to_string()),
+                root,
+            },
+        }
+    }
+}
+
+// --- Generic implementation (works with any FmmStore backend) ---
+
+impl<S: FmmStore> McpServer<S> {
+    /// Create an MCP server from an opened store.
+    ///
+    /// Eagerly loads the manifest; if the load fails, the error is captured
+    /// and reported when tools are called.
+    pub fn from_store(store: S, root: PathBuf) -> Self {
+        let (manifest, load_error) = match store.load_manifest() {
             Ok(m) => (Some(m), None),
             Err(e) => (None, Some(e.to_string())),
         };
         Self {
+            store: Some(store),
             manifest,
             load_error,
             root,
@@ -74,14 +139,16 @@ impl McpServer {
     }
 
     fn reload(&mut self) {
-        match load_manifest(&self.root) {
-            Ok(m) => {
-                self.manifest = Some(m);
-                self.load_error = None;
-            }
-            Err(e) => {
-                self.manifest = None;
-                self.load_error = Some(e.to_string());
+        if let Some(store) = &self.store {
+            match store.load_manifest() {
+                Ok(m) => {
+                    self.manifest = Some(m);
+                    self.load_error = None;
+                }
+                Err(e) => {
+                    self.manifest = None;
+                    self.load_error = Some(e.to_string());
+                }
             }
         }
     }
@@ -90,30 +157,6 @@ impl McpServer {
     pub fn call_tool(&self, name: &str, arguments: Value) -> Result<Value, JsonRpcError> {
         let params = json!({"name": name, "arguments": arguments});
         self.handle_tool_call(&Some(params))
-    }
-
-    /// Cap MCP tool responses to prevent context bombs.
-    /// Large responses get truncated to disk by Claude, defeating the purpose.
-    pub(crate) const MAX_RESPONSE_BYTES: usize = 10_240;
-
-    fn cap_response(text: String, truncate: bool) -> String {
-        if !truncate || text.len() <= Self::MAX_RESPONSE_BYTES {
-            return text;
-        }
-        // Find a valid UTF-8 boundary at or before MAX_RESPONSE_BYTES
-        let byte_limit = Self::MAX_RESPONSE_BYTES;
-        let safe_limit = text.floor_char_boundary(byte_limit);
-        let truncated = &text[..safe_limit];
-        // Find last newline to avoid cutting mid-line
-        let cut_point = truncated.rfind('\n').unwrap_or(safe_limit);
-        let mut result = text[..cut_point].to_string();
-        let total_lines = text.lines().count();
-        let shown_lines = result.lines().count();
-        result.push_str(&format!(
-            "\n\n[Truncated — showing {}/{} lines. Use truncate: false to get the full source.]",
-            shown_lines, total_lines
-        ));
-        result
     }
 
     fn require_manifest(&self) -> Result<&Manifest, String> {
@@ -162,7 +205,7 @@ impl McpServer {
 
             if let Some(resp) = response {
                 // WORKAROUND: handle BrokenPipe gracefully (cascade vector V4 from
-                // anthropics/claude-code#22264 — Claude Code may close the pipe when
+                // anthropics/claude-code#22264 -- Claude Code may close the pipe when
                 // it cancels parallel tool calls).
                 let write_result = writeln!(stdout, "{}", serde_json::to_string(&resp)?)
                     .and_then(|_| stdout.flush());
@@ -284,7 +327,7 @@ impl McpServer {
 
         match result {
             Ok(text) => {
-                let text = Self::cap_response(text, should_truncate);
+                let text = cap_response(text, should_truncate);
                 Ok(json!({
                     "content": [{
                         "type": "text",

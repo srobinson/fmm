@@ -19,7 +19,7 @@ fn write_file(root: &std::path::Path, rel: &str, content: &str) {
 }
 
 /// Build an MCP server backed by a SQLite index in a temp dir.
-fn setup_mcp_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+fn setup_mcp_server() -> (tempfile::TempDir, fmm::mcp::SqliteMcpServer) {
     let tmp = tempfile::TempDir::new().unwrap();
     let root = tmp.path();
 
@@ -54,18 +54,18 @@ fn setup_mcp_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     );
 
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
-    let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
+    let server = fmm::mcp::SqliteMcpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
 
 /// Call a tool and return the text content directly.
-fn call_tool_text(server: &fmm::mcp::McpServer, tool: &str, args: Value) -> String {
+fn call_tool_text(server: &fmm::mcp::SqliteMcpServer, tool: &str, args: Value) -> String {
     let result = server.call_tool(tool, args).unwrap();
     result["content"][0]["text"].as_str().unwrap().to_string()
 }
 
 /// Call a tool expecting an error response (text starts with "ERROR:").
-fn call_tool_expect_error(server: &fmm::mcp::McpServer, tool: &str, args: Value) -> String {
+fn call_tool_expect_error(server: &fmm::mcp::SqliteMcpServer, tool: &str, args: Value) -> String {
     let result = server.call_tool(tool, args).unwrap();
     let text = result["content"][0]["text"]
         .as_str()
@@ -934,7 +934,7 @@ fn search_three_filters_one_mismatch_returns_empty() {
 ///
 /// `cmd/main.go` imports `github.com/user/project/internal/handler`.
 /// `internal/handler/handler.go` has no internal deps.
-fn setup_go_mcp_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+fn setup_go_mcp_server() -> (tempfile::TempDir, fmm::mcp::SqliteMcpServer) {
     let tmp = tempfile::TempDir::new().unwrap();
     let root = tmp.path();
 
@@ -951,7 +951,7 @@ fn setup_go_mcp_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     );
 
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
-    let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
+    let server = fmm::mcp::SqliteMcpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
 
@@ -1004,7 +1004,7 @@ fn go_internal_import_resolves_downstream() {
 // ---------------------------------------------------------------------------
 
 /// Build an MCP server with a large class (> 10KB) that has methods.
-fn setup_large_class_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+fn setup_large_class_server() -> (tempfile::TempDir, fmm::mcp::SqliteMcpServer) {
     let tmp = tempfile::TempDir::new().unwrap();
     let root = tmp.path();
 
@@ -1027,7 +1027,7 @@ fn setup_large_class_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     write_file(root, "src/service.ts", &source);
 
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
-    let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
+    let server = fmm::mcp::SqliteMcpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
 
@@ -1107,7 +1107,7 @@ fn read_symbol_small_class_no_redirect() {
 // ---------------------------------------------------------------------------
 
 /// Build a server with two packages that both export `DispatchConfig`.
-fn setup_collision_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+fn setup_collision_server() -> (tempfile::TempDir, fmm::mcp::SqliteMcpServer) {
     let tmp = tempfile::TempDir::new().unwrap();
     let root = tmp.path();
 
@@ -1131,7 +1131,7 @@ fn setup_collision_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     );
 
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
-    let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
+    let server = fmm::mcp::SqliteMcpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
 

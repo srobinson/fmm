@@ -15,7 +15,7 @@ fn write_file(dir: &std::path::Path, rel_path: &str, content: &str) {
     std::fs::write(full, content).unwrap();
 }
 
-fn setup_glossary_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+fn setup_glossary_server() -> (tempfile::TempDir, fmm::mcp::SqliteMcpServer) {
     let tmp = tempfile::TempDir::new().unwrap();
     let root = tmp.path();
 
@@ -55,11 +55,11 @@ fn setup_glossary_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     );
 
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
-    let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
+    let server = fmm::mcp::SqliteMcpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
 
-fn setup_glossary_server_with_tests() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+fn setup_glossary_server_with_tests() -> (tempfile::TempDir, fmm::mcp::SqliteMcpServer) {
     let tmp = tempfile::TempDir::new().unwrap();
     let root = tmp.path();
 
@@ -100,11 +100,15 @@ fn setup_glossary_server_with_tests() -> (tempfile::TempDir, fmm::mcp::McpServer
     );
 
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
-    let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
+    let server = fmm::mcp::SqliteMcpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
 
-fn call_tool_text(server: &fmm::mcp::McpServer, tool: &str, args: serde_json::Value) -> String {
+fn call_tool_text(
+    server: &fmm::mcp::SqliteMcpServer,
+    tool: &str,
+    args: serde_json::Value,
+) -> String {
     let result = server.call_tool(tool, args).unwrap();
     result["content"][0]["text"].as_str().unwrap().to_string()
 }
@@ -388,7 +392,7 @@ fn glossary_default_limit_is_ten() {
         write_file(root, &filename, &format!("export const {export} = {i};\n"));
     }
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
-    let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
+    let server = fmm::mcp::SqliteMcpServer::with_root(root.to_path_buf());
     let text = call_tool_text(&server, "fmm_glossary", json!({"pattern": "item"}));
     // 11 matches, default limit 10 → truncation notice
     assert!(
@@ -402,7 +406,7 @@ fn glossary_default_limit_is_ten() {
 // ALP-826: contextualise empty and file-level results
 // ---------------------------------------------------------------------------
 
-fn setup_method_glossary_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+fn setup_method_glossary_server() -> (tempfile::TempDir, fmm::mcp::SqliteMcpServer) {
     let tmp = tempfile::TempDir::new().unwrap();
     let root = tmp.path();
 
@@ -428,7 +432,7 @@ fn setup_method_glossary_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     );
 
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
-    let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
+    let server = fmm::mcp::SqliteMcpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
 
@@ -540,7 +544,7 @@ fn glossary_bare_name_no_nudge_when_no_method_entry() {
 // ALP-847: bare function call-site precision tests
 // ---------------------------------------------------------------------------
 
-fn setup_bare_fn_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+fn setup_bare_fn_server() -> (tempfile::TempDir, fmm::mcp::SqliteMcpServer) {
     let tmp = tempfile::TempDir::new().unwrap();
     let root = tmp.path();
 
@@ -573,7 +577,7 @@ fn setup_bare_fn_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     );
 
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
-    let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
+    let server = fmm::mcp::SqliteMcpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
 
@@ -609,7 +613,7 @@ fn glossary_bare_function_call_site_precision_filters_non_callers() {
 // ALP-906: cross-package bare workspace specifier Layer 2 fix
 // ---------------------------------------------------------------------------
 
-fn setup_workspace_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+fn setup_workspace_server() -> (tempfile::TempDir, fmm::mcp::SqliteMcpServer) {
     let tmp = tempfile::TempDir::new().unwrap();
     let root = tmp.path();
 
@@ -645,7 +649,7 @@ fn setup_workspace_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     );
 
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
-    let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
+    let server = fmm::mcp::SqliteMcpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
 
@@ -695,7 +699,7 @@ fn glossary_layer2_intra_package_relative_import_unchanged() {
 // ALP-907: disclosure line wording fix (no duplicate "import")
 // ---------------------------------------------------------------------------
 
-fn setup_disclosure_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
+fn setup_disclosure_server() -> (tempfile::TempDir, fmm::mcp::SqliteMcpServer) {
     let tmp = tempfile::TempDir::new().unwrap();
     let root = tmp.path();
 
@@ -717,7 +721,7 @@ fn setup_disclosure_server() -> (tempfile::TempDir, fmm::mcp::McpServer) {
     );
 
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
-    let server = fmm::mcp::McpServer::with_root(root.to_path_buf());
+    let server = fmm::mcp::SqliteMcpServer::with_root(root.to_path_buf());
     (tmp, server)
 }
 

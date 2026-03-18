@@ -1,5 +1,73 @@
 use super::tools::{compute_import_specifiers, glob_filename_matches, is_reexport_file};
 use super::*;
+use fmm_core::manifest::Manifest as CoreManifest;
+use fmm_core::store::FmmStore;
+use fmm_core::types::PreserializedRow;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+/// Null store for unit tests. Methods panic if called; tests inject manifests directly.
+struct NullStore;
+
+impl FmmStore for NullStore {
+    type Error = std::io::Error;
+
+    fn load_manifest(&self) -> Result<CoreManifest, Self::Error> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "NullStore: no manifest",
+        ))
+    }
+
+    fn load_indexed_mtimes(&self) -> Result<HashMap<String, String>, Self::Error> {
+        unimplemented!("NullStore")
+    }
+
+    fn write_indexed_files(
+        &self,
+        _rows: &[PreserializedRow],
+        _full_reindex: bool,
+    ) -> Result<(), Self::Error> {
+        unimplemented!("NullStore")
+    }
+
+    fn upsert_single_file(&self, _row: &PreserializedRow) -> Result<(), Self::Error> {
+        unimplemented!("NullStore")
+    }
+
+    fn delete_single_file(&self, _rel_path: &str) -> Result<bool, Self::Error> {
+        unimplemented!("NullStore")
+    }
+
+    fn rebuild_and_write_reverse_deps(
+        &self,
+        _manifest: &CoreManifest,
+        _root: &Path,
+    ) -> Result<(), Self::Error> {
+        unimplemented!("NullStore")
+    }
+
+    fn upsert_workspace_packages(
+        &self,
+        _packages: &HashMap<String, PathBuf>,
+    ) -> Result<(), Self::Error> {
+        unimplemented!("NullStore")
+    }
+
+    fn write_meta(&self) -> Result<(), Self::Error> {
+        unimplemented!("NullStore")
+    }
+}
+
+/// Helper: build an `McpServer<NullStore>` with a pre-built manifest.
+fn test_server(manifest: Manifest, root: std::path::PathBuf) -> McpServer<NullStore> {
+    McpServer {
+        store: None,
+        manifest: Some(manifest),
+        load_error: None,
+        root,
+    }
+}
 
 #[test]
 fn test_server_construction() {
@@ -10,10 +78,10 @@ fn test_server_construction() {
 #[test]
 fn cap_response_handles_multibyte_utf8() {
     // Build a string that would split a multi-byte char at MAX_RESPONSE_BYTES
-    let prefix = "x".repeat(McpServer::MAX_RESPONSE_BYTES - 1);
+    let prefix = "x".repeat(MAX_RESPONSE_BYTES - 1);
     // 4-byte emoji straddles the boundary
     let text = format!("{}🦀 and more text after", prefix);
-    let result = McpServer::cap_response(text, true);
+    let result = cap_response(text, true);
     assert!(result.is_char_boundary(result.len()));
     assert!(result.contains("[Truncated"));
     assert!(
@@ -26,14 +94,14 @@ fn cap_response_handles_multibyte_utf8() {
 #[test]
 fn cap_response_passes_through_short_text() {
     let short = "hello world".to_string();
-    assert_eq!(McpServer::cap_response(short.clone(), true), short);
+    assert_eq!(cap_response(short.clone(), true), short);
 }
 
 #[test]
 fn cap_response_truncate_false_returns_full_text() {
     // Build a string larger than MAX_RESPONSE_BYTES
-    let large = "x\n".repeat(McpServer::MAX_RESPONSE_BYTES);
-    let result = McpServer::cap_response(large.clone(), false);
+    let large = "x\n".repeat(MAX_RESPONSE_BYTES);
+    let result = cap_response(large.clone(), false);
     assert_eq!(
         result, large,
         "truncate=false must return full text unchanged"
@@ -47,11 +115,7 @@ fn cap_response_truncate_false_returns_full_text() {
 #[test]
 fn dependency_graph_directory_path_returns_helpful_error() {
     use crate::manifest::Manifest;
-    let server = McpServer {
-        manifest: Some(Manifest::new()),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    };
+    let server = test_server(Manifest::new(), std::path::PathBuf::from("/tmp"));
     let result = server
         .call_tool(
             "fmm_dependency_graph",
@@ -74,11 +138,7 @@ fn dependency_graph_directory_path_returns_helpful_error() {
 #[test]
 fn read_symbol_empty_name_returns_helpful_error() {
     use crate::manifest::Manifest;
-    let server = McpServer {
-        manifest: Some(Manifest::new()),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    };
+    let server = test_server(Manifest::new(), std::path::PathBuf::from("/tmp"));
     let result = server
         .call_tool("fmm_read_symbol", serde_json::json!({"name": ""}))
         .unwrap();
@@ -98,11 +158,7 @@ fn read_symbol_empty_name_returns_helpful_error() {
 #[test]
 fn file_outline_directory_path_returns_helpful_error() {
     use crate::manifest::Manifest;
-    let server = McpServer {
-        manifest: Some(Manifest::new()),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    };
+    let server = test_server(Manifest::new(), std::path::PathBuf::from("/tmp"));
     let result = server
         .call_tool("fmm_file_outline", serde_json::json!({"file": "src/cli/"}))
         .unwrap();
@@ -148,11 +204,7 @@ fn read_symbol_dotted_notation_returns_method_source() {
         },
     );
 
-    let server = McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: dir.path().to_path_buf(),
-    };
+    let server = test_server(manifest, dir.path().to_path_buf());
 
     // Dotted lookup returns the method
     let result = server
@@ -192,11 +244,7 @@ fn read_symbol_dotted_notation_returns_method_source() {
 #[test]
 fn read_symbol_dotted_not_found_gives_helpful_error() {
     use crate::manifest::Manifest;
-    let server = McpServer {
-        manifest: Some(Manifest::new()),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    };
+    let server = test_server(Manifest::new(), std::path::PathBuf::from("/tmp"));
     let result = server
         .call_tool(
             "fmm_read_symbol",
@@ -271,11 +319,7 @@ fn read_symbol_follows_reexport_to_concrete_definition() {
     );
 
     // __init__.py wins the export_index (last writer wins), but we want agent.py
-    let server = McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: dir.path().to_path_buf(),
-    };
+    let server = test_server(manifest, dir.path().to_path_buf());
 
     let result = server
         .call_tool("fmm_read_symbol", serde_json::json!({"name": "Agent"}))
@@ -354,11 +398,7 @@ fn list_files_tool_no_args() {
         },
     );
 
-    let server = McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    };
+    let server = test_server(manifest, std::path::PathBuf::from("/tmp"));
 
     let result = server
         .call_tool("fmm_list_files", serde_json::json!({}))
@@ -400,11 +440,7 @@ fn list_files_tool_with_directory() {
         },
     );
 
-    let server = McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    };
+    let server = test_server(manifest, std::path::PathBuf::from("/tmp"));
 
     let result = server
         .call_tool(
@@ -437,11 +473,7 @@ fn list_files_tool_pagination_limit_and_offset() {
         );
     }
 
-    let server = McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    };
+    let server = test_server(manifest, std::path::PathBuf::from("/tmp"));
 
     // First page: limit=2, offset=0 — should show src/mod1.rs and src/mod2.rs
     // Use sort_by=name to get deterministic order (all files have equal LOC).
@@ -517,7 +549,7 @@ fn list_files_tool_pagination_limit_and_offset() {
 
 // --- ALP-838: fmm_dependency_graph filter=source/tests ---
 
-fn dependency_filter_manifest() -> McpServer {
+fn dependency_filter_manifest() -> McpServer<NullStore> {
     use crate::manifest::Manifest;
     use crate::parser::Metadata;
     let mut manifest = Manifest::new();
@@ -555,11 +587,7 @@ fn dependency_filter_manifest() -> McpServer {
         },
     );
     manifest.rebuild_reverse_deps();
-    McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    }
+    test_server(manifest, std::path::PathBuf::from("/tmp"))
 }
 
 #[test]
@@ -650,7 +678,7 @@ fn dependency_graph_invalid_filter_returns_error() {
 
 // --- ALP-803: fmm_list_files sort_by + order ---
 
-fn list_files_sort_manifest() -> McpServer {
+fn list_files_sort_manifest() -> McpServer<NullStore> {
     use crate::manifest::Manifest;
     use crate::parser::{ExportEntry, Metadata};
     let mut manifest = Manifest::new();
@@ -691,14 +719,10 @@ fn list_files_sort_manifest() -> McpServer {
             ..Default::default()
         },
     );
-    McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    }
+    test_server(manifest, std::path::PathBuf::from("/tmp"))
 }
 
-fn list_files_order(server: &McpServer, args: serde_json::Value) -> Vec<String> {
+fn list_files_order(server: &McpServer<NullStore>, args: serde_json::Value) -> Vec<String> {
     let result = server.call_tool("fmm_list_files", args).unwrap();
     let text = result["content"][0]["text"].as_str().unwrap().to_string();
     // Output format: "  - src/alpha.ts   # loc: 100, exports: 2"
@@ -934,7 +958,7 @@ fn list_files_invalid_directory_returns_empty() {
 
 // --- ALP-835: fmm_list_files group_by="subdir" broken when directory is set ---
 
-fn group_by_directory_manifest() -> McpServer {
+fn group_by_directory_manifest() -> McpServer<NullStore> {
     use crate::manifest::Manifest;
     use crate::parser::{ExportEntry, Metadata};
     let mut manifest = Manifest::new();
@@ -956,11 +980,7 @@ fn group_by_directory_manifest() -> McpServer {
             },
         );
     }
-    McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    }
+    test_server(manifest, std::path::PathBuf::from("/tmp"))
 }
 
 #[test]
@@ -1074,11 +1094,7 @@ fn list_files_filter_source_excludes_test_files() {
         },
     );
 
-    let server = McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    };
+    let server = test_server(manifest, std::path::PathBuf::from("/tmp"));
 
     let result = server
         .call_tool("fmm_list_files", serde_json::json!({"filter": "source"}))
@@ -1128,11 +1144,7 @@ fn list_files_filter_tests_returns_only_test_files() {
         },
     );
 
-    let server = McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    };
+    let server = test_server(manifest, std::path::PathBuf::from("/tmp"));
 
     let result = server
         .call_tool("fmm_list_files", serde_json::json!({"filter": "tests"}))
@@ -1171,7 +1183,7 @@ fn list_files_filter_invalid_returns_error() {
 
 // --- ALP-821: fmm_list_files sort_by=modified ---
 
-fn list_files_modified_manifest() -> McpServer {
+fn list_files_modified_manifest() -> McpServer<NullStore> {
     use crate::manifest::{FileEntry, Manifest};
     let mut manifest = Manifest::new();
     // Insert directly so we can set modified dates
@@ -1217,11 +1229,7 @@ fn list_files_modified_manifest() -> McpServer {
             ..Default::default()
         },
     );
-    McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    }
+    test_server(manifest, std::path::PathBuf::from("/tmp"))
 }
 
 #[test]
@@ -1307,11 +1315,7 @@ fn lookup_export_dotted_name_resolves_via_method_index() {
         },
     );
 
-    let server = McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    };
+    let server = test_server(manifest, std::path::PathBuf::from("/tmp"));
 
     // Dotted lookup resolves via method_index
     let result = server
@@ -1360,11 +1364,7 @@ fn lookup_export_flat_name_still_works_after_method_index_added() {
         },
     );
 
-    let server = McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    };
+    let server = test_server(manifest, std::path::PathBuf::from("/tmp"));
 
     let result = server
         .call_tool(
@@ -1384,11 +1384,7 @@ fn lookup_export_flat_name_still_works_after_method_index_added() {
 #[test]
 fn lookup_export_unknown_dotted_name_returns_error() {
     use crate::manifest::Manifest;
-    let server = McpServer {
-        manifest: Some(Manifest::new()),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    };
+    let server = test_server(Manifest::new(), std::path::PathBuf::from("/tmp"));
     let result = server
         .call_tool(
             "fmm_lookup_export",
@@ -1432,11 +1428,7 @@ fn list_exports_pattern_includes_method_index_matches() {
         },
     );
 
-    let server = McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    };
+    let server = test_server(manifest, std::path::PathBuf::from("/tmp"));
 
     let result = server
         .call_tool("fmm_list_exports", serde_json::json!({"pattern": "create"}))
@@ -1496,11 +1488,7 @@ fn list_exports_pattern_directory_filter_applies_to_methods() {
         },
     );
 
-    let server = McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    };
+    let server = test_server(manifest, std::path::PathBuf::from("/tmp"));
 
     // Directory filter: only src/ methods should appear
     let result = server
@@ -1543,11 +1531,7 @@ fn list_exports_truncation_notice_shown_when_limit_reached() {
             },
         );
     }
-    let server = McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    };
+    let server = test_server(manifest, std::path::PathBuf::from("/tmp"));
 
     // Request only 2 of 5 — truncation notice must appear
     let result = server
@@ -1592,11 +1576,7 @@ fn list_exports_no_truncation_notice_when_all_fit() {
             },
         );
     }
-    let server = McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    };
+    let server = test_server(manifest, std::path::PathBuf::from("/tmp"));
 
     // limit=10 > total=3 — no truncation notice
     let result = server
@@ -1615,7 +1595,7 @@ fn list_exports_no_truncation_notice_when_all_fit() {
 
 // --- ALP-837: fmm_list_exports — regex pattern support (auto-detected) ---
 
-fn regex_exports_manifest() -> McpServer {
+fn regex_exports_manifest() -> McpServer<NullStore> {
     use crate::manifest::Manifest;
     use crate::parser::{ExportEntry, Metadata};
     let mut manifest = Manifest::new();
@@ -1640,11 +1620,7 @@ fn regex_exports_manifest() -> McpServer {
             },
         );
     }
-    McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    }
+    test_server(manifest, std::path::PathBuf::from("/tmp"))
 }
 
 #[test]
@@ -2020,11 +1996,7 @@ fn glossary_layer2_filters_non_symbol_importers() {
         },
     );
 
-    let server = McpServer {
-        manifest: Some(manifest),
-        load_error: None,
-        root: std::path::PathBuf::from("/tmp"),
-    };
+    let server = test_server(manifest, std::path::PathBuf::from("/tmp"));
     let result = server
         .call_tool("fmm_glossary", serde_json::json!({"pattern": "myFunc"}))
         .unwrap();
