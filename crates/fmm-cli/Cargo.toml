@@ -1,0 +1,94 @@
+[package]
+name = "fmm"
+version = "0.1.41"
+edition = "2021"
+authors = ["Stuart Robinson <stuart@alphabio.com>"]
+description = "Auto-generate code metadata sidecars for LLM-optimized navigation"
+license = "MIT"
+repository = "https://github.com/srobinson/fmm"
+homepage = "https://srobinson.github.io/fmm/"
+readme = "../../README.md"
+keywords = ["llm", "code-analysis", "ast", "mcp", "sidecar"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = [".nancy/", "docs/"]
+
+[dependencies]
+# Core parsing
+tree-sitter = "0.26"
+tree-sitter-typescript = "0.23"
+tree-sitter-python = "0.25"
+tree-sitter-rust = "0.24"
+tree-sitter-go = "0.25"
+tree-sitter-java = "0.23"
+tree-sitter-cpp = "0.23"
+tree-sitter-c-sharp = "0.23"
+tree-sitter-ruby = "0.23"
+tree-sitter-php = "0.24"
+tree-sitter-c = "0.24"
+tree-sitter-zig = "1.1"
+tree-sitter-lua = "0.5"
+tree-sitter-scala = "0.24"
+tree-sitter-swift = "0.7"
+tree-sitter-kotlin-ng = "1.1"
+tree-sitter-elixir = "0.3"
+tree-sitter-dart-orchard = "0.3"
+streaming-iterator = "0.1"
+
+# CLI
+clap = { version = "4.5", features = ["derive", "cargo"] }
+clap_complete = "4.5"
+clap_mangen = "0.2"
+clap-markdown = "0.1"
+color-print = "0.3"
+colored = "3.0"
+
+# File handling
+ignore = "0.4"                # Respects .gitignore
+notify = "8.2"
+notify-debouncer-full = "0.7"
+ctrlc = "3.4"
+
+# Parallelism
+rayon = "1.10"
+indicatif = { version = "0.17", features = ["rayon"] }
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = { version = "0.8", features = ["parse"] }
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Pattern matching
+regex = "1"
+glob = "0.3"
+
+# Cross-package import resolution
+oxc_resolver = "11"
+
+[build-dependencies]
+toml = { version = "0.8", features = ["parse"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+indexmap = { version = "2", features = ["serde"] }
+
+[dev-dependencies]
+tempfile = "3.14"
+criterion = { version = "0.5", features = ["html_reports"] }
+rusqlite = "0.32"
+
+[[bin]]
+name = "fmm"
+path = "src/main.rs"
+
+[[bench]]
+name = "parser_benchmarks"
+harness = false
