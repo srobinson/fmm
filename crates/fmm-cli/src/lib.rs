@@ -13,3 +13,4 @@ pub use fmm_core::manifest;
 pub use fmm_core::parser;
 pub use fmm_core::resolver;
 pub use fmm_core::search;
+pub use fmm_core::store;
