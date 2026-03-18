@@ -9,6 +9,8 @@ use std::path::PathBuf;
 mod args;
 mod schema;
 #[cfg(test)]
+mod snapshot_tests;
+#[cfg(test)]
 mod tests;
 pub(crate) mod tools;
 

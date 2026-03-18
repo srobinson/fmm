@@ -1,0 +1,8 @@
+---
+source: crates/fmm-cli/src/mcp/snapshot_tests.rs
+expression: extract_text(&response)
+---
+---
+summary: 5 files · 170 LOC
+buckets: 1
+  src/  5 files  · 170 LOC

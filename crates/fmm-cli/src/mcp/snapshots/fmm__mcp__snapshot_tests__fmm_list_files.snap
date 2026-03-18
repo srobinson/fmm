@@ -1,0 +1,14 @@
+---
+source: crates/fmm-cli/src/mcp/snapshot_tests.rs
+expression: extract_text(&response)
+---
+---
+summary: 5 files · 170 LOC · largest: src/server.ts (60 LOC)
+total: 5
+files:
+  - src/server.ts         # loc: 60, exports: 1
+  - src/utils.ts          # loc: 45, exports: 3
+  - src/app.ts            # loc: 30, exports: 2
+  - src/config.ts         # loc: 20, exports: 1
+  - src/test/app.test.ts  # loc: 15, exports: 0
+# ↓ N = local relative-import dependents only. Cross-package importers not included.

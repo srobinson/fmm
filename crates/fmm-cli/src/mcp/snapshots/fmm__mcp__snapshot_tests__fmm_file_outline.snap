@@ -1,0 +1,13 @@
+---
+source: crates/fmm-cli/src/mcp/snapshot_tests.rs
+expression: extract_text(&response)
+---
+---
+file: src/server.ts
+loc: 60
+imports: [express]
+dependencies: [./config, ./utils]
+symbols:
+  Server: [1, 55]  # 55 lines, 2 public methods
+    start: [10, 30]
+    stop: [32, 50]

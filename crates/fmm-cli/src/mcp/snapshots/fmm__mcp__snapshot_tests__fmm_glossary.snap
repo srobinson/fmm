@@ -1,0 +1,16 @@
+---
+source: crates/fmm-cli/src/mcp/snapshot_tests.rs
+expression: extract_text(&response)
+---
+---
+Server:
+  - src: src/server.ts [1-55]
+    used_by: []
+Server.start:
+  - src: src/server.ts [10-30]
+    used_by: []
+Server.stop:
+  - src: src/server.ts [32-50]
+    used_by: []
+# Showing file-level importers (0 files import server.ts).
+# For call-site precision: pattern "Server.start"
