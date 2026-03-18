@@ -80,17 +80,14 @@ pub trait FmmStore {
 
     /// Rebuild reverse dependency mappings and write them to the store.
     ///
-    /// Reads the current manifest state, computes reverse deps using the
-    /// cross-package resolver rooted at `root`, and persists the result.
+    /// Reads the current file state from the store, computes reverse deps
+    /// using the cross-package resolver rooted at `root`, and persists the
+    /// result.
     ///
     /// # Errors
     ///
     /// Returns an error if reading or writing fails.
-    fn rebuild_and_write_reverse_deps(
-        &self,
-        manifest: &Manifest,
-        root: &Path,
-    ) -> Result<(), Self::Error>;
+    fn rebuild_and_write_reverse_deps(&self, root: &Path) -> Result<(), Self::Error>;
 
     /// Upsert workspace package name-to-path mappings.
     ///

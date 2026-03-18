@@ -145,14 +145,7 @@ impl FmmStore for SqliteStore {
         Ok(rows > 0)
     }
 
-    fn rebuild_and_write_reverse_deps(
-        &self,
-        manifest: &Manifest,
-        root: &Path,
-    ) -> Result<(), Self::Error> {
-        // The existing implementation re-reads files from DB and does workspace
-        // discovery. We delegate to the writer function which handles all of this.
-        let _ = manifest; // manifest param unused for SQLite; it re-reads from DB.
+    fn rebuild_and_write_reverse_deps(&self, root: &Path) -> Result<(), Self::Error> {
         let mut conn = self.conn.borrow_mut();
         writer::rebuild_and_write_reverse_deps(&mut conn, root).map_err(StoreError::Other)
     }

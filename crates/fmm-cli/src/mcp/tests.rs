@@ -39,11 +39,7 @@ impl FmmStore for NullStore {
         unimplemented!("NullStore")
     }
 
-    fn rebuild_and_write_reverse_deps(
-        &self,
-        _manifest: &CoreManifest,
-        _root: &Path,
-    ) -> Result<(), Self::Error> {
+    fn rebuild_and_write_reverse_deps(&self, _root: &Path) -> Result<(), Self::Error> {
         unimplemented!("NullStore")
     }
 

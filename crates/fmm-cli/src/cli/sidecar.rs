@@ -8,7 +8,6 @@ use std::sync::{
 };
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use fmm_core::manifest::Manifest;
 use fmm_core::store::FmmStore;
 use fmm_core::types::{PreserializedRow, serialize_file_data};
 use fmm_store::SqliteStore;
@@ -347,11 +346,10 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
                 .expect("valid template"),
         );
         sp.enable_steady_tick(Duration::from_millis(80));
-        // SqliteStore re-reads files from DB internally; manifest param unused.
-        store.rebuild_and_write_reverse_deps(&Manifest::new(), &root)?;
+        store.rebuild_and_write_reverse_deps(&root)?;
         sp.finish_and_clear();
     } else {
-        store.rebuild_and_write_reverse_deps(&Manifest::new(), &root)?;
+        store.rebuild_and_write_reverse_deps(&root)?;
     }
     let phase4_elapsed = phase4_start.elapsed();
 

@@ -374,11 +374,7 @@ impl FmmStore for InMemoryStore {
         Ok(state.files.remove(rel_path).is_some())
     }
 
-    fn rebuild_and_write_reverse_deps(
-        &self,
-        _manifest: &Manifest,
-        _root: &Path,
-    ) -> Result<(), Self::Error> {
+    fn rebuild_and_write_reverse_deps(&self, _root: &Path) -> Result<(), Self::Error> {
         // For testing, reverse deps are a no-op. Tests that need reverse deps
         // should use SqliteStore, which delegates to the full resolver pipeline.
         Ok(())

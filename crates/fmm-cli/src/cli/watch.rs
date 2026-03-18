@@ -8,7 +8,6 @@ use colored::Colorize;
 use notify::RecursiveMode;
 use notify_debouncer_full::{DebounceEventResult, new_debouncer};
 
-use fmm_core::manifest::Manifest;
 use fmm_core::store::FmmStore;
 use fmm_core::types::serialize_file_data;
 use fmm_store::SqliteStore;
@@ -169,8 +168,7 @@ fn index_file(path: &Path, root: &std::path::PathBuf) -> anyhow::Result<bool> {
     let row = serialize_file_data(&rel, &result, mtime.as_deref())?;
     store.upsert_single_file(&row)?;
 
-    // SqliteStore re-reads files from DB; manifest param is unused.
-    store.rebuild_and_write_reverse_deps(&Manifest::new(), root)?;
+    store.rebuild_and_write_reverse_deps(root)?;
     Ok(true)
 }
 
