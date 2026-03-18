@@ -8,6 +8,11 @@ use colored::Colorize;
 use notify::RecursiveMode;
 use notify_debouncer_full::{DebounceEventResult, new_debouncer};
 
+use fmm_core::manifest::Manifest;
+use fmm_core::store::FmmStore;
+use fmm_core::types::serialize_file_data;
+use fmm_store::SqliteStore;
+
 use crate::config::Config;
 use crate::fs_utils;
 
@@ -142,7 +147,7 @@ fn handle_event(
     }
 }
 
-/// Re-index a single file in the SQLite DB. Returns true if the DB was updated.
+/// Re-index a single file via `FmmStore`. Returns true if the store was updated.
 fn index_file(path: &Path, root: &std::path::PathBuf) -> anyhow::Result<bool> {
     use crate::extractor::FileProcessor;
 
@@ -153,26 +158,23 @@ fn index_file(path: &Path, root: &std::path::PathBuf) -> anyhow::Result<bool> {
         .to_string();
 
     let mtime = fs_utils::file_mtime_rfc3339(path);
-    let mut conn = fmm_store::open_or_create(root)?;
+    let store = SqliteStore::open_or_create(root)?;
 
-    if fmm_store::writer::is_file_up_to_date(&conn, &rel, mtime.as_deref()) {
+    if store.is_file_up_to_date(&rel, mtime.as_deref()) {
         return Ok(false);
     }
 
     let processor = FileProcessor::new(root);
     let result = processor.parse(path)?;
+    let row = serialize_file_data(&rel, &result, mtime.as_deref())?;
+    store.upsert_single_file(&row)?;
 
-    {
-        let tx = conn.transaction()?;
-        fmm_store::writer::upsert_file_data(&tx, &rel, &result, mtime.as_deref())?;
-        tx.commit()?;
-    }
-
-    fmm_store::writer::rebuild_and_write_reverse_deps(&mut conn, root)?;
+    // SqliteStore re-reads files from DB; manifest param is unused.
+    store.rebuild_and_write_reverse_deps(&Manifest::new(), root)?;
     Ok(true)
 }
 
-/// Remove a file's DB entry. Returns true if a row was deleted.
+/// Remove a file's store entry. Returns true if a row was deleted.
 fn remove_file_from_db(path: &Path, root: &std::path::PathBuf) -> anyhow::Result<bool> {
     let rel = path
         .strip_prefix(root)
@@ -186,9 +188,8 @@ fn remove_file_from_db(path: &Path, root: &std::path::PathBuf) -> anyhow::Result
         return Ok(false);
     }
 
-    let conn = fmm_store::open_db(root)?;
-    let rows = conn.execute("DELETE FROM files WHERE path = ?1", rusqlite::params![rel])?;
-    Ok(rows > 0)
+    let store = SqliteStore::open(root)?;
+    Ok(store.delete_single_file(&rel)?)
 }
 
 #[cfg(test)]
@@ -271,15 +272,9 @@ mod tests {
             &updates,
         );
 
-        let conn = fmm_store::open_db(&root).unwrap();
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM files WHERE path = 'src/app.ts'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(count, 1);
+        let store = SqliteStore::open(&root).unwrap();
+        let manifest = store.load_manifest().unwrap();
+        assert!(manifest.files.contains_key("src/app.ts"));
         assert_eq!(updates.load(Ordering::Relaxed), 1);
     }
 
@@ -315,15 +310,9 @@ mod tests {
             &updates,
         );
 
-        let conn = fmm_store::open_db(&root).unwrap();
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM exports WHERE name = 'newFunc'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(count, 1);
+        let store = SqliteStore::open(&root).unwrap();
+        let manifest = store.load_manifest().unwrap();
+        assert!(manifest.export_index.contains_key("newFunc"));
         assert_eq!(updates.load(Ordering::Relaxed), 2);
     }
 
@@ -372,15 +361,9 @@ mod tests {
             &updates,
         );
         {
-            let conn = fmm_store::open_db(&root).unwrap();
-            let count: i64 = conn
-                .query_row(
-                    "SELECT COUNT(*) FROM files WHERE path = 'src/app.ts'",
-                    [],
-                    |r| r.get(0),
-                )
-                .unwrap();
-            assert_eq!(count, 1);
+            let store = SqliteStore::open(&root).unwrap();
+            let manifest = store.load_manifest().unwrap();
+            assert!(manifest.files.contains_key("src/app.ts"));
         }
 
         // Delete source and trigger remove event
@@ -393,15 +376,9 @@ mod tests {
             &updates,
         );
 
-        let conn = fmm_store::open_db(&root).unwrap();
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM files WHERE path = 'src/app.ts'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(count, 0);
+        let store = SqliteStore::open(&root).unwrap();
+        let manifest = store.load_manifest().unwrap();
+        assert!(!manifest.files.contains_key("src/app.ts"));
         assert_eq!(updates.load(Ordering::Relaxed), 2);
     }
 
@@ -480,15 +457,9 @@ mod tests {
             &updates,
         );
 
-        let conn = fmm_store::open_db(&root).unwrap();
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM exports WHERE name = 'Widget'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(count, 1);
+        let store = SqliteStore::open(&root).unwrap();
+        let manifest = store.load_manifest().unwrap();
+        assert!(manifest.export_index.contains_key("Widget"));
         assert_eq!(updates.load(Ordering::Relaxed), 1);
     }
 }
