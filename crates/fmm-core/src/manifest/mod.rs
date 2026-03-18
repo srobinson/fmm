@@ -1,4 +1,3 @@
-use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -194,22 +193,9 @@ impl Manifest {
         }
     }
 
-    /// Load a complete `Manifest` from the SQLite database at `root/.fmm.db`.
-    ///
-    /// Populates all index fields (export_index, export_locations, export_all,
-    /// method_index, reverse_deps, function_index, workspace_packages).
-    pub fn load_from_sqlite(root: &std::path::Path) -> Result<Self> {
-        let conn = crate::db::open_db(root)?;
-        crate::db::reader::load_manifest_from_db(&conn, root)
-    }
-
-    /// Load the `Manifest` from the SQLite index.
-    ///
-    /// Returns an error if `.fmm.db` does not exist — run `fmm generate` first.
-    /// All callers should use this method.
-    pub fn load(root: &std::path::Path) -> Result<Self> {
-        Self::load_from_sqlite(root)
-    }
+    // NOTE: `load()` and `load_from_sqlite()` live in fmm-cli as extension
+    // methods on Manifest because they depend on the db module (rusqlite).
+    // See ALP-1485 for the full decoupling via FmmStore trait.
 
     /// Add or update a file entry in the index
     pub fn add_file(&mut self, path: &str, metadata: Metadata) {

@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 
-use crate::manifest::{GlossaryMode, Manifest};
+use crate::manifest::GlossaryMode;
+use crate::manifest_ext::load_manifest;
 
 pub fn glossary(
     pattern: Option<String>,
@@ -17,7 +18,7 @@ pub fn glossary(
     }
 
     let root = std::env::current_dir().context("Failed to get current directory")?;
-    let manifest = Manifest::load(&root)?;
+    let manifest = load_manifest(&root)?;
 
     if manifest.files.is_empty() {
         eprintln!(

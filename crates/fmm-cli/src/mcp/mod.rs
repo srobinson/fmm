@@ -1,4 +1,5 @@
 use crate::manifest::Manifest;
+use crate::manifest_ext::load_manifest;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -61,7 +62,7 @@ impl McpServer {
     }
 
     pub fn with_root(root: PathBuf) -> Self {
-        let (manifest, load_error) = match Manifest::load(&root) {
+        let (manifest, load_error) = match load_manifest(&root) {
             Ok(m) => (Some(m), None),
             Err(e) => (None, Some(e.to_string())),
         };
@@ -73,7 +74,7 @@ impl McpServer {
     }
 
     fn reload(&mut self) {
-        match Manifest::load(&self.root) {
+        match load_manifest(&self.root) {
             Ok(m) => {
                 self.manifest = Some(m);
                 self.load_error = None;

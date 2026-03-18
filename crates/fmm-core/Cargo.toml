@@ -38,5 +38,12 @@ serde_json.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 
+# Domain logic deps
+chrono.workspace = true
+glob.workspace = true
+rayon.workspace = true
+toml.workspace = true
+oxc_resolver.workspace = true
+
 [dev-dependencies]
 tempfile.workspace = true

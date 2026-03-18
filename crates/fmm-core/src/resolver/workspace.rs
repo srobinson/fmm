@@ -42,7 +42,7 @@ pub fn discover(repo_root: &Path) -> WorkspaceInfo {
 
         match glob::glob(&pattern_str) {
             Ok(entries) => {
-                for entry in entries.flatten() {
+                for entry in entries.filter_map(Result::ok) {
                     if !entry.is_dir() {
                         continue;
                     }
@@ -68,7 +68,7 @@ pub fn discover(repo_root: &Path) -> WorkspaceInfo {
     let mut packages = HashMap::new();
     for root in &roots {
         if let Some(name) = read_package_name(root) {
-            packages.insert(name, root.clone());
+            packages.insert(name, root.to_path_buf());
         }
     }
 
@@ -189,7 +189,7 @@ fn is_excluded(path: &Path, repo_root: &Path, exclude_patterns: &[String]) -> bo
     for pattern in exclude_patterns {
         let abs_pattern = repo_root.join(pattern);
         if let Ok(matched) = glob::glob(&abs_pattern.to_string_lossy()) {
-            for m in matched.flatten() {
+            for m in matched.filter_map(Result::ok) {
                 if m == path {
                     return true;
                 }

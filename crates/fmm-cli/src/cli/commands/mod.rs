@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 
 use crate::manifest::Manifest;
+use crate::manifest_ext;
 
 mod deps;
 mod exports;
@@ -19,7 +20,7 @@ pub use read::read_symbol;
 
 fn load_manifest() -> Result<(std::path::PathBuf, Manifest)> {
     let root = std::env::current_dir().context("Failed to get current directory")?;
-    let manifest = Manifest::load(&root)?;
+    let manifest = manifest_ext::load_manifest(&root)?;
     Ok((root, manifest))
 }
 

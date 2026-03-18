@@ -74,7 +74,7 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
                     export_count
                 );
 
-                if let Ok(manifest) = crate::manifest::Manifest::load(&root)
+                if let Ok(manifest) = crate::manifest_ext::load_manifest(&root)
                     && let Some((export_name, _)) = manifest.export_index.iter().next()
                 {
                     println!(

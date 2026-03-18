@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 
 use crate::manifest::Manifest;
+use crate::manifest_ext::load_manifest;
 
 // -- JSON output types (for --json flag only) --
 
@@ -64,7 +65,7 @@ pub fn search(
     json_output: bool,
 ) -> Result<()> {
     let root = std::env::current_dir()?;
-    let manifest = Manifest::load(&root)?;
+    let manifest = load_manifest(&root)?;
 
     if manifest.files.is_empty() {
         println!(
