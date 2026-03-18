@@ -39,21 +39,16 @@ indicatif.workspace = true
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
-toml.workspace = true
 
 # Date/time
 chrono.workspace = true
 
 # Error handling
 anyhow.workspace = true
-thiserror.workspace = true
 
 # Pattern matching
 regex.workspace = true
 glob.workspace = true
-
-# Cross-package import resolution
-oxc_resolver.workspace = true
 
 [build-dependencies]
 toml.workspace = true
