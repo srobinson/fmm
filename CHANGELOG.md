@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.42](https://github.com/srobinson/fmm/compare/v0.1.41...v0.1.42) (2026-03-18)
+
+
+### Features
+
+* workspace architecture with fmm-core, fmm-store, fmm-cli ([#112](https://github.com/srobinson/fmm/issues/112)) ([59e24c7](https://github.com/srobinson/fmm/commit/59e24c7b8f4085440bea2c79559097a58ad32ab4))
+
 ## [0.1.41](https://github.com/srobinson/fmm/compare/v0.1.40...v0.1.41) (2026-03-16)
 
 
