@@ -1,14 +1,17 @@
 use anyhow::Result;
-use chrono::Utc;
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
-use rusqlite::params;
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
 };
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use fmm_core::manifest::Manifest;
+use fmm_core::store::FmmStore;
+use fmm_core::types::{PreserializedRow, serialize_file_data};
+use fmm_store::SqliteStore;
 
 use crate::config::Config;
 use crate::extractor::ParserCache;
@@ -65,8 +68,8 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
 
     if dry_run {
         // Dry run: show what would be indexed without touching the DB.
-        let dirty_files: Vec<&std::path::PathBuf> = match fmm_store::open_db(&root) {
-            Ok(conn) => files
+        let dirty_files: Vec<&std::path::PathBuf> = match SqliteStore::open(&root) {
+            Ok(store) => files
                 .iter()
                 .filter(|file| {
                     if force {
@@ -78,7 +81,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
                         .display()
                         .to_string();
                     let mtime = fs_utils::file_mtime_rfc3339(file);
-                    !fmm_store::writer::is_file_up_to_date(&conn, &rel, mtime.as_deref())
+                    !store.is_file_up_to_date(&rel, mtime.as_deref())
                 })
                 .collect(),
             _ => files.iter().collect(),
@@ -101,19 +104,19 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
         return Ok(());
     }
 
-    // --- SQLite write path ---
-    let mut conn = fmm_store::open_or_create(&root)?;
+    // --- FmmStore write path ---
+    let store = SqliteStore::open_or_create(&root)?;
 
     // Store workspace packages so the read path can resolve cross-package imports.
     let workspace_info = resolver::workspace::discover(&root);
-    fmm_store::writer::upsert_workspace_packages(&conn, &workspace_info.packages)?;
+    store.upsert_workspace_packages(&workspace_info.packages)?;
 
     // Phase 1: bulk staleness check.
     // Load all indexed_at times in one query (avoids 39k individual SELECTs),
     // then compare in parallel with rayon (mtime syscalls are I/O-parallel).
     let phase1_start = Instant::now();
     let indexed_mtimes: std::collections::HashMap<String, String> = if !force {
-        fmm_store::writer::load_indexed_mtimes(&conn)?
+        store.load_indexed_mtimes()?
     } else {
         std::collections::HashMap::new()
     };
@@ -157,8 +160,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
                 elapsed.as_secs_f64()
             );
         }
-        fmm_store::writer::write_meta(&conn, "fmm_version", env!("CARGO_PKG_VERSION"))?;
-        fmm_store::writer::write_meta(&conn, "generated_at", &Utc::now().to_rfc3339())?;
+        store.write_meta()?;
         return Ok(());
     }
 
@@ -291,7 +293,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     // serde_json::to_string is CPU-bound — rayon cuts this from O(N) serial to
     // O(N/cores) before we enter the single-threaded SQLite transaction.
     let phase2b_start = Instant::now();
-    let serialized_rows: Vec<fmm_store::writer::PreserializedRow> = parse_results
+    let serialized_rows: Vec<PreserializedRow> = parse_results
         .par_iter()
         .filter_map(|(abs_path, result)| {
             let rel = abs_path
@@ -300,7 +302,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
                 .display()
                 .to_string();
             let mtime = fs_utils::file_mtime_rfc3339(abs_path);
-            match fmm_store::writer::serialize_file_data(&rel, result, mtime.as_deref()) {
+            match serialize_file_data(&rel, result, mtime.as_deref()) {
                 Ok(row) => Some(row),
                 Err(e) => {
                     eprintln!(
@@ -317,36 +319,22 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     let phase2b_elapsed = phase2b_start.elapsed();
 
     // Phase 3 (transacted): write pre-serialized rows to DB in one commit.
-    // JSON serialization already done in parallel — this loop is pure SQLite I/O.
-    //
-    // Full generates (force or entire repo dirty): DELETE all files in one
-    // statement (CASCADE clears exports/methods), then use plain INSERT.
-    // Avoids 39k per-row DELETE+INSERT cycles from INSERT OR REPLACE.
-    // Incremental generates: keep INSERT OR REPLACE (handles CASCADE per dirty file).
+    // FmmStore::write_indexed_files handles the full transaction internally:
+    // full reindex DELETEs all files first (CASCADE), then uses plain INSERT;
+    // incremental uses INSERT OR REPLACE per row.
     let is_full_generate = force || dirty_files.len() == files.len();
     let phase3_start = Instant::now();
-    {
-        let tx = conn.transaction()?;
-        if is_full_generate {
-            fmm_store::writer::delete_all_files(&tx)?;
-        }
-        if show_progress {
-            let pb = ProgressBar::new(serialized_rows.len() as u64);
-            pb.set_style(
-                ProgressStyle::with_template("Writing  {wide_bar:.green/blue} {pos}/{len}")
-                    .expect("valid template"),
-            );
-            for row in &serialized_rows {
-                fmm_store::writer::upsert_preserialized(&tx, row, is_full_generate)?;
-                pb.inc(1);
-            }
-            pb.finish_and_clear();
-        } else {
-            for row in &serialized_rows {
-                fmm_store::writer::upsert_preserialized(&tx, row, is_full_generate)?;
-            }
-        }
-        tx.commit()?;
+    if show_progress {
+        let sp = ProgressBar::new_spinner();
+        sp.set_style(
+            ProgressStyle::with_template("{spinner:.green} Writing index...")
+                .expect("valid template"),
+        );
+        sp.enable_steady_tick(Duration::from_millis(80));
+        store.write_indexed_files(&serialized_rows, is_full_generate)?;
+        sp.finish_and_clear();
+    } else {
+        store.write_indexed_files(&serialized_rows, is_full_generate)?;
     }
     let phase3_elapsed = phase3_start.elapsed();
 
@@ -359,15 +347,15 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
                 .expect("valid template"),
         );
         sp.enable_steady_tick(Duration::from_millis(80));
-        fmm_store::writer::rebuild_and_write_reverse_deps(&mut conn, &root)?;
+        // SqliteStore re-reads files from DB internally; manifest param unused.
+        store.rebuild_and_write_reverse_deps(&Manifest::new(), &root)?;
         sp.finish_and_clear();
     } else {
-        fmm_store::writer::rebuild_and_write_reverse_deps(&mut conn, &root)?;
+        store.rebuild_and_write_reverse_deps(&Manifest::new(), &root)?;
     }
     let phase4_elapsed = phase4_start.elapsed();
 
-    fmm_store::writer::write_meta(&conn, "fmm_version", env!("CARGO_PKG_VERSION"))?;
-    fmm_store::writer::write_meta(&conn, "generated_at", &Utc::now().to_rfc3339())?;
+    store.write_meta()?;
 
     let total_elapsed = total_start.elapsed();
 
@@ -416,7 +404,10 @@ pub fn validate(paths: &[String]) -> Result<()> {
         anyhow::bail!("Validation failed: no database");
     }
 
-    let conn = fmm_store::open_db(&root)?;
+    let store = SqliteStore::open(&root)?;
+    // Load all indexed mtimes once to avoid per-file queries and to determine
+    // the reason a file is invalid ("stale" vs "not indexed").
+    let indexed_mtimes = store.load_indexed_mtimes()?;
 
     println!("Validating {} files against index...", files.len());
 
@@ -429,18 +420,14 @@ pub fn validate(paths: &[String]) -> Result<()> {
                 .display()
                 .to_string();
             let mtime = fs_utils::file_mtime_rfc3339(file);
-            if fmm_store::writer::is_file_up_to_date(&conn, &rel, mtime.as_deref()) {
+            if store.is_file_up_to_date(&rel, mtime.as_deref()) {
                 None
             } else {
-                let reason = conn
-                    .query_row(
-                        "SELECT indexed_at FROM files WHERE path = ?1",
-                        params![rel],
-                        |row| row.get::<_, String>(0),
-                    )
-                    .ok()
-                    .map(|_| "stale".to_string())
-                    .unwrap_or_else(|| "not indexed".to_string());
+                let reason = if indexed_mtimes.contains_key(&rel) {
+                    "stale".to_string()
+                } else {
+                    "not indexed".to_string()
+                };
                 Some((file.to_path_buf(), reason))
             }
         })
@@ -489,10 +476,8 @@ pub fn clean(paths: &[String], dry_run: bool, delete_db: bool) -> Result<()> {
             if delete_db {
                 println!("  Would remove: {}", fmm_store::DB_FILENAME);
             } else {
-                let conn = fmm_store::open_db(&root)?;
-                let count: i64 = conn
-                    .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
-                    .unwrap_or(0);
+                let store = SqliteStore::open(&root)?;
+                let count = store.file_count()?;
                 println!(
                     "  Would clear {} indexed file(s) from {}",
                     count,
@@ -512,13 +497,9 @@ pub fn clean(paths: &[String], dry_run: bool, delete_db: bool) -> Result<()> {
             std::fs::remove_file(&db_path)?;
             println!("{} Removed {}", "✓".green(), fmm_store::DB_FILENAME);
         } else {
-            let conn = fmm_store::open_db(&root)?;
-            let count: i64 = conn
-                .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
-                .unwrap_or(0);
-            conn.execute_batch(
-                "DELETE FROM files; DELETE FROM reverse_deps; DELETE FROM workspace_packages;",
-            )?;
+            let store = SqliteStore::open(&root)?;
+            let count = store.file_count()?;
+            store.clear_index()?;
             println!(
                 "{} Cleared {} file(s) from index ({})",
                 "✓".green(),

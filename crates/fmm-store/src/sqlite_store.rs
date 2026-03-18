@@ -66,6 +66,33 @@ impl SqliteStore {
         let conn = self.conn.borrow();
         writer::is_file_up_to_date(&conn, rel_path, source_mtime)
     }
+
+    /// Returns the number of indexed files.
+    ///
+    /// # Errors
+    ///
+    /// Returns `StoreError` if the database cannot be queried.
+    pub fn file_count(&self) -> Result<usize, StoreError> {
+        let conn = self.conn.borrow();
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))?;
+        Ok(count as usize)
+    }
+
+    /// Clear all indexed data (files, reverse deps, workspace packages).
+    ///
+    /// This is an administrative operation for `fmm clean`. Not part of the
+    /// `FmmStore` trait because most store consumers should never call it.
+    ///
+    /// # Errors
+    ///
+    /// Returns `StoreError` if the database operation fails.
+    pub fn clear_index(&self) -> Result<(), StoreError> {
+        let conn = self.conn.borrow();
+        conn.execute_batch(
+            "DELETE FROM files; DELETE FROM reverse_deps; DELETE FROM workspace_packages;",
+        )?;
+        Ok(())
+    }
 }
 
 impl FmmStore for SqliteStore {
