@@ -1,12 +1,12 @@
 [package]
 name = "fmm"
-version = "0.1.41"
-edition = "2021"
-authors = ["Stuart Robinson <stuart@alphabio.com>"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
 description = "Auto-generate code metadata sidecars for LLM-optimized navigation"
-license = "MIT"
-repository = "https://github.com/srobinson/fmm"
-homepage = "https://srobinson.github.io/fmm/"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
 readme = "../../README.md"
 keywords = ["llm", "code-analysis", "ast", "mcp", "sidecar"]
 categories = ["command-line-utilities", "development-tools"]
@@ -14,76 +14,76 @@ exclude = [".nancy/", "docs/"]
 
 [dependencies]
 # Core parsing
-tree-sitter = "0.26"
-tree-sitter-typescript = "0.23"
-tree-sitter-python = "0.25"
-tree-sitter-rust = "0.24"
-tree-sitter-go = "0.25"
-tree-sitter-java = "0.23"
-tree-sitter-cpp = "0.23"
-tree-sitter-c-sharp = "0.23"
-tree-sitter-ruby = "0.23"
-tree-sitter-php = "0.24"
-tree-sitter-c = "0.24"
-tree-sitter-zig = "1.1"
-tree-sitter-lua = "0.5"
-tree-sitter-scala = "0.24"
-tree-sitter-swift = "0.7"
-tree-sitter-kotlin-ng = "1.1"
-tree-sitter-elixir = "0.3"
-tree-sitter-dart-orchard = "0.3"
-streaming-iterator = "0.1"
+tree-sitter.workspace = true
+tree-sitter-typescript.workspace = true
+tree-sitter-python.workspace = true
+tree-sitter-rust.workspace = true
+tree-sitter-go.workspace = true
+tree-sitter-java.workspace = true
+tree-sitter-cpp.workspace = true
+tree-sitter-c-sharp.workspace = true
+tree-sitter-ruby.workspace = true
+tree-sitter-php.workspace = true
+tree-sitter-c.workspace = true
+tree-sitter-zig.workspace = true
+tree-sitter-lua.workspace = true
+tree-sitter-scala.workspace = true
+tree-sitter-swift.workspace = true
+tree-sitter-kotlin-ng.workspace = true
+tree-sitter-elixir.workspace = true
+tree-sitter-dart-orchard.workspace = true
+streaming-iterator.workspace = true
 
 # CLI
-clap = { version = "4.5", features = ["derive", "cargo"] }
-clap_complete = "4.5"
-clap_mangen = "0.2"
-clap-markdown = "0.1"
-color-print = "0.3"
-colored = "3.0"
+clap.workspace = true
+clap_complete.workspace = true
+clap_mangen.workspace = true
+clap-markdown.workspace = true
+color-print.workspace = true
+colored.workspace = true
 
 # File handling
-ignore = "0.4"                # Respects .gitignore
-notify = "8.2"
-notify-debouncer-full = "0.7"
-ctrlc = "3.4"
+ignore.workspace = true
+notify.workspace = true
+notify-debouncer-full.workspace = true
+ctrlc.workspace = true
 
 # Parallelism
-rayon = "1.10"
-indicatif = { version = "0.17", features = ["rayon"] }
+rayon.workspace = true
+indicatif.workspace = true
 
 # Database
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite.workspace = true
 
 # Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-toml = { version = "0.8", features = ["parse"] }
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
 
 # Date/time
-chrono = { version = "0.4", features = ["serde"] }
+chrono.workspace = true
 
 # Error handling
-anyhow = "1.0"
-thiserror = "2.0"
+anyhow.workspace = true
+thiserror.workspace = true
 
 # Pattern matching
-regex = "1"
-glob = "0.3"
+regex.workspace = true
+glob.workspace = true
 
 # Cross-package import resolution
-oxc_resolver = "11"
+oxc_resolver.workspace = true
 
 [build-dependencies]
-toml = { version = "0.8", features = ["parse"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-indexmap = { version = "2", features = ["serde"] }
+toml.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
 
 [dev-dependencies]
-tempfile = "3.14"
-criterion = { version = "0.5", features = ["html_reports"] }
-rusqlite = "0.32"
+tempfile.workspace = true
+criterion.workspace = true
+rusqlite = { workspace = true, features = [] }
 
 [[bin]]
 name = "fmm"
