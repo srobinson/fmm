@@ -25,16 +25,16 @@ pub(crate) fn push_exports_map(
     }
     lines.push("exports:".to_string());
     for (i, name) in exports.iter().enumerate() {
-        if let Some(el) = export_lines.and_then(|els| els.get(i)) {
-            if el.start > 0 {
-                lines.push(format!(
-                    "  {}: [{}, {}]",
-                    yaml_escape(name),
-                    el.start,
-                    el.end
-                ));
-                continue;
-            }
+        if let Some(el) = export_lines.and_then(|els| els.get(i))
+            && el.start > 0
+        {
+            lines.push(format!(
+                "  {}: [{}, {}]",
+                yaml_escape(name),
+                el.start,
+                el.end
+            ));
+            continue;
         }
         lines.push(format!("  {}", yaml_escape(name)));
     }

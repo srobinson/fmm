@@ -66,10 +66,9 @@ impl ElixirParser {
 
     fn find_do_block<'a>(node: &tree_sitter::Node<'a>) -> Option<tree_sitter::Node<'a>> {
         let mut cursor = node.walk();
-        let result = node
-            .children(&mut cursor)
-            .find(|child| child.kind() == "do_block");
-        result
+
+        node.children(&mut cursor)
+            .find(|child| child.kind() == "do_block")
     }
 
     fn get_import_module_name(node: &tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
@@ -106,108 +105,106 @@ impl ElixirParser {
     ) {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.kind() == "call" {
-                if let Some(target) = Self::get_call_target(&child, source_bytes) {
-                    match target {
-                        "defmodule" => {
-                            if let Some(name) = Self::get_module_name(&child, source_bytes) {
-                                if seen_exports.insert(name.clone()) {
-                                    exports.push(ExportEntry::new(
-                                        name,
-                                        child.start_position().row + 1,
-                                        child.end_position().row + 1,
-                                    ));
-                                }
-                            }
-                            if let Some(do_block) = Self::find_do_block(&child) {
-                                Self::walk_body(
-                                    do_block,
-                                    source_bytes,
-                                    seen_exports,
-                                    exports,
-                                    import_set,
-                                    macro_count,
-                                    protocol_count,
-                                    behaviour_count,
-                                );
-                            }
+            if child.kind() == "call"
+                && let Some(target) = Self::get_call_target(&child, source_bytes)
+            {
+                match target {
+                    "defmodule" => {
+                        if let Some(name) = Self::get_module_name(&child, source_bytes)
+                            && seen_exports.insert(name.clone())
+                        {
+                            exports.push(ExportEntry::new(
+                                name,
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            ));
                         }
-                        "defprotocol" => {
-                            *protocol_count += 1;
-                            if let Some(name) = Self::get_module_name(&child, source_bytes) {
-                                if seen_exports.insert(name.clone()) {
-                                    exports.push(ExportEntry::new(
-                                        name,
-                                        child.start_position().row + 1,
-                                        child.end_position().row + 1,
-                                    ));
-                                }
-                            }
-                            if let Some(do_block) = Self::find_do_block(&child) {
-                                Self::walk_body(
-                                    do_block,
-                                    source_bytes,
-                                    seen_exports,
-                                    exports,
-                                    import_set,
-                                    macro_count,
-                                    protocol_count,
-                                    behaviour_count,
-                                );
-                            }
+                        if let Some(do_block) = Self::find_do_block(&child) {
+                            Self::walk_body(
+                                do_block,
+                                source_bytes,
+                                seen_exports,
+                                exports,
+                                import_set,
+                                macro_count,
+                                protocol_count,
+                                behaviour_count,
+                            );
                         }
-                        "def" | "defdelegate" => {
-                            if let Some(name) = Self::get_function_name(&child, source_bytes) {
-                                if seen_exports.insert(name.clone()) {
-                                    exports.push(ExportEntry::new(
-                                        name,
-                                        child.start_position().row + 1,
-                                        child.end_position().row + 1,
-                                    ));
-                                }
-                            }
-                        }
-                        "defmacro" => {
-                            *macro_count += 1;
-                            if let Some(name) = Self::get_function_name(&child, source_bytes) {
-                                if seen_exports.insert(name.clone()) {
-                                    exports.push(ExportEntry::new(
-                                        name,
-                                        child.start_position().row + 1,
-                                        child.end_position().row + 1,
-                                    ));
-                                }
-                            }
-                        }
-                        "defguard" => {
-                            if let Some(name) = Self::get_function_name(&child, source_bytes) {
-                                if seen_exports.insert(name.clone()) {
-                                    exports.push(ExportEntry::new(
-                                        name,
-                                        child.start_position().row + 1,
-                                        child.end_position().row + 1,
-                                    ));
-                                }
-                            }
-                        }
-                        "use" | "import" | "alias" | "require" => {
-                            if let Some(module) = Self::get_import_module_name(&child, source_bytes)
-                            {
-                                let root = module.split('.').next().unwrap_or(&module);
-                                import_set.insert(root.to_string());
-                            }
-                        }
-                        _ => {}
                     }
+                    "defprotocol" => {
+                        *protocol_count += 1;
+                        if let Some(name) = Self::get_module_name(&child, source_bytes)
+                            && seen_exports.insert(name.clone())
+                        {
+                            exports.push(ExportEntry::new(
+                                name,
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            ));
+                        }
+                        if let Some(do_block) = Self::find_do_block(&child) {
+                            Self::walk_body(
+                                do_block,
+                                source_bytes,
+                                seen_exports,
+                                exports,
+                                import_set,
+                                macro_count,
+                                protocol_count,
+                                behaviour_count,
+                            );
+                        }
+                    }
+                    "def" | "defdelegate" => {
+                        if let Some(name) = Self::get_function_name(&child, source_bytes)
+                            && seen_exports.insert(name.clone())
+                        {
+                            exports.push(ExportEntry::new(
+                                name,
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            ));
+                        }
+                    }
+                    "defmacro" => {
+                        *macro_count += 1;
+                        if let Some(name) = Self::get_function_name(&child, source_bytes)
+                            && seen_exports.insert(name.clone())
+                        {
+                            exports.push(ExportEntry::new(
+                                name,
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            ));
+                        }
+                    }
+                    "defguard" => {
+                        if let Some(name) = Self::get_function_name(&child, source_bytes)
+                            && seen_exports.insert(name.clone())
+                        {
+                            exports.push(ExportEntry::new(
+                                name,
+                                child.start_position().row + 1,
+                                child.end_position().row + 1,
+                            ));
+                        }
+                    }
+                    "use" | "import" | "alias" | "require" => {
+                        if let Some(module) = Self::get_import_module_name(&child, source_bytes) {
+                            let root = module.split('.').next().unwrap_or(&module);
+                            import_set.insert(root.to_string());
+                        }
+                    }
+                    _ => {}
                 }
             }
 
-            if child.kind() == "unary_operator" {
-                if let Ok(text) = child.utf8_text(source_bytes) {
-                    if text.contains("@behaviour") || text.contains("@behavior") {
-                        *behaviour_count += 1;
-                    }
-                }
+            if child.kind() == "unary_operator"
+                && let Ok(text) = child.utf8_text(source_bytes)
+                && (text.contains("@behaviour") || text.contains("@behavior"))
+            {
+                *behaviour_count += 1;
             }
 
             if child.kind() == "do_block" {

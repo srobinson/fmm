@@ -5,8 +5,8 @@ use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use rusqlite::params;
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
     Arc,
+    atomic::{AtomicU64, Ordering},
 };
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -65,8 +65,8 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
 
     if dry_run {
         // Dry run: show what would be indexed without touching the DB.
-        let dirty_files: Vec<&std::path::PathBuf> = if let Ok(conn) = db::open_db(&root) {
-            files
+        let dirty_files: Vec<&std::path::PathBuf> = match db::open_db(&root) {
+            Ok(conn) => files
                 .iter()
                 .filter(|file| {
                     if force {
@@ -80,9 +80,8 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
                     let mtime = db::writer::file_mtime_rfc3339(file);
                     !db::writer::is_file_up_to_date(&conn, &rel, mtime.as_deref())
                 })
-                .collect()
-        } else {
-            files.iter().collect()
+                .collect(),
+            _ => files.iter().collect(),
         };
 
         for abs_path in &dirty_files {
@@ -208,34 +207,36 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
         ));
         let pb_w = pb.clone();
         let last_inc_w = Arc::clone(&last_inc_ms);
-        let watcher = std::thread::spawn(move || loop {
-            std::thread::sleep(Duration::from_millis(200));
-            let pos = pb_w.position();
-            let len = pb_w.length().unwrap_or(pos);
-            if pos >= len {
-                break;
-            }
-            let now_ms = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64;
-            let stall_secs = now_ms.saturating_sub(last_inc_w.load(Ordering::Relaxed)) / 1000;
-            if stall_secs >= 2 {
-                // Stalled: show remaining count + elapsed wait so the user knows
-                // we are still alive and parsing, not hung.
-                pb_w.set_message(format!("{} remaining  ({}s)", len - pos, stall_secs));
-            } else {
-                let eta = pb_w.eta();
-                let secs = eta.as_secs();
-                if secs > 1 {
-                    let msg = if secs >= 60 {
-                        format!("ETA {}m{}s", secs / 60, secs % 60)
-                    } else {
-                        format!("ETA {}s", secs)
-                    };
-                    pb_w.set_message(msg);
+        let watcher = std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(Duration::from_millis(200));
+                let pos = pb_w.position();
+                let len = pb_w.length().unwrap_or(pos);
+                if pos >= len {
+                    break;
+                }
+                let now_ms = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                let stall_secs = now_ms.saturating_sub(last_inc_w.load(Ordering::Relaxed)) / 1000;
+                if stall_secs >= 2 {
+                    // Stalled: show remaining count + elapsed wait so the user knows
+                    // we are still alive and parsing, not hung.
+                    pb_w.set_message(format!("{} remaining  ({}s)", len - pos, stall_secs));
                 } else {
-                    pb_w.set_message("finishing...");
+                    let eta = pb_w.eta();
+                    let secs = eta.as_secs();
+                    if secs > 1 {
+                        let msg = if secs >= 60 {
+                            format!("ETA {}m{}s", secs / 60, secs % 60)
+                        } else {
+                            format!("ETA {}s", secs)
+                        };
+                        pb_w.set_message(msg);
+                    } else {
+                        pb_w.set_message("finishing...");
+                    }
                 }
             }
         });

@@ -1,3 +1,4 @@
+use fmm::parser::Parser;
 use fmm::parser::builtin::c::CParser;
 use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
@@ -15,7 +16,6 @@ use fmm::parser::builtin::scala::ScalaParser;
 use fmm::parser::builtin::swift::SwiftParser;
 use fmm::parser::builtin::typescript::TypeScriptParser;
 use fmm::parser::builtin::zig::ZigParser;
-use fmm::parser::Parser;
 
 #[test]
 fn validate_python_fixture() {
@@ -58,14 +58,18 @@ fn validate_python_fixture() {
     assert!(decorator_names.contains(&"property"));
 
     // Verify _internal_helper and _INTERNAL_TIMEOUT are NOT exported
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"_internal_helper".to_string()));
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"_INTERNAL_TIMEOUT".to_string()));
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"_internal_helper".to_string())
+    );
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"_INTERNAL_TIMEOUT".to_string())
+    );
 }
 
 #[test]
@@ -240,18 +244,24 @@ fn validate_rust_fixture() {
     );
 
     // Verify pub(crate) and pub(super) items are NOT exported
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"internal_helper".to_string()));
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"parent_visible".to_string()));
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"private_fn".to_string()));
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"internal_helper".to_string())
+    );
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"parent_visible".to_string())
+    );
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"private_fn".to_string())
+    );
 }
 
 #[test]
@@ -275,36 +285,48 @@ fn validate_go_fixture() {
     assert_eq!(result.metadata.export_names(), expected_exports);
 
     // Imports: stdlib packages
-    assert!(result
-        .metadata
-        .imports
-        .contains(&"encoding/json".to_string()));
+    assert!(
+        result
+            .metadata
+            .imports
+            .contains(&"encoding/json".to_string())
+    );
     assert!(result.metadata.imports.contains(&"fmt".to_string()));
     assert!(result.metadata.imports.contains(&"net/http".to_string()));
 
     // Dependencies: external modules (contain dots)
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"github.com/gin-gonic/gin".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"github.com/redis/go-redis/v9".to_string()));
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"github.com/gin-gonic/gin".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"github.com/redis/go-redis/v9".to_string())
+    );
 
     // Non-exported items should not be in exports
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"internalTimeout".to_string()));
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"privateState".to_string()));
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"helperFunc".to_string()));
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"internalTimeout".to_string())
+    );
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"privateState".to_string())
+    );
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"helperFunc".to_string())
+    );
 
     assert!(result.metadata.loc > 50);
 }
@@ -317,22 +339,30 @@ fn validate_java_fixture() {
     let result = parser.parse(source).unwrap();
 
     // Top-level classes, interfaces, enums
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"DataProcessor".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Repository".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Status".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"ProcessConfig".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"DataProcessor".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"Repository".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"Status".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"ProcessConfig".to_string())
+    );
 
     // ALP-771: public methods are now method entries with parent_class, not in export_names()
     assert!(
@@ -365,10 +395,12 @@ fn validate_java_fixture() {
 
     // Imports
     assert!(result.metadata.imports.contains(&"java.util".to_string()));
-    assert!(result
-        .metadata
-        .imports
-        .contains(&"org.springframework".to_string()));
+    assert!(
+        result
+            .metadata
+            .imports
+            .contains(&"org.springframework".to_string())
+    );
 
     // Annotations (custom fields)
     let fields = result.custom_fields.expect("should have custom fields");
@@ -422,14 +454,18 @@ fn validate_cpp_fixture() {
     assert!(result.metadata.imports.contains(&"algorithm".to_string()));
 
     // Local includes (dependencies)
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"config.h".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"utils/helpers.h".to_string()));
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"config.h".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"utils/helpers.h".to_string())
+    );
 
     // Namespaces (custom fields)
     let fields = result.custom_fields.expect("should have custom fields");
@@ -478,10 +514,12 @@ fn validate_csharp_fixture() {
     assert_eq!((config.start_line, config.end_line), (49, 54));
 
     // Internal class should NOT be exported
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"InternalHelper".to_string()));
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"InternalHelper".to_string())
+    );
 
     // Exports should be sorted by line number
     let lines: Vec<usize> = exports.iter().map(|e| e.start_line).collect();
@@ -515,28 +553,38 @@ fn validate_ruby_fixture() {
     let result = parser.parse(source).unwrap();
 
     // Classes, modules, top-level methods
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"DataProcessor".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"ProcessConfig".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Cacheable".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"transform".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"DataProcessor".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"ProcessConfig".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"Cacheable".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"transform".to_string())
+    );
 
     // Private methods excluded
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"_internal_helper".to_string()));
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"_internal_helper".to_string())
+    );
 
     // Imports (require)
     assert!(result.metadata.imports.contains(&"json".to_string()));
@@ -544,10 +592,12 @@ fn validate_ruby_fixture() {
 
     // Dependencies (require_relative)
     assert!(result.metadata.dependencies.contains(&"config".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"lib/helpers".to_string()));
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"lib/helpers".to_string())
+    );
 
     // Mixins (custom fields)
     let fields = result.custom_fields.expect("should have custom fields");
@@ -678,14 +728,18 @@ fn validate_c_fixture() {
     assert!(result.metadata.imports.contains(&"string.h".to_string()));
 
     // Local includes → dependencies
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"config.h".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"utils/helpers.h".to_string()));
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"config.h".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"utils/helpers.h".to_string())
+    );
 
     // Custom fields: macros
     let fields = result.custom_fields.expect("should have custom fields");
@@ -760,14 +814,18 @@ fn validate_zig_fixture() {
     assert!(result.metadata.imports.contains(&"builtin".to_string()));
 
     // Dependencies (relative imports)
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"./utils.zig".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"../config.zig".to_string()));
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"./utils.zig".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"../config.zig".to_string())
+    );
 
     // Custom fields: comptime_blocks and test_blocks
     let fields = result.custom_fields.expect("should have custom fields");
@@ -828,14 +886,18 @@ fn validate_lua_fixture() {
     assert!(result.metadata.imports.contains(&"log".to_string()));
 
     // Dependencies (require calls with relative paths)
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"./config".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"../lib/utils".to_string()));
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"./config".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"../lib/utils".to_string())
+    );
 
     // No custom fields for Lua
     assert!(result.custom_fields.is_none());
@@ -1006,10 +1068,12 @@ fn validate_swift_fixture() {
     // Imports
     assert!(result.metadata.imports.contains(&"Foundation".to_string()));
     assert!(result.metadata.imports.contains(&"UIKit".to_string()));
-    assert!(result
-        .metadata
-        .imports
-        .contains(&"MyTestModule".to_string()));
+    assert!(
+        result
+            .metadata
+            .imports
+            .contains(&"MyTestModule".to_string())
+    );
 
     // Dependencies (Swift has none)
     assert!(result.metadata.dependencies.is_empty());
@@ -1101,10 +1165,12 @@ fn validate_kotlin_fixture() {
     assert!(!names.contains(&"moduleFunction".to_string()));
 
     // Imports (package roots — first two segments)
-    assert!(result
-        .metadata
-        .imports
-        .contains(&"kotlin.collections".to_string()));
+    assert!(
+        result
+            .metadata
+            .imports
+            .contains(&"kotlin.collections".to_string())
+    );
     assert!(result.metadata.imports.contains(&"java.util".to_string()));
     assert!(result.metadata.imports.contains(&"org.example".to_string()));
 
@@ -1192,20 +1258,26 @@ fn validate_dart_fixture() {
     assert!(result.metadata.imports.contains(&"flutter".to_string()));
     assert!(result.metadata.imports.contains(&"http".to_string()));
     assert!(result.metadata.imports.contains(&"dart:async".to_string()));
-    assert!(result
-        .metadata
-        .imports
-        .contains(&"dart:convert".to_string()));
+    assert!(
+        result
+            .metadata
+            .imports
+            .contains(&"dart:convert".to_string())
+    );
 
     // Dependencies (relative paths)
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"./relative_file.dart".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"../utils/helpers.dart".to_string()));
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"./relative_file.dart".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"../utils/helpers.dart".to_string())
+    );
 
     // Custom fields
     let fields = result.custom_fields.expect("should have custom fields");
@@ -1317,14 +1389,18 @@ fn validate_typescript_sample_fixture() {
     assert!(result.metadata.imports.contains(&"fs/promises".to_string()));
 
     // Relative imports land in dependencies
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"./helper".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"../config".to_string()));
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"./helper".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"../config".to_string())
+    );
 
     assert!(result.metadata.loc > 30);
 
@@ -1347,41 +1423,55 @@ fn validate_typescript_barrel_fixture() {
     let result = parser.parse(source).unwrap();
 
     // Named re-exports are indexed
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"UserService".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"AuthService".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"UserService".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"AuthService".to_string())
+    );
 
     // export * as models → namespace name indexed (ALP-755)
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"models".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"models".to_string())
+    );
 
     // export * from './utils' → no export name (ALP-750)
     assert!(!result.metadata.export_names().contains(&"*".to_string()));
 
     // All re-export sources captured as dependencies (ALP-749/750)
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"./user.service".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"./auth.service".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"./utils".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"./models".to_string()));
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"./user.service".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"./auth.service".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"./utils".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"./models".to_string())
+    );
 }
 
 #[test]

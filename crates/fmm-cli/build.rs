@@ -77,10 +77,10 @@ fn main() {
 
 /// Only write if the content has changed to avoid spurious rebuilds.
 fn write_if_changed(path: &Path, content: &str) {
-    if let Ok(existing) = fs::read_to_string(path) {
-        if existing == content {
-            return;
-        }
+    if let Ok(existing) = fs::read_to_string(path)
+        && existing == content
+    {
+        return;
     }
     fs::write(path, content).unwrap_or_else(|e| panic!("Failed to write {}: {e}", path.display()));
 }

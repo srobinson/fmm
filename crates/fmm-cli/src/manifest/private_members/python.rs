@@ -47,18 +47,16 @@ fn extract_py_top_level(source: &[u8], exports: &[&str]) -> Option<Vec<TopLevelF
             None => continue,
         };
 
-        if child.kind() == "function_definition" {
-            if let Some(name_node) = child.child_by_field_name("name") {
-                if let Ok(name) = name_node.utf8_text(source) {
-                    if !exports.contains(&name) {
-                        result.push(TopLevelFunction {
-                            name: name.to_string(),
-                            start: child.start_position().row + 1,
-                            end: child.end_position().row + 1,
-                        });
-                    }
-                }
-            }
+        if child.kind() == "function_definition"
+            && let Some(name_node) = child.child_by_field_name("name")
+            && let Ok(name) = name_node.utf8_text(source)
+            && !exports.contains(&name)
+        {
+            result.push(TopLevelFunction {
+                name: name.to_string(),
+                start: child.start_position().row + 1,
+                end: child.end_position().row + 1,
+            });
         }
     }
 
@@ -90,18 +88,15 @@ fn walk_py_node(
     class_names: &[&str],
     result: &mut HashMap<String, Vec<PrivateMember>>,
 ) {
-    if node.kind() == "class_definition" {
-        if let Some(name_node) = node.child_by_field_name("name") {
-            if let Ok(name) = name_node.utf8_text(source) {
-                if class_names.contains(&name) {
-                    if let Some(body) = node.child_by_field_name("body") {
-                        let members = collect_py_private_members(body, source);
-                        if !members.is_empty() {
-                            result.insert(name.to_string(), members);
-                        }
-                    }
-                }
-            }
+    if node.kind() == "class_definition"
+        && let Some(name_node) = node.child_by_field_name("name")
+        && let Ok(name) = name_node.utf8_text(source)
+        && class_names.contains(&name)
+        && let Some(body) = node.child_by_field_name("body")
+    {
+        let members = collect_py_private_members(body, source);
+        if !members.is_empty() {
+            result.insert(name.to_string(), members);
         }
     }
     for i in 0..node.child_count() {
@@ -120,19 +115,17 @@ fn collect_py_private_members(body: tree_sitter::Node, source: &[u8]) -> Vec<Pri
             None => continue,
         };
 
-        if child.kind() == "function_definition" {
-            if let Some(name_node) = child.child_by_field_name("name") {
-                if let Ok(name) = name_node.utf8_text(source) {
-                    if is_py_private(name) {
-                        members.push(PrivateMember {
-                            name: name.to_string(),
-                            start: child.start_position().row + 1,
-                            end: child.end_position().row + 1,
-                            is_method: true,
-                        });
-                    }
-                }
-            }
+        if child.kind() == "function_definition"
+            && let Some(name_node) = child.child_by_field_name("name")
+            && let Ok(name) = name_node.utf8_text(source)
+            && is_py_private(name)
+        {
+            members.push(PrivateMember {
+                name: name.to_string(),
+                start: child.start_position().row + 1,
+                end: child.end_position().row + 1,
+                is_method: true,
+            });
         }
     }
 

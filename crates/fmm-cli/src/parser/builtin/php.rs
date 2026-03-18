@@ -154,15 +154,15 @@ impl PhpParser {
                 }
                 if vis_text.trim() == "public" {
                     let name = name_text.to_string();
-                    if seen.insert(name.clone()) {
-                        if let Some(node) = name_node {
-                            let decl = node.parent().unwrap_or(node);
-                            exports.push(ExportEntry::new(
-                                name,
-                                decl.start_position().row + 1,
-                                decl.end_position().row + 1,
-                            ));
-                        }
+                    if seen.insert(name.clone())
+                        && let Some(node) = name_node
+                    {
+                        let decl = node.parent().unwrap_or(node);
+                        exports.push(ExportEntry::new(
+                            name,
+                            decl.start_position().row + 1,
+                            decl.end_position().row + 1,
+                        ));
                     }
                 }
             }
@@ -409,9 +409,11 @@ mod tests {
         let mut parser = PhpParser::new().unwrap();
         let source = "<?php\nenum Status { case Active; case Inactive; }\n";
         let result = parser.parse(source).unwrap();
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"Status".to_string()));
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"Status".to_string())
+        );
     }
 }

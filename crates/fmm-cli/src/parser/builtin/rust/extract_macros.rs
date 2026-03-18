@@ -1,6 +1,6 @@
 use super::RustParser;
-use crate::parser::builtin::query_helpers::extract_field_text;
 use crate::parser::ExportEntry;
+use crate::parser::builtin::query_helpers::extract_field_text;
 use tree_sitter::Node;
 
 impl RustParser {
@@ -21,19 +21,15 @@ impl RustParser {
                     pending_attrs.push(child);
                 }
                 "macro_definition" => {
-                    if self.attrs_contain(source_bytes, &pending_attrs, "macro_export") {
-                        if let Some(name) = extract_field_text(&child, source_bytes, "name") {
-                            let start_line = pending_attrs
-                                .first()
-                                .map(|a| a.start_position().row + 1)
-                                .unwrap_or(child.start_position().row + 1);
-                            let end_line = child.end_position().row + 1;
-                            results.push(ExportEntry::new(
-                                format!("{}!", name),
-                                start_line,
-                                end_line,
-                            ));
-                        }
+                    if self.attrs_contain(source_bytes, &pending_attrs, "macro_export")
+                        && let Some(name) = extract_field_text(&child, source_bytes, "name")
+                    {
+                        let start_line = pending_attrs
+                            .first()
+                            .map(|a| a.start_position().row + 1)
+                            .unwrap_or(child.start_position().row + 1);
+                        let end_line = child.end_position().row + 1;
+                        results.push(ExportEntry::new(format!("{}!", name), start_line, end_line));
                     }
                     pending_attrs.clear();
                 }
@@ -130,10 +126,10 @@ impl RustParser {
                     if attr_child.kind() == "token_tree" {
                         let mut tc = attr_child.walk();
                         for token in attr_child.children(&mut tc) {
-                            if token.kind() == "identifier" {
-                                if let Ok(name) = token.utf8_text(source_bytes) {
-                                    return Some(name.to_string());
-                                }
+                            if token.kind() == "identifier"
+                                && let Ok(name) = token.utf8_text(source_bytes)
+                            {
+                                return Some(name.to_string());
                             }
                         }
                     }

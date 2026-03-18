@@ -123,79 +123,75 @@ impl SwiftParser {
                             }
                         }
                         Some("class") | Some("struct") | Some("enum") => {
-                            if is_public {
-                                if let Some(name) =
+                            if is_public
+                                && let Some(name) =
                                     extract_child_text(&child, source_bytes, "type_identifier")
-                                {
-                                    push_export(
-                                        &mut exports,
-                                        &mut seen,
-                                        name,
-                                        child.start_position().row + 1,
-                                        child.end_position().row + 1,
-                                    );
-                                }
+                            {
+                                push_export(
+                                    &mut exports,
+                                    &mut seen,
+                                    name,
+                                    child.start_position().row + 1,
+                                    child.end_position().row + 1,
+                                );
                             }
                         }
                         _ => {}
                     }
                 }
                 "protocol_declaration" => {
-                    if has_modifier(&child, source_bytes, "modifiers", &["public", "open"]) {
-                        if let Some(name) =
+                    if has_modifier(&child, source_bytes, "modifiers", &["public", "open"])
+                        && let Some(name) =
                             extract_child_text(&child, source_bytes, "type_identifier")
-                        {
-                            push_export(
-                                &mut exports,
-                                &mut seen,
-                                name,
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            );
-                        }
+                    {
+                        push_export(
+                            &mut exports,
+                            &mut seen,
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        );
                     }
                 }
                 "function_declaration" => {
-                    if has_modifier(&child, source_bytes, "modifiers", &["public", "open"]) {
-                        if let Some(name) =
+                    if has_modifier(&child, source_bytes, "modifiers", &["public", "open"])
+                        && let Some(name) =
                             extract_child_text(&child, source_bytes, "simple_identifier")
-                        {
-                            push_export(
-                                &mut exports,
-                                &mut seen,
-                                name,
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            );
-                        }
+                    {
+                        push_export(
+                            &mut exports,
+                            &mut seen,
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        );
                     }
                 }
                 "property_declaration" => {
-                    if has_modifier(&child, source_bytes, "modifiers", &["public", "open"]) {
-                        if let Some(name) = Self::get_property_name(&child, source_bytes) {
-                            push_export(
-                                &mut exports,
-                                &mut seen,
-                                name,
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            );
-                        }
+                    if has_modifier(&child, source_bytes, "modifiers", &["public", "open"])
+                        && let Some(name) = Self::get_property_name(&child, source_bytes)
+                    {
+                        push_export(
+                            &mut exports,
+                            &mut seen,
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        );
                     }
                 }
                 "typealias_declaration" => {
-                    if has_modifier(&child, source_bytes, "modifiers", &["public", "open"]) {
-                        if let Some(name) =
+                    if has_modifier(&child, source_bytes, "modifiers", &["public", "open"])
+                        && let Some(name) =
                             extract_child_text(&child, source_bytes, "type_identifier")
-                        {
-                            push_export(
-                                &mut exports,
-                                &mut seen,
-                                name,
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            );
-                        }
+                    {
+                        push_export(
+                            &mut exports,
+                            &mut seen,
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        );
                     }
                 }
                 _ => {}
@@ -219,10 +215,10 @@ impl SwiftParser {
             if child.kind() == "import_declaration" {
                 let mut inner = child.walk();
                 for import_child in child.children(&mut inner) {
-                    if import_child.kind() == "identifier" {
-                        if let Ok(name) = import_child.utf8_text(source_bytes) {
-                            import_set.insert(name.to_string());
-                        }
+                    if import_child.kind() == "identifier"
+                        && let Ok(name) = import_child.utf8_text(source_bytes)
+                    {
+                        import_set.insert(name.to_string());
                     }
                 }
             }

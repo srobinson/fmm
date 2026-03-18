@@ -88,10 +88,10 @@ impl RustParser {
         let mut count = 0;
         while let Some(m) = iter.next() {
             for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    if text.contains("async") {
-                        count += 1;
-                    }
+                if let Ok(text) = capture.node.utf8_text(source_bytes)
+                    && text.contains("async")
+                {
+                    count += 1;
                 }
             }
         }
@@ -116,18 +116,16 @@ impl RustParser {
                 idx < capture_names.len() && capture_names[idx] == "args"
             });
 
-            if let (Some(name_capture), Some(args_capture)) = (attr_name, args) {
-                if let Ok(name) = name_capture.node.utf8_text(source_bytes) {
-                    if name == "derive" {
-                        if let Ok(args_text) = args_capture.node.utf8_text(source_bytes) {
-                            let inner = args_text.trim_start_matches('(').trim_end_matches(')');
-                            for d in inner.split(',') {
-                                let d = d.trim().to_string();
-                                if !d.is_empty() && seen.insert(d.clone()) {
-                                    derives.push(d);
-                                }
-                            }
-                        }
+            if let (Some(name_capture), Some(args_capture)) = (attr_name, args)
+                && let Ok(name) = name_capture.node.utf8_text(source_bytes)
+                && name == "derive"
+                && let Ok(args_text) = args_capture.node.utf8_text(source_bytes)
+            {
+                let inner = args_text.trim_start_matches('(').trim_end_matches(')');
+                for d in inner.split(',') {
+                    let d = d.trim().to_string();
+                    if !d.is_empty() && seen.insert(d.clone()) {
+                        derives.push(d);
                     }
                 }
             }
@@ -159,10 +157,10 @@ impl RustParser {
         let mut iter = cursor.matches(query, root_node, source_bytes);
         while let Some(m) = iter.next() {
             for cap in m.captures {
-                if cap.index == name_idx {
-                    if let Ok(text) = cap.node.utf8_text(source_bytes) {
-                        names.push(text.to_string());
-                    }
+                if cap.index == name_idx
+                    && let Ok(text) = cap.node.utf8_text(source_bytes)
+                {
+                    names.push(text.to_string());
                 }
             }
         }

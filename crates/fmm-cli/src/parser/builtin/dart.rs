@@ -47,79 +47,84 @@ impl DartParser {
             let child = children[i];
             match child.kind() {
                 "class_definition" => {
-                    if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
-                        if !Self::is_private(&name) && seen.insert(name.clone()) {
-                            exports.push(ExportEntry::new(
-                                name,
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            ));
-                        }
+                    if let Some(name) = extract_child_text(&child, source_bytes, "identifier")
+                        && !Self::is_private(&name)
+                        && seen.insert(name.clone())
+                    {
+                        exports.push(ExportEntry::new(
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        ));
                     }
                 }
                 "mixin_declaration" => {
-                    if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
-                        if !Self::is_private(&name) && seen.insert(name.clone()) {
-                            exports.push(ExportEntry::new(
-                                name,
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            ));
-                        }
+                    if let Some(name) = extract_child_text(&child, source_bytes, "identifier")
+                        && !Self::is_private(&name)
+                        && seen.insert(name.clone())
+                    {
+                        exports.push(ExportEntry::new(
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        ));
                     }
                 }
                 "enum_declaration" => {
-                    if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
-                        if !Self::is_private(&name) && seen.insert(name.clone()) {
-                            exports.push(ExportEntry::new(
-                                name,
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            ));
-                        }
+                    if let Some(name) = extract_child_text(&child, source_bytes, "identifier")
+                        && !Self::is_private(&name)
+                        && seen.insert(name.clone())
+                    {
+                        exports.push(ExportEntry::new(
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        ));
                     }
                 }
                 "extension_declaration" => {
-                    if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
-                        if !Self::is_private(&name) && seen.insert(name.clone()) {
-                            exports.push(ExportEntry::new(
-                                name,
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            ));
-                        }
+                    if let Some(name) = extract_child_text(&child, source_bytes, "identifier")
+                        && !Self::is_private(&name)
+                        && seen.insert(name.clone())
+                    {
+                        exports.push(ExportEntry::new(
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        ));
                     }
                 }
                 "type_alias" => {
                     if let Some(name) = extract_child_text(&child, source_bytes, "type_identifier")
+                        && !Self::is_private(&name)
+                        && seen.insert(name.clone())
                     {
-                        if !Self::is_private(&name) && seen.insert(name.clone()) {
-                            exports.push(ExportEntry::new(
-                                name,
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            ));
-                        }
+                        exports.push(ExportEntry::new(
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        ));
                     }
                 }
                 "function_signature" => {
                     // Function name is an identifier child of function_signature
-                    if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
-                        if !Self::is_private(&name) && seen.insert(name.clone()) {
-                            // End line includes the function_body sibling if present
-                            let end_row = if i + 1 < children.len()
-                                && children[i + 1].kind() == "function_body"
-                            {
-                                children[i + 1].end_position().row + 1
-                            } else {
-                                child.end_position().row + 1
-                            };
-                            exports.push(ExportEntry::new(
-                                name,
-                                child.start_position().row + 1,
-                                end_row,
-                            ));
-                        }
+                    if let Some(name) = extract_child_text(&child, source_bytes, "identifier")
+                        && !Self::is_private(&name)
+                        && seen.insert(name.clone())
+                    {
+                        // End line includes the function_body sibling if present
+                        let end_row = if i + 1 < children.len()
+                            && children[i + 1].kind() == "function_body"
+                        {
+                            children[i + 1].end_position().row + 1
+                        } else {
+                            child.end_position().row + 1
+                        };
+                        exports.push(ExportEntry::new(
+                            name,
+                            child.start_position().row + 1,
+                            end_row,
+                        ));
                     }
                 }
                 "final_builtin" | "const_builtin" | "inferred_type" => {
@@ -141,10 +146,11 @@ impl DartParser {
                         }
                     }
 
-                    if let Some(name) = var_name {
-                        if !Self::is_private(&name) && seen.insert(name.clone()) {
-                            exports.push(ExportEntry::new(name, start_line, end_line));
-                        }
+                    if let Some(name) = var_name
+                        && !Self::is_private(&name)
+                        && seen.insert(name.clone())
+                    {
+                        exports.push(ExportEntry::new(name, start_line, end_line));
                     }
                 }
                 _ => {}
@@ -167,30 +173,30 @@ impl DartParser {
         let mut cursor = root_node.walk();
 
         for child in root_node.children(&mut cursor) {
-            if child.kind() == "import_or_export" {
-                if let Ok(text) = child.utf8_text(source_bytes) {
-                    // Extract the path from import statement
-                    if let Some(path) = Self::extract_import_path(text) {
-                        if path.starts_with("package:") {
-                            // package:flutter/material.dart → flutter
-                            let pkg = path
-                                .strip_prefix("package:")
-                                .unwrap_or("")
-                                .split('/')
-                                .next()
-                                .unwrap_or("");
-                            if !pkg.is_empty() {
-                                import_set.insert(pkg.to_string());
-                            }
-                        } else if path.starts_with("dart:") {
-                            // dart:async → dart:async
-                            import_set.insert(path.to_string());
-                        } else if path.starts_with('.') {
-                            // Relative imports → dependencies
-                            dependency_set.insert(path.to_string());
-                        } else {
-                            import_set.insert(path.to_string());
+            if child.kind() == "import_or_export"
+                && let Ok(text) = child.utf8_text(source_bytes)
+            {
+                // Extract the path from import statement
+                if let Some(path) = Self::extract_import_path(text) {
+                    if path.starts_with("package:") {
+                        // package:flutter/material.dart → flutter
+                        let pkg = path
+                            .strip_prefix("package:")
+                            .unwrap_or("")
+                            .split('/')
+                            .next()
+                            .unwrap_or("");
+                        if !pkg.is_empty() {
+                            import_set.insert(pkg.to_string());
                         }
+                    } else if path.starts_with("dart:") {
+                        // dart:async → dart:async
+                        import_set.insert(path.to_string());
+                    } else if path.starts_with('.') {
+                        // Relative imports → dependencies
+                        dependency_set.insert(path.to_string());
+                    } else {
+                        import_set.insert(path.to_string());
                     }
                 }
             }
@@ -358,24 +364,27 @@ mod tests {
         let result = parser.parse(source).unwrap();
         assert!(result.metadata.imports.contains(&"flutter".to_string()));
         assert!(result.metadata.imports.contains(&"dart:async".to_string()));
-        assert!(result
-            .metadata
-            .dependencies
-            .contains(&"./local.dart".to_string()));
+        assert!(
+            result
+                .metadata
+                .dependencies
+                .contains(&"./local.dart".to_string())
+        );
     }
 
     #[test]
     fn parse_double_quoted_imports() {
         let mut parser = DartParser::new().unwrap();
-        let source =
-            "import \"package:provider/provider.dart\";\nimport \"dart:io\";\nimport \"./utils.dart\";\n";
+        let source = "import \"package:provider/provider.dart\";\nimport \"dart:io\";\nimport \"./utils.dart\";\n";
         let result = parser.parse(source).unwrap();
         assert!(result.metadata.imports.contains(&"provider".to_string()));
         assert!(result.metadata.imports.contains(&"dart:io".to_string()));
-        assert!(result
-            .metadata
-            .dependencies
-            .contains(&"./utils.dart".to_string()));
+        assert!(
+            result
+                .metadata
+                .dependencies
+                .contains(&"./utils.dart".to_string())
+        );
     }
 
     #[test]

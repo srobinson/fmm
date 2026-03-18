@@ -206,19 +206,19 @@ pub fn format_file_outline(
     }
 
     // ALP-910: Render non-exported top-level functions after the symbols block.
-    if let Some(fns) = top_level_fns {
-        if !fns.is_empty() {
-            lines.push("non_exported:".to_string());
-            for f in fns {
-                let size = f.end.saturating_sub(f.start) + 1;
-                lines.push(format!(
-                    "  {}: [{}, {}]  # {} lines  # non-exported",
-                    yaml_escape(&f.name),
-                    f.start,
-                    f.end,
-                    size
-                ));
-            }
+    if let Some(fns) = top_level_fns
+        && !fns.is_empty()
+    {
+        lines.push("non_exported:".to_string());
+        for f in fns {
+            let size = f.end.saturating_sub(f.start) + 1;
+            lines.push(format!(
+                "  {}: [{}, {}]  # {} lines  # non-exported",
+                yaml_escape(&f.name),
+                f.start,
+                f.end,
+                size
+            ));
         }
     }
 

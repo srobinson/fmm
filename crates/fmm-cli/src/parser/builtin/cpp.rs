@@ -255,10 +255,12 @@ void processData() {
 "#;
         let result = parser.parse(source).unwrap();
         assert!(result.metadata.export_names().contains(&"main".to_string()));
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"processData".to_string()));
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"processData".to_string())
+        );
     }
 
     #[test]
@@ -277,14 +279,18 @@ struct Point {
 };
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"Engine".to_string()));
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"Point".to_string()));
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"Engine".to_string())
+        );
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"Point".to_string())
+        );
     }
 
     #[test]
@@ -299,14 +305,18 @@ struct Point {
         let result = parser.parse(source).unwrap();
         assert!(result.metadata.imports.contains(&"iostream".to_string()));
         assert!(result.metadata.imports.contains(&"vector".to_string()));
-        assert!(result
-            .metadata
-            .dependencies
-            .contains(&"config.h".to_string()));
-        assert!(result
-            .metadata
-            .dependencies
-            .contains(&"utils/helpers.h".to_string()));
+        assert!(
+            result
+                .metadata
+                .dependencies
+                .contains(&"config.h".to_string())
+        );
+        assert!(
+            result
+                .metadata
+                .dependencies
+                .contains(&"utils/helpers.h".to_string())
+        );
     }
 
     #[test]
@@ -346,10 +356,12 @@ class Container {
 };
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"Container".to_string()));
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"Container".to_string())
+        );
     }
 
     #[test]

@@ -193,10 +193,10 @@ impl TypeScriptParser {
             let mut iter = cursor.matches(query, root_node, source_bytes);
             while let Some(m) = iter.next() {
                 for capture in m.captures {
-                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                        if seen.insert(text.to_string()) {
-                            decorators.push(text.to_string());
-                        }
+                    if let Ok(text) = capture.node.utf8_text(source_bytes)
+                        && seen.insert(text.to_string())
+                    {
+                        decorators.push(text.to_string());
                     }
                 }
             }
@@ -232,11 +232,7 @@ impl Parser for TypeScriptParser {
     }
 
     fn language_id(&self) -> &'static str {
-        if self.is_tsx {
-            "tsx"
-        } else {
-            "typescript"
-        }
+        if self.is_tsx { "tsx" } else { "typescript" }
     }
 
     fn extensions(&self) -> &'static [&'static str] {

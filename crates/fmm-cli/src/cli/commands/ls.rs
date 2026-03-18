@@ -37,10 +37,10 @@ pub fn ls(
             sort_by
         );
     }
-    if let Some(o) = order {
-        if !matches!(o, "asc" | "desc") {
-            anyhow::bail!("Invalid --order '{}'. Valid values: asc, desc.", o);
-        }
+    if let Some(o) = order
+        && !matches!(o, "asc" | "desc")
+    {
+        anyhow::bail!("Invalid --order '{}'. Valid values: asc, desc.", o);
     }
 
     // Normalise "." / "./" to None — they should list the full repo root,
@@ -66,10 +66,10 @@ pub fn ls(
         .files
         .iter()
         .filter(|(path, _)| {
-            if let Some(d) = directory {
-                if !path.starts_with(d) {
-                    return false;
-                }
+            if let Some(d) = directory
+                && !path.starts_with(d)
+            {
+                return false;
             }
             if let Some(pat) = &glob_pattern {
                 let filename = std::path::Path::new(path.as_str())

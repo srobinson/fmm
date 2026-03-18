@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 
 use rayon::prelude::*;
 
-use crate::resolver::{resolve_by_directory_prefix, CrossPackageResolver};
+use crate::resolver::{CrossPackageResolver, resolve_by_directory_prefix};
 
 use super::Manifest;
 
@@ -88,10 +88,10 @@ pub fn dep_matches(
     }
 
     // Python packages: `./utils` should match `utils/__init__.py`
-    if let Some(package_stem) = target_stem.strip_suffix("/__init__") {
-        if resolved_stem == package_stem {
-            return true;
-        }
+    if let Some(package_stem) = target_stem.strip_suffix("/__init__")
+        && resolved_stem == package_stem
+    {
+        return true;
     }
 
     // Fallback: crate:: paths (Rust internal modules)

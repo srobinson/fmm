@@ -52,16 +52,16 @@ fn extract_rs_top_level(source: &[u8], exports: &[&str]) -> Option<Vec<TopLevelF
             None => continue,
         };
 
-        if child.kind() == "function_item" && !has_visibility(child) {
-            if let Some(name) = fn_name(child, source) {
-                if !exports.contains(&name.as_str()) {
-                    result.push(TopLevelFunction {
-                        name,
-                        start: child.start_position().row + 1,
-                        end: child.end_position().row + 1,
-                    });
-                }
-            }
+        if child.kind() == "function_item"
+            && !has_visibility(child)
+            && let Some(name) = fn_name(child, source)
+            && !exports.contains(&name.as_str())
+        {
+            result.push(TopLevelFunction {
+                name,
+                start: child.start_position().row + 1,
+                end: child.end_position().row + 1,
+            });
         }
     }
 
@@ -138,15 +138,16 @@ fn collect_private_methods(body: tree_sitter::Node, source: &[u8]) -> Vec<Privat
             None => continue,
         };
 
-        if child.kind() == "function_item" && !has_visibility(child) {
-            if let Some(name) = fn_name(child, source) {
-                members.push(PrivateMember {
-                    name,
-                    start: child.start_position().row + 1,
-                    end: child.end_position().row + 1,
-                    is_method: true,
-                });
-            }
+        if child.kind() == "function_item"
+            && !has_visibility(child)
+            && let Some(name) = fn_name(child, source)
+        {
+            members.push(PrivateMember {
+                name,
+                start: child.start_position().row + 1,
+                end: child.end_position().row + 1,
+                is_method: true,
+            });
         }
     }
 

@@ -160,16 +160,16 @@ fn load_exports(conn: &Connection, manifest: &mut Manifest) -> Result<()> {
                 });
 
             // function_index: first definition wins if this export is a known function
-            if let Some(fe) = manifest.files.get(&file_path) {
-                if fe.function_names.contains(name) {
-                    manifest
-                        .function_index
-                        .entry(name.clone())
-                        .or_insert(ExportLocation {
-                            file: file_path.clone(),
-                            lines: line_range.clone(),
-                        });
-                }
+            if let Some(fe) = manifest.files.get(&file_path)
+                && fe.function_names.contains(name)
+            {
+                manifest
+                    .function_index
+                    .entry(name.clone())
+                    .or_insert(ExportLocation {
+                        file: file_path.clone(),
+                        lines: line_range.clone(),
+                    });
             }
 
             // export_index / export_locations: apply TS > JS collision logic

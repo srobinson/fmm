@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use super::tsconfig::{match_alias, strip_json_comments};
 use super::TypeScriptParser;
+use super::tsconfig::{match_alias, strip_json_comments};
 use crate::parser::{ParseResult, Parser};
 
 fn parse(source: &str) -> ParseResult {
@@ -19,10 +19,12 @@ fn parse_tsx(source: &str) -> ParseResult {
 #[test]
 fn exports_named_function() {
     let result = parse("export function greet(name: string) { return `Hi ${name}`; }");
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"greet".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"greet".to_string())
+    );
 }
 
 #[test]
@@ -34,19 +36,23 @@ fn exports_arrow_function_via_const() {
 #[test]
 fn exports_class() {
     let result = parse("export class UserService { constructor() {} }");
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"UserService".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"UserService".to_string())
+    );
 }
 
 #[test]
 fn exports_interface() {
     let result = parse("export interface Config { debug: boolean; }");
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Config".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"Config".to_string())
+    );
 }
 
 #[test]
@@ -60,19 +66,23 @@ fn exports_multiple_from_clause() {
 #[test]
 fn exports_const_variable() {
     let result = parse("export const MAX_RETRIES = 3;");
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"MAX_RETRIES".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"MAX_RETRIES".to_string())
+    );
 }
 
 #[test]
 fn exports_let_variable() {
     let result = parse("export let counter = 0;");
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"counter".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"counter".to_string())
+    );
 }
 
 #[test]
@@ -94,19 +104,23 @@ export const middle = 1;
 #[test]
 fn exports_enum() {
     let result = parse("export enum Direction { Up, Down, Left, Right }");
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Direction".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"Direction".to_string())
+    );
 }
 
 #[test]
 fn exports_const_enum() {
     let result = parse("export const enum Status { Active, Inactive }");
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Status".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"Status".to_string())
+    );
 }
 
 #[test]
@@ -157,34 +171,44 @@ fn exports_aliased_specifier_with_dep_capture() {
 #[test]
 fn exports_namespace_star_reexport() {
     let result = parse("export * as utils from './utils';");
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"utils".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"./utils".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"utils".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"./utils".to_string())
+    );
 }
 
 // --- ALP-756: export namespace / module ---
 
 #[test]
 fn exports_namespace_declaration() {
-    let result = parse("export namespace Validation { export function isEmail(s: string): boolean { return true; } }");
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Validation".to_string()));
+    let result = parse(
+        "export namespace Validation { export function isEmail(s: string): boolean { return true; } }",
+    );
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"Validation".to_string())
+    );
 }
 
 #[test]
 fn exports_module_declaration() {
     let result = parse("export module Shapes { export class Circle {} }");
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Shapes".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"Shapes".to_string())
+    );
 }
 
 // --- Import extraction ---
@@ -198,10 +222,12 @@ fn imports_external_package() {
 #[test]
 fn imports_scoped_package() {
     let result = parse("import express from '@types/express';");
-    assert!(result
-        .metadata
-        .imports
-        .contains(&"@types/express".to_string()));
+    assert!(
+        result
+            .metadata
+            .imports
+            .contains(&"@types/express".to_string())
+    );
 }
 
 #[test]
@@ -227,14 +253,18 @@ import React from 'react';
 "#;
     let result = parse(source);
     assert!(result.metadata.dependencies.contains(&"./foo".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"../lib/bar".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"/absolute/baz".to_string()));
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"../lib/bar".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"/absolute/baz".to_string())
+    );
     assert!(!result.metadata.dependencies.contains(&"react".to_string()));
 }
 
@@ -259,18 +289,24 @@ export { Logger } from './logger';
         vec!["UserService", "AuthService", "Logger"]
     );
     // ALP-749: re-export sources must appear in dependencies
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"./user.service".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"./auth.service".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"./logger".to_string()));
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"./user.service".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"./auth.service".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"./logger".to_string())
+    );
 }
 
 #[test]
@@ -281,27 +317,35 @@ export { UserService } from './user.service';
 export { AuthService } from './auth.service';
 "#;
     let result = parse(source);
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"./db/pool".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"./user.service".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"./auth.service".to_string()));
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"./db/pool".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"./user.service".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"./auth.service".to_string())
+    );
 }
 
 #[test]
 fn reexport_external_package_not_in_dependencies() {
     let result = parse("export { foo } from '@scope/pkg';");
-    assert!(!result
-        .metadata
-        .dependencies
-        .contains(&"@scope/pkg".to_string()));
+    assert!(
+        !result
+            .metadata
+            .dependencies
+            .contains(&"@scope/pkg".to_string())
+    );
 }
 
 // --- ALP-750: export * from star re-exports ---
@@ -309,10 +353,12 @@ fn reexport_external_package_not_in_dependencies() {
 #[test]
 fn star_reexport_adds_dependency_not_export_name() {
     let result = parse("export * from './utils';");
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"./utils".to_string()));
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"./utils".to_string())
+    );
     assert!(!result.metadata.export_names().contains(&"*".to_string()));
     assert!(result.metadata.exports.is_empty());
 }
@@ -333,10 +379,12 @@ return <button>{label}</button>;
 }
 "#;
     let result = parse_tsx(source);
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Button".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"Button".to_string())
+    );
 }
 
 #[test]
@@ -501,14 +549,18 @@ export const DEFAULT_PORT = 5432;
         ]
     );
     assert_eq!(result.metadata.imports, vec!["winston"]);
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"./db/pool".to_string()));
-    assert!(result
-        .metadata
-        .dependencies
-        .contains(&"./config".to_string()));
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"./db/pool".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .dependencies
+            .contains(&"./config".to_string())
+    );
     assert!(result.metadata.loc > 20);
 }
 
@@ -860,10 +912,12 @@ fn named_imports_default_import_not_included() {
 #[test]
 fn namespace_imports_captured() {
     let result = parse("import * as NS from './module';");
-    assert!(result
-        .metadata
-        .namespace_imports
-        .contains(&"./module".to_string()));
+    assert!(
+        result
+            .metadata
+            .namespace_imports
+            .contains(&"./module".to_string())
+    );
     assert!(
         result.metadata.named_imports.is_empty(),
         "namespace import should not populate named_imports"
@@ -882,10 +936,12 @@ fn named_reexports_captured() {
 #[test]
 fn wildcard_reexport_goes_to_namespace_imports() {
     let result = parse("export * from './utils';");
-    assert!(result
-        .metadata
-        .namespace_imports
-        .contains(&"./utils".to_string()));
+    assert!(
+        result
+            .metadata
+            .namespace_imports
+            .contains(&"./utils".to_string())
+    );
 }
 
 #[test]

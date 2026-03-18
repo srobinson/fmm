@@ -42,15 +42,15 @@ pub(in crate::mcp) fn tool_list_files(
             sort_by
         ));
     }
-    if let Some(o) = order {
-        if !matches!(o, "asc" | "desc") {
-            return Err(format!("Invalid order '{}'. Valid values: asc, desc.", o));
-        }
+    if let Some(o) = order
+        && !matches!(o, "asc" | "desc")
+    {
+        return Err(format!("Invalid order '{}'. Valid values: asc, desc.", o));
     }
-    if let Some(g) = group_by {
-        if g != "subdir" {
-            return Err(format!("Invalid group_by '{}'. Valid values: subdir.", g));
-        }
+    if let Some(g) = group_by
+        && g != "subdir"
+    {
+        return Err(format!("Invalid group_by '{}'. Valid values: subdir.", g));
     }
     if !matches!(filter, "all" | "source" | "tests") {
         return Err(format!(
@@ -66,10 +66,10 @@ pub(in crate::mcp) fn tool_list_files(
         .files
         .iter()
         .filter(|(path, _)| {
-            if let Some(d) = dir {
-                if !path.starts_with(d) {
-                    return false;
-                }
+            if let Some(d) = dir
+                && !path.starts_with(d)
+            {
+                return false;
             }
             // Apply source/test filter
             match filter {

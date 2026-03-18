@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashSet};
 use crate::manifest::Manifest;
 
 use super::helpers::{export_hit_from_location, export_match_score};
-use super::{BareSearchResult, ExportHit, ImportHit, NamedImportHit, DEFAULT_SEARCH_LIMIT};
+use super::{BareSearchResult, DEFAULT_SEARCH_LIMIT, ExportHit, ImportHit, NamedImportHit};
 
 /// Universal term search: searches exports (exact -> scored fuzzy), file paths, imports.
 /// `limit` caps fuzzy export results (default: 50). Exact match always included.
@@ -32,11 +32,11 @@ pub fn bare_search(manifest: &Manifest, term: &str, limit: Option<usize>) -> Bar
         .method_index
         .get(term)
         .map(|loc| (term.to_string(), loc.clone()));
-    if let Some((name, loc)) = method_exact {
-        if !seen_exports.contains(&name) {
-            export_hits.push(export_hit_from_location(&name, &loc));
-            seen_exports.insert(name);
-        }
+    if let Some((name, loc)) = method_exact
+        && !seen_exports.contains(&name)
+    {
+        export_hits.push(export_hit_from_location(&name, &loc));
+        seen_exports.insert(name);
     }
 
     // 2b. Fuzzy method_index search: dotted names that contain the term.

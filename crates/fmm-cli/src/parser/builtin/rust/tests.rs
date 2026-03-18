@@ -7,18 +7,24 @@ fn parse_rust_pub_functions() {
     let mut parser = RustParser::new().unwrap();
     let source = "pub fn hello() {}\nfn private() {}\npub fn world() {}";
     let result = parser.parse(source).unwrap();
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"hello".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"world".to_string()));
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"private".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"hello".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"world".to_string())
+    );
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"private".to_string())
+    );
 }
 
 #[test]
@@ -28,10 +34,12 @@ fn parse_rust_pub_structs_and_enums() {
     let result = parser.parse(source).unwrap();
     assert!(result.metadata.export_names().contains(&"Foo".to_string()));
     assert!(result.metadata.export_names().contains(&"Bar".to_string()));
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"Private".to_string()));
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"Private".to_string())
+    );
 }
 
 #[test]
@@ -69,18 +77,24 @@ fn parse_rust_pub_crate_excluded() {
     let mut parser = RustParser::new().unwrap();
     let source = "pub fn visible() {}\npub(crate) fn internal() {}\npub(super) fn parent_only() {}";
     let result = parser.parse(source).unwrap();
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"visible".to_string()));
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"internal".to_string()));
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"parent_only".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"visible".to_string())
+    );
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"internal".to_string())
+    );
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"parent_only".to_string())
+    );
 }
 
 #[test]
@@ -335,8 +349,7 @@ fn rust_impl_private_fn_not_indexed() {
 #[test]
 fn rust_trait_impl_pub_fn_indexed() {
     let mut parser = RustParser::new().unwrap();
-    let source =
-        "pub struct Foo;\ntrait MyTrait {\n    fn method(&self);\n}\nimpl MyTrait for Foo {\n    pub fn method(&self) {}\n}";
+    let source = "pub struct Foo;\ntrait MyTrait {\n    fn method(&self);\n}\nimpl MyTrait for Foo {\n    pub fn method(&self) {}\n}";
     let result = parser.parse(source).unwrap();
     assert!(
         get_method(&result.metadata.exports, "Foo", "method").is_some(),
@@ -409,16 +422,16 @@ fn rust_anonymous_lifetime_filtered() {
     let mut parser = RustParser::new().unwrap();
     let source = "fn foo(x: &'_ str) {}";
     let result = parser.parse(source).unwrap();
-    if let Some(fields) = result.custom_fields {
-        if let Some(lts) = fields.get("lifetimes") {
-            let names: Vec<&str> = lts
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|v| v.as_str().unwrap())
-                .collect();
-            assert!(!names.contains(&"'_"));
-        }
+    if let Some(fields) = result.custom_fields
+        && let Some(lts) = fields.get("lifetimes")
+    {
+        let names: Vec<&str> = lts
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert!(!names.contains(&"'_"));
     }
 }
 

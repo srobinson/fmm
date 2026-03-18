@@ -1,6 +1,6 @@
 use std::collections::{BTreeSet, HashSet, VecDeque};
 
-use crate::manifest::{builtin_source_extensions, try_resolve_local_dep, FileEntry, Manifest};
+use crate::manifest::{FileEntry, Manifest, builtin_source_extensions, try_resolve_local_dep};
 
 /// Transitive dependency traversal with BFS and cycle detection.
 ///
@@ -40,13 +40,13 @@ pub fn dependency_graph_transitive(
         }
     }
     for imp in &entry.imports {
-        if !imp.contains('/') {
-            if let Some(resolved) = try_resolve_local_dep(imp, file, manifest, exts) {
-                if !visited_up.contains(&resolved) {
-                    queue_up.push_back((resolved, 1));
-                }
-                continue;
+        if !imp.contains('/')
+            && let Some(resolved) = try_resolve_local_dep(imp, file, manifest, exts)
+        {
+            if !visited_up.contains(&resolved) {
+                queue_up.push_back((resolved, 1));
             }
+            continue;
         }
         external_set.insert(imp.clone());
     }
@@ -58,29 +58,28 @@ pub fn dependency_graph_transitive(
         visited_up.insert(current.clone());
         upstream.push((current.clone(), d));
 
-        if depth == -1 || d < depth {
-            if let Some(e) = manifest.files.get(&current) {
-                for dep in &e.dependencies {
-                    if let Some(resolved) = try_resolve_local_dep(dep, &current, manifest, exts) {
-                        if !visited_up.contains(&resolved) {
-                            queue_up.push_back((resolved, d + 1));
-                        }
-                    } else {
-                        external_set.insert(dep.clone());
+        if (depth == -1 || d < depth)
+            && let Some(e) = manifest.files.get(&current)
+        {
+            for dep in &e.dependencies {
+                if let Some(resolved) = try_resolve_local_dep(dep, &current, manifest, exts) {
+                    if !visited_up.contains(&resolved) {
+                        queue_up.push_back((resolved, d + 1));
                     }
+                } else {
+                    external_set.insert(dep.clone());
                 }
-                for imp in &e.imports {
-                    if !imp.contains('/') {
-                        if let Some(resolved) = try_resolve_local_dep(imp, &current, manifest, exts)
-                        {
-                            if !visited_up.contains(&resolved) {
-                                queue_up.push_back((resolved, d + 1));
-                            }
-                            continue;
-                        }
+            }
+            for imp in &e.imports {
+                if !imp.contains('/')
+                    && let Some(resolved) = try_resolve_local_dep(imp, &current, manifest, exts)
+                {
+                    if !visited_up.contains(&resolved) {
+                        queue_up.push_back((resolved, d + 1));
                     }
-                    external_set.insert(imp.clone());
+                    continue;
                 }
+                external_set.insert(imp.clone());
             }
         }
     }

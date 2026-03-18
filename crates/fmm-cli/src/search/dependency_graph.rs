@@ -1,4 +1,4 @@
-use crate::manifest::{builtin_source_extensions, try_resolve_local_dep, FileEntry, Manifest};
+use crate::manifest::{FileEntry, Manifest, builtin_source_extensions, try_resolve_local_dep};
 
 /// Compute upstream and downstream dependencies for a file.
 ///
@@ -30,13 +30,13 @@ pub fn dependency_graph<'a>(
     // Only dotted imports without '/' are tried as potential local files (Python absolute
     // imports like `agno.models.message`).
     for imp in &entry.imports {
-        if !imp.contains('/') {
-            if let Some(resolved) = try_resolve_local_dep(imp, file, manifest, exts) {
-                if !local.contains(&resolved) {
-                    local.push(resolved);
-                }
-                continue;
+        if !imp.contains('/')
+            && let Some(resolved) = try_resolve_local_dep(imp, file, manifest, exts)
+        {
+            if !local.contains(&resolved) {
+                local.push(resolved);
             }
+            continue;
         }
         if !external.contains(imp) {
             external.push(imp.clone());

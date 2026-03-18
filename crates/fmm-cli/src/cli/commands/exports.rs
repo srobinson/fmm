@@ -42,10 +42,10 @@ pub fn exports(
             .export_index
             .iter()
             .filter(|(name, path)| {
-                if let Some(d) = directory {
-                    if !path.starts_with(d) {
-                        return false;
-                    }
+                if let Some(d) = directory
+                    && !path.starts_with(d)
+                {
+                    return false;
                 }
                 matcher(name)
             })
@@ -64,10 +64,10 @@ pub fn exports(
             if !matcher(dotted_name) {
                 continue;
             }
-            if let Some(d) = directory {
-                if !loc.file.starts_with(d) {
-                    continue;
-                }
+            if let Some(d) = directory
+                && !loc.file.starts_with(d)
+            {
+                continue;
             }
             let lines = loc.lines.as_ref().map(|l| [l.start, l.end]);
             matches.push((dotted_name.clone(), loc.file.clone(), lines));
@@ -109,10 +109,10 @@ pub fn exports(
             .files
             .iter()
             .filter(|(path, entry)| {
-                if let Some(d) = directory {
-                    if !path.starts_with(d) {
-                        return false;
-                    }
+                if let Some(d) = directory
+                    && !path.starts_with(d)
+                {
+                    return false;
                 }
                 !entry.exports.is_empty()
             })

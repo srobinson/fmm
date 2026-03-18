@@ -115,21 +115,20 @@ impl JavaParser {
                     continue;
                 }
                 let method_node = method_cap.node;
-                if let Some(method_decl) = method_node.parent() {
-                    if self.has_public_modifier(method_decl, source_bytes) {
-                        if let Ok(text) = method_node.utf8_text(source_bytes) {
-                            let method_name = text.to_string();
-                            // Use "ClassName.method" as the dedup key to scope correctly
-                            let key = format!("{}.{}", class_name, method_name);
-                            if seen.insert(key) {
-                                exports.push(ExportEntry::method(
-                                    method_name,
-                                    method_decl.start_position().row + 1,
-                                    method_decl.end_position().row + 1,
-                                    class_name,
-                                ));
-                            }
-                        }
+                if let Some(method_decl) = method_node.parent()
+                    && self.has_public_modifier(method_decl, source_bytes)
+                    && let Ok(text) = method_node.utf8_text(source_bytes)
+                {
+                    let method_name = text.to_string();
+                    // Use "ClassName.method" as the dedup key to scope correctly
+                    let key = format!("{}.{}", class_name, method_name);
+                    if seen.insert(key) {
+                        exports.push(ExportEntry::method(
+                            method_name,
+                            method_decl.start_position().row + 1,
+                            method_decl.end_position().row + 1,
+                            class_name,
+                        ));
                     }
                 }
             }
@@ -148,10 +147,10 @@ impl JavaParser {
                     if modifier.kind() == "public" {
                         return true;
                     }
-                    if let Ok(text) = modifier.utf8_text(source_bytes) {
-                        if text == "public" {
-                            return true;
-                        }
+                    if let Ok(text) = modifier.utf8_text(source_bytes)
+                        && text == "public"
+                    {
+                        return true;
                     }
                 }
             }
@@ -278,10 +277,12 @@ public class UserService {
 "#;
         let result = parser.parse(source).unwrap();
         // Class itself is a top-level export
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"UserService".to_string()));
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"UserService".to_string())
+        );
         // ALP-771: public methods are now method entries with parent_class, NOT in export_names()
         assert!(
             !result
@@ -349,10 +350,12 @@ public interface Repository<T> {
 }
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"Repository".to_string()));
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"Repository".to_string())
+        );
     }
 
     #[test]
@@ -367,10 +370,12 @@ public class App {}
 "#;
         let result = parser.parse(source).unwrap();
         assert!(result.metadata.imports.contains(&"java.util".to_string()));
-        assert!(result
-            .metadata
-            .imports
-            .contains(&"org.springframework".to_string()));
+        assert!(
+            result
+                .metadata
+                .imports
+                .contains(&"org.springframework".to_string())
+        );
     }
 
     #[test]
@@ -404,10 +409,12 @@ public enum Status {
 }
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"Status".to_string()));
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"Status".to_string())
+        );
     }
 
     #[test]

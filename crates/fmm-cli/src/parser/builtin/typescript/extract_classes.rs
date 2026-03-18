@@ -57,14 +57,12 @@ impl TypeScriptParser {
             };
 
             for i in 0..body.child_count() {
-                if let Some(child) = body.child(i as u32) {
-                    if child.kind() == "method_definition" {
-                        if let Some(entry) =
-                            Self::extract_method_entry(&class_name, child, source_bytes)
-                        {
-                            entries.push(entry);
-                        }
-                    }
+                if let Some(child) = body.child(i as u32)
+                    && child.kind() == "method_definition"
+                    && let Some(entry) =
+                        Self::extract_method_entry(&class_name, child, source_bytes)
+                {
+                    entries.push(entry);
                 }
             }
         }
@@ -81,12 +79,12 @@ impl TypeScriptParser {
     ) -> Option<ExportEntry> {
         // Check accessibility_modifier — skip private and protected
         for i in 0..method_node.child_count() {
-            if let Some(child) = method_node.child(i as u32) {
-                if child.kind() == "accessibility_modifier" {
-                    let text = child.utf8_text(source_bytes).unwrap_or("");
-                    if text == "private" || text == "protected" {
-                        return None;
-                    }
+            if let Some(child) = method_node.child(i as u32)
+                && child.kind() == "accessibility_modifier"
+            {
+                let text = child.utf8_text(source_bytes).unwrap_or("");
+                if text == "private" || text == "protected" {
+                    return None;
                 }
             }
         }
@@ -129,11 +127,11 @@ impl TypeScriptParser {
                     // exported function_declaration is typically the second child
                     let mut found = None;
                     for j in 0..child.child_count() {
-                        if let Some(c) = child.child(j as u32) {
-                            if c.kind() == "function_declaration" {
-                                found = Some(c);
-                                break;
-                            }
+                        if let Some(c) = child.child(j as u32)
+                            && c.kind() == "function_declaration"
+                        {
+                            found = Some(c);
+                            break;
                         }
                     }
                     found
@@ -221,10 +219,10 @@ impl TypeScriptParser {
     fn is_non_trivial_declarator(decl: tree_sitter::Node) -> bool {
         // Check for type_annotation child
         for i in 0..decl.child_count() {
-            if let Some(child) = decl.child(i as u32) {
-                if child.kind() == "type_annotation" {
-                    return true;
-                }
+            if let Some(child) = decl.child(i as u32)
+                && child.kind() == "type_annotation"
+            {
+                return true;
             }
         }
         // Check value for call_expression (or as_expression wrapping one)
@@ -238,10 +236,10 @@ impl TypeScriptParser {
             }
             // One level deeper: `(call())` — parenthesized expression
             for i in 0..value.child_count() {
-                if let Some(child) = value.child(i as u32) {
-                    if child.kind() == "call_expression" || child.kind() == "new_expression" {
-                        return true;
-                    }
+                if let Some(child) = value.child(i as u32)
+                    && (child.kind() == "call_expression" || child.kind() == "new_expression")
+                {
+                    return true;
                 }
             }
         }

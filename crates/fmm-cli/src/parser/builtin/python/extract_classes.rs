@@ -73,20 +73,20 @@ impl PythonParser {
                         "decorated_definition" => {
                             // Find the function_definition inside the decorated_definition
                             for j in 0..child.child_count() {
-                                if let Some(inner) = child.child(j as u32) {
-                                    if inner.kind() == "function_definition" {
-                                        if let Some(mut entry) = Self::extract_python_method_entry(
-                                            &class_name,
-                                            inner,
-                                            source_bytes,
-                                        ) {
-                                            // Use the decorated_definition range to include decorator lines
-                                            entry.start_line = child.start_position().row + 1;
-                                            entry.end_line = child.end_position().row + 1;
-                                            entries.push(entry);
-                                        }
-                                        break;
+                                if let Some(inner) = child.child(j as u32)
+                                    && inner.kind() == "function_definition"
+                                {
+                                    if let Some(mut entry) = Self::extract_python_method_entry(
+                                        &class_name,
+                                        inner,
+                                        source_bytes,
+                                    ) {
+                                        // Use the decorated_definition range to include decorator lines
+                                        entry.start_line = child.start_position().row + 1;
+                                        entry.end_line = child.end_position().row + 1;
+                                        entries.push(entry);
                                     }
+                                    break;
                                 }
                             }
                         }

@@ -49,16 +49,15 @@ fn extract_ts_top_level(source: &[u8], exports: &[&str]) -> Option<Vec<TopLevelF
 
         match child.kind() {
             "function_declaration" | "generator_function_declaration" => {
-                if let Some(name_node) = child.child_by_field_name("name") {
-                    if let Ok(name) = name_node.utf8_text(source) {
-                        if !exports.contains(&name) {
-                            result.push(TopLevelFunction {
-                                name: name.to_string(),
-                                start: child.start_position().row + 1,
-                                end: child.end_position().row + 1,
-                            });
-                        }
-                    }
+                if let Some(name_node) = child.child_by_field_name("name")
+                    && let Ok(name) = name_node.utf8_text(source)
+                    && !exports.contains(&name)
+                {
+                    result.push(TopLevelFunction {
+                        name: name.to_string(),
+                        start: child.start_position().row + 1,
+                        end: child.end_position().row + 1,
+                    });
                 }
             }
             "lexical_declaration" | "variable_declaration" => {
@@ -82,30 +81,27 @@ fn extract_ts_top_level(source: &[u8], exports: &[&str]) -> Option<Vec<TopLevelF
                     if matches!(
                         value_node.kind(),
                         "arrow_function" | "function_expression" | "generator_function"
-                    ) {
-                        if let Ok(name) = name_node.utf8_text(source) {
-                            if !exports.contains(&name) {
-                                result.push(TopLevelFunction {
-                                    name: name.to_string(),
-                                    start: child.start_position().row + 1,
-                                    end: child.end_position().row + 1,
-                                });
-                            }
-                        }
+                    ) && let Ok(name) = name_node.utf8_text(source)
+                        && !exports.contains(&name)
+                    {
+                        result.push(TopLevelFunction {
+                            name: name.to_string(),
+                            start: child.start_position().row + 1,
+                            end: child.end_position().row + 1,
+                        });
                     }
                 }
             }
             "class_declaration" => {
-                if let Some(name_node) = child.child_by_field_name("name") {
-                    if let Ok(name) = name_node.utf8_text(source) {
-                        if !exports.contains(&name) {
-                            result.push(TopLevelFunction {
-                                name: name.to_string(),
-                                start: child.start_position().row + 1,
-                                end: child.end_position().row + 1,
-                            });
-                        }
-                    }
+                if let Some(name_node) = child.child_by_field_name("name")
+                    && let Ok(name) = name_node.utf8_text(source)
+                    && !exports.contains(&name)
+                {
+                    result.push(TopLevelFunction {
+                        name: name.to_string(),
+                        start: child.start_position().row + 1,
+                        end: child.end_position().row + 1,
+                    });
                 }
             }
             _ => {}
@@ -140,18 +136,15 @@ fn walk_ts_node(
     class_names: &[&str],
     result: &mut HashMap<String, Vec<PrivateMember>>,
 ) {
-    if node.kind() == "class_declaration" {
-        if let Some(name_node) = node.child_by_field_name("name") {
-            if let Ok(name) = name_node.utf8_text(source) {
-                if class_names.contains(&name) {
-                    if let Some(body) = node.child_by_field_name("body") {
-                        let members = collect_ts_private_members(body, source);
-                        if !members.is_empty() {
-                            result.insert(name.to_string(), members);
-                        }
-                    }
-                }
-            }
+    if node.kind() == "class_declaration"
+        && let Some(name_node) = node.child_by_field_name("name")
+        && let Ok(name) = name_node.utf8_text(source)
+        && class_names.contains(&name)
+        && let Some(body) = node.child_by_field_name("body")
+    {
+        let members = collect_ts_private_members(body, source);
+        if !members.is_empty() {
+            result.insert(name.to_string(), members);
         }
     }
     for i in 0..node.child_count() {

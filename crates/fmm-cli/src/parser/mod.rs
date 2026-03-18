@@ -33,7 +33,7 @@ pub struct LanguageTestPatterns {
 /// register_language!(self, builtin::rust, RustParser, DESCRIPTOR);
 /// ```
 macro_rules! register_language {
-    ($registry:expr, $module:path, $parser:ident, $descriptor:ident) => {{
+    ($registry:expr_2021, $module:path, $parser:ident, $descriptor:ident) => {{
         use $module as _m;
         let desc = &_m::$descriptor;
         $registry.register(desc.extensions, || Ok(Box::new(_m::$parser::new()?)));

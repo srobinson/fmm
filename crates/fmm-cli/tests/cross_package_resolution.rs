@@ -109,7 +109,9 @@ fn layer3_directory_prefix_resolves_unnamed_package() {
             "packages/react-reconciler/src/ReactFiberWorkLoop.js"
         ),
         "Layer 3 heuristic failed: expected packages/react-reconciler/src/ReactFiberWorkLoop.js in reverse_deps[packages/shared/ReactFeatureFlags.js], got: {:?}",
-        manifest.reverse_deps.get("packages/shared/ReactFeatureFlags.js")
+        manifest
+            .reverse_deps
+            .get("packages/shared/ReactFeatureFlags.js")
     );
 }
 
@@ -145,7 +147,11 @@ fn pnpm_workspace_package_resolves_scoped_name() {
     let manifest = load_manifest(root);
 
     assert!(
-        has_reverse_dep(&manifest, "packages/lib/index.ts", "packages/consumer/main.ts"),
+        has_reverse_dep(
+            &manifest,
+            "packages/lib/index.ts",
+            "packages/consumer/main.ts"
+        ),
         "pnpm scoped package not resolved: expected packages/consumer/main.ts in reverse_deps[packages/lib/index.ts], got: {:?}",
         manifest.reverse_deps.get("packages/lib/index.ts")
     );

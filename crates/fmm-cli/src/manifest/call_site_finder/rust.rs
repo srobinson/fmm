@@ -73,10 +73,10 @@ fn bare_call_result_rs(source: &[u8], fn_name: &str) -> Option<BareCallSiteResul
         let q_call_src = format!(
             r#"(call_expression function: (identifier) @callee (#eq? @callee "{local_name}"))"#,
         );
-        if let Ok(q_call) = Query::new(&lang, &q_call_src) {
-            if super::has_any_match(&q_call, root, source) {
-                return Some(BareCallSiteResult::DirectCaller);
-            }
+        if let Ok(q_call) = Query::new(&lang, &q_call_src)
+            && super::has_any_match(&q_call, root, source)
+        {
+            return Some(BareCallSiteResult::DirectCaller);
         }
     }
 
@@ -156,10 +156,10 @@ fn collect_rust_imports(
         let mut iter = cursor.matches(&q, root, source);
         while let Some(m) = iter.next() {
             for cap in m.captures {
-                if cap.index == alias_idx {
-                    if let Ok(text) = cap.node.utf8_text(source) {
-                        local_names.push(text.to_string());
-                    }
+                if cap.index == alias_idx
+                    && let Ok(text) = cap.node.utf8_text(source)
+                {
+                    local_names.push(text.to_string());
                 }
             }
         }
@@ -181,12 +181,11 @@ fn collect_rust_imports(
         let mut iter = cursor.matches(&q, root, source);
         while let Some(m) = iter.next() {
             for cap in m.captures {
-                if cap.index == alias_idx {
-                    if let Ok(text) = cap.node.utf8_text(source) {
-                        if !local_names.contains(&text.to_string()) {
-                            local_names.push(text.to_string());
-                        }
-                    }
+                if cap.index == alias_idx
+                    && let Ok(text) = cap.node.utf8_text(source)
+                    && !local_names.contains(&text.to_string())
+                {
+                    local_names.push(text.to_string());
                 }
             }
         }
@@ -199,11 +198,11 @@ fn collect_rust_imports(
         let mut iter = cursor.matches(&q, root, source);
         while let Some(m) = iter.next() {
             for cap in m.captures {
-                if cap.index == wc_idx {
-                    if let Ok(text) = cap.node.utf8_text(source) {
-                        let path = text.strip_suffix("::*").unwrap_or(text);
-                        glob_paths.push(path.to_string());
-                    }
+                if cap.index == wc_idx
+                    && let Ok(text) = cap.node.utf8_text(source)
+                {
+                    let path = text.strip_suffix("::*").unwrap_or(text);
+                    glob_paths.push(path.to_string());
                 }
             }
         }

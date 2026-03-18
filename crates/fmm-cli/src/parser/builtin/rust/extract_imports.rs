@@ -1,4 +1,4 @@
-use super::{rust_use_path_to_dep, RustParser};
+use super::{RustParser, rust_use_path_to_dep};
 use std::collections::{HashMap, HashSet};
 
 impl RustParser {
@@ -23,12 +23,12 @@ impl RustParser {
             if child.kind() == "extern_crate_declaration" {
                 let mut inner = child.walk();
                 for c in child.children(&mut inner) {
-                    if c.kind() == "identifier" {
-                        if let Ok(name) = c.utf8_text(source_bytes) {
-                            let name = name.to_string();
-                            if !Self::is_local_path(&name) && seen.insert(name.clone()) {
-                                imports.push(name);
-                            }
+                    if c.kind() == "identifier"
+                        && let Ok(name) = c.utf8_text(source_bytes)
+                    {
+                        let name = name.to_string();
+                        if !Self::is_local_path(&name) && seen.insert(name.clone()) {
+                            imports.push(name);
                         }
                     }
                 }
@@ -80,10 +80,10 @@ impl RustParser {
         for child in node.children(&mut cursor) {
             match child.kind() {
                 "scoped_identifier" => {
-                    if let Ok(raw) = child.utf8_text(source_bytes) {
-                        if let Some(dep) = rust_use_path_to_dep(raw) {
-                            results.push(dep);
-                        }
+                    if let Ok(raw) = child.utf8_text(source_bytes)
+                        && let Some(dep) = rust_use_path_to_dep(raw)
+                    {
+                        results.push(dep);
                     }
                 }
                 "scoped_use_list" => {
@@ -92,10 +92,10 @@ impl RustParser {
                     for sub_child in child.children(&mut sub) {
                         match sub_child.kind() {
                             "scoped_identifier" | "crate" | "super" => {
-                                if let Ok(raw) = sub_child.utf8_text(source_bytes) {
-                                    if let Some(dep) = rust_use_path_to_dep(raw) {
-                                        results.push(dep);
-                                    }
+                                if let Ok(raw) = sub_child.utf8_text(source_bytes)
+                                    && let Some(dep) = rust_use_path_to_dep(raw)
+                                {
+                                    results.push(dep);
                                 }
                                 break;
                             }
@@ -123,10 +123,10 @@ impl RustParser {
         let mut roots = Vec::new();
         let mut cursor = root_node.walk();
         for child in root_node.children(&mut cursor) {
-            if child.kind() == "use_declaration" {
-                if let Some(root_name) = self.use_declaration_root(source_bytes, child) {
-                    roots.push(root_name);
-                }
+            if child.kind() == "use_declaration"
+                && let Some(root_name) = self.use_declaration_root(source_bytes, child)
+            {
+                roots.push(root_name);
             }
         }
         roots

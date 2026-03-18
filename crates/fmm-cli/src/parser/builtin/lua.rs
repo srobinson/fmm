@@ -52,14 +52,13 @@ impl LuaParser {
                             // `function M.process()` — module method, export the method name
                             if let Some(method_name) =
                                 Self::extract_dot_method_name(&fn_child, source_bytes)
+                                && seen.insert(method_name.clone())
                             {
-                                if seen.insert(method_name.clone()) {
-                                    exports.push(ExportEntry::new(
-                                        method_name,
-                                        child.start_position().row + 1,
-                                        child.end_position().row + 1,
-                                    ));
-                                }
+                                exports.push(ExportEntry::new(
+                                    method_name,
+                                    child.start_position().row + 1,
+                                    child.end_position().row + 1,
+                                ));
                             }
                         }
                         _ => {}
@@ -136,12 +135,11 @@ impl LuaParser {
             let mut cursor = node.walk();
             let mut is_require = false;
             for child in node.children(&mut cursor) {
-                if child.kind() == "identifier" {
-                    if let Ok(text) = child.utf8_text(source_bytes) {
-                        if text == "require" {
-                            is_require = true;
-                        }
-                    }
+                if child.kind() == "identifier"
+                    && let Ok(text) = child.utf8_text(source_bytes)
+                    && text == "require"
+                {
+                    is_require = true;
                 }
                 if is_require && child.kind() == "arguments" {
                     Self::extract_require_arg(&child, source_bytes, imports, dependencies);
@@ -168,15 +166,14 @@ impl LuaParser {
                 // Find string_content child
                 let mut str_cursor = child.walk();
                 for str_child in child.children(&mut str_cursor) {
-                    if str_child.kind() == "string_content" {
-                        if let Ok(path) = str_child.utf8_text(source_bytes) {
-                            if !path.is_empty() {
-                                if path.starts_with('.') {
-                                    dependencies.insert(path.to_string());
-                                } else {
-                                    imports.insert(path.to_string());
-                                }
-                            }
+                    if str_child.kind() == "string_content"
+                        && let Ok(path) = str_child.utf8_text(source_bytes)
+                        && !path.is_empty()
+                    {
+                        if path.starts_with('.') {
+                            dependencies.insert(path.to_string());
+                        } else {
+                            imports.insert(path.to_string());
                         }
                     }
                 }
@@ -249,10 +246,12 @@ mod tests {
         let mut parser = LuaParser::new().unwrap();
         let source = "function globalFunc() return 42 end\n";
         let result = parser.parse(source).unwrap();
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"globalFunc".to_string()));
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"globalFunc".to_string())
+        );
     }
 
     #[test]
@@ -269,10 +268,12 @@ mod tests {
         let source = "local json = require(\"json\")\nlocal utils = require(\"./utils\")\n";
         let result = parser.parse(source).unwrap();
         assert!(result.metadata.imports.contains(&"json".to_string()));
-        assert!(result
-            .metadata
-            .dependencies
-            .contains(&"./utils".to_string()));
+        assert!(
+            result
+                .metadata
+                .dependencies
+                .contains(&"./utils".to_string())
+        );
     }
 
     #[test]

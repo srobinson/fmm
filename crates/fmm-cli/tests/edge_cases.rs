@@ -1,3 +1,4 @@
+use fmm::parser::Parser;
 use fmm::parser::builtin::c::CParser;
 use fmm::parser::builtin::cpp::CppParser;
 use fmm::parser::builtin::csharp::CSharpParser;
@@ -15,7 +16,6 @@ use fmm::parser::builtin::scala::ScalaParser;
 use fmm::parser::builtin::swift::SwiftParser;
 use fmm::parser::builtin::typescript::TypeScriptParser;
 use fmm::parser::builtin::zig::ZigParser;
-use fmm::parser::Parser;
 
 // --- Empty files ---
 
@@ -161,10 +161,12 @@ fn rust_unicode_in_strings() {
     let mut parser = RustParser::new().unwrap();
     let source = "pub fn hello() -> &'static str { \"こんにちは\" }";
     let result = parser.parse(source).unwrap();
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"hello".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"hello".to_string())
+    );
 }
 
 // --- Windows line endings (CRLF) ---
@@ -174,14 +176,18 @@ fn typescript_crlf_line_endings() {
     let mut parser = TypeScriptParser::new().unwrap();
     let source = "export function hello() {}\r\nexport const world = 42;\r\n";
     let result = parser.parse(source).unwrap();
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"hello".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"world".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"hello".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"world".to_string())
+    );
 }
 
 #[test]
@@ -189,14 +195,18 @@ fn python_crlf_line_endings() {
     let mut parser = PythonParser::new().unwrap();
     let source = "def hello():\r\n    pass\r\n\r\nclass World:\r\n    pass\r\n";
     let result = parser.parse(source).unwrap();
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"hello".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"World".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"hello".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"World".to_string())
+    );
 }
 
 #[test]
@@ -204,14 +214,18 @@ fn rust_crlf_line_endings() {
     let mut parser = RustParser::new().unwrap();
     let source = "pub fn hello() {}\r\npub struct World {}\r\n";
     let result = parser.parse(source).unwrap();
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"hello".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"World".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"hello".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"World".to_string())
+    );
 }
 
 // --- Whitespace-only files ---
@@ -285,10 +299,12 @@ fn python_decorated_crlf_line_endings() {
     let mut parser = PythonParser::new().unwrap();
     let source = "@dataclass\r\nclass Agent:\r\n    name: str\r\n";
     let result = parser.parse(source).unwrap();
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Agent".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"Agent".to_string())
+    );
     let agent = result
         .metadata
         .exports
@@ -303,10 +319,12 @@ fn python_stacked_decorators() {
     let mut parser = PythonParser::new().unwrap();
     let source = "@decorator_a\n@decorator_b\n@decorator_c\ndef stacked():\n    pass\n";
     let result = parser.parse(source).unwrap();
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"stacked".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"stacked".to_string())
+    );
     let entry = result
         .metadata
         .exports
@@ -619,14 +637,18 @@ fn php_enum_with_methods() {
     let mut parser = PhpParser::new().unwrap();
     let source = "<?php\nenum Color {\n    case Red;\n    case Blue;\n    public function label(): string { return $this->name; }\n}\n";
     let result = parser.parse(source).unwrap();
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Color".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"label".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"Color".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"label".to_string())
+    );
 }
 
 // =============================================================================
@@ -734,10 +756,12 @@ fn zig_crlf_line_endings() {
     let source = "const std = @import(\"std\");\r\npub fn hello() void {}\r\n";
     let result = parser.parse(source).unwrap();
     assert!(result.metadata.imports.contains(&"std".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"hello".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"hello".to_string())
+    );
 }
 
 #[test]
@@ -745,10 +769,12 @@ fn zig_error_set() {
     let mut parser = ZigParser::new().unwrap();
     let source = "pub const MyError = error{ Foo, Bar, Baz };\n";
     let result = parser.parse(source).unwrap();
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"MyError".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"MyError".to_string())
+    );
 }
 
 // =============================================================================
@@ -795,10 +821,12 @@ fn lua_crlf_line_endings() {
     let mut parser = LuaParser::new().unwrap();
     let source = "local M = {}\r\nfunction M.hello() return true end\r\nreturn M\r\n";
     let result = parser.parse(source).unwrap();
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"hello".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"hello".to_string())
+    );
 }
 
 #[test]
@@ -917,14 +945,18 @@ fn swift_crlf_line_endings() {
     let mut parser = SwiftParser::new().unwrap();
     let source = "import Foundation\r\npublic func hello() {}\r\npublic struct Point {}\r\n";
     let result = parser.parse(source).unwrap();
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"hello".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Point".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"hello".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"Point".to_string())
+    );
 }
 
 #[test]
@@ -985,14 +1017,18 @@ fn kotlin_crlf_line_endings() {
     let mut parser = KotlinParser::new().unwrap();
     let source = "import kotlin.collections.List\r\nfun hello() {}\r\nclass MyClass\r\n";
     let result = parser.parse(source).unwrap();
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"hello".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"MyClass".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"hello".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"MyClass".to_string())
+    );
 }
 
 #[test]

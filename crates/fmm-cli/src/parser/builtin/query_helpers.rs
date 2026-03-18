@@ -184,12 +184,11 @@ pub fn has_modifier(
 ) -> bool {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if child.kind() == modifier_node_kind {
-            if let Ok(text) = child.utf8_text(source_bytes) {
-                if text.split_whitespace().any(|w| keywords.contains(&w)) {
-                    return true;
-                }
-            }
+        if child.kind() == modifier_node_kind
+            && let Ok(text) = child.utf8_text(source_bytes)
+            && text.split_whitespace().any(|w| keywords.contains(&w))
+        {
+            return true;
         }
     }
     false

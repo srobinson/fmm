@@ -6,14 +6,18 @@ fn parse_python_functions() {
     let mut parser = PythonParser::new().unwrap();
     let source = "def hello():\n    pass\n\ndef world():\n    pass\n";
     let result = parser.parse(source).unwrap();
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"hello".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"world".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"hello".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"world".to_string())
+    );
     assert_eq!(result.metadata.loc, 5);
 }
 
@@ -22,14 +26,18 @@ fn parse_python_classes() {
     let mut parser = PythonParser::new().unwrap();
     let source = "class MyClass:\n    pass\n\nclass _Private:\n    pass\n";
     let result = parser.parse(source).unwrap();
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"MyClass".to_string()));
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"_Private".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"MyClass".to_string())
+    );
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"_Private".to_string())
+    );
 }
 
 #[test]
@@ -74,14 +82,18 @@ fn parse_python_private_excluded() {
     let mut parser = PythonParser::new().unwrap();
     let source = "def _private():\n    pass\n\ndef public():\n    pass\n";
     let result = parser.parse(source).unwrap();
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"_private".to_string()));
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"public".to_string()));
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"_private".to_string())
+    );
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"public".to_string())
+    );
 }
 
 #[test]
@@ -153,10 +165,12 @@ fn parse_python_decorated_class() {
     let mut parser = PythonParser::new().unwrap();
     let source = "from dataclasses import dataclass\n\n@dataclass\nclass Agent:\n    name: str\n";
     let result = parser.parse(source).unwrap();
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Agent".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"Agent".to_string())
+    );
 }
 
 #[test]
@@ -164,10 +178,12 @@ fn parse_python_decorated_class_with_args() {
     let mut parser = PythonParser::new().unwrap();
     let source = "@dataclass(frozen=True)\nclass Config:\n    debug: bool = False\n";
     let result = parser.parse(source).unwrap();
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"Config".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"Config".to_string())
+    );
 }
 
 #[test]
@@ -175,10 +191,12 @@ fn parse_python_decorated_function() {
     let mut parser = PythonParser::new().unwrap();
     let source = "from flask import Flask\napp = Flask(__name__)\n\n@app.route(\"/\")\ndef handler():\n    return \"ok\"\n";
     let result = parser.parse(source).unwrap();
-    assert!(result
-        .metadata
-        .export_names()
-        .contains(&"handler".to_string()));
+    assert!(
+        result
+            .metadata
+            .export_names()
+            .contains(&"handler".to_string())
+    );
 }
 
 #[test]
@@ -336,8 +354,7 @@ fn python_methods_non_exported_class_excluded() {
 #[test]
 fn python_methods_decorated_included() {
     let mut parser = PythonParser::new().unwrap();
-    let source =
-        "class Foo:\n    @property\n    def value(self):\n        return self._value\n    @staticmethod\n    def create():\n        return Foo()\n";
+    let source = "class Foo:\n    @property\n    def value(self):\n        return self._value\n    @staticmethod\n    def create():\n        return Foo()\n";
     let result = parser.parse(source).unwrap();
     assert!(
         get_method(&result.metadata.exports, "Foo", "value").is_some(),
@@ -405,10 +422,12 @@ def also_public():
 "#;
     let result = parser.parse(source).unwrap();
     assert_eq!(result.metadata.export_names(), vec!["only_this"]);
-    assert!(!result
-        .metadata
-        .export_names()
-        .contains(&"also_public".to_string()));
+    assert!(
+        !result
+            .metadata
+            .export_names()
+            .contains(&"also_public".to_string())
+    );
 }
 
 // -------------------------------------------------------------------------

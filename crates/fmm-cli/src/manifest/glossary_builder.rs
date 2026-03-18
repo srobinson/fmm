@@ -287,9 +287,11 @@ mod tests {
         // "alpha" matches; "zebra" matches (contains "a"); "beta" matches; "Config" does not
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
         // Sorted case-insensitively
-        assert!(names
-            .windows(2)
-            .all(|w| w[0].to_lowercase() <= w[1].to_lowercase()));
+        assert!(
+            names
+                .windows(2)
+                .all(|w| w[0].to_lowercase() <= w[1].to_lowercase())
+        );
         assert!(names.contains(&"alpha"));
         assert!(names.contains(&"zebra"));
         assert!(names.contains(&"beta"));
@@ -555,8 +557,10 @@ mod tests {
         let entries = manifest.build_glossary("create", GlossaryMode::All);
         // Both export and method match; result must be sorted
         assert!(entries.len() >= 2, "should have at least 2 matches");
-        assert!(entries
-            .windows(2)
-            .all(|w| w[0].name.to_lowercase() <= w[1].name.to_lowercase()));
+        assert!(
+            entries
+                .windows(2)
+                .all(|w| w[0].name.to_lowercase() <= w[1].name.to_lowercase())
+        );
     }
 }

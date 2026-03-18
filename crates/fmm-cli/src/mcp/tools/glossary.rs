@@ -105,94 +105,95 @@ pub(in crate::mcp) fn tool_glossary(
 
     // ALP-882 + ALP-865: for bare-name queries that match a module-level function declaration,
     // apply Layer 2 (named import filter) then Layer 3 (call-site verification).
-    if !pattern.contains('.') && !entries.is_empty() {
-        if let Some(_fn_loc) = manifest.function_index.get(pattern) {
-            for entry in &mut entries {
-                for source in &mut entry.sources {
-                    // Layer 2: named import filter — index-only, no tree-sitter.
-                    // Shrinks used_by from all module importers (~24) to named-import callers (~10).
-                    let source_file = source.file.clone();
-                    let mut named_callers: Vec<String> = Vec::new();
-                    let mut l2_ns: Vec<String> = Vec::new();
-                    let mut l2_excluded: usize = 0;
+    if !pattern.contains('.')
+        && !entries.is_empty()
+        && let Some(_fn_loc) = manifest.function_index.get(pattern)
+    {
+        for entry in &mut entries {
+            for source in &mut entry.sources {
+                // Layer 2: named import filter — index-only, no tree-sitter.
+                // Shrinks used_by from all module importers (~24) to named-import callers (~10).
+                let source_file = source.file.clone();
+                let mut named_callers: Vec<String> = Vec::new();
+                let mut l2_ns: Vec<String> = Vec::new();
+                let mut l2_excluded: usize = 0;
 
-                    for candidate in source.used_by.drain(..) {
-                        match manifest.files.get(&candidate) {
-                            None => {
-                                // No FileEntry — include to avoid false negatives.
+                for candidate in source.used_by.drain(..) {
+                    match manifest.files.get(&candidate) {
+                        None => {
+                            // No FileEntry — include to avoid false negatives.
+                            named_callers.push(candidate);
+                        }
+                        Some(fe) => {
+                            // If the file has no named_imports data (non-TS/JS or pre-v0.4
+                            // sidecar), fall through: include to avoid false negatives.
+                            if fe.named_imports.is_empty() && fe.namespace_imports.is_empty() {
                                 named_callers.push(candidate);
+                                continue;
                             }
-                            Some(fe) => {
-                                // If the file has no named_imports data (non-TS/JS or pre-v0.4
-                                // sidecar), fall through: include to avoid false negatives.
-                                if fe.named_imports.is_empty() && fe.namespace_imports.is_empty() {
-                                    named_callers.push(candidate);
-                                    continue;
-                                }
-                                let specifiers = compute_import_specifiers(
-                                    &candidate,
-                                    &source_file,
-                                    &manifest.workspace_roots,
-                                    root,
-                                );
+                            let specifiers = compute_import_specifiers(
+                                &candidate,
+                                &source_file,
+                                &manifest.workspace_roots,
+                                root,
+                            );
 
-                                if specifiers.iter().any(|s| fe.namespace_imports.contains(s)) {
-                                    l2_ns.push(candidate);
-                                } else if specifiers.iter().any(|s| {
-                                    fe.named_imports
-                                        .get(s)
-                                        .map(|names| names.iter().any(|n| n == pattern))
-                                        .unwrap_or(false)
-                                }) {
-                                    named_callers.push(candidate);
-                                } else {
-                                    l2_excluded += 1;
-                                }
+                            if specifiers.iter().any(|s| fe.namespace_imports.contains(s)) {
+                                l2_ns.push(candidate);
+                            } else if specifiers.iter().any(|s| {
+                                fe.named_imports
+                                    .get(s)
+                                    .map(|names| names.iter().any(|n| n == pattern))
+                                    .unwrap_or(false)
+                            }) {
+                                named_callers.push(candidate);
+                            } else {
+                                l2_excluded += 1;
                             }
                         }
                     }
+                }
 
-                    source.used_by = named_callers;
-                    source.layer2_excluded_count = l2_excluded;
-                    source.layer2_namespace_callers = l2_ns;
+                source.used_by = named_callers;
+                source.layer2_excluded_count = l2_excluded;
+                source.layer2_namespace_callers = l2_ns;
 
-                    // Layer 3: call-site verification (tree-sitter) — opt-in via precision: "call-site".
-                    // Removes dead imports and annotates re-exports. Runs on the smaller Layer 2
-                    // set, making tree-sitter cheaper on large codebases.
-                    if run_layer3 {
-                        let l2_survivors = source.used_by.clone();
-                        let (confirmed, ns_callers) =
-                            crate::manifest::call_site_finder::find_bare_function_callers(
-                                root,
-                                pattern,
-                                &l2_survivors,
-                            );
+                // Layer 3: call-site verification (tree-sitter) — opt-in via precision: "call-site".
+                // Removes dead imports and annotates re-exports. Runs on the smaller Layer 2
+                // set, making tree-sitter cheaper on large codebases.
+                if run_layer3 {
+                    let l2_survivors = source.used_by.clone();
+                    let (confirmed, ns_callers) =
+                        crate::manifest::call_site_finder::find_bare_function_callers(
+                            root,
+                            pattern,
+                            &l2_survivors,
+                        );
 
-                        // Detect re-exports: files excluded by Layer 3 that also export the symbol.
-                        // These are NOT callers but they ARE impacted by a rename.
-                        let confirmed_set: std::collections::HashSet<&str> =
-                            confirmed.iter().map(|s| s.as_str()).collect();
-                        let ns_set: std::collections::HashSet<&str> =
-                            ns_callers.iter().map(|(s, _)| s.as_str()).collect();
-                        let reexports: Vec<String> = l2_survivors
-                            .iter()
-                            .filter(|c| {
-                                !confirmed_set.contains(c.as_str()) && !ns_set.contains(c.as_str())
-                            })
-                            .filter(|c| {
-                                manifest
-                                    .export_all
-                                    .get(pattern)
-                                    .map(|locs| locs.iter().any(|loc| &loc.file == *c))
-                                    .unwrap_or(false)
-                            })
-                            .cloned()
-                            .collect();
+                    // Detect re-exports: files excluded by Layer 3 that also export the symbol.
+                    // These are NOT callers but they ARE impacted by a rename.
+                    let confirmed_set: std::collections::HashSet<&str> =
+                        confirmed.iter().map(|s| s.as_str()).collect();
+                    let ns_set: std::collections::HashSet<&str> =
+                        ns_callers.iter().map(|(s, _)| s.as_str()).collect();
+                    let reexports: Vec<String> = l2_survivors
+                        .iter()
+                        .filter(|c| {
+                            !confirmed_set.contains(c.as_str()) && !ns_set.contains(c.as_str())
+                        })
+                        .filter(|c| {
+                            manifest
+                                .export_all
+                                .get(pattern)
+                                .map(|locs| locs.iter().any(|loc| &loc.file == *c))
+                                .unwrap_or(false)
+                        })
+                        .cloned()
+                        .collect();
 
-                        source.used_by = confirmed;
-                        source.namespace_callers = ns_callers;
-                        source.reexport_files = reexports;
-                    }
+                    source.used_by = confirmed;
+                    source.namespace_callers = ns_callers;
+                    source.reexport_files = reexports;
                 }
             }
         }

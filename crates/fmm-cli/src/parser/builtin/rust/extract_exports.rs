@@ -1,6 +1,6 @@
 use super::RustParser;
-use crate::parser::builtin::query_helpers::extract_field_text;
 use crate::parser::ExportEntry;
+use crate::parser::builtin::query_helpers::extract_field_text;
 use std::collections::HashSet;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node, QueryCursor};
@@ -32,12 +32,11 @@ impl RustParser {
                         let idx = c.index as usize;
                         idx < capture_names.len() && capture_names[idx] == "vis"
                     });
-                    if let Some(vis) = vis_capture {
-                        if let Ok(vis_text) = vis.node.utf8_text(source_bytes) {
-                            if vis_text != "pub" {
-                                continue;
-                            }
-                        }
+                    if let Some(vis) = vis_capture
+                        && let Ok(vis_text) = vis.node.utf8_text(source_bytes)
+                        && vis_text != "pub"
+                    {
+                        continue;
                     }
                 }
 
@@ -46,17 +45,17 @@ impl RustParser {
                     idx < capture_names.len() && capture_names[idx] == "name"
                 });
 
-                if let Some(name) = name_capture {
-                    if let Ok(text) = name.node.utf8_text(source_bytes) {
-                        let name_str = text.to_string();
-                        if seen.insert(name_str.clone()) {
-                            let decl = name.node.parent().unwrap_or(name.node);
-                            exports.push(ExportEntry::new(
-                                name_str,
-                                decl.start_position().row + 1,
-                                decl.end_position().row + 1,
-                            ));
-                        }
+                if let Some(name) = name_capture
+                    && let Ok(text) = name.node.utf8_text(source_bytes)
+                {
+                    let name_str = text.to_string();
+                    if seen.insert(name_str.clone()) {
+                        let decl = name.node.parent().unwrap_or(name.node);
+                        exports.push(ExportEntry::new(
+                            name_str,
+                            decl.start_position().row + 1,
+                            decl.end_position().row + 1,
+                        ));
                     }
                 }
             }
@@ -189,10 +188,10 @@ impl RustParser {
             for sub in child.children(&mut child_cursor) {
                 match sub.kind() {
                     "visibility_modifier" => {
-                        if let Ok(text) = sub.utf8_text(source_bytes) {
-                            if text == "pub" {
-                                is_pub = true;
-                            }
+                        if let Ok(text) = sub.utf8_text(source_bytes)
+                            && text == "pub"
+                        {
+                            is_pub = true;
                         }
                     }
                     "scoped_identifier" | "use_as_clause" | "scoped_use_list" | "identifier" => {
@@ -253,10 +252,10 @@ impl RustParser {
             }
             "identifier" => {
                 // Bare name, e.g. `pub use serde`
-                if let Ok(name) = node.utf8_text(source_bytes) {
-                    if !matches!(name, "self" | "crate" | "super") {
-                        results.push(ExportEntry::new(name.to_string(), line, line));
-                    }
+                if let Ok(name) = node.utf8_text(source_bytes)
+                    && !matches!(name, "self" | "crate" | "super")
+                {
+                    results.push(ExportEntry::new(name.to_string(), line, line));
                 }
             }
             // "use_wildcard", "{", "}", ",", ";", etc. -- skip

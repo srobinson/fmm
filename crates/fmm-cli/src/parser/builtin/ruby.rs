@@ -80,17 +80,17 @@ impl RubyParser {
         let mut iter = cursor.matches(&self.method_query, root_node, source_bytes);
         while let Some(m) = iter.next() {
             for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    if !text.starts_with('_') {
-                        let name = text.to_string();
-                        if seen.insert(name.clone()) {
-                            let decl = top_level_ancestor(capture.node);
-                            exports.push(ExportEntry::new(
-                                name,
-                                decl.start_position().row + 1,
-                                decl.end_position().row + 1,
-                            ));
-                        }
+                if let Ok(text) = capture.node.utf8_text(source_bytes)
+                    && !text.starts_with('_')
+                {
+                    let name = text.to_string();
+                    if seen.insert(name.clone()) {
+                        let decl = top_level_ancestor(capture.node);
+                        exports.push(ExportEntry::new(
+                            name,
+                            decl.start_position().row + 1,
+                            decl.end_position().row + 1,
+                        ));
                     }
                 }
             }
@@ -134,20 +134,19 @@ impl RubyParser {
             let mut cursor = node.walk();
             let mut method_name = None;
             for child in node.children(&mut cursor) {
-                if child.kind() == "identifier" {
-                    if let Ok(text) = child.utf8_text(source_bytes) {
-                        if text == "include" || text == "extend" || text == "prepend" {
-                            method_name = Some(text.to_string());
-                        }
-                    }
+                if child.kind() == "identifier"
+                    && let Ok(text) = child.utf8_text(source_bytes)
+                    && (text == "include" || text == "extend" || text == "prepend")
+                {
+                    method_name = Some(text.to_string());
                 }
                 if child.kind() == "argument_list" && method_name.is_some() {
                     let mut arg_cursor = child.walk();
                     for arg in child.children(&mut arg_cursor) {
-                        if arg.kind() == "constant" || arg.kind() == "scope_resolution" {
-                            if let Ok(text) = arg.utf8_text(source_bytes) {
-                                mixins.insert(text.to_string());
-                            }
+                        if (arg.kind() == "constant" || arg.kind() == "scope_resolution")
+                            && let Ok(text) = arg.utf8_text(source_bytes)
+                        {
+                            mixins.insert(text.to_string());
                         }
                     }
                 }
@@ -240,10 +239,12 @@ class UserService
 end
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"UserService".to_string()));
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"UserService".to_string())
+        );
     }
 
     #[test]
@@ -263,14 +264,18 @@ module Cacheable
 end
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"Serializable".to_string()));
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"Cacheable".to_string()));
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"Serializable".to_string())
+        );
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"Cacheable".to_string())
+        );
     }
 
     #[test]
@@ -286,14 +291,18 @@ def _private_method
 end
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"helper_method".to_string()));
-        assert!(!result
-            .metadata
-            .export_names()
-            .contains(&"_private_method".to_string()));
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"helper_method".to_string())
+        );
+        assert!(
+            !result
+                .metadata
+                .export_names()
+                .contains(&"_private_method".to_string())
+        );
     }
 
     #[test]
@@ -309,10 +318,12 @@ require_relative 'lib/helpers'
         assert!(result.metadata.imports.contains(&"json".to_string()));
         assert!(result.metadata.imports.contains(&"net/http".to_string()));
         assert!(result.metadata.dependencies.contains(&"config".to_string()));
-        assert!(result
-            .metadata
-            .dependencies
-            .contains(&"lib/helpers".to_string()));
+        assert!(
+            result
+                .metadata
+                .dependencies
+                .contains(&"lib/helpers".to_string())
+        );
     }
 
     #[test]

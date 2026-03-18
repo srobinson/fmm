@@ -1,6 +1,6 @@
 use super::helpers::export_match_score;
 use super::*;
-use crate::manifest::{python_dep_matches, FileEntry, Manifest};
+use crate::manifest::{FileEntry, Manifest, python_dep_matches};
 use crate::parser::{ExportEntry, Metadata};
 
 #[allow(dead_code)]

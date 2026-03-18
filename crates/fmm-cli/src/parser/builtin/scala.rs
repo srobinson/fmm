@@ -23,12 +23,11 @@ impl ScalaParser {
             if child.kind() == "modifiers" {
                 let mut mod_cursor = child.walk();
                 for mod_child in child.children(&mut mod_cursor) {
-                    if mod_child.kind() == "access_modifier" {
-                        if let Ok(text) = mod_child.utf8_text(source_bytes) {
-                            if text.starts_with("private") || text.starts_with("protected") {
-                                return true;
-                            }
-                        }
+                    if mod_child.kind() == "access_modifier"
+                        && let Ok(text) = mod_child.utf8_text(source_bytes)
+                        && (text.starts_with("private") || text.starts_with("protected"))
+                    {
+                        return true;
                     }
                 }
             }
@@ -61,12 +60,11 @@ impl ScalaParser {
     fn has_implicit(node: &tree_sitter::Node, source_bytes: &[u8]) -> bool {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.kind() == "modifiers" {
-                if let Ok(text) = child.utf8_text(source_bytes) {
-                    if text.contains("implicit") {
-                        return true;
-                    }
-                }
+            if child.kind() == "modifiers"
+                && let Ok(text) = child.utf8_text(source_bytes)
+                && text.contains("implicit")
+            {
+                return true;
             }
             if matches!(
                 child.kind(),
@@ -111,42 +109,42 @@ impl ScalaParser {
         for child in root_node.children(&mut cursor) {
             match child.kind() {
                 "class_definition" => {
-                    if !Self::is_private_or_protected(&child, source_bytes) {
-                        if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
-                            if Self::is_case_class(&child) {
-                                case_classes.push(name.clone());
-                            }
-                            if Self::has_implicit(&child, source_bytes) {
-                                implicit_count += 1;
-                            }
-                            exports.push(ExportEntry::new(
-                                name,
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            ));
+                    if !Self::is_private_or_protected(&child, source_bytes)
+                        && let Some(name) = extract_child_text(&child, source_bytes, "identifier")
+                    {
+                        if Self::is_case_class(&child) {
+                            case_classes.push(name.clone());
                         }
+                        if Self::has_implicit(&child, source_bytes) {
+                            implicit_count += 1;
+                        }
+                        exports.push(ExportEntry::new(
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        ));
                     }
                 }
                 "trait_definition" => {
-                    if !Self::is_private_or_protected(&child, source_bytes) {
-                        if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
-                            exports.push(ExportEntry::new(
-                                name,
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            ));
-                        }
+                    if !Self::is_private_or_protected(&child, source_bytes)
+                        && let Some(name) = extract_child_text(&child, source_bytes, "identifier")
+                    {
+                        exports.push(ExportEntry::new(
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        ));
                     }
                 }
                 "object_definition" => {
-                    if !Self::is_private_or_protected(&child, source_bytes) {
-                        if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
-                            exports.push(ExportEntry::new(
-                                name,
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            ));
-                        }
+                    if !Self::is_private_or_protected(&child, source_bytes)
+                        && let Some(name) = extract_child_text(&child, source_bytes, "identifier")
+                    {
+                        exports.push(ExportEntry::new(
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        ));
                     }
                 }
                 "function_definition" => {
@@ -183,10 +181,10 @@ impl ScalaParser {
 
         // Clamp end lines: don't bleed into next definition's range
         for export in &mut exports {
-            if let Some(&next_start) = all_def_starts.iter().find(|&&s| s > export.start_line) {
-                if export.end_line >= next_start {
-                    export.end_line = next_start - 1;
-                }
+            if let Some(&next_start) = all_def_starts.iter().find(|&&s| s > export.start_line)
+                && export.end_line >= next_start
+            {
+                export.end_line = next_start - 1;
             }
             // Trim trailing blank lines
             while export.end_line > export.start_line {

@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 use crate::manifest::{
-    builtin_source_extensions, dep_matches, dotted_dep_matches, python_dep_matches,
-    strip_source_ext, try_resolve_local_dep, Manifest,
+    Manifest, builtin_source_extensions, dep_matches, dotted_dep_matches, python_dep_matches,
+    strip_source_ext, try_resolve_local_dep,
 };
 
 use super::helpers::file_entry_to_result;

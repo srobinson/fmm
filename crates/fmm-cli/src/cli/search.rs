@@ -257,34 +257,35 @@ fn flag_search(
     json_output: bool,
 ) -> Result<()> {
     // For non-JSON export-only searches, use the column-aligned format
-    if !json_output {
-        if let Some(ref export_name) = export {
-            if imports.is_none() && depends_on.is_none() && loc.is_none() {
-                let dir = directory.as_deref();
-                let matches: Vec<_> = crate::search::find_export_matches(manifest, export_name)
-                    .into_iter()
-                    .filter(|h| dir.is_none_or(|d| h.file.starts_with(d)))
-                    .collect();
-                if matches.is_empty() {
-                    println!("{} No matching exports", "!".yellow());
-                    println!(
-                        "\n  {} Export search is case-insensitive. Try a shorter term or 'fmm search' to browse all",
-                        "hint:".cyan()
-                    );
-                } else {
-                    let tuples: Vec<(String, String, Option<[usize; 2]>)> = matches
-                        .iter()
-                        .map(|h| (h.name.clone(), h.file.clone(), h.lines))
-                        .collect();
-                    let total = tuples.len();
-                    println!(
-                        "{}",
-                        crate::format::format_list_exports_pattern(&tuples, total, 0)
-                    );
-                }
-                return Ok(());
-            }
+    if !json_output
+        && let Some(ref export_name) = export
+        && imports.is_none()
+        && depends_on.is_none()
+        && loc.is_none()
+    {
+        let dir = directory.as_deref();
+        let matches: Vec<_> = crate::search::find_export_matches(manifest, export_name)
+            .into_iter()
+            .filter(|h| dir.is_none_or(|d| h.file.starts_with(d)))
+            .collect();
+        if matches.is_empty() {
+            println!("{} No matching exports", "!".yellow());
+            println!(
+                "\n  {} Export search is case-insensitive. Try a shorter term or 'fmm search' to browse all",
+                "hint:".cyan()
+            );
+        } else {
+            let tuples: Vec<(String, String, Option<[usize; 2]>)> = matches
+                .iter()
+                .map(|h| (h.name.clone(), h.file.clone(), h.lines))
+                .collect();
+            let total = tuples.len();
+            println!(
+                "{}",
+                crate::format::format_list_exports_pattern(&tuples, total, 0)
+            );
         }
+        return Ok(());
     }
 
     // Convert LOC expression to min/max
@@ -313,20 +314,22 @@ fn flag_search(
 
     if json_output {
         // For export-only JSON, use the rich export format
-        if let Some(ref export_name) = export {
-            if filters.imports.is_none() && filters.depends_on.is_none() && loc.is_none() {
-                let matches = crate::search::find_export_matches(manifest, export_name);
-                let export_json: Vec<ExportMatchJson> = matches
-                    .iter()
-                    .map(|h| ExportMatchJson {
-                        name: h.name.clone(),
-                        file: h.file.clone(),
-                        lines: h.lines,
-                    })
-                    .collect();
-                println!("{}", serde_json::to_string_pretty(&export_json)?);
-                return Ok(());
-            }
+        if let Some(ref export_name) = export
+            && filters.imports.is_none()
+            && filters.depends_on.is_none()
+            && loc.is_none()
+        {
+            let matches = crate::search::find_export_matches(manifest, export_name);
+            let export_json: Vec<ExportMatchJson> = matches
+                .iter()
+                .map(|h| ExportMatchJson {
+                    name: h.name.clone(),
+                    file: h.file.clone(),
+                    lines: h.lines,
+                })
+                .collect();
+            println!("{}", serde_json::to_string_pretty(&export_json)?);
+            return Ok(());
         }
 
         let json: Vec<FlagSearchJson> = results

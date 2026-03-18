@@ -90,18 +90,17 @@ impl CSharpParser {
         let mut iter = cursor.matches(query, root_node, source_bytes);
         while let Some(m) = iter.next() {
             for capture in m.captures {
-                if let Some(parent) = capture.node.parent() {
-                    if has_modifier(&parent, source_bytes, "modifier", &["public"]) {
-                        if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                            push_export(
-                                exports,
-                                seen,
-                                text.to_string(),
-                                parent.start_position().row + 1,
-                                parent.end_position().row + 1,
-                            );
-                        }
-                    }
+                if let Some(parent) = capture.node.parent()
+                    && has_modifier(&parent, source_bytes, "modifier", &["public"])
+                    && let Ok(text) = capture.node.utf8_text(source_bytes)
+                {
+                    push_export(
+                        exports,
+                        seen,
+                        text.to_string(),
+                        parent.start_position().row + 1,
+                        parent.end_position().row + 1,
+                    );
                 }
             }
         }
@@ -254,22 +253,30 @@ namespace MyApp {
 "#;
         let result = parser.parse(source).unwrap();
         let exports = &result.metadata.exports;
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"UserService".to_string()));
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"CreateUser".to_string()));
-        assert!(!result
-            .metadata
-            .export_names()
-            .contains(&"Validate".to_string()));
-        assert!(!result
-            .metadata
-            .export_names()
-            .contains(&"InternalHelper".to_string()));
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"UserService".to_string())
+        );
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"CreateUser".to_string())
+        );
+        assert!(
+            !result
+                .metadata
+                .export_names()
+                .contains(&"Validate".to_string())
+        );
+        assert!(
+            !result
+                .metadata
+                .export_names()
+                .contains(&"InternalHelper".to_string())
+        );
 
         // Exports should use declaration line ranges, NOT namespace range [2, 9]
         let user_service = exports.iter().find(|e| e.name == "UserService").unwrap();
@@ -286,10 +293,12 @@ public interface IRepository<T> {
 }
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"IRepository".to_string()));
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"IRepository".to_string())
+        );
     }
 
     #[test]

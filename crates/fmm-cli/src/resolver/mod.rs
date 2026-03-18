@@ -128,12 +128,11 @@ pub fn resolve_by_directory_prefix(
     for candidate in &candidates {
         let resolved = matching_root.join(candidate);
         // Filesystem check first (cheap stat), then manifest lookup
-        if resolved.exists() {
-            if let Some(resolved_str) = resolved.to_str() {
-                if manifest_paths.contains(resolved_str) {
-                    return Some(resolved);
-                }
-            }
+        if resolved.exists()
+            && let Some(resolved_str) = resolved.to_str()
+            && manifest_paths.contains(resolved_str)
+        {
+            return Some(resolved);
         }
     }
 

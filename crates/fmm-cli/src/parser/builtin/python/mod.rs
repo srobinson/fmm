@@ -131,15 +131,17 @@ impl PythonParser {
             let mut iter = cursor.matches(query, root_node, source_bytes);
             while let Some(m) = iter.next() {
                 for capture in m.captures {
-                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                        if !text.starts_with('_') && filter(text) && seen.insert(text.to_string()) {
-                            let decl = top_level_ancestor(capture.node);
-                            exports.push(ExportEntry::new(
-                                text.to_string(),
-                                decl.start_position().row + 1,
-                                decl.end_position().row + 1,
-                            ));
-                        }
+                    if let Ok(text) = capture.node.utf8_text(source_bytes)
+                        && !text.starts_with('_')
+                        && filter(text)
+                        && seen.insert(text.to_string())
+                    {
+                        let decl = top_level_ancestor(capture.node);
+                        exports.push(ExportEntry::new(
+                            text.to_string(),
+                            decl.start_position().row + 1,
+                            decl.end_position().row + 1,
+                        ));
                     }
                 }
             }
@@ -223,14 +225,14 @@ impl PythonParser {
             let list_node = values_capture.node;
             let mut child_cursor = list_node.walk();
             for child in list_node.children(&mut child_cursor) {
-                if child.kind() == "string" {
-                    if let Ok(text) = child.utf8_text(source_bytes) {
-                        let name = text.trim_matches('\'').trim_matches('"').to_string();
-                        if !name.is_empty() && seen.insert(name.clone()) {
-                            let (start, end) =
-                                def_map.get(&name).copied().unwrap_or((all_start, all_end));
-                            exports.push(ExportEntry::new(name, start, end));
-                        }
+                if child.kind() == "string"
+                    && let Ok(text) = child.utf8_text(source_bytes)
+                {
+                    let name = text.trim_matches('\'').trim_matches('"').to_string();
+                    if !name.is_empty() && seen.insert(name.clone()) {
+                        let (start, end) =
+                            def_map.get(&name).copied().unwrap_or((all_start, all_end));
+                        exports.push(ExportEntry::new(name, start, end));
                     }
                 }
             }
@@ -265,12 +267,12 @@ impl PythonParser {
         let mut iter = cursor.matches(&self.from_import_query, root_node, source_bytes);
         while let Some(m) = iter.next() {
             for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    if !text.starts_with('.') {
-                        let full_module = text.to_string();
-                        if seen.insert(full_module.clone()) {
-                            imports.push(full_module);
-                        }
+                if let Ok(text) = capture.node.utf8_text(source_bytes)
+                    && !text.starts_with('.')
+                {
+                    let full_module = text.to_string();
+                    if seen.insert(full_module.clone()) {
+                        imports.push(full_module);
                     }
                 }
             }
@@ -340,10 +342,10 @@ impl PythonParser {
                             }
                             "aliased_import" => {
                                 // `A as B` -> store the original name A
-                                if let Some(name_node) = c.child_by_field_name("name") {
-                                    if let Ok(text) = name_node.utf8_text(source_bytes) {
-                                        names.push(text.to_string());
-                                    }
+                                if let Some(name_node) = c.child_by_field_name("name")
+                                    && let Ok(text) = name_node.utf8_text(source_bytes)
+                                {
+                                    names.push(text.to_string());
                                 }
                             }
                             _ => {}
@@ -360,19 +362,18 @@ impl PythonParser {
                     for c in child.children(&mut inner) {
                         match c.kind() {
                             "dotted_name" => {
-                                if let Ok(text) = c.utf8_text(source_bytes) {
-                                    if namespace_seen.insert(text.to_string()) {
-                                        namespace.push(text.to_string());
-                                    }
+                                if let Ok(text) = c.utf8_text(source_bytes)
+                                    && namespace_seen.insert(text.to_string())
+                                {
+                                    namespace.push(text.to_string());
                                 }
                             }
                             "aliased_import" => {
-                                if let Some(name_node) = c.child_by_field_name("name") {
-                                    if let Ok(text) = name_node.utf8_text(source_bytes) {
-                                        if namespace_seen.insert(text.to_string()) {
-                                            namespace.push(text.to_string());
-                                        }
-                                    }
+                                if let Some(name_node) = c.child_by_field_name("name")
+                                    && let Ok(text) = name_node.utf8_text(source_bytes)
+                                    && namespace_seen.insert(text.to_string())
+                                {
+                                    namespace.push(text.to_string());
                                 }
                             }
                             _ => {}
@@ -404,10 +405,10 @@ impl PythonParser {
         let mut iter = cursor.matches(&self.func_query, root_node, source_bytes);
         while let Some(m) = iter.next() {
             for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    if !text.starts_with('_') {
-                        names.push(text.to_string());
-                    }
+                if let Ok(text) = capture.node.utf8_text(source_bytes)
+                    && !text.starts_with('_')
+                {
+                    names.push(text.to_string());
                 }
             }
         }

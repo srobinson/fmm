@@ -24,10 +24,10 @@ fn find_go_mod_module(file_path: &Path) -> Option<String> {
     let mut dir = file_path.parent();
     while let Some(d) = dir {
         let go_mod = d.join("go.mod");
-        if go_mod.exists() {
-            if let Ok(content) = std::fs::read_to_string(&go_mod) {
-                return extract_module_name(&content);
-            }
+        if go_mod.exists()
+            && let Ok(content) = std::fs::read_to_string(&go_mod)
+        {
+            return extract_module_name(&content);
         }
         dir = d.parent();
     }
@@ -250,14 +250,18 @@ func ExportedFunc() {}
 func unexportedFunc() {}
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"ExportedFunc".to_string()));
-        assert!(!result
-            .metadata
-            .export_names()
-            .contains(&"unexportedFunc".to_string()));
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"ExportedFunc".to_string())
+        );
+        assert!(
+            !result
+                .metadata
+                .export_names()
+                .contains(&"unexportedFunc".to_string())
+        );
     }
 
     #[test]
@@ -279,18 +283,24 @@ type Service interface {
 }
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"Config".to_string()));
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"Service".to_string()));
-        assert!(!result
-            .metadata
-            .export_names()
-            .contains(&"handler".to_string()));
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"Config".to_string())
+        );
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"Service".to_string())
+        );
+        assert!(
+            !result
+                .metadata
+                .export_names()
+                .contains(&"handler".to_string())
+        );
     }
 
     #[test]
@@ -310,10 +320,12 @@ import (
         assert!(result.metadata.imports.contains(&"fmt".to_string()));
         assert!(result.metadata.imports.contains(&"os".to_string()));
         assert!(result.metadata.imports.contains(&"net/http".to_string()));
-        assert!(result
-            .metadata
-            .dependencies
-            .contains(&"github.com/gin-gonic/gin".to_string()));
+        assert!(
+            result
+                .metadata
+                .dependencies
+                .contains(&"github.com/gin-gonic/gin".to_string())
+        );
     }
 
     #[test]
@@ -329,22 +341,30 @@ var GlobalState = "init"
 var localVar = "hidden"
 "#;
         let result = parser.parse(source).unwrap();
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"MaxRetries".to_string()));
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"GlobalState".to_string()));
-        assert!(!result
-            .metadata
-            .export_names()
-            .contains(&"internalLimit".to_string()));
-        assert!(!result
-            .metadata
-            .export_names()
-            .contains(&"localVar".to_string()));
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"MaxRetries".to_string())
+        );
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"GlobalState".to_string())
+        );
+        assert!(
+            !result
+                .metadata
+                .export_names()
+                .contains(&"internalLimit".to_string())
+        );
+        assert!(
+            !result
+                .metadata
+                .export_names()
+                .contains(&"localVar".to_string())
+        );
     }
 
     #[test]

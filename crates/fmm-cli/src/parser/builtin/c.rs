@@ -77,12 +77,11 @@ impl CParser {
     fn is_static(node: &tree_sitter::Node, source_bytes: &[u8]) -> bool {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.kind() == "storage_class_specifier" {
-                if let Ok(text) = child.utf8_text(source_bytes) {
-                    if text == "static" {
-                        return true;
-                    }
-                }
+            if child.kind() == "storage_class_specifier"
+                && let Ok(text) = child.utf8_text(source_bytes)
+                && text == "static"
+            {
+                return true;
             }
         }
         false
@@ -95,13 +94,13 @@ impl CParser {
         for child in node.children(&mut cursor) {
             match child.kind() {
                 "struct_specifier" | "enum_specifier" => {
-                    if child.child_by_field_name("body").is_some() {
-                        if let Some(name_node) = child.child_by_field_name("name") {
-                            return name_node
-                                .utf8_text(source_bytes)
-                                .ok()
-                                .map(|s| s.to_string());
-                        }
+                    if child.child_by_field_name("body").is_some()
+                        && let Some(name_node) = child.child_by_field_name("name")
+                    {
+                        return name_node
+                            .utf8_text(source_bytes)
+                            .ok()
+                            .map(|s| s.to_string());
                     }
                 }
                 _ => {}
@@ -125,65 +124,52 @@ impl CParser {
         for child in root_node.children(&mut cursor) {
             match child.kind() {
                 "function_definition" => {
-                    if !Self::is_static(&child, source_bytes) {
-                        if let Some(declarator) = child.child_by_field_name("declarator") {
-                            if let Some(name) = Self::unwrap_declarator(&declarator, source_bytes) {
-                                if seen.insert(name.clone()) {
-                                    exports.push(ExportEntry::new(
-                                        name,
-                                        child.start_position().row + 1,
-                                        child.end_position().row + 1,
-                                    ));
-                                }
-                            }
-                        }
+                    if !Self::is_static(&child, source_bytes)
+                        && let Some(declarator) = child.child_by_field_name("declarator")
+                        && let Some(name) = Self::unwrap_declarator(&declarator, source_bytes)
+                        && seen.insert(name.clone())
+                    {
+                        exports.push(ExportEntry::new(
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        ));
                     }
                 }
                 "declaration" => {
                     // Struct/enum definitions at file scope (when combined with variable decl)
-                    if let Some(name) = Self::extract_type_name(&child, source_bytes) {
+                    if let Some(name) = Self::extract_type_name(&child, source_bytes)
+                        && seen.insert(name.clone())
+                    {
+                        exports.push(ExportEntry::new(
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        ));
+                    }
+                }
+                "struct_specifier" | "enum_specifier" => {
+                    // Standalone type definitions (direct root children)
+                    if child.child_by_field_name("body").is_some()
+                        && let Some(name_node) = child.child_by_field_name("name")
+                        && let Ok(name) = name_node.utf8_text(source_bytes)
+                    {
+                        let name = name.to_string();
                         if seen.insert(name.clone()) {
                             exports.push(ExportEntry::new(
                                 name,
                                 child.start_position().row + 1,
                                 child.end_position().row + 1,
                             ));
-                        }
-                    }
-                }
-                "struct_specifier" | "enum_specifier" => {
-                    // Standalone type definitions (direct root children)
-                    if child.child_by_field_name("body").is_some() {
-                        if let Some(name_node) = child.child_by_field_name("name") {
-                            if let Ok(name) = name_node.utf8_text(source_bytes) {
-                                let name = name.to_string();
-                                if seen.insert(name.clone()) {
-                                    exports.push(ExportEntry::new(
-                                        name,
-                                        child.start_position().row + 1,
-                                        child.end_position().row + 1,
-                                    ));
-                                }
-                            }
                         }
                     }
                 }
                 "type_definition" => {
                     // Typedef alias name (the declarator)
-                    if let Some(declarator) = child.child_by_field_name("declarator") {
-                        if let Some(name) = Self::unwrap_declarator(&declarator, source_bytes) {
-                            typedefs.push(name.clone());
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    child.start_position().row + 1,
-                                    child.end_position().row + 1,
-                                ));
-                            }
-                        }
-                    }
-                    // Named struct/enum inside typedef (e.g., typedef struct Foo { ... } Foo)
-                    if let Some(name) = Self::extract_type_name(&child, source_bytes) {
+                    if let Some(declarator) = child.child_by_field_name("declarator")
+                        && let Some(name) = Self::unwrap_declarator(&declarator, source_bytes)
+                    {
+                        typedefs.push(name.clone());
                         if seen.insert(name.clone()) {
                             exports.push(ExportEntry::new(
                                 name,
@@ -191,6 +177,16 @@ impl CParser {
                                 child.end_position().row + 1,
                             ));
                         }
+                    }
+                    // Named struct/enum inside typedef (e.g., typedef struct Foo { ... } Foo)
+                    if let Some(name) = Self::extract_type_name(&child, source_bytes)
+                        && seen.insert(name.clone())
+                    {
+                        exports.push(ExportEntry::new(
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        ));
                     }
                 }
                 _ => {}
@@ -368,10 +364,12 @@ mod tests {
         let mut parser = CParser::new().unwrap();
         let source = "char *get_name() { return \"hello\"; }\n";
         let result = parser.parse(source).unwrap();
-        assert!(result
-            .metadata
-            .export_names()
-            .contains(&"get_name".to_string()));
+        assert!(
+            result
+                .metadata
+                .export_names()
+                .contains(&"get_name".to_string())
+        );
     }
 
     #[test]
@@ -414,10 +412,12 @@ mod tests {
         let result = parser.parse(source).unwrap();
         assert!(result.metadata.imports.contains(&"stdio.h".to_string()));
         assert!(result.metadata.imports.contains(&"stdlib.h".to_string()));
-        assert!(result
-            .metadata
-            .dependencies
-            .contains(&"config.h".to_string()));
+        assert!(
+            result
+                .metadata
+                .dependencies
+                .contains(&"config.h".to_string())
+        );
     }
 
     #[test]

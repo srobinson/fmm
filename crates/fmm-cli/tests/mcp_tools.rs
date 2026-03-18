@@ -6,7 +6,7 @@
 //!
 //! Tools return sidecar-style YAML or CLI-style grouped text.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 // ---------------------------------------------------------------------------
 // Fixtures

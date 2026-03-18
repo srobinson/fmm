@@ -184,22 +184,22 @@ pub(in crate::mcp) fn compute_import_specifiers(
     if !workspace_roots.is_empty() {
         let abs_source = project_root.join(source_file);
         for ws_root in workspace_roots {
-            if let Ok(rel_within_pkg) = abs_source.strip_prefix(ws_root) {
-                if let Some(pkg_name) = ws_root.file_name() {
-                    let pkg_name_str = pkg_name.to_string_lossy();
-                    let rel_str = rel_within_pkg.to_string_lossy();
-                    let with_ext = format!("{}/{}", pkg_name_str, rel_str);
-                    let without_ext = format!(
-                        "{}/{}",
-                        pkg_name_str,
-                        rel_within_pkg.with_extension("").to_string_lossy()
-                    );
-                    if !specifiers.contains(&with_ext) {
-                        specifiers.push(with_ext);
-                    }
-                    if !specifiers.contains(&without_ext) {
-                        specifiers.push(without_ext);
-                    }
+            if let Ok(rel_within_pkg) = abs_source.strip_prefix(ws_root)
+                && let Some(pkg_name) = ws_root.file_name()
+            {
+                let pkg_name_str = pkg_name.to_string_lossy();
+                let rel_str = rel_within_pkg.to_string_lossy();
+                let with_ext = format!("{}/{}", pkg_name_str, rel_str);
+                let without_ext = format!(
+                    "{}/{}",
+                    pkg_name_str,
+                    rel_within_pkg.with_extension("").to_string_lossy()
+                );
+                if !specifiers.contains(&with_ext) {
+                    specifiers.push(with_ext);
+                }
+                if !specifiers.contains(&without_ext) {
+                    specifiers.push(without_ext);
                 }
             }
         }

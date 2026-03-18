@@ -54,29 +54,27 @@ impl ZigParser {
         for child in root_node.children(&mut cursor) {
             match child.kind() {
                 "function_declaration" => {
-                    if Self::is_pub(&child, source_bytes) {
-                        if let Some(name) = Self::extract_name(&child, source_bytes) {
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    child.start_position().row + 1,
-                                    child.end_position().row + 1,
-                                ));
-                            }
-                        }
+                    if Self::is_pub(&child, source_bytes)
+                        && let Some(name) = Self::extract_name(&child, source_bytes)
+                        && seen.insert(name.clone())
+                    {
+                        exports.push(ExportEntry::new(
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        ));
                     }
                 }
                 "variable_declaration" => {
-                    if Self::is_pub(&child, source_bytes) {
-                        if let Some(name) = Self::extract_name(&child, source_bytes) {
-                            if seen.insert(name.clone()) {
-                                exports.push(ExportEntry::new(
-                                    name,
-                                    child.start_position().row + 1,
-                                    child.end_position().row + 1,
-                                ));
-                            }
-                        }
+                    if Self::is_pub(&child, source_bytes)
+                        && let Some(name) = Self::extract_name(&child, source_bytes)
+                        && seen.insert(name.clone())
+                    {
+                        exports.push(ExportEntry::new(
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        ));
                     }
                 }
                 _ => {}
@@ -123,12 +121,11 @@ impl ZigParser {
             let mut cursor = node.walk();
             let mut is_import = false;
             for child in node.children(&mut cursor) {
-                if child.kind() == "builtin_identifier" {
-                    if let Ok(text) = child.utf8_text(source_bytes) {
-                        if text == "@import" {
-                            is_import = true;
-                        }
-                    }
+                if child.kind() == "builtin_identifier"
+                    && let Ok(text) = child.utf8_text(source_bytes)
+                    && text == "@import"
+                {
+                    is_import = true;
                 }
                 if is_import && child.kind() == "arguments" {
                     // Find the string content inside the arguments
@@ -138,15 +135,14 @@ impl ZigParser {
                             // Find string_content child
                             let mut str_cursor = arg_child.walk();
                             for str_child in arg_child.children(&mut str_cursor) {
-                                if str_child.kind() == "string_content" {
-                                    if let Ok(path) = str_child.utf8_text(source_bytes) {
-                                        if !path.is_empty() {
-                                            if path.starts_with('.') {
-                                                dependencies.insert(path.to_string());
-                                            } else {
-                                                imports.insert(path.to_string());
-                                            }
-                                        }
+                                if str_child.kind() == "string_content"
+                                    && let Ok(path) = str_child.utf8_text(source_bytes)
+                                    && !path.is_empty()
+                                {
+                                    if path.starts_with('.') {
+                                        dependencies.insert(path.to_string());
+                                    } else {
+                                        imports.insert(path.to_string());
                                     }
                                 }
                             }
@@ -281,10 +277,12 @@ const utils = @import("./utils.zig");
         let result = parser.parse(source).unwrap();
         assert!(result.metadata.imports.contains(&"std".to_string()));
         assert!(result.metadata.imports.contains(&"builtin".to_string()));
-        assert!(result
-            .metadata
-            .dependencies
-            .contains(&"./utils.zig".to_string()));
+        assert!(
+            result
+                .metadata
+                .dependencies
+                .contains(&"./utils.zig".to_string())
+        );
     }
 
     #[test]

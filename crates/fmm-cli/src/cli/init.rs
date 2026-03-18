@@ -74,14 +74,14 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
                     export_count
                 );
 
-                if let Ok(manifest) = crate::manifest::Manifest::load(&root) {
-                    if let Some((export_name, _)) = manifest.export_index.iter().next() {
-                        println!(
-                            "\n  {} Try: fmm search --export {}",
-                            "next:".cyan(),
-                            export_name
-                        );
-                    }
+                if let Ok(manifest) = crate::manifest::Manifest::load(&root)
+                    && let Some((export_name, _)) = manifest.export_index.iter().next()
+                {
+                    println!(
+                        "\n  {} Try: fmm search --export {}",
+                        "next:".cyan(),
+                        export_name
+                    );
                 }
             }
         } else {

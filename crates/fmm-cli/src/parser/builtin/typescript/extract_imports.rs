@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::QueryCursor;
 
-use super::tsconfig::resolve_alias;
 use super::TypeScriptParser;
+use super::tsconfig::resolve_alias;
 
 impl TypeScriptParser {
     pub(super) fn extract_imports(
@@ -77,10 +77,10 @@ impl TypeScriptParser {
                     let cleaned = text.trim_matches('\'').trim_matches('"').to_string();
                     if cleaned.starts_with('.') || cleaned.starts_with('/') {
                         seen.insert(cleaned);
-                    } else if !aliases.is_empty() {
-                        if let Some(resolved) = resolve_alias(&cleaned, aliases) {
-                            seen.insert(resolved);
-                        }
+                    } else if !aliases.is_empty()
+                        && let Some(resolved) = resolve_alias(&cleaned, aliases)
+                    {
+                        seen.insert(resolved);
                     }
                 }
             }

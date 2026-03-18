@@ -52,14 +52,14 @@ fn check_version_match(conn: &Connection) -> Result<()> {
         )
         .ok();
     let running = env!("CARGO_PKG_VERSION");
-    if let Some(ref v) = stored {
-        if v != running {
-            anyhow::bail!(
-                "Index was built with fmm v{} but you are running v{}. Run `fmm generate --force` to rebuild.",
-                v,
-                running
-            );
-        }
+    if let Some(ref v) = stored
+        && v != running
+    {
+        anyhow::bail!(
+            "Index was built with fmm v{} but you are running v{}. Run `fmm generate --force` to rebuild.",
+            v,
+            running
+        );
     }
     Ok(())
 }
@@ -337,9 +337,11 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let result = open_db(dir.path());
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Run `fmm generate`"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Run `fmm generate`")
+        );
     }
 }

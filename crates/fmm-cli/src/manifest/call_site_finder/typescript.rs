@@ -108,10 +108,10 @@ fn bare_call_result_ts(source: &[u8], fn_name: &str) -> Option<BareCallSiteResul
         let mut iter = cursor.matches(&q_aliased, root, source);
         while let Some(m) = iter.next() {
             for cap in m.captures {
-                if cap.index == local_idx {
-                    if let Ok(text) = cap.node.utf8_text(source) {
-                        local_names.push(text.to_string());
-                    }
+                if cap.index == local_idx
+                    && let Ok(text) = cap.node.utf8_text(source)
+                {
+                    local_names.push(text.to_string());
                 }
             }
         }
@@ -124,10 +124,10 @@ fn bare_call_result_ts(source: &[u8], fn_name: &str) -> Option<BareCallSiteResul
         let mut iter = cursor.matches(&q_ns, root, source);
         while let Some(m) = iter.next() {
             for cap in m.captures {
-                if cap.index == ns_idx {
-                    if let Ok(text) = cap.node.utf8_text(source) {
-                        ns_names.push(text.to_string());
-                    }
+                if cap.index == ns_idx
+                    && let Ok(text) = cap.node.utf8_text(source)
+                {
+                    ns_names.push(text.to_string());
                 }
             }
         }
@@ -154,10 +154,10 @@ fn bare_call_result_ts(source: &[u8], fn_name: &str) -> Option<BareCallSiteResul
             r#"(call_expression function: (identifier) @callee (#eq? @callee "{}"))"#,
             local_name
         );
-        if let Ok(q_call) = Query::new(&lang, &q_call_src) {
-            if super::has_any_match(&q_call, root, source) {
-                return Some(BareCallSiteResult::DirectCaller);
-            }
+        if let Ok(q_call) = Query::new(&lang, &q_call_src)
+            && super::has_any_match(&q_call, root, source)
+        {
+            return Some(BareCallSiteResult::DirectCaller);
         }
     }
 

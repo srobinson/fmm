@@ -46,46 +46,43 @@ impl KotlinParser {
                         source_bytes,
                         "modifiers",
                         &["private", "internal", "protected"],
-                    ) {
-                        if let Some(class_name) =
-                            extract_child_text(&child, source_bytes, "identifier")
-                        {
-                            push_export(
-                                &mut exports,
-                                &mut seen,
-                                class_name.clone(),
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            );
-                            // ALP-771: extract public methods from the class body
-                            let mut class_cursor = child.walk();
-                            for class_child in child.children(&mut class_cursor) {
-                                if class_child.kind() == "class_body" {
-                                    let mut body_cursor = class_child.walk();
-                                    for body_child in class_child.children(&mut body_cursor) {
-                                        if body_child.kind() == "function_declaration"
-                                            && !has_modifier(
-                                                &body_child,
-                                                source_bytes,
-                                                "modifiers",
-                                                &["private", "internal", "protected"],
-                                            )
-                                        {
-                                            if let Some(method_name) = extract_child_text(
-                                                &body_child,
-                                                source_bytes,
-                                                "identifier",
-                                            ) {
-                                                let key = format!("{}.{}", class_name, method_name);
-                                                if seen.insert(key) {
-                                                    exports.push(ExportEntry::method(
-                                                        method_name,
-                                                        body_child.start_position().row + 1,
-                                                        body_child.end_position().row + 1,
-                                                        class_name.clone(),
-                                                    ));
-                                                }
-                                            }
+                    ) && let Some(class_name) =
+                        extract_child_text(&child, source_bytes, "identifier")
+                    {
+                        push_export(
+                            &mut exports,
+                            &mut seen,
+                            class_name.clone(),
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        );
+                        // ALP-771: extract public methods from the class body
+                        let mut class_cursor = child.walk();
+                        for class_child in child.children(&mut class_cursor) {
+                            if class_child.kind() == "class_body" {
+                                let mut body_cursor = class_child.walk();
+                                for body_child in class_child.children(&mut body_cursor) {
+                                    if body_child.kind() == "function_declaration"
+                                        && !has_modifier(
+                                            &body_child,
+                                            source_bytes,
+                                            "modifiers",
+                                            &["private", "internal", "protected"],
+                                        )
+                                        && let Some(method_name) = extract_child_text(
+                                            &body_child,
+                                            source_bytes,
+                                            "identifier",
+                                        )
+                                    {
+                                        let key = format!("{}.{}", class_name, method_name);
+                                        if seen.insert(key) {
+                                            exports.push(ExportEntry::method(
+                                                method_name,
+                                                body_child.start_position().row + 1,
+                                                body_child.end_position().row + 1,
+                                                class_name.clone(),
+                                            ));
                                         }
                                     }
                                 }
@@ -99,16 +96,15 @@ impl KotlinParser {
                         source_bytes,
                         "modifiers",
                         &["private", "internal", "protected"],
-                    ) {
-                        if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
-                            push_export(
-                                &mut exports,
-                                &mut seen,
-                                name,
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            );
-                        }
+                    ) && let Some(name) = extract_child_text(&child, source_bytes, "identifier")
+                    {
+                        push_export(
+                            &mut exports,
+                            &mut seen,
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        );
                     }
                 }
                 "function_declaration" => {
@@ -117,16 +113,15 @@ impl KotlinParser {
                         source_bytes,
                         "modifiers",
                         &["private", "internal", "protected"],
-                    ) {
-                        if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
-                            push_export(
-                                &mut exports,
-                                &mut seen,
-                                name,
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            );
-                        }
+                    ) && let Some(name) = extract_child_text(&child, source_bytes, "identifier")
+                    {
+                        push_export(
+                            &mut exports,
+                            &mut seen,
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        );
                     }
                 }
                 "property_declaration" => {
@@ -135,18 +130,16 @@ impl KotlinParser {
                         source_bytes,
                         "modifiers",
                         &["private", "internal", "protected"],
-                    ) {
-                        if let Some(name) =
-                            extract_child_text(&child, source_bytes, "variable_declaration")
-                        {
-                            push_export(
-                                &mut exports,
-                                &mut seen,
-                                name,
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            );
-                        }
+                    ) && let Some(name) =
+                        extract_child_text(&child, source_bytes, "variable_declaration")
+                    {
+                        push_export(
+                            &mut exports,
+                            &mut seen,
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        );
                     }
                 }
                 "type_alias" => {
@@ -155,16 +148,15 @@ impl KotlinParser {
                         source_bytes,
                         "modifiers",
                         &["private", "internal", "protected"],
-                    ) {
-                        if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
-                            push_export(
-                                &mut exports,
-                                &mut seen,
-                                name,
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            );
-                        }
+                    ) && let Some(name) = extract_child_text(&child, source_bytes, "identifier")
+                    {
+                        push_export(
+                            &mut exports,
+                            &mut seen,
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        );
                     }
                 }
                 _ => {}
@@ -188,18 +180,18 @@ impl KotlinParser {
             if child.kind() == "import" {
                 let mut inner = child.walk();
                 for import_child in child.children(&mut inner) {
-                    if import_child.kind() == "qualified_identifier" {
-                        if let Ok(full_path) = import_child.utf8_text(source_bytes) {
-                            // Extract first two segments as the package root
-                            // e.g., kotlin.collections.List → kotlin.collections
-                            let segments: Vec<&str> = full_path.split('.').collect();
-                            let root = if segments.len() >= 2 {
-                                format!("{}.{}", segments[0], segments[1])
-                            } else {
-                                segments[0].to_string()
-                            };
-                            import_set.insert(root);
-                        }
+                    if import_child.kind() == "qualified_identifier"
+                        && let Ok(full_path) = import_child.utf8_text(source_bytes)
+                    {
+                        // Extract first two segments as the package root
+                        // e.g., kotlin.collections.List → kotlin.collections
+                        let segments: Vec<&str> = full_path.split('.').collect();
+                        let root = if segments.len() >= 2 {
+                            format!("{}.{}", segments[0], segments[1])
+                        } else {
+                            segments[0].to_string()
+                        };
+                        import_set.insert(root);
                     }
                 }
             }
@@ -373,10 +365,12 @@ mod tests {
         let source =
             "import kotlin.collections.List\nimport java.util.UUID\nimport org.example.Foo\n";
         let result = parser.parse(source).unwrap();
-        assert!(result
-            .metadata
-            .imports
-            .contains(&"kotlin.collections".to_string()));
+        assert!(
+            result
+                .metadata
+                .imports
+                .contains(&"kotlin.collections".to_string())
+        );
         assert!(result.metadata.imports.contains(&"java.util".to_string()));
         assert!(result.metadata.imports.contains(&"org.example".to_string()));
     }
