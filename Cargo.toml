@@ -81,6 +81,7 @@ oxc_resolver = "11"
 tempfile = "3.14"
 criterion = { version = "0.5", features = ["html_reports"] }
 insta = "1.42"
+assert_cmd = "2.0"
 
 [profile.release]
 lto = true
