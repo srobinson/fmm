@@ -1,7 +1,7 @@
 //! `fmm_read_symbol` tool implementation.
 
-use crate::manifest::Manifest;
 use crate::mcp::args::ReadSymbolArgs;
+use fmm_core::manifest::Manifest;
 use serde_json::Value;
 
 use super::common::{find_concrete_definition, is_reexport_file};
@@ -31,7 +31,7 @@ pub(in crate::mcp) fn tool_read_symbol(
         // Require the file part to look like a path (contains '/' or '.')
         // so bare symbol names with colons (unlikely) don't accidentally match.
         if (file_part.contains('/') || file_part.contains('.')) && !symbol_part.is_empty() {
-            let (start, end) = crate::manifest::private_members::find_top_level_function_range(
+            let (start, end) = fmm_core::manifest::private_members::find_top_level_function_range(
                 root,
                 file_part,
                 symbol_part,
@@ -48,7 +48,7 @@ pub(in crate::mcp) fn tool_read_symbol(
             })?;
             (
                 file_part.to_string(),
-                Some(crate::manifest::ExportLines { start, end }),
+                Some(fmm_core::manifest::ExportLines { start, end }),
             )
         } else {
             // Doesn't look like a file path — reject rather than silently misrouting.
@@ -83,7 +83,7 @@ pub(in crate::mcp) fn tool_read_symbol(
                     )
                 })?;
 
-            let (start, end) = crate::manifest::private_members::find_private_method_range(
+            let (start, end) = fmm_core::manifest::private_members::find_private_method_range(
                 root,
                 &class_file,
                 class_name,
@@ -99,7 +99,7 @@ pub(in crate::mcp) fn tool_read_symbol(
 
             (
                 class_file,
-                Some(crate::manifest::ExportLines { start, end }),
+                Some(fmm_core::manifest::ExportLines { start, end }),
             )
         }
     } else {
@@ -159,7 +159,7 @@ pub(in crate::mcp) fn tool_read_symbol(
         // Check if this class has methods registered in the file entry.
         if let Some(file_entry) = manifest.files.get(&resolved_file) {
             let prefix = format!("{}.", args.name);
-            let mut class_methods: Vec<(&str, &crate::manifest::ExportLines)> = file_entry
+            let mut class_methods: Vec<(&str, &fmm_core::manifest::ExportLines)> = file_entry
                 .methods
                 .as_ref()
                 .map(|m| {
@@ -172,7 +172,7 @@ pub(in crate::mcp) fn tool_read_symbol(
             if !class_methods.is_empty() {
                 // Sort by line start order for readability.
                 class_methods.sort_by_key(|(_, el)| el.start);
-                return Ok(crate::format::format_class_redirect(
+                return Ok(fmm_core::format::format_class_redirect(
                     &args.name,
                     &resolved_file,
                     &lines,
@@ -182,7 +182,7 @@ pub(in crate::mcp) fn tool_read_symbol(
         }
     }
 
-    Ok(crate::format::format_read_symbol(
+    Ok(fmm_core::format::format_read_symbol(
         &args.name,
         &resolved_file,
         &lines,

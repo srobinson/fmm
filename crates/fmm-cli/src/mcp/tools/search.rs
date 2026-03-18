@@ -1,7 +1,7 @@
 //! `fmm_search` tool implementation.
 
-use crate::manifest::Manifest;
 use crate::mcp::args::SearchArgs;
+use fmm_core::manifest::Manifest;
 use serde_json::Value;
 
 pub(in crate::mcp) fn tool_search(
@@ -20,7 +20,7 @@ pub(in crate::mcp) fn tool_search(
 
     let term = args.term;
     let limit = args.limit;
-    let filters = crate::search::SearchFilters {
+    let filters = fmm_core::search::SearchFilters {
         export: args.export,
         imports: args.imports,
         depends_on: args.depends_on,
@@ -29,11 +29,11 @@ pub(in crate::mcp) fn tool_search(
     };
 
     if let Some(term) = term {
-        let mut result = crate::search::bare_search(manifest, &term, limit);
+        let mut result = fmm_core::search::bare_search(manifest, &term, limit);
         // When structured filters are also present, intersect with AND semantics:
         // keep only exports/files/imports that are in the filter file set.
         if has_filters {
-            let filter_results = crate::search::filter_search(manifest, &filters);
+            let filter_results = fmm_core::search::filter_search(manifest, &filters);
             let filter_files: std::collections::HashSet<&str> =
                 filter_results.iter().map(|r| r.file.as_str()).collect();
             result
@@ -54,7 +54,7 @@ pub(in crate::mcp) fn tool_search(
             // "[N fuzzy matches — showing top 0]" notice.
             result.total_exports = None;
         }
-        let mut formatted = crate::format::format_bare_search(&result, false);
+        let mut formatted = fmm_core::format::format_bare_search(&result, false);
         if has_filters && result.exports.is_empty() && !result.files.is_empty() {
             formatted.push_str(&format!(
                 "\n[No exports matching '{}' found in the {} matching file{}]",
@@ -67,9 +67,9 @@ pub(in crate::mcp) fn tool_search(
     }
 
     // Structured filter search (no term)
-    let results = crate::search::filter_search(manifest, &filters);
+    let results = fmm_core::search::filter_search(manifest, &filters);
     let total_count = results.len();
-    let formatted = crate::format::format_filter_search(&results, false);
+    let formatted = fmm_core::format::format_filter_search(&results, false);
 
     // ALP-861: when depends_on is used, add a count header and transitive/direct clarification.
     if let Some(ref dep_path) = filters.depends_on {

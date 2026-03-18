@@ -10,7 +10,7 @@ fn matches_loc_filter(loc: usize, op: &str, value: usize) -> bool {
         _ => false,
     }
 }
-use crate::manifest::{ExportLines, ExportLocation, FileEntry, Manifest};
+use fmm_core::manifest::{ExportLines, ExportLocation, FileEntry, Manifest};
 
 fn test_manifest() -> Manifest {
     let mut m = Manifest::new();
@@ -103,7 +103,7 @@ fn test_manifest() -> Manifest {
 #[test]
 fn exact_export_match() {
     let m = test_manifest();
-    let matches = crate::search::find_export_matches(&m, "createStore");
+    let matches = fmm_core::search::find_export_matches(&m, "createStore");
     assert_eq!(matches.len(), 1);
     assert_eq!(matches[0].name, "createStore");
     assert_eq!(matches[0].file, "src/store/index.ts");
@@ -112,7 +112,7 @@ fn exact_export_match() {
 #[test]
 fn fuzzy_export_match_substring() {
     let m = test_manifest();
-    let matches = crate::search::find_export_matches(&m, "store");
+    let matches = fmm_core::search::find_export_matches(&m, "store");
     assert!(matches.len() >= 3);
     let names: Vec<&str> = matches.iter().map(|h| h.name.as_str()).collect();
     assert!(names.contains(&"createStore"));
@@ -123,7 +123,7 @@ fn fuzzy_export_match_substring() {
 #[test]
 fn fuzzy_export_match_case_insensitive() {
     let m = test_manifest();
-    let matches = crate::search::find_export_matches(&m, "STORE");
+    let matches = fmm_core::search::find_export_matches(&m, "STORE");
     assert!(matches.len() >= 3);
     let names: Vec<&str> = matches.iter().map(|h| h.name.as_str()).collect();
     assert!(names.contains(&"createStore"));
@@ -133,14 +133,14 @@ fn fuzzy_export_match_case_insensitive() {
 #[test]
 fn export_no_match() {
     let m = test_manifest();
-    let matches = crate::search::find_export_matches(&m, "xyznothing");
+    let matches = fmm_core::search::find_export_matches(&m, "xyznothing");
     assert!(matches.is_empty());
 }
 
 #[test]
 fn exact_match_ranked_first() {
     let m = test_manifest();
-    let matches = crate::search::find_export_matches(&m, "createStore");
+    let matches = fmm_core::search::find_export_matches(&m, "createStore");
     assert_eq!(matches[0].name, "createStore");
     assert_eq!(matches.len(), 1);
 }
@@ -167,8 +167,8 @@ fn loc_filter_matches() {
 #[test]
 fn bare_search_produces_grouped_text() {
     let m = test_manifest();
-    let result = crate::search::bare_search(&m, "store", None);
-    let text = crate::format::format_bare_search(&result, false);
+    let result = fmm_core::search::bare_search(&m, "store", None);
+    let text = fmm_core::format::format_bare_search(&result, false);
     assert!(text.contains("EXPORTS"));
     assert!(text.contains("createStore"));
 }
@@ -176,15 +176,15 @@ fn bare_search_produces_grouped_text() {
 #[test]
 fn filter_search_produces_per_file_text() {
     let m = test_manifest();
-    let filters = crate::search::SearchFilters {
+    let filters = fmm_core::search::SearchFilters {
         export: None,
         imports: Some("redux".to_string()),
         depends_on: None,
         min_loc: None,
         max_loc: None,
     };
-    let results = crate::search::filter_search(&m, &filters);
-    let text = crate::format::format_filter_search(&results, false);
+    let results = fmm_core::search::filter_search(&m, &filters);
+    let text = fmm_core::format::format_filter_search(&results, false);
     assert!(text.contains("redux"));
     assert!(text.contains("imports:"));
 }
@@ -255,7 +255,7 @@ fn named_imports_manifest() -> Manifest {
 #[test]
 fn named_import_exact_match() {
     let m = named_imports_manifest();
-    let result = crate::search::bare_search(&m, "createServerFn", None);
+    let result = fmm_core::search::bare_search(&m, "createServerFn", None);
     assert!(
         !result.named_import_hits.is_empty(),
         "should find named import hits for createServerFn"
@@ -275,7 +275,7 @@ fn named_import_exact_match() {
 fn named_import_fuzzy_match() {
     let m = named_imports_manifest();
     // "server" should match "createServerFn" case-insensitively
-    let result = crate::search::bare_search(&m, "server", None);
+    let result = fmm_core::search::bare_search(&m, "server", None);
     let hit = result
         .named_import_hits
         .iter()
@@ -285,7 +285,7 @@ fn named_import_fuzzy_match() {
         "fuzzy match on 'server' should hit createServerFn"
     );
     // "Server" (uppercase) should also work
-    let result2 = crate::search::bare_search(&m, "Server", None);
+    let result2 = fmm_core::search::bare_search(&m, "Server", None);
     let hit2 = result2
         .named_import_hits
         .iter()
@@ -297,17 +297,17 @@ fn named_import_fuzzy_match() {
 fn named_import_combined_mode_intersection() {
     let m = named_imports_manifest();
     // filter_search: imports "redux" matches foo.ts and baz.ts (not bar.ts)
-    let filters = crate::search::SearchFilters {
+    let filters = fmm_core::search::SearchFilters {
         export: None,
         imports: Some("redux".to_string()),
         depends_on: None,
         min_loc: None,
         max_loc: None,
     };
-    let filter_results = crate::search::filter_search(&m, &filters);
+    let filter_results = fmm_core::search::filter_search(&m, &filters);
     let filter_files: std::collections::HashSet<&str> =
         filter_results.iter().map(|r| r.file.as_str()).collect();
-    let mut result = crate::search::bare_search(&m, "createServerFn", None);
+    let mut result = fmm_core::search::bare_search(&m, "createServerFn", None);
     result.named_import_hits.iter_mut().for_each(|h| {
         h.files.retain(|f| filter_files.contains(f.as_str()));
     });
@@ -332,8 +332,8 @@ fn named_import_combined_mode_intersection() {
 #[test]
 fn named_import_section_in_formatted_output() {
     let m = named_imports_manifest();
-    let result = crate::search::bare_search(&m, "createServerFn", None);
-    let text = crate::format::format_bare_search(&result, false);
+    let result = fmm_core::search::bare_search(&m, "createServerFn", None);
+    let text = fmm_core::format::format_bare_search(&result, false);
     assert!(
         text.contains("NAMED IMPORTS"),
         "output should have NAMED IMPORTS section"

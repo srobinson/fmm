@@ -1,5 +1,5 @@
-use crate::manifest::Manifest;
 use anyhow::Result;
+use fmm_core::manifest::Manifest;
 use fmm_core::store::FmmStore;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

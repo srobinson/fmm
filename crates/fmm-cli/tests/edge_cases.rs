@@ -1,21 +1,21 @@
-use fmm::parser::Parser;
-use fmm::parser::builtin::c::CParser;
-use fmm::parser::builtin::cpp::CppParser;
-use fmm::parser::builtin::csharp::CSharpParser;
-use fmm::parser::builtin::dart::DartParser;
-use fmm::parser::builtin::elixir::ElixirParser;
-use fmm::parser::builtin::go::GoParser;
-use fmm::parser::builtin::java::JavaParser;
-use fmm::parser::builtin::kotlin::KotlinParser;
-use fmm::parser::builtin::lua::LuaParser;
-use fmm::parser::builtin::php::PhpParser;
-use fmm::parser::builtin::python::PythonParser;
-use fmm::parser::builtin::ruby::RubyParser;
-use fmm::parser::builtin::rust::RustParser;
-use fmm::parser::builtin::scala::ScalaParser;
-use fmm::parser::builtin::swift::SwiftParser;
-use fmm::parser::builtin::typescript::TypeScriptParser;
-use fmm::parser::builtin::zig::ZigParser;
+use fmm_core::parser::Parser;
+use fmm_core::parser::builtin::c::CParser;
+use fmm_core::parser::builtin::cpp::CppParser;
+use fmm_core::parser::builtin::csharp::CSharpParser;
+use fmm_core::parser::builtin::dart::DartParser;
+use fmm_core::parser::builtin::elixir::ElixirParser;
+use fmm_core::parser::builtin::go::GoParser;
+use fmm_core::parser::builtin::java::JavaParser;
+use fmm_core::parser::builtin::kotlin::KotlinParser;
+use fmm_core::parser::builtin::lua::LuaParser;
+use fmm_core::parser::builtin::php::PhpParser;
+use fmm_core::parser::builtin::python::PythonParser;
+use fmm_core::parser::builtin::ruby::RubyParser;
+use fmm_core::parser::builtin::rust::RustParser;
+use fmm_core::parser::builtin::scala::ScalaParser;
+use fmm_core::parser::builtin::swift::SwiftParser;
+use fmm_core::parser::builtin::typescript::TypeScriptParser;
+use fmm_core::parser::builtin::zig::ZigParser;
 
 // --- Empty files ---
 

@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 
-use crate::manifest::Manifest;
 use crate::manifest_ext::load_manifest;
+use fmm_core::manifest::Manifest;
 
 // -- JSON output types (for --json flag only) --
 
@@ -97,17 +97,17 @@ pub fn search(
             } else {
                 (None, None)
             };
-            let filters = crate::search::SearchFilters {
+            let filters = fmm_core::search::SearchFilters {
                 export,
                 imports,
                 depends_on,
                 min_loc,
                 max_loc,
             };
-            let filter_results = crate::search::filter_search(&manifest, &filters);
+            let filter_results = fmm_core::search::filter_search(&manifest, &filters);
             let filter_files: std::collections::HashSet<&str> =
                 filter_results.iter().map(|r| r.file.as_str()).collect();
-            let mut result = crate::search::bare_search(&manifest, search_term, None);
+            let mut result = fmm_core::search::bare_search(&manifest, search_term, None);
             result
                 .exports
                 .retain(|h| filter_files.contains(h.file.as_str()));
@@ -157,7 +157,7 @@ pub fn search(
                 };
                 println!("{}", serde_json::to_string_pretty(&json)?);
             } else {
-                let mut formatted = crate::format::format_bare_search(&result, true);
+                let mut formatted = fmm_core::format::format_bare_search(&result, true);
                 if result.exports.is_empty() && !result.files.is_empty() {
                     formatted.push_str(&format!(
                         "\n[No exports matching '{}' found in the {} matching file{}]",
@@ -191,7 +191,7 @@ pub fn search(
 // -- Bare search --
 
 fn bare_search(manifest: &Manifest, term: &str, json_output: bool) -> Result<()> {
-    let result = crate::search::bare_search(manifest, term, None);
+    let result = fmm_core::search::bare_search(manifest, term, None);
 
     if json_output {
         let json = BareSearchJson {
@@ -241,7 +241,7 @@ fn bare_search(manifest: &Manifest, term: &str, json_output: bool) -> Result<()>
     }
 
     // Use shared formatter with ANSI colors
-    println!("{}", crate::format::format_bare_search(&result, true));
+    println!("{}", fmm_core::format::format_bare_search(&result, true));
 
     Ok(())
 }
@@ -265,7 +265,7 @@ fn flag_search(
         && loc.is_none()
     {
         let dir = directory.as_deref();
-        let matches: Vec<_> = crate::search::find_export_matches(manifest, export_name)
+        let matches: Vec<_> = fmm_core::search::find_export_matches(manifest, export_name)
             .into_iter()
             .filter(|h| dir.is_none_or(|d| h.file.starts_with(d)))
             .collect();
@@ -283,7 +283,7 @@ fn flag_search(
             let total = tuples.len();
             println!(
                 "{}",
-                crate::format::format_list_exports_pattern(&tuples, total, 0)
+                fmm_core::format::format_list_exports_pattern(&tuples, total, 0)
             );
         }
         return Ok(());
@@ -304,14 +304,14 @@ fn flag_search(
         (None, None)
     };
 
-    let filters = crate::search::SearchFilters {
+    let filters = fmm_core::search::SearchFilters {
         export: export.clone(),
         imports,
         depends_on,
         min_loc,
         max_loc,
     };
-    let results = crate::search::filter_search(manifest, &filters);
+    let results = fmm_core::search::filter_search(manifest, &filters);
 
     if json_output {
         // For export-only JSON, use the rich export format
@@ -320,7 +320,7 @@ fn flag_search(
             && filters.depends_on.is_none()
             && loc.is_none()
         {
-            let matches = crate::search::find_export_matches(manifest, export_name);
+            let matches = fmm_core::search::find_export_matches(manifest, export_name);
             let export_json: Vec<ExportMatchJson> = matches
                 .iter()
                 .map(|h| ExportMatchJson {
@@ -368,7 +368,7 @@ fn flag_search(
         println!("{} No matches found", "!".yellow());
     } else {
         println!("{} {} file(s) found:\n", "✓".green(), results.len());
-        println!("{}", crate::format::format_filter_search(&results, true));
+        println!("{}", fmm_core::format::format_filter_search(&results, true));
     }
 
     Ok(())

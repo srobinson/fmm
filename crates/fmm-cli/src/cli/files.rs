@@ -2,7 +2,7 @@ use anyhow::Result;
 use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
 
-use crate::config::Config;
+use fmm_core::config::Config;
 
 /// Returns `(kept_files, skipped_count)`.
 ///

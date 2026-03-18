@@ -1,7 +1,7 @@
 //! `fmm_file_outline` tool implementation.
 
-use crate::manifest::Manifest;
 use crate::mcp::args::FileOutlineArgs;
+use fmm_core::manifest::Manifest;
 use serde_json::Value;
 
 use super::common::validate_not_directory;
@@ -26,17 +26,19 @@ pub(in crate::mcp) fn tool_file_outline(
     let include_private = args.include_private.unwrap_or(false);
     let private_by_class = if include_private {
         let class_names: Vec<&str> = entry.exports.iter().map(|s| s.as_str()).collect();
-        Some(crate::manifest::private_members::extract_private_members(
-            root,
-            &args.file,
-            &class_names,
-        ))
+        Some(
+            fmm_core::manifest::private_members::extract_private_members(
+                root,
+                &args.file,
+                &class_names,
+            ),
+        )
     } else {
         None
     };
     let top_level_fns = if include_private {
         let export_names: Vec<&str> = entry.exports.iter().map(|s| s.as_str()).collect();
-        let fns = crate::manifest::private_members::extract_top_level_functions(
+        let fns = fmm_core::manifest::private_members::extract_top_level_functions(
             root,
             &args.file,
             &export_names,
@@ -46,7 +48,7 @@ pub(in crate::mcp) fn tool_file_outline(
         None
     };
 
-    Ok(crate::format::format_file_outline(
+    Ok(fmm_core::format::format_file_outline(
         &args.file,
         entry,
         private_by_class.as_ref(),

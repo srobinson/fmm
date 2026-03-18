@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use std::path::Path;
 
-use crate::config::Config;
+use fmm_core::config::Config;
 
 use super::collect_files;
 use super::sidecar;

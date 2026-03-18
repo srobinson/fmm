@@ -34,7 +34,7 @@ pub fn read_symbol(
         let symbol_part = &name[colon_pos + 1..];
 
         if (file_part.contains('/') || file_part.contains('.')) && !symbol_part.is_empty() {
-            let (start, end) = crate::manifest::private_members::find_top_level_function_range(
+            let (start, end) = fmm_core::manifest::private_members::find_top_level_function_range(
                 &root,
                 file_part,
                 symbol_part,
@@ -52,7 +52,7 @@ pub fn read_symbol(
             })?;
             (
                 file_part.to_string(),
-                Some(crate::manifest::ExportLines { start, end }),
+                Some(fmm_core::manifest::ExportLines { start, end }),
             )
         } else {
             anyhow::bail!(
@@ -143,7 +143,7 @@ pub fn read_symbol(
     } else {
         println!(
             "{}",
-            crate::format::format_read_symbol(
+            fmm_core::format::format_read_symbol(
                 name,
                 &resolved_file,
                 &lines,

@@ -1,7 +1,7 @@
 //! `fmm_lookup_export` tool implementation.
 
-use crate::manifest::Manifest;
 use crate::mcp::args::LookupExportArgs;
+use fmm_core::manifest::Manifest;
 use serde_json::Value;
 
 pub(in crate::mcp) fn tool_lookup_export(
@@ -50,7 +50,7 @@ pub(in crate::mcp) fn tool_lookup_export(
         None
     };
 
-    Ok(crate::format::format_lookup_export(
+    Ok(fmm_core::format::format_lookup_export(
         &args.name,
         &file,
         symbol_lines.as_ref(),

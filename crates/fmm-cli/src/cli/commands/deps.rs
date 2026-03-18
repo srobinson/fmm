@@ -24,7 +24,7 @@ pub fn deps(file: &str, depth: i32, filter: &str, json_output: bool) -> Result<(
     }
 
     // Build filter predicate — same heuristic as fmm_list_files filter.
-    let config = crate::config::Config::load_from_dir(&root).unwrap_or_default();
+    let config = fmm_core::config::Config::load_from_dir(&root).unwrap_or_default();
     let keep = |path: &str| -> bool {
         match filter {
             "source" => !config.is_test_file(path),
@@ -51,7 +51,7 @@ pub fn deps(file: &str, depth: i32, filter: &str, json_output: bool) -> Result<(
     if json_output {
         if depth == 1 {
             let (local, external, downstream) =
-                crate::search::dependency_graph(&manifest, file, entry);
+                fmm_core::search::dependency_graph(&manifest, file, entry);
             let local: Vec<String> = local.into_iter().filter(|p| keep(p)).collect();
             let downstream: Vec<String> = downstream
                 .into_iter()
@@ -67,7 +67,7 @@ pub fn deps(file: &str, depth: i32, filter: &str, json_output: bool) -> Result<(
             println!("{}", serde_json::to_string_pretty(&json)?);
         } else {
             let (upstream, external, downstream) =
-                crate::search::dependency_graph_transitive(&manifest, file, entry, depth);
+                fmm_core::search::dependency_graph_transitive(&manifest, file, entry, depth);
             let upstream: Vec<(String, i32)> =
                 upstream.into_iter().filter(|(p, _)| keep(p)).collect();
             let downstream: Vec<(String, i32)> =
@@ -105,7 +105,8 @@ pub fn deps(file: &str, depth: i32, filter: &str, json_output: bool) -> Result<(
             println!("{}", serde_json::to_string_pretty(&json)?);
         }
     } else if depth == 1 {
-        let (local, external, downstream) = crate::search::dependency_graph(&manifest, file, entry);
+        let (local, external, downstream) =
+            fmm_core::search::dependency_graph(&manifest, file, entry);
         let local: Vec<String> = local.into_iter().filter(|p| keep(p)).collect();
         let downstream: Vec<&String> = downstream
             .into_iter()
@@ -113,17 +114,17 @@ pub fn deps(file: &str, depth: i32, filter: &str, json_output: bool) -> Result<(
             .collect();
         println!(
             "{}",
-            crate::format::format_dependency_graph(file, entry, &local, &external, &downstream)
+            fmm_core::format::format_dependency_graph(file, entry, &local, &external, &downstream)
         );
     } else {
         let (upstream, external, downstream) =
-            crate::search::dependency_graph_transitive(&manifest, file, entry, depth);
+            fmm_core::search::dependency_graph_transitive(&manifest, file, entry, depth);
         let upstream: Vec<(String, i32)> = upstream.into_iter().filter(|(p, _)| keep(p)).collect();
         let downstream: Vec<(String, i32)> =
             downstream.into_iter().filter(|(p, _)| keep(p)).collect();
         println!(
             "{}",
-            crate::format::format_dependency_graph_transitive(
+            fmm_core::format::format_dependency_graph_transitive(
                 file,
                 entry,
                 &upstream,

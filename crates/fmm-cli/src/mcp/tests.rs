@@ -114,7 +114,7 @@ fn cap_response_truncate_false_returns_full_text() {
 
 #[test]
 fn dependency_graph_directory_path_returns_helpful_error() {
-    use crate::manifest::Manifest;
+    use fmm_core::manifest::Manifest;
     let server = test_server(Manifest::new(), std::path::PathBuf::from("/tmp"));
     let result = server
         .call_tool(
@@ -137,7 +137,7 @@ fn dependency_graph_directory_path_returns_helpful_error() {
 
 #[test]
 fn read_symbol_empty_name_returns_helpful_error() {
-    use crate::manifest::Manifest;
+    use fmm_core::manifest::Manifest;
     let server = test_server(Manifest::new(), std::path::PathBuf::from("/tmp"));
     let result = server
         .call_tool("fmm_read_symbol", serde_json::json!({"name": ""}))
@@ -157,7 +157,7 @@ fn read_symbol_empty_name_returns_helpful_error() {
 
 #[test]
 fn file_outline_directory_path_returns_helpful_error() {
-    use crate::manifest::Manifest;
+    use fmm_core::manifest::Manifest;
     let server = test_server(Manifest::new(), std::path::PathBuf::from("/tmp"));
     let result = server
         .call_tool("fmm_file_outline", serde_json::json!({"file": "src/cli/"}))
@@ -177,8 +177,8 @@ fn file_outline_directory_path_returns_helpful_error() {
 
 #[test]
 fn read_symbol_dotted_notation_returns_method_source() {
-    use crate::manifest::Manifest;
-    use crate::parser::{ExportEntry, Metadata};
+    use fmm_core::manifest::Manifest;
+    use fmm_core::parser::{ExportEntry, Metadata};
 
     let dir = tempfile::tempdir().unwrap();
     let file_path = dir.path().join("factory.ts");
@@ -243,7 +243,7 @@ fn read_symbol_dotted_notation_returns_method_source() {
 
 #[test]
 fn read_symbol_dotted_not_found_gives_helpful_error() {
-    use crate::manifest::Manifest;
+    use fmm_core::manifest::Manifest;
     let server = test_server(Manifest::new(), std::path::PathBuf::from("/tmp"));
     let result = server
         .call_tool(
@@ -273,8 +273,8 @@ fn is_reexport_file_detects_index_files() {
 
 #[test]
 fn read_symbol_follows_reexport_to_concrete_definition() {
-    use crate::manifest::Manifest;
-    use crate::parser::{ExportEntry, Metadata};
+    use fmm_core::manifest::Manifest;
+    use fmm_core::parser::{ExportEntry, Metadata};
 
     // Create a temp dir with actual source files
     let dir = tempfile::tempdir().unwrap();
@@ -373,8 +373,8 @@ fn glob_filename_matches_star_wildcard() {
 
 #[test]
 fn list_files_tool_no_args() {
-    use crate::manifest::Manifest;
-    use crate::parser::{ExportEntry, Metadata};
+    use fmm_core::manifest::Manifest;
+    use fmm_core::parser::{ExportEntry, Metadata};
 
     let mut manifest = Manifest::new();
     manifest.add_file(
@@ -415,8 +415,8 @@ fn list_files_tool_no_args() {
 
 #[test]
 fn list_files_tool_with_directory() {
-    use crate::manifest::Manifest;
-    use crate::parser::{ExportEntry, Metadata};
+    use fmm_core::manifest::Manifest;
+    use fmm_core::parser::{ExportEntry, Metadata};
 
     let mut manifest = Manifest::new();
     manifest.add_file(
@@ -456,8 +456,8 @@ fn list_files_tool_with_directory() {
 
 #[test]
 fn list_files_tool_pagination_limit_and_offset() {
-    use crate::manifest::Manifest;
-    use crate::parser::{ExportEntry, Metadata};
+    use fmm_core::manifest::Manifest;
+    use fmm_core::parser::{ExportEntry, Metadata};
 
     let mut manifest = Manifest::new();
     for i in 1..=5 {
@@ -550,8 +550,8 @@ fn list_files_tool_pagination_limit_and_offset() {
 // --- ALP-838: fmm_dependency_graph filter=source/tests ---
 
 fn dependency_filter_manifest() -> McpServer<NullStore> {
-    use crate::manifest::Manifest;
-    use crate::parser::Metadata;
+    use fmm_core::manifest::Manifest;
+    use fmm_core::parser::Metadata;
     let mut manifest = Manifest::new();
     // Core source file
     manifest.add_file(
@@ -679,8 +679,8 @@ fn dependency_graph_invalid_filter_returns_error() {
 // --- ALP-803: fmm_list_files sort_by + order ---
 
 fn list_files_sort_manifest() -> McpServer<NullStore> {
-    use crate::manifest::Manifest;
-    use crate::parser::{ExportEntry, Metadata};
+    use fmm_core::manifest::Manifest;
+    use fmm_core::parser::{ExportEntry, Metadata};
     let mut manifest = Manifest::new();
     manifest.add_file(
         "src/alpha.ts",
@@ -959,8 +959,8 @@ fn list_files_invalid_directory_returns_empty() {
 // --- ALP-835: fmm_list_files group_by="subdir" broken when directory is set ---
 
 fn group_by_directory_manifest() -> McpServer<NullStore> {
-    use crate::manifest::Manifest;
-    use crate::parser::{ExportEntry, Metadata};
+    use fmm_core::manifest::Manifest;
+    use fmm_core::parser::{ExportEntry, Metadata};
     let mut manifest = Manifest::new();
     for (path, loc) in &[
         ("packages/core/injector/injector.ts", 200usize),
@@ -1069,8 +1069,8 @@ fn list_files_group_by_subdir_nested_directory() {
 
 #[test]
 fn list_files_filter_source_excludes_test_files() {
-    use crate::manifest::Manifest;
-    use crate::parser::{ExportEntry, Metadata};
+    use fmm_core::manifest::Manifest;
+    use fmm_core::parser::{ExportEntry, Metadata};
 
     let mut manifest = Manifest::new();
     manifest.add_file(
@@ -1119,8 +1119,8 @@ fn list_files_filter_source_excludes_test_files() {
 
 #[test]
 fn list_files_filter_tests_returns_only_test_files() {
-    use crate::manifest::Manifest;
-    use crate::parser::{ExportEntry, Metadata};
+    use fmm_core::manifest::Manifest;
+    use fmm_core::parser::{ExportEntry, Metadata};
 
     let mut manifest = Manifest::new();
     manifest.add_file(
@@ -1184,7 +1184,7 @@ fn list_files_filter_invalid_returns_error() {
 // --- ALP-821: fmm_list_files sort_by=modified ---
 
 fn list_files_modified_manifest() -> McpServer<NullStore> {
-    use crate::manifest::{FileEntry, Manifest};
+    use fmm_core::manifest::{FileEntry, Manifest};
     let mut manifest = Manifest::new();
     // Insert directly so we can set modified dates
     manifest.files.insert(
@@ -1292,8 +1292,8 @@ fn list_files_sort_by_modified_composable_with_filter() {
 
 #[test]
 fn lookup_export_dotted_name_resolves_via_method_index() {
-    use crate::manifest::Manifest;
-    use crate::parser::{ExportEntry, Metadata};
+    use fmm_core::manifest::Manifest;
+    use fmm_core::parser::{ExportEntry, Metadata};
 
     let mut manifest = Manifest::new();
     manifest.add_file(
@@ -1349,8 +1349,8 @@ fn lookup_export_dotted_name_resolves_via_method_index() {
 
 #[test]
 fn lookup_export_flat_name_still_works_after_method_index_added() {
-    use crate::manifest::Manifest;
-    use crate::parser::{ExportEntry, Metadata};
+    use fmm_core::manifest::Manifest;
+    use fmm_core::parser::{ExportEntry, Metadata};
 
     let mut manifest = Manifest::new();
     manifest.add_file(
@@ -1383,7 +1383,7 @@ fn lookup_export_flat_name_still_works_after_method_index_added() {
 
 #[test]
 fn lookup_export_unknown_dotted_name_returns_error() {
-    use crate::manifest::Manifest;
+    use fmm_core::manifest::Manifest;
     let server = test_server(Manifest::new(), std::path::PathBuf::from("/tmp"));
     let result = server
         .call_tool(
@@ -1399,8 +1399,8 @@ fn lookup_export_unknown_dotted_name_returns_error() {
 
 #[test]
 fn list_exports_pattern_includes_method_index_matches() {
-    use crate::manifest::Manifest;
-    use crate::parser::{ExportEntry, Metadata};
+    use fmm_core::manifest::Manifest;
+    use fmm_core::parser::{ExportEntry, Metadata};
 
     let mut manifest = Manifest::new();
     manifest.add_file(
@@ -1453,8 +1453,8 @@ fn list_exports_pattern_includes_method_index_matches() {
 
 #[test]
 fn list_exports_pattern_directory_filter_applies_to_methods() {
-    use crate::manifest::Manifest;
-    use crate::parser::{ExportEntry, Metadata};
+    use fmm_core::manifest::Manifest;
+    use fmm_core::parser::{ExportEntry, Metadata};
 
     let mut manifest = Manifest::new();
     manifest.add_file(
@@ -1514,8 +1514,8 @@ fn list_exports_pattern_directory_filter_applies_to_methods() {
 
 #[test]
 fn list_exports_truncation_notice_shown_when_limit_reached() {
-    use crate::manifest::Manifest;
-    use crate::parser::{ExportEntry, Metadata};
+    use fmm_core::manifest::Manifest;
+    use fmm_core::parser::{ExportEntry, Metadata};
 
     let mut manifest = Manifest::new();
     // Add 5 exports across multiple files
@@ -1560,8 +1560,8 @@ fn list_exports_truncation_notice_shown_when_limit_reached() {
 
 #[test]
 fn list_exports_no_truncation_notice_when_all_fit() {
-    use crate::manifest::Manifest;
-    use crate::parser::{ExportEntry, Metadata};
+    use fmm_core::manifest::Manifest;
+    use fmm_core::parser::{ExportEntry, Metadata};
 
     let mut manifest = Manifest::new();
     for i in 0..3usize {
@@ -1596,8 +1596,8 @@ fn list_exports_no_truncation_notice_when_all_fit() {
 // --- ALP-837: fmm_list_exports — regex pattern support (auto-detected) ---
 
 fn regex_exports_manifest() -> McpServer<NullStore> {
-    use crate::manifest::Manifest;
-    use crate::parser::{ExportEntry, Metadata};
+    use fmm_core::manifest::Manifest;
+    use fmm_core::parser::{ExportEntry, Metadata};
     let mut manifest = Manifest::new();
     // Mix of PascalCase class exports and camelCase function exports
     for (file, export) in &[
@@ -1906,7 +1906,7 @@ fn compute_import_specifiers_workspace_no_double_bare_specifier() {
 
 #[test]
 fn glossary_layer2_filters_non_symbol_importers() {
-    use crate::manifest::{ExportLines, ExportLocation, FileEntry, Manifest};
+    use fmm_core::manifest::{ExportLines, ExportLocation, FileEntry, Manifest};
     use std::collections::HashMap;
 
     // Build a minimal manifest:

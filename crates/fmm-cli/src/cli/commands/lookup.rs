@@ -75,7 +75,7 @@ pub fn lookup(symbol: &str, json_output: bool) -> Result<()> {
     } else {
         println!(
             "{}",
-            crate::format::format_lookup_export(
+            fmm_core::format::format_lookup_export(
                 symbol,
                 &file,
                 symbol_lines.as_ref(),

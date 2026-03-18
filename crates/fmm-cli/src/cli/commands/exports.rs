@@ -100,12 +100,12 @@ pub fn exports(
         } else {
             println!(
                 "{}",
-                crate::format::format_list_exports_pattern(matches, total, page_start)
+                fmm_core::format::format_list_exports_pattern(matches, total, page_start)
             );
         }
     } else {
         // No pattern: list all exports grouped by file
-        let mut by_file: Vec<(&str, &crate::manifest::FileEntry)> = manifest
+        let mut by_file: Vec<(&str, &fmm_core::manifest::FileEntry)> = manifest
             .files
             .iter()
             .filter(|(path, entry)| {
@@ -160,7 +160,7 @@ pub fn exports(
         } else {
             println!(
                 "{}",
-                crate::format::format_list_exports_all(by_file, total, page_start)
+                fmm_core::format::format_list_exports_all(by_file, total, page_start)
             );
         }
     }

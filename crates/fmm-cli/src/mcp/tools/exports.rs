@@ -1,7 +1,7 @@
 //! `fmm_list_exports` tool implementation.
 
-use crate::manifest::Manifest;
 use crate::mcp::args::ListExportsArgs;
+use fmm_core::manifest::Manifest;
 use serde_json::Value;
 
 pub(in crate::mcp) fn tool_list_exports(
@@ -23,7 +23,7 @@ pub(in crate::mcp) fn tool_list_exports(
             .files
             .get(file_path)
             .ok_or_else(|| format!("File '{}' not found in manifest", file_path))?;
-        Ok(crate::format::format_list_exports_file(file_path, entry))
+        Ok(fmm_core::format::format_list_exports_file(file_path, entry))
     } else if let Some(ref pat) = args.pattern {
         // Auto-detect regex: if the pattern contains any metacharacter, compile
         // it as a case-sensitive regex.  Plain patterns keep the existing
@@ -77,11 +77,11 @@ pub(in crate::mcp) fn tool_list_exports(
         let total = matches.len();
         let page: Vec<(String, String, Option<[usize; 2]>)> =
             matches.into_iter().skip(offset).take(limit).collect();
-        Ok(crate::format::format_list_exports_pattern(
+        Ok(fmm_core::format::format_list_exports_pattern(
             &page, total, offset,
         ))
     } else {
-        let mut by_file: Vec<(&str, &crate::manifest::FileEntry)> = manifest
+        let mut by_file: Vec<(&str, &fmm_core::manifest::FileEntry)> = manifest
             .files
             .iter()
             .filter(|(path, entry)| {
@@ -96,8 +96,10 @@ pub(in crate::mcp) fn tool_list_exports(
             .collect();
         by_file.sort_by_key(|(path, _)| path.to_lowercase());
         let total = by_file.len();
-        let page: Vec<(&str, &crate::manifest::FileEntry)> =
+        let page: Vec<(&str, &fmm_core::manifest::FileEntry)> =
             by_file.into_iter().skip(offset).take(limit).collect();
-        Ok(crate::format::format_list_exports_all(&page, total, offset))
+        Ok(fmm_core::format::format_list_exports_all(
+            &page, total, offset,
+        ))
     }
 }

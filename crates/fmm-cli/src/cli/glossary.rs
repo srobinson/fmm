@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 
-use crate::manifest::GlossaryMode;
 use crate::manifest_ext::load_manifest;
+use fmm_core::manifest::GlossaryMode;
 
 pub fn glossary(
     pattern: Option<String>,
@@ -45,7 +45,7 @@ pub fn glossary(
         if !method_name.is_empty() {
             for entry in &mut entries {
                 for source in &mut entry.sources {
-                    let refined = crate::manifest::call_site_finder::find_call_sites(
+                    let refined = fmm_core::manifest::call_site_finder::find_call_sites(
                         &root,
                         method_name,
                         &source.used_by,

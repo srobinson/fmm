@@ -13,10 +13,10 @@ use fmm_core::store::FmmStore;
 use fmm_core::types::{PreserializedRow, serialize_file_data};
 use fmm_store::SqliteStore;
 
-use crate::config::Config;
-use crate::extractor::ParserCache;
 use crate::fs_utils;
-use crate::resolver;
+use fmm_core::config::Config;
+use fmm_core::extractor::ParserCache;
+use fmm_core::resolver;
 
 use super::{collect_files_multi, resolve_root_multi};
 
@@ -184,7 +184,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     // map_init creates one ParserCache per rayon worker thread — parsers and
     // compiled queries are reused across files instead of constructed per-file.
     let phase2_start = Instant::now();
-    let parse_results: Vec<(std::path::PathBuf, crate::parser::ParseResult)> = if show_progress {
+    let parse_results: Vec<(std::path::PathBuf, fmm_core::parser::ParseResult)> = if show_progress {
         let pb = ProgressBar::new(dirty_files.len() as u64);
         pb.set_style(
             ProgressStyle::with_template(

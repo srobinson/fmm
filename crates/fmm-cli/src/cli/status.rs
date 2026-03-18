@@ -1,7 +1,7 @@
 use anyhow::Result;
 use colored::Colorize;
 
-use crate::config::Config;
+use fmm_core::config::Config;
 use fmm_store;
 
 use super::collect_files;

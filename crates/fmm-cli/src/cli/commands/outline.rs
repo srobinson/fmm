@@ -67,18 +67,20 @@ pub fn outline(file: &str, include_private: bool, json_output: bool) -> Result<(
     } else {
         let private_by_class = if include_private {
             let class_names: Vec<&str> = entry.exports.iter().map(|s| s.as_str()).collect();
-            Some(crate::manifest::private_members::extract_private_members(
-                &root,
-                file,
-                &class_names,
-            ))
+            Some(
+                fmm_core::manifest::private_members::extract_private_members(
+                    &root,
+                    file,
+                    &class_names,
+                ),
+            )
         } else {
             None
         };
         let top_level_fns = if include_private {
             let export_names: Vec<&str> = entry.exports.iter().map(|s| s.as_str()).collect();
             Some(
-                crate::manifest::private_members::extract_top_level_functions(
+                fmm_core::manifest::private_members::extract_top_level_functions(
                     &root,
                     file,
                     &export_names,
@@ -89,7 +91,7 @@ pub fn outline(file: &str, include_private: bool, json_output: bool) -> Result<(
         };
         println!(
             "{}",
-            crate::format::format_file_outline(
+            fmm_core::format::format_file_outline(
                 file,
                 entry,
                 private_by_class.as_ref(),

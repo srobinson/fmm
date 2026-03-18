@@ -53,7 +53,7 @@ pub fn ls(
         }
     });
 
-    let config = crate::config::Config::load_from_dir(&root).unwrap_or_default();
+    let config = fmm_core::config::Config::load_from_dir(&root).unwrap_or_default();
 
     let glob_pattern = pattern
         .map(|p| {
@@ -109,10 +109,11 @@ pub fn ls(
             entries.iter().map(|(p, l, e, _, _)| (*p, *l, *e)).collect();
         let total_files = stripped.len();
         let total_loc: usize = stripped.iter().map(|(_, loc, _)| loc).sum();
-        let buckets = crate::format::compute_rollup_buckets(&stripped, directory, sort_by, order);
+        let buckets =
+            fmm_core::format::compute_rollup_buckets(&stripped, directory, sort_by, order);
         println!(
             "{}",
-            crate::format::format_list_files_rollup(directory, &buckets, total_files, total_loc)
+            fmm_core::format::format_list_files_rollup(directory, &buckets, total_files, total_loc)
         );
         return Ok(());
     }
@@ -188,7 +189,7 @@ pub fn ls(
         let show_modified = sort_by == "modified";
         println!(
             "{}",
-            crate::format::format_list_files(
+            fmm_core::format::format_list_files(
                 directory,
                 entries,
                 total,

@@ -1,7 +1,7 @@
 //! `fmm_list_files` tool implementation.
 
-use crate::manifest::Manifest;
 use crate::mcp::args::ListFilesArgs;
+use fmm_core::manifest::Manifest;
 use serde_json::Value;
 
 use super::common::{build_rollup, glob_filename_matches};
@@ -60,7 +60,7 @@ pub(in crate::mcp) fn tool_list_files(
     }
 
     // Load config for test-file detection (used when filter != "all").
-    let config = crate::config::Config::load_from_dir(root).unwrap_or_default();
+    let config = fmm_core::config::Config::load_from_dir(root).unwrap_or_default();
 
     let mut entries: Vec<(&str, usize, usize, usize, Option<&str>)> = manifest
         .files
@@ -176,7 +176,7 @@ pub(in crate::mcp) fn tool_list_files(
     let page: Vec<(&str, usize, usize, usize, Option<&str>)> =
         entries.into_iter().skip(offset).take(limit).collect();
 
-    Ok(crate::format::format_list_files(
+    Ok(fmm_core::format::format_list_files(
         dir,
         &page,
         total,

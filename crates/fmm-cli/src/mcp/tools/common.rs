@@ -1,6 +1,6 @@
 //! Shared MCP tool utilities: validation, helpers, and compute functions.
 
-use crate::manifest::Manifest;
+use fmm_core::manifest::Manifest;
 
 /// Return a reference to the lazily-initialised set of reexport hub filenames
 /// from the builtin `ParserRegistry`.
@@ -11,7 +11,7 @@ fn builtin_reexport_filenames() -> &'static std::collections::HashSet<String> {
     use std::sync::OnceLock;
     static FILENAMES: OnceLock<HashSet<String>> = OnceLock::new();
     FILENAMES.get_or_init(|| {
-        let registry = crate::parser::ParserRegistry::with_builtins();
+        let registry = fmm_core::parser::ParserRegistry::with_builtins();
         registry
             .descriptors()
             .iter()
@@ -40,10 +40,10 @@ pub(crate) fn find_concrete_definition(
     manifest: &Manifest,
     symbol: &str,
     reexport_file: &str,
-) -> Option<(String, crate::manifest::ExportLines)> {
+) -> Option<(String, fmm_core::manifest::ExportLines)> {
     let reexport_dir = reexport_file.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
 
-    let mut candidates: Vec<(String, crate::manifest::ExportLines, usize)> = manifest
+    let mut candidates: Vec<(String, fmm_core::manifest::ExportLines, usize)> = manifest
         .files
         .iter()
         .filter(|(path, _)| {
@@ -243,6 +243,6 @@ pub(in crate::mcp) fn build_rollup(
 ) -> String {
     let total_files = entries.len();
     let total_loc: usize = entries.iter().map(|(_, loc, _)| loc).sum();
-    let bucket_vec = crate::format::compute_rollup_buckets(&entries, prefix, sort_by, order);
-    crate::format::format_list_files_rollup(prefix, &bucket_vec, total_files, total_loc)
+    let bucket_vec = fmm_core::format::compute_rollup_buckets(&entries, prefix, sort_by, order);
+    fmm_core::format::format_list_files_rollup(prefix, &bucket_vec, total_files, total_loc)
 }

@@ -1,7 +1,7 @@
 //! `fmm_glossary` tool implementation.
 
-use crate::manifest::Manifest;
 use crate::mcp::args::GlossaryArgs;
+use fmm_core::manifest::Manifest;
 use serde_json::Value;
 
 use super::common::compute_import_specifiers;
@@ -27,9 +27,9 @@ pub(in crate::mcp) fn tool_glossary(
     const HARD_CAP: usize = 50;
     let limit = args.limit.unwrap_or(DEFAULT_LIMIT).min(HARD_CAP);
     let mode = match args.mode.as_deref().unwrap_or("source") {
-        "tests" => crate::manifest::GlossaryMode::Tests,
-        "all" => crate::manifest::GlossaryMode::All,
-        _ => crate::manifest::GlossaryMode::Source,
+        "tests" => fmm_core::manifest::GlossaryMode::Tests,
+        "all" => fmm_core::manifest::GlossaryMode::All,
+        _ => fmm_core::manifest::GlossaryMode::Source,
     };
     // ALP-883: "named" (default) = Layer 2 only; "call-site" = Layer 2 + Layer 3 tree-sitter.
     let run_layer3 = args.precision.as_deref() == Some("call-site");
@@ -53,7 +53,7 @@ pub(in crate::mcp) fn tool_glossary(
 
             for entry in &mut entries {
                 for source in &mut entry.sources {
-                    let refined = crate::manifest::call_site_finder::find_call_sites(
+                    let refined = fmm_core::manifest::call_site_finder::find_call_sites(
                         root,
                         method_name,
                         &source.used_by,
@@ -69,13 +69,13 @@ pub(in crate::mcp) fn tool_glossary(
                 .all(|e| e.sources.iter().all(|s| s.used_by.is_empty()))
             {
                 let mode_label = match mode {
-                    crate::manifest::GlossaryMode::Tests => "test",
-                    crate::manifest::GlossaryMode::All => "all",
+                    fmm_core::manifest::GlossaryMode::Tests => "test",
+                    fmm_core::manifest::GlossaryMode::All => "all",
                     _ => "source",
                 };
                 let mut lines = vec!["---".to_string()];
                 for (entry, src_counts) in entries.iter().zip(pre_counts.iter()) {
-                    lines.push(format!("{}:", crate::format::yaml_escape(&entry.name)));
+                    lines.push(format!("{}:", fmm_core::format::yaml_escape(&entry.name)));
                     for (source, &importer_count) in entry.sources.iter().zip(src_counts.iter()) {
                         let basename = source.file.rsplit('/').next().unwrap_or(&source.file);
                         lines.push(format!("  (no external {} callers)", mode_label));
@@ -86,7 +86,7 @@ pub(in crate::mcp) fn tool_glossary(
                             basename,
                             method_name
                         ));
-                        if matches!(mode, crate::manifest::GlossaryMode::Source) {
+                        if matches!(mode, fmm_core::manifest::GlossaryMode::Source) {
                             let test_count = manifest.count_test_dependents(&source.file);
                             if test_count > 0 {
                                 lines.push(format!(
@@ -164,7 +164,7 @@ pub(in crate::mcp) fn tool_glossary(
                 if run_layer3 {
                     let l2_survivors = source.used_by.clone();
                     let (confirmed, ns_callers) =
-                        crate::manifest::call_site_finder::find_bare_function_callers(
+                        fmm_core::manifest::call_site_finder::find_bare_function_callers(
                             root,
                             pattern,
                             &l2_survivors,
@@ -226,7 +226,7 @@ pub(in crate::mcp) fn tool_glossary(
         None
     };
 
-    let mut out = crate::format::format_glossary(&entries, total_matched, limit, pattern);
+    let mut out = fmm_core::format::format_glossary(&entries, total_matched, limit, pattern);
     if let Some(n) = nudge {
         out.push_str(&n);
     }

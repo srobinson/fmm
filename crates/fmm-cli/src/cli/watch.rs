@@ -13,8 +13,8 @@ use fmm_core::store::FmmStore;
 use fmm_core::types::serialize_file_data;
 use fmm_store::SqliteStore;
 
-use crate::config::Config;
 use crate::fs_utils;
+use fmm_core::config::Config;
 
 use super::{collect_files, resolve_root};
 
@@ -149,7 +149,7 @@ fn handle_event(
 
 /// Re-index a single file via `FmmStore`. Returns true if the store was updated.
 fn index_file(path: &Path, root: &std::path::PathBuf) -> anyhow::Result<bool> {
-    use crate::extractor::FileProcessor;
+    use fmm_core::extractor::FileProcessor;
 
     let rel = path
         .strip_prefix(root)

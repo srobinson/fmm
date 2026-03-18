@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 
-use crate::manifest::Manifest;
 use crate::manifest_ext;
+use fmm_core::manifest::Manifest;
 
 mod deps;
 mod exports;

@@ -18,14 +18,14 @@ fn write_file(base: &Path, rel: &str, content: &str) {
     fs::write(p, content).unwrap();
 }
 
-fn load_manifest(root: &Path) -> fmm::manifest::Manifest {
+fn load_manifest(root: &Path) -> fmm_core::manifest::Manifest {
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true)
         .expect("generate failed");
     fmm::manifest_ext::load_manifest(root).unwrap_or_default()
 }
 
 /// Check whether `importer` is in `reverse_deps[target]`.
-fn has_reverse_dep(manifest: &fmm::manifest::Manifest, target: &str, importer: &str) -> bool {
+fn has_reverse_dep(manifest: &fmm_core::manifest::Manifest, target: &str, importer: &str) -> bool {
     manifest
         .reverse_deps
         .get(target)
@@ -259,7 +259,7 @@ fn workspace_discovery_npm_finds_packages_and_roots() {
     // apps/ — unnamed package
     fs::create_dir_all(root.join("apps/web")).unwrap();
 
-    let info = fmm::resolver::workspace::discover(root);
+    let info = fmm_core::resolver::workspace::discover(root);
 
     assert_eq!(info.roots.len(), 3, "3 workspace package dirs expected");
     assert!(info.packages.contains_key("alpha"));
@@ -284,7 +284,7 @@ fn workspace_discovery_pnpm_takes_precedence() {
     write_file(root, "packages/lib/package.json", r#"{"name": "lib"}"#);
     write_file(root, "apps/web/package.json", r#"{"name": "web"}"#);
 
-    let info = fmm::resolver::workspace::discover(root);
+    let info = fmm_core::resolver::workspace::discover(root);
     assert!(
         info.packages.contains_key("lib"),
         "pnpm packages should be found"

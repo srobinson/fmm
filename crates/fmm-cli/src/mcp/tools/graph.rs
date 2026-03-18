@@ -1,7 +1,7 @@
 //! `fmm_dependency_graph` tool implementation.
 
-use crate::manifest::Manifest;
 use crate::mcp::args::DependencyGraphArgs;
+use fmm_core::manifest::Manifest;
 use serde_json::Value;
 
 use super::common::validate_not_directory;
@@ -35,7 +35,7 @@ pub(in crate::mcp) fn tool_dependency_graph(
 
     // Build a predicate that determines whether a file path is kept.
     // Loads config once — same heuristic as fmm_list_files filter.
-    let config = crate::config::Config::load_from_dir(root).unwrap_or_default();
+    let config = fmm_core::config::Config::load_from_dir(root).unwrap_or_default();
     let keep = |path: &str| -> bool {
         match filter {
             "source" => !config.is_test_file(path),
@@ -47,13 +47,13 @@ pub(in crate::mcp) fn tool_dependency_graph(
     if depth == 1 {
         // depth=1: use existing single-hop implementation for backward compatibility
         let (local, external, downstream) =
-            crate::search::dependency_graph(manifest, &args.file, entry);
+            fmm_core::search::dependency_graph(manifest, &args.file, entry);
         let local: Vec<String> = local.into_iter().filter(|p| keep(p)).collect();
         let downstream: Vec<&String> = downstream
             .into_iter()
             .filter(|p| keep(p.as_str()))
             .collect();
-        Ok(crate::format::format_dependency_graph(
+        Ok(fmm_core::format::format_dependency_graph(
             &args.file,
             entry,
             &local,
@@ -63,11 +63,11 @@ pub(in crate::mcp) fn tool_dependency_graph(
     } else {
         // depth>1 or depth=-1: BFS transitive traversal with depth annotations
         let (upstream, external, downstream) =
-            crate::search::dependency_graph_transitive(manifest, &args.file, entry, depth);
+            fmm_core::search::dependency_graph_transitive(manifest, &args.file, entry, depth);
         let upstream: Vec<(String, i32)> = upstream.into_iter().filter(|(p, _)| keep(p)).collect();
         let downstream: Vec<(String, i32)> =
             downstream.into_iter().filter(|(p, _)| keep(p)).collect();
-        Ok(crate::format::format_dependency_graph_transitive(
+        Ok(fmm_core::format::format_dependency_graph_transitive(
             &args.file,
             entry,
             &upstream,
