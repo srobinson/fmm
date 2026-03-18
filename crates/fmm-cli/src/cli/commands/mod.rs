@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 
-use crate::manifest_ext;
 use fmm_core::manifest::Manifest;
+use fmm_core::store::FmmStore;
+use fmm_store::SqliteStore;
 
 mod deps;
 mod exports;
@@ -20,7 +21,7 @@ pub use read::read_symbol;
 
 fn load_manifest() -> Result<(std::path::PathBuf, Manifest)> {
     let root = std::env::current_dir().context("Failed to get current directory")?;
-    let manifest = manifest_ext::load_manifest(&root)?;
+    let manifest = SqliteStore::open(&root)?.load_manifest()?;
     Ok((root, manifest))
 }
 

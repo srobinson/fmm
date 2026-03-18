@@ -90,7 +90,13 @@ fn manifest_loads_from_db() {
     // TODO ALP-917: setup_mcp_server currently writes sidecars; migrate to generate().
     // Until migration, McpServer::with_root() falls back to sidecars if no DB.
     // This test verifies the manifest is loaded correctly (either path).
-    let manifest = fmm::manifest_ext::load_manifest(tmp.path()).unwrap();
+    let manifest = {
+        use fmm_core::store::FmmStore;
+        fmm_store::SqliteStore::open(tmp.path())
+            .unwrap()
+            .load_manifest()
+            .unwrap()
+    };
     assert_eq!(manifest.files.len(), 5);
 }
 
@@ -98,7 +104,13 @@ fn manifest_loads_from_db() {
 fn export_index_consistency() {
     let (tmp, _server) = setup_mcp_server();
 
-    let manifest = fmm::manifest_ext::load_manifest(tmp.path()).unwrap();
+    let manifest = {
+        use fmm_core::store::FmmStore;
+        fmm_store::SqliteStore::open(tmp.path())
+            .unwrap()
+            .load_manifest()
+            .unwrap()
+    };
     for (export_name, file_path) in &manifest.export_index {
         let entry = manifest.files.get(file_path).unwrap_or_else(|| {
             panic!(
@@ -1215,7 +1227,13 @@ fn debug_large_class_output() {
     let text = call_tool_text(&server, "fmm_read_symbol", json!({"name": "BigService"}));
     println!("READ_SYMBOL:\n{}", &text[..text.len().min(500)]);
     // Check method_index in manifest
-    let manifest = fmm::manifest_ext::load_manifest(tmp.path()).unwrap();
+    let manifest = {
+        use fmm_core::store::FmmStore;
+        fmm_store::SqliteStore::open(tmp.path())
+            .unwrap()
+            .load_manifest()
+            .unwrap()
+    };
     println!("METHOD_INDEX entries: {}", manifest.method_index.len());
     for (k, _) in manifest.method_index.iter().take(3) {
         println!("  {k}");

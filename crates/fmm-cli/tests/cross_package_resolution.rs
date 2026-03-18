@@ -21,7 +21,10 @@ fn write_file(base: &Path, rel: &str, content: &str) {
 fn load_manifest(root: &Path) -> fmm_core::manifest::Manifest {
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true)
         .expect("generate failed");
-    fmm::manifest_ext::load_manifest(root).unwrap_or_default()
+    use fmm_core::store::FmmStore;
+    fmm_store::SqliteStore::open(root)
+        .and_then(|s| s.load_manifest())
+        .unwrap_or_default()
 }
 
 /// Check whether `importer` is in `reverse_deps[target]`.
@@ -306,7 +309,9 @@ fn react_shared_downstream_count() {
         .expect("REACT_SRC environment variable must be set to the React repo root");
     let root = PathBuf::from(root_str);
 
-    let manifest = fmm::manifest_ext::load_manifest(&root)
+    use fmm_core::store::FmmStore;
+    let manifest = fmm_store::SqliteStore::open(&root)
+        .and_then(|s| s.load_manifest())
         .expect("failed to load React manifest -- run fmm generate first");
 
     let feature_flags = "packages/shared/ReactFeatureFlags.js";

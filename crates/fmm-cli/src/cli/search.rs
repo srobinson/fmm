@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 
-use crate::manifest_ext::load_manifest;
 use fmm_core::manifest::Manifest;
+use fmm_core::store::FmmStore;
+use fmm_store::SqliteStore;
 
 // -- JSON output types (for --json flag only) --
 
@@ -65,7 +66,7 @@ pub fn search(
     json_output: bool,
 ) -> Result<()> {
     let root = std::env::current_dir()?;
-    let manifest = load_manifest(&root)?;
+    let manifest = SqliteStore::open(&root)?.load_manifest()?;
 
     if manifest.files.is_empty() {
         println!(

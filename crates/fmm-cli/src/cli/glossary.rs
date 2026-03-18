@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 
-use crate::manifest_ext::load_manifest;
 use fmm_core::manifest::GlossaryMode;
+use fmm_core::store::FmmStore;
+use fmm_store::SqliteStore;
 
 pub fn glossary(
     pattern: Option<String>,
@@ -18,7 +19,7 @@ pub fn glossary(
     }
 
     let root = std::env::current_dir().context("Failed to get current directory")?;
-    let manifest = load_manifest(&root)?;
+    let manifest = SqliteStore::open(&root)?.load_manifest()?;
 
     if manifest.files.is_empty() {
         eprintln!(

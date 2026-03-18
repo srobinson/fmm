@@ -1,15 +1,14 @@
 //! Persistence layer for the fmm code index.
 //!
 //! Provides `SqliteStore`, the primary `FmmStore` implementation backed by
-//! SQLite in WAL mode. Also re-exports connection management and low-level
-//! reader/writer functions for the transition period while call sites migrate
-//! from direct DB access to the `FmmStore` trait.
+//! SQLite in WAL mode. Re-exports connection management and DB_FILENAME
+//! for callers that need raw database access (e.g. status queries).
 
 pub mod connection;
 pub mod error;
 #[cfg(any(test, feature = "test-support"))]
 pub mod memory_store;
-pub mod reader;
+pub(crate) mod reader;
 mod schema;
 pub mod sqlite_store;
 pub mod writer;

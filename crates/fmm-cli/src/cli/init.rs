@@ -74,7 +74,8 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
                     export_count
                 );
 
-                if let Ok(manifest) = crate::manifest_ext::load_manifest(&root)
+                if let Ok(store) = fmm_store::SqliteStore::open(&root)
+                    && let Ok(manifest) = fmm_core::store::FmmStore::load_manifest(&store)
                     && let Some((export_name, _)) = manifest.export_index.iter().next()
                 {
                     println!(
