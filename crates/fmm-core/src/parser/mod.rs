@@ -660,21 +660,6 @@ mod tests {
         );
     }
 
-    /// Guard: the hardcoded `default_languages()` in config must stay in sync
-    /// with the extensions reported by all registered builtin parsers.
-    ///
-    /// Cross-module verification; config/mod.rs has the canonical version but
-    /// this test provides a safety net at the parser layer.
-    #[test]
-    fn default_languages_matches_registry() {
-        let registry = ParserRegistry::with_builtins();
-        let from_registry: std::collections::BTreeSet<String> =
-            registry.source_extensions().iter().cloned().collect();
-        let config = crate::config::Config::default();
-
-        assert_eq!(
-            from_registry, config.languages,
-            "ParserRegistry source_extensions() is out of sync with Config::default().languages"
-        );
-    }
+    // NOTE: Cross-module guard test `default_languages_matches_registry` lives in
+    // fmm-cli's config/mod.rs tests — it requires Config which is not in fmm-core.
 }

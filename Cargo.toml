@@ -11,8 +11,8 @@ repository = "https://github.com/srobinson/fmm"
 homepage = "https://srobinson.github.io/fmm/"
 
 [workspace.dependencies]
-# Internal crates (ready for Phase 2/3)
-# fmm-core = { path = "crates/fmm-core" }
+# Internal crates
+fmm-core = { path = "crates/fmm-core" }
 # fmm-store = { path = "crates/fmm-store" }
 
 # Parsing

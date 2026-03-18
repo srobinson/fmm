@@ -1510,7 +1510,7 @@ fn validate_typescript_decorators_fixture() {
 /// contributor reference.
 #[test]
 fn template_rs_is_structurally_complete() {
-    let src = include_str!("../src/parser/builtin/template.rs");
+    let src = include_str!("../../fmm-core/src/parser/builtin/template.rs");
 
     assert!(
         src.contains("pub struct TemplateParser"),
