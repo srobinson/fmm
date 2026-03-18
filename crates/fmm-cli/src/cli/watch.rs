@@ -9,7 +9,7 @@ use notify::RecursiveMode;
 use notify_debouncer_full::{DebounceEventResult, new_debouncer};
 
 use crate::config::Config;
-use crate::db;
+use crate::fs_utils;
 
 use super::{collect_files, resolve_root};
 
@@ -83,7 +83,7 @@ fn is_watchable(path: &Path, config: &Config) -> bool {
     if path
         .file_name()
         .and_then(|n| n.to_str())
-        .is_some_and(|n| n == db::DB_FILENAME || n.ends_with("-wal") || n.ends_with("-shm"))
+        .is_some_and(|n| n == fmm_store::DB_FILENAME || n.ends_with("-wal") || n.ends_with("-shm"))
     {
         return false;
     }
@@ -144,7 +144,6 @@ fn handle_event(
 
 /// Re-index a single file in the SQLite DB. Returns true if the DB was updated.
 fn index_file(path: &Path, root: &std::path::PathBuf) -> anyhow::Result<bool> {
-    use crate::db::writer;
     use crate::extractor::FileProcessor;
 
     let rel = path
@@ -153,10 +152,10 @@ fn index_file(path: &Path, root: &std::path::PathBuf) -> anyhow::Result<bool> {
         .display()
         .to_string();
 
-    let mtime = writer::file_mtime_rfc3339(path);
-    let mut conn = db::open_or_create(root)?;
+    let mtime = fs_utils::file_mtime_rfc3339(path);
+    let mut conn = fmm_store::open_or_create(root)?;
 
-    if writer::is_file_up_to_date(&conn, &rel, mtime.as_deref()) {
+    if fmm_store::writer::is_file_up_to_date(&conn, &rel, mtime.as_deref()) {
         return Ok(false);
     }
 
@@ -165,11 +164,11 @@ fn index_file(path: &Path, root: &std::path::PathBuf) -> anyhow::Result<bool> {
 
     {
         let tx = conn.transaction()?;
-        writer::upsert_file_data(&tx, &rel, &result, mtime.as_deref())?;
+        fmm_store::writer::upsert_file_data(&tx, &rel, &result, mtime.as_deref())?;
         tx.commit()?;
     }
 
-    writer::rebuild_and_write_reverse_deps(&mut conn, root)?;
+    fmm_store::writer::rebuild_and_write_reverse_deps(&mut conn, root)?;
     Ok(true)
 }
 
@@ -182,12 +181,12 @@ fn remove_file_from_db(path: &Path, root: &std::path::PathBuf) -> anyhow::Result
         .to_string();
 
     // Only act if the DB exists (watcher may fire before generate runs)
-    let db_path = root.join(db::DB_FILENAME);
+    let db_path = root.join(fmm_store::DB_FILENAME);
     if !db_path.exists() {
         return Ok(false);
     }
 
-    let conn = db::open_db(root)?;
+    let conn = fmm_store::open_db(root)?;
     let rows = conn.execute("DELETE FROM files WHERE path = ?1", rusqlite::params![rel])?;
     Ok(rows > 0)
 }
@@ -224,7 +223,7 @@ mod tests {
     #[test]
     fn is_watchable_rejects_db_filename() {
         let tmp = TempDir::new().unwrap();
-        let db_file = tmp.path().join(db::DB_FILENAME);
+        let db_file = tmp.path().join(fmm_store::DB_FILENAME);
         fs::write(&db_file, "").unwrap();
         let config = Config::default();
         assert!(!is_watchable(&db_file, &config));
@@ -272,7 +271,7 @@ mod tests {
             &updates,
         );
 
-        let conn = db::open_db(&root).unwrap();
+        let conn = fmm_store::open_db(&root).unwrap();
         let count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM files WHERE path = 'src/app.ts'",
@@ -316,7 +315,7 @@ mod tests {
             &updates,
         );
 
-        let conn = db::open_db(&root).unwrap();
+        let conn = fmm_store::open_db(&root).unwrap();
         let count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM exports WHERE name = 'newFunc'",
@@ -373,7 +372,7 @@ mod tests {
             &updates,
         );
         {
-            let conn = db::open_db(&root).unwrap();
+            let conn = fmm_store::open_db(&root).unwrap();
             let count: i64 = conn
                 .query_row(
                     "SELECT COUNT(*) FROM files WHERE path = 'src/app.ts'",
@@ -394,7 +393,7 @@ mod tests {
             &updates,
         );
 
-        let conn = db::open_db(&root).unwrap();
+        let conn = fmm_store::open_db(&root).unwrap();
         let count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM files WHERE path = 'src/app.ts'",
@@ -431,7 +430,7 @@ mod tests {
     fn handle_event_ignores_db_file() {
         let (tmp, config) = setup_watch_project();
         let root = tmp.path().canonicalize().unwrap();
-        let db_file = root.join(db::DB_FILENAME);
+        let db_file = root.join(fmm_store::DB_FILENAME);
         fs::write(&db_file, "not a real db").unwrap();
         let updates = AtomicUsize::new(0);
 
@@ -481,7 +480,7 @@ mod tests {
             &updates,
         );
 
-        let conn = db::open_db(&root).unwrap();
+        let conn = fmm_store::open_db(&root).unwrap();
         let count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM exports WHERE name = 'Widget'",

@@ -1,34 +1,18 @@
+//! Write operations for the fmm SQLite index.
+
 use anyhow::{Context, Result};
 use chrono::Utc;
 use rusqlite::{Connection, Transaction, params};
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::manifest::FileEntry;
-use crate::parser::ParseResult;
+use fmm_core::manifest::FileEntry;
+use fmm_core::parser::ParseResult;
 
 // Re-export domain types from fmm-core for backward compatibility.
 pub use fmm_core::types::{
     ExportRecord, MethodRecord, PreserializedRow, extract_function_names, serialize_file_data,
 };
-
-/// Returns the file's last-modified time as an RFC3339 string, or `None`
-/// if the metadata cannot be read.
-///
-/// Includes nanoseconds when the OS provides sub-second precision (APFS, Linux
-/// ext4) so that same-second modifications are correctly detected by
-/// `is_file_up_to_date`.
-pub fn file_mtime_rfc3339(path: &Path) -> Option<String> {
-    use std::time::SystemTime;
-    let meta = std::fs::metadata(path).ok()?;
-    let mtime = meta.modified().ok()?;
-    let duration = mtime.duration_since(SystemTime::UNIX_EPOCH).ok()?;
-    let dt = chrono::DateTime::<Utc>::from_timestamp(
-        duration.as_secs() as i64,
-        duration.subsec_nanos(),
-    )?;
-    Some(dt.to_rfc3339())
-}
 
 /// Returns `true` when the DB's `indexed_at` for `rel_path` is >= `source_mtime`,
 /// meaning the stored data is at least as fresh as the source file.
@@ -48,8 +32,8 @@ pub fn is_file_up_to_date(conn: &Connection, rel_path: &str, source_mtime: Optio
 
 /// Load all `(path, indexed_at)` pairs from the DB in one query.
 ///
-/// Used by the bulk staleness check in `fmm generate` to avoid 39k individual
-/// queries. The returned map is keyed by relative file path.
+/// Used by the bulk staleness check in `fmm generate` to avoid individual
+/// queries per file.
 pub fn load_indexed_mtimes(conn: &Connection) -> Result<HashMap<String, String>> {
     let mut stmt = conn.prepare("SELECT path, indexed_at FROM files")?;
     let map = stmt
@@ -61,18 +45,10 @@ pub fn load_indexed_mtimes(conn: &Connection) -> Result<HashMap<String, String>>
     Ok(map)
 }
 
-// PreserializedRow, ExportRecord, MethodRecord, and serialize_file_data
-// are re-exported from fmm_core::types above.
-
 /// Write a pre-serialized file row to the DB within an open transaction.
 ///
-/// Unlike `upsert_file_data`, this takes already-serialized JSON strings so
-/// the CPU-bound serialization work can be done outside the transaction.
-///
-/// `plain_insert` — when `true`, use plain `INSERT` (caller must have deleted
-/// the file rows beforehand via `delete_all_files`); when `false`, use
-/// `INSERT OR REPLACE` which triggers CASCADE deletes per row. The
-/// `prepare_cached` path caches the statement across the 39k-row loop.
+/// `plain_insert` controls whether to use `INSERT` (fast, caller must have
+/// deleted existing rows first) or `INSERT OR REPLACE` (safe for incremental).
 pub fn upsert_preserialized(
     tx: &Transaction<'_>,
     row: &PreserializedRow,
@@ -152,9 +128,8 @@ pub fn delete_all_files(tx: &Transaction<'_>) -> Result<()> {
 
 /// Insert or replace a complete file record plus its exports and methods.
 ///
-/// Because the `files` table uses `INSERT OR REPLACE` with a PRIMARY KEY
-/// on `path`, the old row is deleted first which cascades to `exports` and
-/// `methods` — no manual cleanup needed.
+/// Takes a `ParseResult` directly (not pre-serialized). Used by the file
+/// watcher for single-file incremental updates.
 pub fn upsert_file_data(
     tx: &Transaction<'_>,
     rel_path: &str,
@@ -187,7 +162,7 @@ pub fn upsert_file_data(
     )
     .context("Failed to upsert file row")?;
 
-    // Exports (top-level only — no parent_class)
+    // Exports (top-level only)
     {
         let mut stmt = tx.prepare_cached(
             "INSERT OR REPLACE INTO exports (name, file_path, start_line, end_line)
@@ -205,8 +180,7 @@ pub fn upsert_file_data(
         }
     }
 
-    // Methods — deduplicate by dotted name (TypeScript overloads share the same
-    // dotted name for each signature, deduplicated the same way as the YAML formatter).
+    // Methods (deduplicated by dotted name)
     {
         let mut stmt = tx.prepare_cached(
             "INSERT OR REPLACE INTO methods (dotted_name, file_path, start_line, end_line, kind)
@@ -234,10 +208,7 @@ pub fn upsert_file_data(
 
 /// Load all file rows from the DB into a map keyed by relative path.
 ///
-/// Only the fields needed for reverse-dependency computation are populated
-/// (`imports`, `dependencies`, `named_imports`, `namespace_imports`, `function_names`).
-/// The `exports` / `export_lines` / `methods` fields are left empty — they are
-/// not needed by `build_reverse_deps`.
+/// Only the fields needed for reverse-dependency computation are populated.
 pub fn load_files_map(conn: &Connection) -> Result<HashMap<String, FileEntry>> {
     let mut stmt = conn.prepare(
         "SELECT path, loc, modified, imports, dependencies,
@@ -247,14 +218,14 @@ pub fn load_files_map(conn: &Connection) -> Result<HashMap<String, FileEntry>> {
 
     let rows = stmt.query_map([], |row| {
         Ok((
-            row.get::<_, String>(0)?,         // path
-            row.get::<_, i64>(1)?,            // loc
-            row.get::<_, Option<String>>(2)?, // modified
-            row.get::<_, Option<String>>(3)?, // imports
-            row.get::<_, Option<String>>(4)?, // dependencies
-            row.get::<_, Option<String>>(5)?, // named_imports
-            row.get::<_, Option<String>>(6)?, // namespace_imports
-            row.get::<_, Option<String>>(7)?, // function_names
+            row.get::<_, String>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, Option<String>>(2)?,
+            row.get::<_, Option<String>>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, Option<String>>(5)?,
+            row.get::<_, Option<String>>(6)?,
+            row.get::<_, Option<String>>(7)?,
         ))
     })?;
 
@@ -304,23 +275,18 @@ pub fn load_files_map(conn: &Connection) -> Result<HashMap<String, FileEntry>> {
     Ok(map)
 }
 
-/// Load all file data from the DB, build a minimal `Manifest` (workspace
-/// discovery included), recompute all reverse edges, and persist the results
-/// to the `reverse_deps` table.
+/// Load all file data from the DB, recompute reverse dependency edges,
+/// and persist the results to the `reverse_deps` table.
 ///
-/// The DB stores file paths relative to `root`. `build_reverse_deps` requires
-/// absolute paths for the cross-package resolver (oxc_resolver needs an
-/// absolute importer path, Layer 3 checks paths against the filesystem, and
-/// `canonicalize` only works on absolute paths). We therefore convert relative
-/// keys → absolute before computation and strip `root` back to relative before
-/// writing to the DB, so the stored paths stay consistent with the `files` table.
+/// Converts relative DB paths to absolute for the cross-package resolver,
+/// then strips back to relative before writing.
 pub fn rebuild_and_write_reverse_deps(conn: &mut Connection, root: &Path) -> Result<()> {
     let rel_files_map = load_files_map(conn)?;
 
-    let workspace_info = crate::resolver::workspace::discover(root);
+    let workspace_info = fmm_core::resolver::workspace::discover(root);
 
     // Convert relative DB keys to absolute so the resolver works correctly.
-    let abs_files_map: HashMap<String, crate::manifest::FileEntry> = rel_files_map
+    let abs_files_map: HashMap<String, FileEntry> = rel_files_map
         .into_iter()
         .map(|(rel, entry)| {
             let abs = root.join(&rel).to_string_lossy().to_string();
@@ -328,7 +294,7 @@ pub fn rebuild_and_write_reverse_deps(conn: &mut Connection, root: &Path) -> Res
         })
         .collect();
 
-    let mut manifest = crate::manifest::Manifest::new();
+    let mut manifest = fmm_core::manifest::Manifest::new();
     manifest.files = abs_files_map;
     manifest.workspace_packages = workspace_info.packages;
     manifest.workspace_roots = workspace_info.roots;
@@ -403,8 +369,6 @@ pub fn write_meta(conn: &Connection, key: &str, value: &str) -> Result<()> {
     .context("Failed to write meta")?;
     Ok(())
 }
-
-// extract_function_names moved to fmm_core::types
 
 #[cfg(test)]
 #[path = "writer_tests.rs"]

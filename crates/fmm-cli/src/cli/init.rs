@@ -60,7 +60,7 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
 
             // Show DB stats and a sample export
             let root = super::resolve_root(".")?;
-            if let Ok(conn) = crate::db::open_db(&root) {
+            if let Ok(conn) = fmm_store::open_db(&root) {
                 let file_count: i64 = conn
                     .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
                     .unwrap_or(0);

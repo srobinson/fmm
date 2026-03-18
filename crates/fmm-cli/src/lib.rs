@@ -1,5 +1,5 @@
 pub mod cli;
-pub mod db;
+pub mod fs_utils;
 pub mod manifest_ext;
 pub mod mcp;
 

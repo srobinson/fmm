@@ -1,14 +1,16 @@
+//! Read operations for loading a `Manifest` from the SQLite index.
+
 use anyhow::Result;
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::manifest::{ExportLines, ExportLocation, FileEntry, Manifest};
+use fmm_core::manifest::{ExportLines, ExportLocation, FileEntry, Manifest};
 
 /// Build a complete `Manifest` by reading all tables from the open connection.
 ///
-/// Applies the same TS > JS export collision logic as `load_from_sidecars` so
-/// all consumers see identical results regardless of which loader was used.
+/// Applies the same TS > JS export collision logic so all consumers see
+/// identical results regardless of which loader was used.
 pub fn load_manifest_from_db(conn: &Connection, root: &Path) -> Result<Manifest> {
     let mut manifest = Manifest::new();
 
@@ -304,9 +306,9 @@ fn load_workspace_packages(conn: &Connection, root: &Path, manifest: &mut Manife
     }
 
     // If no workspace packages stored (e.g. not a monorepo), still discover
-    // roots so downstream resolution doesn't break on first generate.
+    // roots so downstream resolution works on first generate.
     if manifest.workspace_packages.is_empty() {
-        let info = crate::resolver::workspace::discover(root);
+        let info = fmm_core::resolver::workspace::discover(root);
         manifest.workspace_packages = info.packages;
         manifest.workspace_roots = info.roots;
     }
@@ -317,8 +319,8 @@ fn load_workspace_packages(conn: &Connection, root: &Path, manifest: &mut Manife
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{open_or_create, writer};
-    use crate::parser::{ExportEntry, Metadata, ParseResult};
+    use crate::{connection::open_or_create, writer};
+    use fmm_core::parser::{ExportEntry, Metadata, ParseResult};
     use tempfile::TempDir;
 
     fn make_result(
@@ -385,7 +387,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let mut conn = open_or_create(dir.path()).unwrap();
 
-        // Insert JS file first, then TS — TS should win
+        // Insert JS file first, then TS
         let js = make_result(
             vec![ExportEntry::new("Widget".into(), 1, 5)],
             vec![],

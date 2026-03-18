@@ -13,7 +13,7 @@ homepage = "https://srobinson.github.io/fmm/"
 [workspace.dependencies]
 # Internal crates
 fmm-core = { path = "crates/fmm-core" }
-# fmm-store = { path = "crates/fmm-store" }
+fmm-store = { path = "crates/fmm-store" }
 
 # Parsing
 tree-sitter = "0.26"

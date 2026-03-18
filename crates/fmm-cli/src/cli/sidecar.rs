@@ -11,8 +11,8 @@ use std::sync::{
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::config::Config;
-use crate::db;
 use crate::extractor::ParserCache;
+use crate::fs_utils;
 use crate::resolver;
 
 use super::{collect_files_multi, resolve_root_multi};
@@ -65,7 +65,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
 
     if dry_run {
         // Dry run: show what would be indexed without touching the DB.
-        let dirty_files: Vec<&std::path::PathBuf> = match db::open_db(&root) {
+        let dirty_files: Vec<&std::path::PathBuf> = match fmm_store::open_db(&root) {
             Ok(conn) => files
                 .iter()
                 .filter(|file| {
@@ -77,8 +77,8 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
                         .unwrap_or(file)
                         .display()
                         .to_string();
-                    let mtime = db::writer::file_mtime_rfc3339(file);
-                    !db::writer::is_file_up_to_date(&conn, &rel, mtime.as_deref())
+                    let mtime = fs_utils::file_mtime_rfc3339(file);
+                    !fmm_store::writer::is_file_up_to_date(&conn, &rel, mtime.as_deref())
                 })
                 .collect(),
             _ => files.iter().collect(),
@@ -102,18 +102,18 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     }
 
     // --- SQLite write path ---
-    let mut conn = db::open_or_create(&root)?;
+    let mut conn = fmm_store::open_or_create(&root)?;
 
     // Store workspace packages so the read path can resolve cross-package imports.
     let workspace_info = resolver::workspace::discover(&root);
-    db::writer::upsert_workspace_packages(&conn, &workspace_info.packages)?;
+    fmm_store::writer::upsert_workspace_packages(&conn, &workspace_info.packages)?;
 
     // Phase 1: bulk staleness check.
     // Load all indexed_at times in one query (avoids 39k individual SELECTs),
     // then compare in parallel with rayon (mtime syscalls are I/O-parallel).
     let phase1_start = Instant::now();
     let indexed_mtimes: std::collections::HashMap<String, String> = if !force {
-        db::writer::load_indexed_mtimes(&conn)?
+        fmm_store::writer::load_indexed_mtimes(&conn)?
     } else {
         std::collections::HashMap::new()
     };
@@ -128,7 +128,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
                 .unwrap_or(file)
                 .display()
                 .to_string();
-            let Some(mtime) = db::writer::file_mtime_rfc3339(file) else {
+            let Some(mtime) = fs_utils::file_mtime_rfc3339(file) else {
                 return true; // unreadable mtime → treat as dirty
             };
             // Dirty when not in DB, or stored indexed_at < file mtime.
@@ -157,8 +157,8 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
                 elapsed.as_secs_f64()
             );
         }
-        db::writer::write_meta(&conn, "fmm_version", env!("CARGO_PKG_VERSION"))?;
-        db::writer::write_meta(&conn, "generated_at", &Utc::now().to_rfc3339())?;
+        fmm_store::writer::write_meta(&conn, "fmm_version", env!("CARGO_PKG_VERSION"))?;
+        fmm_store::writer::write_meta(&conn, "generated_at", &Utc::now().to_rfc3339())?;
         return Ok(());
     }
 
@@ -291,7 +291,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     // serde_json::to_string is CPU-bound — rayon cuts this from O(N) serial to
     // O(N/cores) before we enter the single-threaded SQLite transaction.
     let phase2b_start = Instant::now();
-    let serialized_rows: Vec<db::writer::PreserializedRow> = parse_results
+    let serialized_rows: Vec<fmm_store::writer::PreserializedRow> = parse_results
         .par_iter()
         .filter_map(|(abs_path, result)| {
             let rel = abs_path
@@ -299,8 +299,8 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
                 .unwrap_or(abs_path)
                 .display()
                 .to_string();
-            let mtime = db::writer::file_mtime_rfc3339(abs_path);
-            match db::writer::serialize_file_data(&rel, result, mtime.as_deref()) {
+            let mtime = fs_utils::file_mtime_rfc3339(abs_path);
+            match fmm_store::writer::serialize_file_data(&rel, result, mtime.as_deref()) {
                 Ok(row) => Some(row),
                 Err(e) => {
                     eprintln!(
@@ -328,7 +328,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     {
         let tx = conn.transaction()?;
         if is_full_generate {
-            db::writer::delete_all_files(&tx)?;
+            fmm_store::writer::delete_all_files(&tx)?;
         }
         if show_progress {
             let pb = ProgressBar::new(serialized_rows.len() as u64);
@@ -337,13 +337,13 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
                     .expect("valid template"),
             );
             for row in &serialized_rows {
-                db::writer::upsert_preserialized(&tx, row, is_full_generate)?;
+                fmm_store::writer::upsert_preserialized(&tx, row, is_full_generate)?;
                 pb.inc(1);
             }
             pb.finish_and_clear();
         } else {
             for row in &serialized_rows {
-                db::writer::upsert_preserialized(&tx, row, is_full_generate)?;
+                fmm_store::writer::upsert_preserialized(&tx, row, is_full_generate)?;
             }
         }
         tx.commit()?;
@@ -359,15 +359,15 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
                 .expect("valid template"),
         );
         sp.enable_steady_tick(Duration::from_millis(80));
-        db::writer::rebuild_and_write_reverse_deps(&mut conn, &root)?;
+        fmm_store::writer::rebuild_and_write_reverse_deps(&mut conn, &root)?;
         sp.finish_and_clear();
     } else {
-        db::writer::rebuild_and_write_reverse_deps(&mut conn, &root)?;
+        fmm_store::writer::rebuild_and_write_reverse_deps(&mut conn, &root)?;
     }
     let phase4_elapsed = phase4_start.elapsed();
 
-    db::writer::write_meta(&conn, "fmm_version", env!("CARGO_PKG_VERSION"))?;
-    db::writer::write_meta(&conn, "generated_at", &Utc::now().to_rfc3339())?;
+    fmm_store::writer::write_meta(&conn, "fmm_version", env!("CARGO_PKG_VERSION"))?;
+    fmm_store::writer::write_meta(&conn, "generated_at", &Utc::now().to_rfc3339())?;
 
     let total_elapsed = total_start.elapsed();
 
@@ -409,14 +409,14 @@ pub fn validate(paths: &[String]) -> Result<()> {
         return Ok(());
     }
 
-    let db_path = root.join(db::DB_FILENAME);
+    let db_path = root.join(fmm_store::DB_FILENAME);
     if !db_path.exists() {
         println!("{} No fmm database found", "✗".red().bold());
         println!("\n  {} Run 'fmm generate' first", "fix:".cyan());
         anyhow::bail!("Validation failed: no database");
     }
 
-    let conn = db::open_db(&root)?;
+    let conn = fmm_store::open_db(&root)?;
 
     println!("Validating {} files against index...", files.len());
 
@@ -428,8 +428,8 @@ pub fn validate(paths: &[String]) -> Result<()> {
                 .unwrap_or(file)
                 .display()
                 .to_string();
-            let mtime = db::writer::file_mtime_rfc3339(file);
-            if db::writer::is_file_up_to_date(&conn, &rel, mtime.as_deref()) {
+            let mtime = fs_utils::file_mtime_rfc3339(file);
+            if fmm_store::writer::is_file_up_to_date(&conn, &rel, mtime.as_deref()) {
                 None
             } else {
                 let reason = conn
@@ -473,7 +473,7 @@ pub fn validate(paths: &[String]) -> Result<()> {
 
 pub fn clean(paths: &[String], dry_run: bool, delete_db: bool) -> Result<()> {
     let root = resolve_root_multi(paths)?;
-    let db_path = root.join(db::DB_FILENAME);
+    let db_path = root.join(fmm_store::DB_FILENAME);
     let legacy_dir = root.join(".fmm");
 
     let has_db = db_path.exists();
@@ -487,16 +487,16 @@ pub fn clean(paths: &[String], dry_run: bool, delete_db: bool) -> Result<()> {
     if dry_run {
         if has_db {
             if delete_db {
-                println!("  Would remove: {}", db::DB_FILENAME);
+                println!("  Would remove: {}", fmm_store::DB_FILENAME);
             } else {
-                let conn = db::open_db(&root)?;
+                let conn = fmm_store::open_db(&root)?;
                 let count: i64 = conn
                     .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
                     .unwrap_or(0);
                 println!(
                     "  Would clear {} indexed file(s) from {}",
                     count,
-                    db::DB_FILENAME
+                    fmm_store::DB_FILENAME
                 );
             }
         }
@@ -510,9 +510,9 @@ pub fn clean(paths: &[String], dry_run: bool, delete_db: bool) -> Result<()> {
     if has_db {
         if delete_db {
             std::fs::remove_file(&db_path)?;
-            println!("{} Removed {}", "✓".green(), db::DB_FILENAME);
+            println!("{} Removed {}", "✓".green(), fmm_store::DB_FILENAME);
         } else {
-            let conn = db::open_db(&root)?;
+            let conn = fmm_store::open_db(&root)?;
             let count: i64 = conn
                 .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
                 .unwrap_or(0);
@@ -523,7 +523,7 @@ pub fn clean(paths: &[String], dry_run: bool, delete_db: bool) -> Result<()> {
                 "{} Cleared {} file(s) from index ({})",
                 "✓".green(),
                 count,
-                db::DB_FILENAME
+                fmm_store::DB_FILENAME
             );
         }
     }

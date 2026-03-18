@@ -2,7 +2,7 @@ use anyhow::Result;
 use colored::Colorize;
 
 use crate::config::Config;
-use crate::db;
+use fmm_store;
 
 use super::collect_files;
 
@@ -40,9 +40,9 @@ pub fn status() -> Result<()> {
     let cwd = std::env::current_dir().unwrap_or_default();
     println!("  Path: {}", cwd.display());
 
-    let db_path = cwd.join(db::DB_FILENAME);
+    let db_path = cwd.join(fmm_store::DB_FILENAME);
     let indexed_count: i64 = if db_path.exists() {
-        db::open_db(&cwd)
+        fmm_store::open_db(&cwd)
             .and_then(|conn| {
                 conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get::<_, i64>(0))
                     .map_err(Into::into)

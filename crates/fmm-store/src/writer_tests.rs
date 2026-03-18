@@ -1,6 +1,7 @@
 use super::*;
-use crate::db::open_or_create;
-use crate::parser::{ExportEntry, Metadata};
+use crate::connection::open_or_create;
+use fmm_core::parser::{ExportEntry, Metadata};
+
 use tempfile::TempDir;
 
 fn make_parse_result(
@@ -90,7 +91,7 @@ fn exports_inserted_and_cascaded_on_replace() {
         .unwrap();
     assert_eq!(count, 2);
 
-    // Replace with single export — CASCADE should clear the old two
+    // Replace with single export
     let result2 = make_parse_result(vec![ExportEntry::new("Gamma".into(), 1, 5)], vec![], vec![]);
     {
         let tx = conn.transaction().unwrap();
@@ -170,7 +171,7 @@ fn is_file_up_to_date_returns_true_when_indexed_at_is_newer() {
         tx.commit().unwrap();
     }
 
-    // Source mtime of 2020 — older than indexed_at (now) — so file is up to date
+    // Source mtime of 2020 is older than indexed_at (now)
     assert!(is_file_up_to_date(
         &conn,
         "src/file.ts",
@@ -340,8 +341,6 @@ fn upsert_preserialized_plain_insert_roundtrip() {
 
 #[test]
 fn full_generate_bulk_write_path() {
-    // Simulate the full-generate sequence: existing data → delete_all_files →
-    // upsert_preserialized(plain_insert=true) for a fresh set of rows.
     let dir = TempDir::new().unwrap();
     let mut conn = open_or_create(dir.path()).unwrap();
 
@@ -366,12 +365,11 @@ fn full_generate_bulk_write_path() {
     {
         let tx = conn.transaction().unwrap();
         delete_all_files(&tx).unwrap();
-        // Only src/a.ts is re-inserted (src/b.ts simulates a deleted file).
+        // Only src/a.ts is re-inserted
         upsert_preserialized(&tx, &row_a, true).unwrap();
         tx.commit().unwrap();
     }
 
-    // src/a.ts must reflect the new data.
     let export_name: String = conn
         .query_row(
             "SELECT name FROM exports WHERE file_path='src/a.ts'",
@@ -381,7 +379,7 @@ fn full_generate_bulk_write_path() {
         .unwrap();
     assert_eq!(export_name, "New");
 
-    // src/b.ts must be gone (not re-inserted after bulk delete).
+    // src/b.ts must be gone
     let b_count: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM files WHERE path='src/b.ts'",
