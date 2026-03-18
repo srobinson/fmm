@@ -14,7 +14,8 @@ release:
     cargo build --workspace --release
 
 test:
-    cargo test --workspace
+    cargo nextest run --workspace
+    cargo test --workspace --doc
 
 fmt:
     cargo fmt --all
