@@ -72,13 +72,9 @@ indexmap.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-criterion.workspace = true
 rusqlite = { workspace = true, features = [] }
 
 [[bin]]
 name = "fmm"
 path = "src/main.rs"
 
-[[bench]]
-name = "parser_benchmarks"
-harness = false

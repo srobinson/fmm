@@ -1,10 +1,10 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use fmm::manifest::Manifest;
-use fmm::parser::builtin::python::PythonParser;
-use fmm::parser::builtin::rust::RustParser;
-use fmm::parser::builtin::typescript::TypeScriptParser;
-use fmm::parser::{ExportEntry, Metadata, Parser};
-use fmm::search::dependency_graph;
+use fmm_core::manifest::Manifest;
+use fmm_core::parser::builtin::python::PythonParser;
+use fmm_core::parser::builtin::rust::RustParser;
+use fmm_core::parser::builtin::typescript::TypeScriptParser;
+use fmm_core::parser::{ExportEntry, Metadata, Parser};
+use fmm_core::search::dependency_graph;
 use std::time::Duration;
 
 const TYPESCRIPT_SOURCE: &str = r#"

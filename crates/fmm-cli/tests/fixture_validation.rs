@@ -19,7 +19,7 @@ use fmm::parser::builtin::zig::ZigParser;
 
 #[test]
 fn validate_python_fixture() {
-    let source = include_str!("../fixtures/sample.py");
+    let source = include_str!("../../../fixtures/sample.py");
 
     let mut parser = PythonParser::new().unwrap();
     let result = parser.parse(source).unwrap();
@@ -74,7 +74,7 @@ fn validate_python_fixture() {
 
 #[test]
 fn validate_python_heuristic_fixture() {
-    let source = include_str!("../fixtures/python/heuristic.py");
+    let source = include_str!("../../../fixtures/python/heuristic.py");
 
     let mut parser = PythonParser::new().unwrap();
     let result = parser.parse(source).unwrap();
@@ -118,7 +118,7 @@ fn validate_python_heuristic_fixture() {
 
 #[test]
 fn validate_python_decorated_fixture() {
-    let source = include_str!("../fixtures/python/decorated.py");
+    let source = include_str!("../../../fixtures/python/decorated.py");
 
     let mut parser = PythonParser::new().unwrap();
     let result = parser.parse(source).unwrap();
@@ -144,7 +144,7 @@ fn validate_python_decorated_fixture() {
 
 #[test]
 fn validate_python_with_all_fixture() {
-    let source = include_str!("../fixtures/python/with_all.py");
+    let source = include_str!("../../../fixtures/python/with_all.py");
 
     let mut parser = PythonParser::new().unwrap();
     let result = parser.parse(source).unwrap();
@@ -176,7 +176,7 @@ fn validate_python_with_all_fixture() {
 
 #[test]
 fn validate_rust_fixture() {
-    let source = include_str!("../fixtures/sample.rs");
+    let source = include_str!("../../../fixtures/sample.rs");
 
     let mut parser = RustParser::new().unwrap();
     let result = parser.parse(source).unwrap();
@@ -266,7 +266,7 @@ fn validate_rust_fixture() {
 
 #[test]
 fn validate_go_fixture() {
-    let source = include_str!("../fixtures/sample.go");
+    let source = include_str!("../../../fixtures/sample.go");
 
     let mut parser = GoParser::new().unwrap();
     let result = parser.parse(source).unwrap();
@@ -333,7 +333,7 @@ fn validate_go_fixture() {
 
 #[test]
 fn validate_java_fixture() {
-    let source = include_str!("../fixtures/sample.java");
+    let source = include_str!("../../../fixtures/sample.java");
 
     let mut parser = JavaParser::new().unwrap();
     let result = parser.parse(source).unwrap();
@@ -420,7 +420,7 @@ fn validate_java_fixture() {
 
 #[test]
 fn validate_cpp_fixture() {
-    let source = include_str!("../fixtures/sample.cpp");
+    let source = include_str!("../../../fixtures/sample.cpp");
 
     let mut parser = CppParser::new().unwrap();
     let result = parser.parse(source).unwrap();
@@ -489,7 +489,7 @@ fn validate_cpp_fixture() {
 
 #[test]
 fn validate_csharp_fixture() {
-    let source = include_str!("../fixtures/sample.cs");
+    let source = include_str!("../../../fixtures/sample.cs");
 
     let mut parser = CSharpParser::new().unwrap();
     let result = parser.parse(source).unwrap();
@@ -547,7 +547,7 @@ fn validate_csharp_fixture() {
 
 #[test]
 fn validate_ruby_fixture() {
-    let source = include_str!("../fixtures/sample.rb");
+    let source = include_str!("../../../fixtures/sample.rb");
 
     let mut parser = RubyParser::new().unwrap();
     let result = parser.parse(source).unwrap();
@@ -615,7 +615,7 @@ fn validate_ruby_fixture() {
 
 #[test]
 fn validate_php_fixture() {
-    let source = include_str!("../fixtures/sample.php");
+    let source = include_str!("../../../fixtures/sample.php");
 
     let mut parser = PhpParser::new().unwrap();
     let result = parser.parse(source).unwrap();
@@ -689,7 +689,7 @@ fn validate_php_fixture() {
 
 #[test]
 fn validate_c_fixture() {
-    let source = include_str!("../fixtures/sample.c");
+    let source = include_str!("../../../fixtures/sample.c");
 
     let mut parser = CParser::new().unwrap();
     let result = parser.parse(source).unwrap();
@@ -780,7 +780,7 @@ fn validate_c_fixture() {
 
 #[test]
 fn validate_zig_fixture() {
-    let source = include_str!("../fixtures/sample.zig");
+    let source = include_str!("../../../fixtures/sample.zig");
 
     let mut parser = ZigParser::new().unwrap();
     let result = parser.parse(source).unwrap();
@@ -857,7 +857,7 @@ fn validate_zig_fixture() {
 
 #[test]
 fn validate_lua_fixture() {
-    let source = include_str!("../fixtures/sample.lua");
+    let source = include_str!("../../../fixtures/sample.lua");
 
     let mut parser = LuaParser::new().unwrap();
     let result = parser.parse(source).unwrap();
@@ -919,7 +919,7 @@ fn validate_lua_fixture() {
 
 #[test]
 fn validate_scala_fixture() {
-    let source = include_str!("../fixtures/sample.scala");
+    let source = include_str!("../../../fixtures/sample.scala");
 
     let mut parser = ScalaParser::new().unwrap();
     let result = parser.parse(source).unwrap();
@@ -1015,7 +1015,7 @@ fn validate_scala_fixture() {
 
 #[test]
 fn validate_swift_fixture() {
-    let source = include_str!("../fixtures/sample.swift");
+    let source = include_str!("../../../fixtures/sample.swift");
 
     let mut parser = SwiftParser::new().unwrap();
     let result = parser.parse(source).unwrap();
@@ -1112,7 +1112,7 @@ fn validate_swift_fixture() {
 
 #[test]
 fn validate_kotlin_fixture() {
-    let source = include_str!("../fixtures/sample.kt");
+    let source = include_str!("../../../fixtures/sample.kt");
 
     let mut parser = KotlinParser::new().unwrap();
     let result = parser.parse(source).unwrap();
@@ -1212,7 +1212,7 @@ fn validate_kotlin_fixture() {
 
 #[test]
 fn validate_dart_fixture() {
-    let source = include_str!("../fixtures/sample.dart");
+    let source = include_str!("../../../fixtures/sample.dart");
     let mut parser = DartParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
@@ -1301,7 +1301,7 @@ fn validate_dart_fixture() {
 
 #[test]
 fn validate_elixir_fixture() {
-    let source = include_str!("../fixtures/sample.ex");
+    let source = include_str!("../../../fixtures/sample.ex");
     let mut parser = ElixirParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
@@ -1371,7 +1371,7 @@ fn validate_elixir_fixture() {
 
 #[test]
 fn validate_typescript_sample_fixture() {
-    let source = include_str!("../fixtures/sample.ts");
+    let source = include_str!("../../../fixtures/sample.ts");
     let mut parser = TypeScriptParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
@@ -1418,7 +1418,7 @@ fn validate_typescript_sample_fixture() {
 
 #[test]
 fn validate_typescript_barrel_fixture() {
-    let source = include_str!("../fixtures/typescript/barrel.ts");
+    let source = include_str!("../../../fixtures/typescript/barrel.ts");
     let mut parser = TypeScriptParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
@@ -1476,7 +1476,7 @@ fn validate_typescript_barrel_fixture() {
 
 #[test]
 fn validate_typescript_decorators_fixture() {
-    let source = include_str!("../fixtures/typescript/decorators.ts");
+    let source = include_str!("../../../fixtures/typescript/decorators.ts");
     let mut parser = TypeScriptParser::new().unwrap();
     let result = parser.parse(source).unwrap();
 
