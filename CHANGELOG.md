@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.45](https://github.com/srobinson/fmm/compare/v0.1.44...v0.1.45) (2026-03-19)
+
+
+### Bug Fixes
+
+* make install recipe depend on release build ([436c9f5](https://github.com/srobinson/fmm/commit/436c9f5a6ca28315a71c50a9966efb2674a2c1bd))
+
 ## [0.1.44](https://github.com/srobinson/fmm/compare/v0.1.43...v0.1.44) (2026-03-19)
 
 
