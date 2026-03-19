@@ -13,7 +13,7 @@ serde_json::from_str(r##"{
         "properties": {
           "name": {
             "type": "string",
-            "description": "Exact export name to find (function, class, type, variable, component)"
+            "description": "Exact export name to find (function, class, struct, type, trait, variable)"
           }
         },
         "required": [
@@ -81,13 +81,13 @@ serde_json::from_str(r##"{
     },
     {
       "name": "fmm_read_symbol",
-      "description": "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Use `path/to/file.ts:helperFunction` notation to read a non-exported top-level function via on-demand tree-sitter parse. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.",
+      "description": "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Use `path/to/file:helperFunction` notation to read a non-exported top-level function via on-demand tree-sitter parse. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
-            "description": "Exact export name to read (function, class, type, component), or ClassName.method for a specific public or private method, or path/to/file.ts:helperFn to read a non-exported top-level function by on-demand parse"
+            "description": "Exact export name to read (function, class, struct, type, trait), or ClassName.method for a specific public or private method, or path/to/file:helperFn to read a non-exported top-level function by on-demand parse"
           },
           "truncate": {
             "type": "boolean",
@@ -105,7 +105,7 @@ serde_json::from_str(r##"{
     },
     {
       "name": "fmm_file_outline",
-      "description": "Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. Set include_private: true to also show private/protected class members AND non-exported top-level functions (in a 'non_exported:' section). Supported: TypeScript, JavaScript, Python. On-demand tree-sitter parse — no index rebuild needed.",
+      "description": "Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. Set include_private: true to also show private/protected class members AND non-exported top-level functions (in a 'non_exported:' section). Supported: TypeScript, JavaScript, Python, Rust. On-demand tree-sitter parse — no index rebuild needed.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -115,7 +115,7 @@ serde_json::from_str(r##"{
           },
           "include_private": {
             "type": "boolean",
-            "description": "When true, include private/protected members under each class (annotated '# private') AND non-exported top-level functions in a 'non_exported:' section (annotated '# non-exported'). On-demand tree-sitter parse — no index rebuild needed. Supported: TypeScript, JavaScript, Python. Default: false."
+            "description": "When true, include private/protected members under each class (annotated '# private') AND non-exported top-level functions in a 'non_exported:' section (annotated '# non-exported'). On-demand tree-sitter parse — no index rebuild needed. Supported: TypeScript, JavaScript, Python, Rust. Default: false."
           }
         },
         "required": [

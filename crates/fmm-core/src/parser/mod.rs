@@ -142,7 +142,7 @@ pub struct Metadata {
     pub imports: Vec<String>,
     pub dependencies: Vec<String>,
     pub loc: usize,
-    /// Named imports per source module (TS/JS only).
+    /// Named imports per source module (TS/JS, Python, Rust).
     /// Key = import path as written in source (`"./ReactFiberWorkLoop"`).
     /// Value = original exported names (alias-resolved: store `foo`, not `bar`, for `import { foo as bar }`).
     /// Also captures named re-exports (`export { foo } from './mod'`).

@@ -29,9 +29,9 @@ pub const DEPS_DEPTH_HELP: &str = "Traversal depth (1 = direct deps only, -1 = f
 pub const DEPS_FILTER_HELP: &str = "Filter upstream/downstream by file type: all (default), source (exclude tests), tests (only tests)";
 
 #[rustfmt::skip]
-pub const READ_ABOUT: &str = "Read the source code of an exported symbol, a specific method, or a non-exported function.\n\nUse plain name for a top-level export, ClassName.method notation for a specific public/private method, or path/to/file.ts:helperFn notation to read a non-exported top-level function. Truncates at 10KB by default; use --no-truncate for full source.";
+pub const READ_ABOUT: &str = "Read the source code of an exported symbol, a specific method, or a non-exported function.\n\nUse plain name for a top-level export, ClassName.method notation for a specific public/private method, or path/to/file:helperFn notation to read a non-exported top-level function. Truncates at 10KB by default; use --no-truncate for full source.";
 #[rustfmt::skip]
-pub const READ_NAME_HELP: &str = "Symbol name, ClassName.method for a specific method, or path/to/file.ts:fn for a non-exported function";
+pub const READ_NAME_HELP: &str = "Symbol name, ClassName.method for a specific method, or path/to/file:fn for a non-exported function";
 #[rustfmt::skip]
 pub const READ_TRUNCATE_HELP: &str = "Return full source, bypassing the 10KB truncation cap";
 #[rustfmt::skip]

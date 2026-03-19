@@ -44,12 +44,12 @@ pub struct FileEntry {
     /// Last-modified date from the sidecar `modified:` field (YYYY-MM-DD). None if absent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub modified: Option<String>,
-    /// Names of exported module-level function declarations (TS/JS only).
+    /// Names of exported module-level function declarations (TS/JS, Python, Rust).
     /// Populated from sidecar typescript.function_names section. Not persisted.
     /// Used to build function_index for call-site precision in fmm_glossary.
     #[serde(skip)]
     pub function_names: Vec<String>,
-    /// Named imports per source module (TS/JS only). Key = import path as written in source.
+    /// Named imports per source module (TS/JS, Python, Rust). Key = import path as written in source.
     /// Value = original exported names (alias-resolved). Populated from sidecar named_imports section.
     /// Used by Layer 2 filtering in fmm_glossary.
     #[serde(skip)]

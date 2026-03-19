@@ -87,7 +87,7 @@ pub enum Commands {
   Indexes new files and updates stale entries in a single pass.
   Unchanged files are skipped (mtime check) — no unnecessary work.
   Respects .gitignore and .fmmignore for file exclusion.
-  Supports: TypeScript, JavaScript, Python, Rust, Go, Java, C++, C#, Ruby."#),
+  Supports: TypeScript, JavaScript, Python, Rust."#),
     )]
     Generate {
         /// Paths to files or directories (defaults to current directory)
@@ -237,7 +237,7 @@ pub enum Commands {
   MCP config uses .claude/fmm.local.json — gitignored, per-user, no merge conflicts.
   The --skill flag creates .claude/skills/ which may override global plugin skills.
   If using the helioy plugin globally, skip --skill to inherit skills from the plugin.
-  The MCP config enables 9 tools for O(1) symbol lookup and navigation."#),
+  The MCP config enables 8 tools for O(1) symbol lookup and navigation."#),
     )]
     Init {
         /// Install Claude Code skill (.claude/skills/fmm-navigate.md) — opt-in, creates project .claude/ dir
@@ -581,10 +581,10 @@ pub enum Commands {
         json: bool,
     },
 
-    /// Start MCP server — 9 tools for LLM code navigation
+    /// Start MCP server — 8 tools for LLM code navigation
     #[command(
         long_about = "Start the Model Context Protocol (MCP) server over stdio.\n\n\
-            Exposes 9 tools that LLM agents (Claude, GPT, etc.) can call for O(1) \
+            Exposes 8 tools that LLM agents (Claude, GPT, etc.) can call for O(1) \
             symbol lookup, dependency graphs, and surgical source reads — all without \
             reading entire files.",
         after_long_help = cstr!(

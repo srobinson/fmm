@@ -20,7 +20,7 @@ pub const SHORT_HELP: &str = cstr!(
   <bold>generate</bold>      Index source files into the SQLite database (exports, imports, deps, LOC)
   <bold>watch</bold>         Watch source files and update the index on change
   <bold>validate</bold>      Check the index is current (CI-friendly, exit 1 if stale)
-  <bold>mcp</bold>           Start MCP server (9 tools for LLM navigation)
+  <bold>mcp</bold>           Start MCP server (8 tools for LLM navigation)
   <bold>status</bold>        Show config and workspace stats
   <bold>clean</bold>         Clear the fmm index database
 
@@ -45,7 +45,7 @@ pub const LONG_HELP: &str = cstr!(
   <bold>generate</bold>      Index source files into the SQLite database (exports, imports, deps, LOC)
   <bold>watch</bold>         Watch source files and update the index on change
   <bold>validate</bold>      Check the index is current (CI-friendly, exit 1 if stale)
-  <bold>mcp</bold>           Start MCP server (9 tools for LLM navigation)
+  <bold>mcp</bold>           Start MCP server (8 tools for LLM navigation)
   <bold>status</bold>        Show config and workspace stats
   <bold>clean</bold>         Clear the fmm index database
 
@@ -70,7 +70,7 @@ pub const LONG_HELP: &str = cstr!(
   <dim>$</dim> <bold>fmm glossary config</bold>                   <dim># Who uses Config, loadConfig, AppConfig?</dim>
 
 <bold><underline>Languages</underline></bold>
-  TypeScript · JavaScript · Python · Rust · Go · Java · C++ · C# · Ruby
+  TypeScript · JavaScript · Python · Rust
 
 88-97% token reduction measured on real codebases.
 https://github.com/srobinson/fmm"#

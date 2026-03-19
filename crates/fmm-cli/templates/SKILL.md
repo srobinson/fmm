@@ -228,7 +228,7 @@ Instant O(1) symbol-to-file lookup. Find where a function, class, type, or varia
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | string | yes | Exact export name to find (function, class, type, variable, component) |
+| `name` | string | yes | Exact export name to find (function, class, struct, type, trait, variable) |
 
 ### `fmm_list_exports`
 
@@ -254,17 +254,17 @@ Get a file's dependency graph: upstream dependencies (what it imports) and downs
 
 ### `fmm_read_symbol`
 
-Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: "Injector.loadInstance")`. Use `path/to/file.ts:helperFunction` notation to read a non-exported top-level function via on-demand tree-sitter parse. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.
+Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: "Injector.loadInstance")`. Use `path/to/file:helperFunction` notation to read a non-exported top-level function via on-demand tree-sitter parse. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | string | yes | Exact export name to read (function, class, type, component), or ClassName.method for a specific public or private me... |
+| `name` | string | yes | Exact export name to read (function, class, struct, type, trait), or ClassName.method for a specific public or privat... |
 | `truncate` | boolean | no | Whether to apply the 10KB response cap (default: true). Set to false to return the full source for large symbols that... |
 | `line_numbers` | boolean | no | When true, prepend absolute line numbers (right-aligned) to each source line. Useful when referencing specific lines ... |
 
 ### `fmm_file_outline`
 
-Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. Set include_private: true to also show private/protected class members AND non-exported top-level functions (in a 'non_exported:' section). Supported: TypeScript, JavaScript, Python. On-demand tree-sitter parse — no index rebuild needed.
+Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. Set include_private: true to also show private/protected class members AND non-exported top-level functions (in a 'non_exported:' section). Supported: TypeScript, JavaScript, Python, Rust. On-demand tree-sitter parse — no index rebuild needed.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
