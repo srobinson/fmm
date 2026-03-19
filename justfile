@@ -13,6 +13,9 @@ build:
 release:
     cargo build --workspace --release
 
+install: release
+    cargo install --path crates/fmm-cli
+
 test:
     cargo nextest run --workspace
     cargo test --workspace --doc
@@ -24,9 +27,6 @@ clippy:
     cargo clippy --workspace --all-targets --fix --allow-dirty -- -D warnings
 
 check: fmt clippy
-
-install:
-    cargo install --path crates/fmm-cli
 
 ci: check test build
     @echo "All CI checks passed"
