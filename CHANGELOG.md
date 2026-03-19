@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.43](https://github.com/srobinson/fmm/compare/v0.1.42...v0.1.43) (2026-03-19)
+
+
+### Bug Fixes
+
+* sync user-facing metadata with actual implementation ([af225c1](https://github.com/srobinson/fmm/commit/af225c1ec2b2f6a0e0b4f40ba3cd992f623434a1))
+
 ## [0.1.42](https://github.com/srobinson/fmm/compare/v0.1.41...v0.1.42) (2026-03-18)
 
 
