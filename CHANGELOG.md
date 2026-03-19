@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.44](https://github.com/srobinson/fmm/compare/v0.1.43...v0.1.44) (2026-03-19)
+
+
+### Bug Fixes
+
+* gitignore SQLite WAL and shared-memory files ([cc62a63](https://github.com/srobinson/fmm/commit/cc62a63a53c00e9395aedc1036234322c7041e71))
+
 ## [0.1.43](https://github.com/srobinson/fmm/compare/v0.1.42...v0.1.43) (2026-03-19)
 
 
