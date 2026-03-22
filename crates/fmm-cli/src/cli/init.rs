@@ -102,10 +102,17 @@ pub fn init(force: bool, no_generate: bool) -> Result<()> {
 }
 
 const FMMRC_TEMPLATE: &str = r#"# fmm configuration
-# Only include fields you want to override — defaults apply for everything else.
+# Only include fields you want to override. Defaults apply for everything else.
+#
+# Precedence: compiled defaults < this file < FMM_* environment variables
+#
+# Environment variable overrides:
+#   FMM_MAX_LINES=50000
+#   FMM_LANGUAGES=rs,py,ts
+#   FMM_EXCLUDE=vendor/**,dist/**
 
 # Maximum lines per file. Files exceeding this limit are skipped during indexing.
-# Default: 100000
+# Default: 100000. Set to 0 to disable the limit.
 # max_lines = 100_000
 
 # Glob patterns to exclude (in addition to .gitignore and .fmmignore).
