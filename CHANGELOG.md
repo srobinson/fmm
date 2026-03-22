@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/srobinson/fmm/compare/v0.1.45...v0.2.0) (2026-03-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **config:** .fmmrc.json is no longer loaded as a config source
+
+### Features
+
+* **config:** three-layer config loading with env var overrides ([#117](https://github.com/srobinson/fmm/issues/117)) ([e023f66](https://github.com/srobinson/fmm/commit/e023f66804bffc995c2827e24e2487712638bb43))
+
 ## [0.1.45](https://github.com/srobinson/fmm/compare/v0.1.44...v0.1.45) (2026-03-19)
 
 
