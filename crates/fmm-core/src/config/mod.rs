@@ -394,6 +394,19 @@ mod tests {
     }
 
     #[test]
+    fn unknown_keys_fall_back_to_defaults() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join(".fmmrc.toml"),
+            "languages = [\"rs\"]\nbogus_key = true\n",
+        )
+        .unwrap();
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        // deny_unknown_fields causes parse failure; warn-and-fallback returns defaults
+        assert_eq!(config.languages.len(), 29);
+    }
+
+    #[test]
     fn malformed_toml_falls_back_to_defaults() {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join(".fmmrc.toml"), "not = toml = at = all %%%").unwrap();
