@@ -214,20 +214,26 @@ pub enum Commands {
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm init</bold>                 <dim># Create config + index source files</dim>
+  <dim>$</dim> <bold>fmm init --force</bold>         <dim># Overwrite existing config</dim>
   <dim>$</dim> <bold>fmm init --no-generate</bold>   <dim># Config only, skip indexing</dim>"#),
         after_long_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm init</bold>                           <dim># Create config + index source files</dim>
+  <dim>$</dim> <bold>fmm init --force</bold>                   <dim># Overwrite existing .fmmrc.toml</dim>
   <dim>$</dim> <bold>fmm init --no-generate</bold>              <dim># Config only, skip indexing</dim>
 
 <bold><underline>What gets created</underline></bold>
   <bold>.fmmrc.toml</bold>                           Project configuration (optional, defaults apply)
 
 <bold><underline>Notes</underline></bold>
-  Safe to re-run: existing .fmmrc.toml is not overwritten.
+  Safe to re-run: existing .fmmrc.toml is not overwritten unless --force is used.
   .fmmrc.toml is optional: delete it to use built-in defaults."#),
     )]
     Init {
+        /// Overwrite existing .fmmrc.toml without prompting
+        #[arg(long)]
+        force: bool,
+
         /// Skip auto-indexing (config only)
         #[arg(long)]
         no_generate: bool,

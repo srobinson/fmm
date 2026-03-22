@@ -7,7 +7,7 @@ use fmm_core::config::Config;
 use super::collect_files;
 use super::sidecar;
 
-pub fn init(no_generate: bool) -> Result<()> {
+pub fn init(force: bool, no_generate: bool) -> Result<()> {
     println!(
         "\n{}",
         "Frontmatter Matters — SQLite code intelligence for LLM navigation"
@@ -16,7 +16,7 @@ pub fn init(no_generate: bool) -> Result<()> {
     );
     println!();
 
-    init_config()?;
+    init_config(force)?;
 
     if !no_generate {
         println!();
@@ -120,11 +120,15 @@ const FMMRC_TEMPLATE: &str = r#"# fmm configuration
 # filename_suffixes = [".spec.ts", ".test.ts", ".test.js", "_test.go", "_test.rs"]
 "#;
 
-fn init_config() -> Result<()> {
+fn init_config(force: bool) -> Result<()> {
     let toml_path = Path::new(".fmmrc.toml");
-    if toml_path.exists() {
+    if toml_path.exists() && !force {
         println!("{} .fmmrc.toml already exists (skipping)", "!".yellow());
         return Ok(());
+    }
+
+    if toml_path.exists() {
+        println!("{} Overwriting .fmmrc.toml (--force)", "!".yellow());
     }
 
     std::fs::write(toml_path, FMMRC_TEMPLATE).context("Failed to write .fmmrc.toml")?;
