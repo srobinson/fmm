@@ -157,7 +157,23 @@ impl Config {
             config.exclude = val.split(',').map(|s| s.trim().to_string()).collect();
         }
 
+        // Layer 3: Validation
+        if let Err(msg) = config.validate() {
+            eprintln!("[fmm] warning: config validation failed: {msg}; falling back to defaults");
+            return Ok(Self::default());
+        }
+
         Ok(config)
+    }
+
+    /// Check invariants after merging file config and env overrides.
+    /// Returns `Err(reason)` if the config is invalid; the caller warns and
+    /// falls back to `Config::default()`.
+    fn validate(&self) -> Result<(), String> {
+        if self.languages.is_empty() {
+            return Err("languages must not be empty when explicitly set".into());
+        }
+        Ok(())
     }
 
     pub fn is_supported_language(&self, extension: &str) -> bool {
@@ -290,12 +306,13 @@ mod tests {
     }
 
     #[test]
-    fn empty_languages_list() {
+    fn empty_languages_falls_back_to_defaults() {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join(".fmmrc.toml"), "languages = []\n").unwrap();
 
         let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert!(config.languages.is_empty());
+        // validate() rejects empty languages; falls back to defaults
+        assert_eq!(config.languages.len(), 29);
     }
 
     #[test]
