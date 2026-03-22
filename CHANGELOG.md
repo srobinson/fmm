@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/srobinson/fmm/compare/v0.2.0...v0.2.1) (2026-03-22)
+
+
+### Bug Fixes
+
+* **clean:** allow `fmm clean` on version-mismatched databases ([ed0a115](https://github.com/srobinson/fmm/commit/ed0a1150099826aa1bc606c4e096bb2052ff1b8e))
+* **clean:** allow fmm clean on version-mismatched databases ([#119](https://github.com/srobinson/fmm/issues/119)) ([ed0a115](https://github.com/srobinson/fmm/commit/ed0a1150099826aa1bc606c4e096bb2052ff1b8e))
+
 ## [0.2.0](https://github.com/srobinson/fmm/compare/v0.1.45...v0.2.0) (2026-03-22)
 
 
