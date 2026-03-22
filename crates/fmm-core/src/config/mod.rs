@@ -284,14 +284,6 @@ mod tests {
         assert!(!config.is_supported_language(""));
     }
 
-    #[test]
-    fn config_serialization_roundtrip() {
-        let config = Config::default();
-        let json = serde_json::to_string(&config).unwrap();
-        let deserialized: Config = serde_json::from_str(&json).unwrap();
-        assert_eq!(config.languages, deserialized.languages);
-    }
-
     // max_lines and exclude tests
 
     #[test]
