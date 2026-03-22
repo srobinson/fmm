@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 /// Resolve the root directory from the target path.
 /// If a directory, use it directly. If a file, walk up from its parent
-/// looking for project root markers (.git, .fmmrc.toml, .fmmrc.json) so that relative
+/// looking for project root markers (.git, .fmmrc.toml) so that relative
 /// paths in the index are consistent regardless of whether `fmm generate`
 /// targets a single file or the whole repo.
 /// Falls back to the file's parent directory, then CWD.

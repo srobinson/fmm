@@ -15,11 +15,6 @@ pub fn status() -> Result<()> {
     println!("\n{}", "Configuration:".yellow().bold());
     if std::path::Path::new(".fmmrc.toml").exists() {
         println!("  {} .fmmrc.toml found", "✓".green());
-    } else if std::path::Path::new(".fmmrc.json").exists() {
-        println!(
-            "  {} .fmmrc.json found (deprecated — migrate to .fmmrc.toml)",
-            "!".yellow()
-        );
     } else {
         println!("  {} No config file (using defaults)", "!".yellow());
     }
