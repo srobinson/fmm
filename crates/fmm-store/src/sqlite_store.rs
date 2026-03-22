@@ -56,6 +56,18 @@ impl SqliteStore {
         })
     }
 
+    /// Open an existing database without version validation.
+    ///
+    /// Use for destructive operations (like `clean`) that must work
+    /// regardless of which fmm version built the index.
+    pub fn open_unchecked(root: &Path) -> Result<Self, StoreError> {
+        let conn = crate::connection::open_db_unchecked(root)?;
+        Ok(Self {
+            conn: RefCell::new(conn),
+            root: root.to_path_buf(),
+        })
+    }
+
     /// Returns the project root path this store was opened with.
     pub fn root(&self) -> &Path {
         &self.root

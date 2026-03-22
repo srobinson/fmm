@@ -474,7 +474,7 @@ pub fn clean(paths: &[String], dry_run: bool, delete_db: bool) -> Result<()> {
             if delete_db {
                 println!("  Would remove: {}", fmm_store::DB_FILENAME);
             } else {
-                let store = SqliteStore::open(&root)?;
+                let store = SqliteStore::open_unchecked(&root)?;
                 let count = store.file_count()?;
                 println!(
                     "  Would clear {} indexed file(s) from {}",
@@ -495,7 +495,7 @@ pub fn clean(paths: &[String], dry_run: bool, delete_db: bool) -> Result<()> {
             std::fs::remove_file(&db_path)?;
             println!("{} Removed {}", "✓".green(), fmm_store::DB_FILENAME);
         } else {
-            let store = SqliteStore::open(&root)?;
+            let store = SqliteStore::open_unchecked(&root)?;
             let count = store.file_count()?;
             store.clear_index()?;
             println!(

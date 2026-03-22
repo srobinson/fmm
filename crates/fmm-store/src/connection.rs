@@ -43,6 +43,24 @@ pub fn open_db(root: &Path) -> Result<Connection> {
     Ok(conn)
 }
 
+/// Opens an existing fmm database without version validation.
+///
+/// Use for operations (like `clean`) that must work regardless of
+/// which fmm version built the index.
+pub fn open_db_unchecked(root: &Path) -> Result<Connection> {
+    let db_path = root.join(DB_FILENAME);
+    if !db_path.exists() {
+        anyhow::bail!(
+            "No fmm database found at {}. Run `fmm generate` first.",
+            db_path.display()
+        );
+    }
+    let conn = Connection::open(&db_path)
+        .with_context(|| format!("Failed to open database at {}", db_path.display()))?;
+    apply_pragmas(&conn)?;
+    Ok(conn)
+}
+
 fn check_version_match(conn: &Connection) -> Result<()> {
     let stored: Option<String> = conn
         .query_row(
