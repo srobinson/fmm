@@ -562,4 +562,43 @@ filename_suffixes = [".myspec.ts"]
         assert!(config.languages.contains("lua"));
         assert_eq!(config.exclude, vec!["tmp/**"]);
     }
+
+    #[test]
+    fn file_config_partial_deserialization() {
+        let tmp = TempDir::new().unwrap();
+        // Only max_lines set; languages, exclude, test_patterns use defaults
+        fs::write(tmp.path().join(".fmmrc.toml"), "max_lines = 42\n").unwrap();
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.max_lines, 42);
+        assert_eq!(config.languages.len(), 29); // default
+        assert!(config.exclude.is_empty()); // default
+        assert_eq!(config.test_patterns.path_contains.len(), 5); // default
+    }
+
+    #[test]
+    fn three_layer_precedence() {
+        let tmp = TempDir::new().unwrap();
+        // File sets max_lines=5000 and languages=["rs","py"]
+        fs::write(
+            tmp.path().join(".fmmrc.toml"),
+            "max_lines = 5000\nlanguages = [\"rs\", \"py\"]\n",
+        )
+        .unwrap();
+        // Env overrides max_lines and exclude; languages from file survives
+        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        unsafe {
+            std::env::set_var("FMM_MAX_LINES", "123");
+            std::env::set_var("FMM_EXCLUDE", "dist/**");
+        }
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        // max_lines: env wins over file
+        assert_eq!(config.max_lines, 123);
+        // languages: file wins over default (env not set)
+        assert_eq!(config.languages.len(), 2);
+        assert!(config.languages.contains("rs"));
+        // exclude: env wins over default (file not set)
+        assert_eq!(config.exclude, vec!["dist/**"]);
+        // test_patterns: default (not in file or env)
+        assert_eq!(config.test_patterns.path_contains.len(), 5);
+    }
 }
