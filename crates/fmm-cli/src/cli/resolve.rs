@@ -24,14 +24,11 @@ pub(crate) fn resolve_root(path: &str) -> Result<PathBuf> {
 }
 
 /// Walk up from `start` looking for project root markers.
-/// Returns the first directory containing `.git`, `.fmmrc.toml`, or `.fmmrc.json`.
+/// Returns the first directory containing `.git` or `.fmmrc.toml`.
 fn find_project_root(start: &Path) -> Option<PathBuf> {
     let mut current = start.to_path_buf();
     loop {
-        if current.join(".git").exists()
-            || current.join(".fmmrc.toml").exists()
-            || current.join(".fmmrc.json").exists()
-        {
+        if current.join(".git").exists() || current.join(".fmmrc.toml").exists() {
             return Some(current);
         }
         if !current.pop() {

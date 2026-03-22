@@ -84,15 +84,6 @@ impl Config {
             return Ok(config);
         }
 
-        let json_path = dir.join(".fmmrc.json");
-        if json_path.exists() {
-            let content = std::fs::read_to_string(&json_path)
-                .with_context(|| format!("Failed to read {}", json_path.display()))?;
-            let config: Config = serde_json::from_str(&content)
-                .with_context(|| format!("Failed to parse {}", json_path.display()))?;
-            return Ok(config);
-        }
-
         Ok(Self::default())
     }
 
@@ -212,57 +203,23 @@ mod tests {
     }
 
     #[test]
-    fn loads_config_with_languages() {
+    fn json_config_file_is_not_loaded() {
         let tmp = TempDir::new().unwrap();
-        let json = r#"{ "languages": ["rs", "py"] }"#;
-        fs::write(tmp.path().join(".fmmrc.json"), json).unwrap();
+        fs::write(
+            tmp.path().join(".fmmrc.json"),
+            r#"{ "languages": ["rs", "py"] }"#,
+        )
+        .unwrap();
 
+        // .fmmrc.json is no longer loaded; should return defaults
         let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.languages.len(), 2);
-        assert!(config.languages.contains("rs"));
-        assert!(config.languages.contains("py"));
-    }
-
-    #[test]
-    fn handles_partial_config_with_defaults() {
-        let tmp = TempDir::new().unwrap();
-        fs::write(tmp.path().join(".fmmrc.json"), r#"{ "languages": ["go"] }"#).unwrap();
-
-        let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.languages.len(), 1);
-        assert!(config.languages.contains("go"));
-    }
-
-    #[test]
-    fn handles_invalid_json_as_error() {
-        let tmp = TempDir::new().unwrap();
-        fs::write(tmp.path().join(".fmmrc.json"), "not json at all {{{").unwrap();
-        let result = Config::load_from_dir(tmp.path());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn old_config_fields_silently_ignored() {
-        let tmp = TempDir::new().unwrap();
-        let json = r#"{
-            "languages": ["ts"],
-            "format": "json",
-            "include_loc": false,
-            "include_complexity": true,
-            "max_file_size": 512,
-            "totally_unknown_field": true
-        }"#;
-        fs::write(tmp.path().join(".fmmrc.json"), json).unwrap();
-
-        let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.languages.len(), 1);
-        assert!(config.languages.contains("ts"));
+        assert_eq!(config.languages.len(), 29);
     }
 
     #[test]
     fn empty_languages_list() {
         let tmp = TempDir::new().unwrap();
-        fs::write(tmp.path().join(".fmmrc.json"), r#"{ "languages": [] }"#).unwrap();
+        fs::write(tmp.path().join(".fmmrc.toml"), "languages = []\n").unwrap();
 
         let config = Config::load_from_dir(tmp.path()).unwrap();
         assert!(config.languages.is_empty());
@@ -272,8 +229,8 @@ mod tests {
     fn unknown_language_extension_accepted() {
         let tmp = TempDir::new().unwrap();
         fs::write(
-            tmp.path().join(".fmmrc.json"),
-            r#"{ "languages": ["xyz", "abc"] }"#,
+            tmp.path().join(".fmmrc.toml"),
+            "languages = [\"xyz\", \"abc\"]\n",
         )
         .unwrap();
 
@@ -302,25 +259,6 @@ mod tests {
     }
 
     #[test]
-    fn test_patterns_configurable_via_fmmrc() {
-        let tmp = TempDir::new().unwrap();
-        let json = r#"{
-            "test_patterns": {
-                "path_contains": ["/custom_tests/"],
-                "filename_suffixes": [".myspec.ts"]
-            }
-        }"#;
-        fs::write(tmp.path().join(".fmmrc.json"), json).unwrap();
-
-        let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert!(config.is_test_file("src/custom_tests/foo.ts"));
-        assert!(config.is_test_file("src/bar.myspec.ts"));
-        // Default patterns NOT active (custom config replaces them)
-        assert!(!config.is_test_file("src/auth.spec.ts"));
-        assert!(!config.is_test_file("src/test/foo.ts"));
-    }
-
-    #[test]
     fn is_supported_language_checks_membership() {
         let config = Config::default();
         assert!(config.is_supported_language("ts"));
@@ -344,15 +282,6 @@ mod tests {
         assert!(config.is_supported_language("ex"));
         assert!(config.is_supported_language("exs"));
         assert!(!config.is_supported_language(""));
-    }
-
-    #[test]
-    fn empty_json_object_gives_defaults() {
-        let tmp = TempDir::new().unwrap();
-        fs::write(tmp.path().join(".fmmrc.json"), "{}").unwrap();
-
-        let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.languages.len(), 29);
     }
 
     #[test]
@@ -399,26 +328,6 @@ mod tests {
         assert_eq!(config.exclude[1], "benchmarks/fixtures/**");
     }
 
-    #[test]
-    fn loads_max_lines_from_json() {
-        let tmp = TempDir::new().unwrap();
-        fs::write(tmp.path().join(".fmmrc.json"), r#"{ "max_lines": 5000 }"#).unwrap();
-        let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.max_lines, 5_000);
-    }
-
-    #[test]
-    fn loads_exclude_from_json() {
-        let tmp = TempDir::new().unwrap();
-        fs::write(
-            tmp.path().join(".fmmrc.json"),
-            r#"{ "exclude": ["dist/**"] }"#,
-        )
-        .unwrap();
-        let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.exclude, vec!["dist/**"]);
-    }
-
     // TOML loading tests
 
     #[test]
@@ -431,21 +340,6 @@ mod tests {
         assert_eq!(config.languages.len(), 2);
         assert!(config.languages.contains("rs"));
         assert!(config.languages.contains("py"));
-    }
-
-    #[test]
-    fn toml_takes_precedence_over_json() {
-        let tmp = TempDir::new().unwrap();
-        fs::write(tmp.path().join(".fmmrc.toml"), r#"languages = ["rs"]"#).unwrap();
-        fs::write(
-            tmp.path().join(".fmmrc.json"),
-            r#"{ "languages": ["py", "go"] }"#,
-        )
-        .unwrap();
-
-        let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.languages.len(), 1);
-        assert!(config.languages.contains("rs"));
     }
 
     #[test]
