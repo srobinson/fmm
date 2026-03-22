@@ -1,9 +1,30 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::Path;
 
 use crate::parser::ParserRegistry;
+
+/// Intermediate deserialization target for `.fmmrc.toml`.
+///
+/// All fields are `Option` so partial configs are valid.
+/// `deny_unknown_fields` catches typos and stale keys at deserialization time.
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct FileConfig {
+    languages: Option<BTreeSet<String>>,
+    test_patterns: Option<FileTestPatterns>,
+    max_lines: Option<usize>,
+    exclude: Option<Vec<String>>,
+}
+
+/// Intermediate deserialization target for the `[test_patterns]` TOML section.
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct FileTestPatterns {
+    path_contains: Option<Vec<String>>,
+    filename_suffixes: Option<Vec<String>>,
+}
 
 /// Patterns used to classify test vs. source files.
 ///
@@ -76,15 +97,53 @@ impl Config {
 
     pub fn load_from_dir(dir: &Path) -> Result<Self> {
         let toml_path = dir.join(".fmmrc.toml");
-        if toml_path.exists() {
-            let content = std::fs::read_to_string(&toml_path)
-                .with_context(|| format!("Failed to read {}", toml_path.display()))?;
-            let config: Config = toml::from_str(&content)
-                .with_context(|| format!("Failed to parse {}", toml_path.display()))?;
-            return Ok(config);
+        if !toml_path.exists() {
+            return Ok(Self::default());
         }
 
-        Ok(Self::default())
+        let content = match std::fs::read_to_string(&toml_path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!(
+                    "[fmm] warning: failed to read {}: {e}; using defaults",
+                    toml_path.display()
+                );
+                return Ok(Self::default());
+            }
+        };
+
+        let file_config: FileConfig = match toml::from_str(&content) {
+            Ok(fc) => fc,
+            Err(e) => {
+                eprintln!(
+                    "[fmm] warning: failed to parse {}: {e}; using defaults",
+                    toml_path.display()
+                );
+                return Ok(Self::default());
+            }
+        };
+
+        // Merge FileConfig onto defaults
+        let mut config = Self::default();
+        if let Some(languages) = file_config.languages {
+            config.languages = languages;
+        }
+        if let Some(max_lines) = file_config.max_lines {
+            config.max_lines = max_lines;
+        }
+        if let Some(exclude) = file_config.exclude {
+            config.exclude = exclude;
+        }
+        if let Some(tp) = file_config.test_patterns {
+            if let Some(path_contains) = tp.path_contains {
+                config.test_patterns.path_contains = path_contains;
+            }
+            if let Some(filename_suffixes) = tp.filename_suffixes {
+                config.test_patterns.filename_suffixes = filename_suffixes;
+            }
+        }
+
+        Ok(config)
     }
 
     pub fn is_supported_language(&self, extension: &str) -> bool {
@@ -335,11 +394,12 @@ mod tests {
     }
 
     #[test]
-    fn handles_invalid_toml_as_error() {
+    fn malformed_toml_falls_back_to_defaults() {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join(".fmmrc.toml"), "not = toml = at = all %%%").unwrap();
-        let result = Config::load_from_dir(tmp.path());
-        assert!(result.is_err());
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        // Malformed TOML warns and returns defaults (fail-open)
+        assert_eq!(config.languages.len(), 29);
     }
 
     #[test]
