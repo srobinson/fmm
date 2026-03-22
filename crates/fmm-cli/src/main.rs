@@ -90,13 +90,8 @@ fn run() -> anyhow::Result<()> {
         Commands::Watch { path, debounce } => {
             cli::watch(&path, debounce)?;
         }
-        Commands::Init {
-            skill,
-            mcp,
-            all,
-            no_generate,
-        } => {
-            cli::init(skill, mcp, all, no_generate)?;
+        Commands::Init { no_generate } => {
+            cli::init(no_generate)?;
         }
         Commands::Status => {
             cli::status()?;

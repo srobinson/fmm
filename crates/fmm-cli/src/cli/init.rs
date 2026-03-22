@@ -7,9 +7,7 @@ use fmm_core::config::Config;
 use super::collect_files;
 use super::sidecar;
 
-const SKILL_CONTENT: &str = include_str!("../../templates/SKILL.md");
-
-pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> {
+pub fn init(no_generate: bool) -> Result<()> {
     println!(
         "\n{}",
         "Frontmatter Matters — SQLite code intelligence for LLM navigation"
@@ -18,31 +16,14 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
     );
     println!();
 
-    let specific = skill || mcp;
-    let full_setup = !specific || all;
+    init_config()?;
 
-    let install_config = full_setup;
-    let install_skill = skill || all;
-    let install_mcp = mcp || all;
-
-    if install_config {
-        init_config()?;
-    }
-    if install_skill {
-        init_skill()?;
-    }
-    if install_mcp {
-        init_mcp_config()?;
-    }
-
-    // Auto-generate index unless --no-generate or partial install
-    if full_setup && !no_generate {
+    if !no_generate {
         println!();
         let config = Config::load().unwrap_or_default();
         let (files, _) = collect_files(".", &config)?;
 
         if !files.is_empty() {
-            // Detect languages present
             let mut lang_set = std::collections::BTreeSet::new();
             for file in &files {
                 if let Some(ext) = file.extension().and_then(|e| e.to_str()) {
@@ -58,7 +39,6 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
 
             sidecar::generate(&[".".to_string()], false, false, false)?;
 
-            // Show DB stats and a sample export
             let root = super::resolve_root(".")?;
             if let Ok(conn) = fmm_store::open_db(&root) {
                 let file_count: i64 = conn
@@ -95,28 +75,18 @@ pub fn init(skill: bool, mcp: bool, all: bool, no_generate: bool) -> Result<()> 
 
     println!();
     println!("{}", "Setup complete!".green().bold());
-    if install_config {
-        println!("  Config:   .fmmrc.toml");
-    }
-    if install_skill {
-        println!("  Skill:    .claude/skills/fmm-navigate/SKILL.md");
-    }
-    if install_mcp {
-        println!("  MCP:      .claude/fmm.local.json");
-    }
+    println!("  Config:   .fmmrc.toml");
 
-    if install_config {
-        println!(
-            "  {} Add '.fmm.db' to your .gitignore — the index is regeneratable",
-            "hint:".cyan()
-        );
-        println!(
-            "  {} .fmmrc.toml is optional — delete it to use built-in defaults",
-            "hint:".cyan()
-        );
-    }
+    println!(
+        "  {} Add '.fmm.db' to your .gitignore — the index is regeneratable",
+        "hint:".cyan()
+    );
+    println!(
+        "  {} .fmmrc.toml is optional — delete it to use built-in defaults",
+        "hint:".cyan()
+    );
 
-    if no_generate || specific {
+    if no_generate {
         println!(
             "\n  {} Run 'fmm generate' to index your codebase",
             "next:".cyan()
@@ -156,80 +126,9 @@ fn init_config() -> Result<()> {
         println!("{} .fmmrc.toml already exists (skipping)", "!".yellow());
         return Ok(());
     }
-    let json_path = Path::new(".fmmrc.json");
-    if json_path.exists() {
-        println!(
-            "{} .fmmrc.json found — consider migrating to .fmmrc.toml (skipping)",
-            "!".yellow()
-        );
-        return Ok(());
-    }
 
     std::fs::write(toml_path, FMMRC_TEMPLATE).context("Failed to write .fmmrc.toml")?;
 
     println!("{} Created .fmmrc.toml", "✓".green());
-    Ok(())
-}
-
-pub fn init_skill() -> Result<()> {
-    let skill_dir = Path::new(".claude").join("skills").join("fmm-navigate");
-    let skill_path = skill_dir.join("SKILL.md");
-
-    std::fs::create_dir_all(&skill_dir)
-        .context("Failed to create .claude/skills/fmm-navigate/ directory")?;
-
-    if skill_path.exists() {
-        let existing =
-            std::fs::read_to_string(&skill_path).context("Failed to read existing skill file")?;
-        if existing == SKILL_CONTENT {
-            println!(
-                "{} .claude/skills/fmm-navigate/SKILL.md already up to date (skipping)",
-                "!".yellow()
-            );
-            return Ok(());
-        }
-    }
-
-    std::fs::write(&skill_path, SKILL_CONTENT).context("Failed to write skill file")?;
-
-    println!(
-        "{} Installed Claude skill at .claude/skills/fmm-navigate/SKILL.md",
-        "✓".green()
-    );
-    Ok(())
-}
-
-pub fn init_mcp_config() -> Result<()> {
-    let claude_dir = Path::new(".claude");
-    let config_path = claude_dir.join("fmm.local.json");
-
-    // Ensure .claude/ dir exists
-    std::fs::create_dir_all(claude_dir).context("Failed to create .claude/ directory")?;
-
-    if config_path.exists() {
-        println!(
-            "{} .claude/fmm.local.json already exists (skipping)",
-            "!".yellow()
-        );
-        return Ok(());
-    }
-
-    let config = serde_json::json!({
-        "mcpServers": {
-            "fmm": {
-                "command": "fmm",
-                "args": ["mcp"]
-            }
-        }
-    });
-
-    let json = serde_json::to_string_pretty(&config)?;
-    std::fs::write(&config_path, format!("{}\n", json))
-        .context("Failed to write .claude/fmm.local.json")?;
-
-    println!(
-        "{} Created .claude/fmm.local.json with MCP server configuration",
-        "✓".green()
-    );
     Ok(())
 }

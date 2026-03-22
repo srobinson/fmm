@@ -26,7 +26,6 @@ mod generated_help;
 pub use commands::{deps, exports, lookup, ls, outline, read_symbol};
 pub use glossary::glossary;
 pub use init::init;
-pub use init::init_skill;
 pub use search::search;
 pub use sidecar::{clean, generate, validate};
 pub use status::status;
@@ -207,52 +206,29 @@ pub enum Commands {
         debounce: u64,
     },
 
-    /// Set up config, Claude skill, and MCP server
+    /// Set up fmm in the current project
     #[command(
         long_about = "Set up fmm in the current project.\n\n\
-            Creates .fmmrc.toml config and configures the MCP server in .claude/fmm.local.json. \
-            The Claude Code skill is opt-in via --skill (avoid creating a project-level \
-            .claude/ directory which overrides global plugin config). \
-            Run with no flags for the standard setup, or use flags to install individual components.",
+            Creates .fmmrc.toml config and indexes source files. \
+            Safe to re-run: existing config is not overwritten.",
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm init</bold>                 <dim># Config + MCP + index source files</dim>
-  <dim>$</dim> <bold>fmm init --skill</bold>          <dim># Also install Claude Code skill</dim>
-  <dim>$</dim> <bold>fmm init --mcp</bold>            <dim># MCP server config only</dim>"#),
+  <dim>$</dim> <bold>fmm init</bold>                 <dim># Create config + index source files</dim>
+  <dim>$</dim> <bold>fmm init --no-generate</bold>   <dim># Config only, skip indexing</dim>"#),
         after_long_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm init</bold>                           <dim># Config + MCP + index source files</dim>
-  <dim>$</dim> <bold>fmm init --skill</bold>                    <dim># Also install Claude Code skill (.claude/)</dim>
-  <dim>$</dim> <bold>fmm init --all</bold>                      <dim># Everything including skill</dim>
-  <dim>$</dim> <bold>fmm init --mcp</bold>                      <dim># MCP server config only</dim>
-  <dim>$</dim> <bold>fmm init --all --no-generate</bold>        <dim># Config files only, skip indexing</dim>
+  <dim>$</dim> <bold>fmm init</bold>                           <dim># Create config + index source files</dim>
+  <dim>$</dim> <bold>fmm init --no-generate</bold>              <dim># Config only, skip indexing</dim>
 
 <bold><underline>What gets created</underline></bold>
-  <bold>.fmmrc.toml</bold>                           Project configuration
-  <bold>.claude/fmm.local.json</bold>                 MCP server config (gitignored, local scope)
-  <bold>.claude/skills/fmm-navigate/SKILL.md</bold>   Claude Code skill (opt-in via --skill)
+  <bold>.fmmrc.toml</bold>                           Project configuration (optional, defaults apply)
 
 <bold><underline>Notes</underline></bold>
-  Safe to re-run — existing files are not overwritten.
-  MCP config uses .claude/fmm.local.json — gitignored, per-user, no merge conflicts.
-  The --skill flag creates .claude/skills/ which may override global plugin skills.
-  If using the helioy plugin globally, skip --skill to inherit skills from the plugin.
-  The MCP config enables 8 tools for O(1) symbol lookup and navigation."#),
+  Safe to re-run: existing .fmmrc.toml is not overwritten.
+  .fmmrc.toml is optional: delete it to use built-in defaults."#),
     )]
     Init {
-        /// Install Claude Code skill (.claude/skills/fmm-navigate.md) — opt-in, creates project .claude/ dir
-        #[arg(long)]
-        skill: bool,
-
-        /// Install MCP server config only (.claude/fmm.local.json)
-        #[arg(long)]
-        mcp: bool,
-
-        /// Install all integrations (non-interactive)
-        #[arg(long)]
-        all: bool,
-
-        /// Skip auto-indexing (config files only)
+        /// Skip auto-indexing (config only)
         #[arg(long)]
         no_generate: bool,
     },
@@ -599,9 +575,7 @@ pub enum Commands {
   <bold>fmm_glossary</bold>         Symbol-level blast radius — all definitions + who imports each
 
 <bold><underline>Setup</underline></bold>
-  <dim>$</dim> <bold>fmm init --mcp</bold>                      <dim># Add to .claude/fmm.local.json</dim>
-
-  <dim>Or manually add to .claude/fmm.local.json:</dim>
+  <dim>Add to .claude/settings.json or settings.local.json:</dim>
   <dim>{ "mcpServers": { "fmm": { "command": "fmm", "args": ["mcp"] } } }</dim>
 
 <bold><underline>Notes</underline></bold>

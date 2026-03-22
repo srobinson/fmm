@@ -171,15 +171,9 @@ fn init_without_no_generate_defaults_to_false() {
 }
 
 #[test]
-fn init_no_generate_combined_with_other_flags() {
-    let cli = Cli::parse_from(["fmm", "init", "--skill", "--no-generate"]);
-    match cli.command {
-        Some(Commands::Init {
-            skill, no_generate, ..
-        }) => {
-            assert!(skill);
-            assert!(no_generate);
-        }
-        other => panic!("expected Init command, got {:?}", other.is_some()),
+fn init_removed_flags_are_rejected() {
+    for flag in &["--skill", "--mcp", "--all"] {
+        let result = Cli::try_parse_from(["fmm", "init", flag]);
+        assert!(result.is_err(), "{} should be rejected", flag);
     }
 }
