@@ -110,6 +110,9 @@ const FMMRC_TEMPLATE: &str = r#"# fmm configuration
 #   FMM_MAX_LINES=50000
 #   FMM_LANGUAGES=rs,py,ts
 #   FMM_EXCLUDE=vendor/**,dist/**
+#
+# Note: .gitignore and .fmmignore are always respected. Exclude patterns here
+# are applied in addition to those ignore files.
 
 # Maximum lines per file. Files exceeding this limit are skipped during indexing.
 # Default: 100000. Set to 0 to disable the limit.
