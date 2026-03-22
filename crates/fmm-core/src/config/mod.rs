@@ -96,51 +96,65 @@ impl Config {
     }
 
     pub fn load_from_dir(dir: &Path) -> Result<Self> {
-        let toml_path = dir.join(".fmmrc.toml");
-        if !toml_path.exists() {
-            return Ok(Self::default());
-        }
-
-        let content = match std::fs::read_to_string(&toml_path) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!(
-                    "[fmm] warning: failed to read {}: {e}; using defaults",
-                    toml_path.display()
-                );
-                return Ok(Self::default());
-            }
-        };
-
-        let file_config: FileConfig = match toml::from_str(&content) {
-            Ok(fc) => fc,
-            Err(e) => {
-                eprintln!(
-                    "[fmm] warning: failed to parse {}: {e}; using defaults",
-                    toml_path.display()
-                );
-                return Ok(Self::default());
-            }
-        };
-
-        // Merge FileConfig onto defaults
         let mut config = Self::default();
-        if let Some(languages) = file_config.languages {
-            config.languages = languages;
-        }
-        if let Some(max_lines) = file_config.max_lines {
-            config.max_lines = max_lines;
-        }
-        if let Some(exclude) = file_config.exclude {
-            config.exclude = exclude;
-        }
-        if let Some(tp) = file_config.test_patterns {
-            if let Some(path_contains) = tp.path_contains {
-                config.test_patterns.path_contains = path_contains;
+
+        // Layer 1: File config (.fmmrc.toml)
+        let toml_path = dir.join(".fmmrc.toml");
+        if toml_path.exists() {
+            match std::fs::read_to_string(&toml_path) {
+                Ok(content) => match toml::from_str::<FileConfig>(&content) {
+                    Ok(fc) => {
+                        if let Some(languages) = fc.languages {
+                            config.languages = languages;
+                        }
+                        if let Some(max_lines) = fc.max_lines {
+                            config.max_lines = max_lines;
+                        }
+                        if let Some(exclude) = fc.exclude {
+                            config.exclude = exclude;
+                        }
+                        if let Some(tp) = fc.test_patterns {
+                            if let Some(path_contains) = tp.path_contains {
+                                config.test_patterns.path_contains = path_contains;
+                            }
+                            if let Some(filename_suffixes) = tp.filename_suffixes {
+                                config.test_patterns.filename_suffixes = filename_suffixes;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "[fmm] warning: failed to parse {}: {e}; using defaults",
+                            toml_path.display()
+                        );
+                        config = Self::default();
+                    }
+                },
+                Err(e) => {
+                    eprintln!(
+                        "[fmm] warning: failed to read {}: {e}; using defaults",
+                        toml_path.display()
+                    );
+                }
             }
-            if let Some(filename_suffixes) = tp.filename_suffixes {
-                config.test_patterns.filename_suffixes = filename_suffixes;
+        }
+
+        // Layer 2: Env var overrides
+        if let Ok(val) = std::env::var("FMM_MAX_LINES") {
+            match val.parse::<usize>() {
+                Ok(n) => config.max_lines = n,
+                Err(_) => {
+                    eprintln!(
+                        "[fmm] warning: FMM_MAX_LINES={val:?} is not a valid usize; keeping current value"
+                    );
+                }
             }
+        }
+        if let Ok(val) = std::env::var("FMM_LANGUAGES") {
+            config.languages = val.split(',').map(|s| s.trim().to_string()).collect();
+        }
+        if let Ok(val) = std::env::var("FMM_EXCLUDE") {
+            config.exclude = val.split(',').map(|s| s.trim().to_string()).collect();
         }
 
         Ok(config)
@@ -439,5 +453,96 @@ filename_suffixes = [".myspec.ts"]
         assert!(config.is_test_file("src/bar.myspec.ts"));
         assert!(!config.is_test_file("src/auth.spec.ts"));
         assert!(!config.is_test_file("src/test/foo.ts"));
+    }
+
+    // Env var override tests
+    // nextest runs each test in its own process, so env vars are isolated.
+
+    #[test]
+    fn env_fmm_max_lines_overrides_toml() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".fmmrc.toml"), "max_lines = 5000\n").unwrap();
+        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        unsafe { std::env::set_var("FMM_MAX_LINES", "999") };
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.max_lines, 999);
+    }
+
+    #[test]
+    fn env_fmm_max_lines_overrides_default() {
+        let tmp = TempDir::new().unwrap();
+        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        unsafe { std::env::set_var("FMM_MAX_LINES", "42") };
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.max_lines, 42);
+    }
+
+    #[test]
+    fn env_fmm_max_lines_invalid_keeps_current() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".fmmrc.toml"), "max_lines = 5000\n").unwrap();
+        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        unsafe { std::env::set_var("FMM_MAX_LINES", "not_a_number") };
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        // Invalid env var is warned and ignored; TOML value preserved
+        assert_eq!(config.max_lines, 5000);
+    }
+
+    #[test]
+    fn env_fmm_languages_overrides_toml() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join(".fmmrc.toml"),
+            r#"languages = ["rs", "py"]"#,
+        )
+        .unwrap();
+        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        unsafe { std::env::set_var("FMM_LANGUAGES", "go, java, kt") };
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.languages.len(), 3);
+        assert!(config.languages.contains("go"));
+        assert!(config.languages.contains("java"));
+        assert!(config.languages.contains("kt"));
+    }
+
+    #[test]
+    fn env_fmm_languages_trims_whitespace() {
+        let tmp = TempDir::new().unwrap();
+        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        unsafe { std::env::set_var("FMM_LANGUAGES", "  rs , py  ") };
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.languages.len(), 2);
+        assert!(config.languages.contains("rs"));
+        assert!(config.languages.contains("py"));
+    }
+
+    #[test]
+    fn env_fmm_exclude_overrides_toml() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".fmmrc.toml"), r#"exclude = ["vendor/**"]"#).unwrap();
+        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        unsafe { std::env::set_var("FMM_EXCLUDE", "dist/**, build/**") };
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.exclude.len(), 2);
+        assert_eq!(config.exclude[0], "dist/**");
+        assert_eq!(config.exclude[1], "build/**");
+    }
+
+    #[test]
+    fn env_vars_applied_without_toml_file() {
+        let tmp = TempDir::new().unwrap();
+        // No .fmmrc.toml exists
+        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        unsafe {
+            std::env::set_var("FMM_MAX_LINES", "777");
+            std::env::set_var("FMM_LANGUAGES", "zig,lua");
+            std::env::set_var("FMM_EXCLUDE", "tmp/**");
+        }
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.max_lines, 777);
+        assert_eq!(config.languages.len(), 2);
+        assert!(config.languages.contains("zig"));
+        assert!(config.languages.contains("lua"));
+        assert_eq!(config.exclude, vec!["tmp/**"]);
     }
 }
