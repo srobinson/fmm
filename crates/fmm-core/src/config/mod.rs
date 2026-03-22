@@ -2,6 +2,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::Path;
+use tracing::warn;
 
 use crate::parser::ParserRegistry;
 
@@ -123,18 +124,21 @@ impl Config {
                         }
                     }
                     Err(e) => {
-                        eprintln!(
-                            "[fmm] warning: failed to parse {}: {e}; using defaults",
-                            toml_path.display()
+                        warn!(
+                            path = %toml_path.display(),
+                            error = %e,
+                            "failed to parse config; using defaults"
                         );
                         config = Self::default();
                     }
                 },
                 Err(e) => {
-                    eprintln!(
-                        "[fmm] warning: failed to read {}: {e}; using defaults",
-                        toml_path.display()
+                    warn!(
+                        path = %toml_path.display(),
+                        error = %e,
+                        "failed to read config; using defaults"
                     );
+                    config = Self::default();
                 }
             }
         }
@@ -144,22 +148,32 @@ impl Config {
             match val.parse::<usize>() {
                 Ok(n) => config.max_lines = n,
                 Err(_) => {
-                    eprintln!(
-                        "[fmm] warning: FMM_MAX_LINES={val:?} is not a valid usize; keeping current value"
+                    warn!(
+                        var = "FMM_MAX_LINES",
+                        value = %val,
+                        "not a valid usize; keeping current value"
                     );
                 }
             }
         }
         if let Ok(val) = std::env::var("FMM_LANGUAGES") {
-            config.languages = val.split(',').map(|s| s.trim().to_string()).collect();
+            config.languages = val
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
         }
         if let Ok(val) = std::env::var("FMM_EXCLUDE") {
-            config.exclude = val.split(',').map(|s| s.trim().to_string()).collect();
+            config.exclude = val
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
         }
 
         // Layer 3: Validation
         if let Err(msg) = config.validate() {
-            eprintln!("[fmm] warning: config validation failed: {msg}; falling back to defaults");
+            warn!(reason = %msg, "config validation failed; falling back to defaults");
             return Ok(Self::default());
         }
 
@@ -600,5 +614,24 @@ filename_suffixes = [".myspec.ts"]
         assert_eq!(config.exclude, vec!["dist/**"]);
         // test_patterns: default (not in file or env)
         assert_eq!(config.test_patterns.path_contains.len(), 5);
+    }
+
+    #[test]
+    fn env_fmm_languages_empty_string_falls_back_to_defaults() {
+        let tmp = TempDir::new().unwrap();
+        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        unsafe { std::env::set_var("FMM_LANGUAGES", "") };
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        // Empty strings filtered out, leaving empty set; validate() rejects it
+        assert_eq!(config.languages.len(), 29);
+    }
+
+    #[test]
+    fn max_lines_zero_is_valid() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".fmmrc.toml"), "max_lines = 0\n").unwrap();
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        // 0 means "no limit" per field docs; validate() accepts it
+        assert_eq!(config.max_lines, 0);
     }
 }
