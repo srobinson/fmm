@@ -56,7 +56,6 @@ fn main() {
     let parsed: ToolsToml =
         toml::from_str(&content).unwrap_or_else(|e| panic!("Failed to parse tools.toml: {e}"));
 
-    // Generate all three outputs.
     let schema_rs = generate_mcp_schema(&parsed.tools);
     let help_rs = generate_cli_help(&parsed.tools);
     let skill_md = generate_skill_md(parsed.skill.as_ref(), &parsed.tools);
@@ -69,10 +68,13 @@ fn main() {
         &Path::new(&manifest_dir).join("src/cli/generated_help.rs"),
         &help_rs,
     );
-    write_if_changed(
-        &Path::new(&manifest_dir).join("templates/SKILL.md"),
-        &skill_md,
-    );
+
+    // Ensure templates directory exists for SKILL.md
+    let templates_dir = Path::new(&manifest_dir).join("templates");
+    fs::create_dir_all(&templates_dir)
+        .unwrap_or_else(|e| panic!("Failed to create templates/: {e}"));
+
+    write_if_changed(&templates_dir.join("SKILL.md"), &skill_md);
 }
 
 /// Only write if the content has changed to avoid spurious rebuilds.

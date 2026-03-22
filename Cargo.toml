@@ -66,6 +66,9 @@ indexmap = { version = "2", features = ["serde"] }
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
 
+# Logging
+tracing = "0.1"
+
 # Error handling
 anyhow = "1.0"
 thiserror = "2.0"

@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 /// Resolve the root directory from the target path.
 /// If a directory, use it directly. If a file, walk up from its parent
-/// looking for project root markers (.git, .fmmrc.toml, .fmmrc.json) so that relative
+/// looking for project root markers (.git, .fmmrc.toml) so that relative
 /// paths in the index are consistent regardless of whether `fmm generate`
 /// targets a single file or the whole repo.
 /// Falls back to the file's parent directory, then CWD.
@@ -24,14 +24,11 @@ pub(crate) fn resolve_root(path: &str) -> Result<PathBuf> {
 }
 
 /// Walk up from `start` looking for project root markers.
-/// Returns the first directory containing `.git`, `.fmmrc.toml`, or `.fmmrc.json`.
+/// Returns the first directory containing `.git` or `.fmmrc.toml`.
 fn find_project_root(start: &Path) -> Option<PathBuf> {
     let mut current = start.to_path_buf();
     loop {
-        if current.join(".git").exists()
-            || current.join(".fmmrc.toml").exists()
-            || current.join(".fmmrc.json").exists()
-        {
+        if current.join(".git").exists() || current.join(".fmmrc.toml").exists() {
             return Some(current);
         }
         if !current.pop() {

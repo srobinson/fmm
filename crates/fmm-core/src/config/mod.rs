@@ -1,9 +1,31 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::Path;
+use tracing::warn;
 
 use crate::parser::ParserRegistry;
+
+/// Intermediate deserialization target for `.fmmrc.toml`.
+///
+/// All fields are `Option` so partial configs are valid.
+/// `deny_unknown_fields` catches typos and stale keys at deserialization time.
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct FileConfig {
+    languages: Option<BTreeSet<String>>,
+    test_patterns: Option<FileTestPatterns>,
+    max_lines: Option<usize>,
+    exclude: Option<Vec<String>>,
+}
+
+/// Intermediate deserialization target for the `[test_patterns]` TOML section.
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct FileTestPatterns {
+    path_contains: Option<Vec<String>>,
+    filename_suffixes: Option<Vec<String>>,
+}
 
 /// Patterns used to classify test vs. source files.
 ///
@@ -75,25 +97,97 @@ impl Config {
     }
 
     pub fn load_from_dir(dir: &Path) -> Result<Self> {
+        let mut config = Self::default();
+
+        // Layer 1: File config (.fmmrc.toml)
         let toml_path = dir.join(".fmmrc.toml");
         if toml_path.exists() {
-            let content = std::fs::read_to_string(&toml_path)
-                .with_context(|| format!("Failed to read {}", toml_path.display()))?;
-            let config: Config = toml::from_str(&content)
-                .with_context(|| format!("Failed to parse {}", toml_path.display()))?;
-            return Ok(config);
+            match std::fs::read_to_string(&toml_path) {
+                Ok(content) => match toml::from_str::<FileConfig>(&content) {
+                    Ok(fc) => {
+                        if let Some(languages) = fc.languages {
+                            config.languages = languages;
+                        }
+                        if let Some(max_lines) = fc.max_lines {
+                            config.max_lines = max_lines;
+                        }
+                        if let Some(exclude) = fc.exclude {
+                            config.exclude = exclude;
+                        }
+                        if let Some(tp) = fc.test_patterns {
+                            if let Some(path_contains) = tp.path_contains {
+                                config.test_patterns.path_contains = path_contains;
+                            }
+                            if let Some(filename_suffixes) = tp.filename_suffixes {
+                                config.test_patterns.filename_suffixes = filename_suffixes;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!(
+                            path = %toml_path.display(),
+                            error = %e,
+                            "failed to parse config; using defaults"
+                        );
+                        config = Self::default();
+                    }
+                },
+                Err(e) => {
+                    warn!(
+                        path = %toml_path.display(),
+                        error = %e,
+                        "failed to read config; using defaults"
+                    );
+                    config = Self::default();
+                }
+            }
         }
 
-        let json_path = dir.join(".fmmrc.json");
-        if json_path.exists() {
-            let content = std::fs::read_to_string(&json_path)
-                .with_context(|| format!("Failed to read {}", json_path.display()))?;
-            let config: Config = serde_json::from_str(&content)
-                .with_context(|| format!("Failed to parse {}", json_path.display()))?;
-            return Ok(config);
+        // Layer 2: Env var overrides
+        if let Ok(val) = std::env::var("FMM_MAX_LINES") {
+            match val.parse::<usize>() {
+                Ok(n) => config.max_lines = n,
+                Err(_) => {
+                    warn!(
+                        var = "FMM_MAX_LINES",
+                        value = %val,
+                        "not a valid usize; keeping current value"
+                    );
+                }
+            }
+        }
+        if let Ok(val) = std::env::var("FMM_LANGUAGES") {
+            config.languages = val
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+        }
+        if let Ok(val) = std::env::var("FMM_EXCLUDE") {
+            config.exclude = val
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
         }
 
-        Ok(Self::default())
+        // Layer 3: Validation
+        if let Err(msg) = config.validate() {
+            warn!(reason = %msg, "config validation failed; falling back to defaults");
+            return Ok(Self::default());
+        }
+
+        Ok(config)
+    }
+
+    /// Check invariants after merging file config and env overrides.
+    /// Returns `Err(reason)` if the config is invalid; the caller warns and
+    /// falls back to `Config::default()`.
+    fn validate(&self) -> Result<(), String> {
+        if self.languages.is_empty() {
+            return Err("languages must not be empty when explicitly set".into());
+        }
+        Ok(())
     }
 
     pub fn is_supported_language(&self, extension: &str) -> bool {
@@ -212,68 +306,35 @@ mod tests {
     }
 
     #[test]
-    fn loads_config_with_languages() {
+    fn json_config_file_is_not_loaded() {
         let tmp = TempDir::new().unwrap();
-        let json = r#"{ "languages": ["rs", "py"] }"#;
-        fs::write(tmp.path().join(".fmmrc.json"), json).unwrap();
+        fs::write(
+            tmp.path().join(".fmmrc.json"),
+            r#"{ "languages": ["rs", "py"] }"#,
+        )
+        .unwrap();
 
+        // .fmmrc.json is no longer loaded; should return defaults
         let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.languages.len(), 2);
-        assert!(config.languages.contains("rs"));
-        assert!(config.languages.contains("py"));
+        assert_eq!(config.languages.len(), 29);
     }
 
     #[test]
-    fn handles_partial_config_with_defaults() {
+    fn empty_languages_falls_back_to_defaults() {
         let tmp = TempDir::new().unwrap();
-        fs::write(tmp.path().join(".fmmrc.json"), r#"{ "languages": ["go"] }"#).unwrap();
+        fs::write(tmp.path().join(".fmmrc.toml"), "languages = []\n").unwrap();
 
         let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.languages.len(), 1);
-        assert!(config.languages.contains("go"));
-    }
-
-    #[test]
-    fn handles_invalid_json_as_error() {
-        let tmp = TempDir::new().unwrap();
-        fs::write(tmp.path().join(".fmmrc.json"), "not json at all {{{").unwrap();
-        let result = Config::load_from_dir(tmp.path());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn old_config_fields_silently_ignored() {
-        let tmp = TempDir::new().unwrap();
-        let json = r#"{
-            "languages": ["ts"],
-            "format": "json",
-            "include_loc": false,
-            "include_complexity": true,
-            "max_file_size": 512,
-            "totally_unknown_field": true
-        }"#;
-        fs::write(tmp.path().join(".fmmrc.json"), json).unwrap();
-
-        let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.languages.len(), 1);
-        assert!(config.languages.contains("ts"));
-    }
-
-    #[test]
-    fn empty_languages_list() {
-        let tmp = TempDir::new().unwrap();
-        fs::write(tmp.path().join(".fmmrc.json"), r#"{ "languages": [] }"#).unwrap();
-
-        let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert!(config.languages.is_empty());
+        // validate() rejects empty languages; falls back to defaults
+        assert_eq!(config.languages.len(), 29);
     }
 
     #[test]
     fn unknown_language_extension_accepted() {
         let tmp = TempDir::new().unwrap();
         fs::write(
-            tmp.path().join(".fmmrc.json"),
-            r#"{ "languages": ["xyz", "abc"] }"#,
+            tmp.path().join(".fmmrc.toml"),
+            "languages = [\"xyz\", \"abc\"]\n",
         )
         .unwrap();
 
@@ -302,25 +363,6 @@ mod tests {
     }
 
     #[test]
-    fn test_patterns_configurable_via_fmmrc() {
-        let tmp = TempDir::new().unwrap();
-        let json = r#"{
-            "test_patterns": {
-                "path_contains": ["/custom_tests/"],
-                "filename_suffixes": [".myspec.ts"]
-            }
-        }"#;
-        fs::write(tmp.path().join(".fmmrc.json"), json).unwrap();
-
-        let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert!(config.is_test_file("src/custom_tests/foo.ts"));
-        assert!(config.is_test_file("src/bar.myspec.ts"));
-        // Default patterns NOT active (custom config replaces them)
-        assert!(!config.is_test_file("src/auth.spec.ts"));
-        assert!(!config.is_test_file("src/test/foo.ts"));
-    }
-
-    #[test]
     fn is_supported_language_checks_membership() {
         let config = Config::default();
         assert!(config.is_supported_language("ts"));
@@ -344,23 +386,6 @@ mod tests {
         assert!(config.is_supported_language("ex"));
         assert!(config.is_supported_language("exs"));
         assert!(!config.is_supported_language(""));
-    }
-
-    #[test]
-    fn empty_json_object_gives_defaults() {
-        let tmp = TempDir::new().unwrap();
-        fs::write(tmp.path().join(".fmmrc.json"), "{}").unwrap();
-
-        let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.languages.len(), 29);
-    }
-
-    #[test]
-    fn config_serialization_roundtrip() {
-        let config = Config::default();
-        let json = serde_json::to_string(&config).unwrap();
-        let deserialized: Config = serde_json::from_str(&json).unwrap();
-        assert_eq!(config.languages, deserialized.languages);
     }
 
     // max_lines and exclude tests
@@ -399,26 +424,6 @@ mod tests {
         assert_eq!(config.exclude[1], "benchmarks/fixtures/**");
     }
 
-    #[test]
-    fn loads_max_lines_from_json() {
-        let tmp = TempDir::new().unwrap();
-        fs::write(tmp.path().join(".fmmrc.json"), r#"{ "max_lines": 5000 }"#).unwrap();
-        let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.max_lines, 5_000);
-    }
-
-    #[test]
-    fn loads_exclude_from_json() {
-        let tmp = TempDir::new().unwrap();
-        fs::write(
-            tmp.path().join(".fmmrc.json"),
-            r#"{ "exclude": ["dist/**"] }"#,
-        )
-        .unwrap();
-        let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.exclude, vec!["dist/**"]);
-    }
-
     // TOML loading tests
 
     #[test]
@@ -434,26 +439,25 @@ mod tests {
     }
 
     #[test]
-    fn toml_takes_precedence_over_json() {
+    fn unknown_keys_fall_back_to_defaults() {
         let tmp = TempDir::new().unwrap();
-        fs::write(tmp.path().join(".fmmrc.toml"), r#"languages = ["rs"]"#).unwrap();
         fs::write(
-            tmp.path().join(".fmmrc.json"),
-            r#"{ "languages": ["py", "go"] }"#,
+            tmp.path().join(".fmmrc.toml"),
+            "languages = [\"rs\"]\nbogus_key = true\n",
         )
         .unwrap();
-
         let config = Config::load_from_dir(tmp.path()).unwrap();
-        assert_eq!(config.languages.len(), 1);
-        assert!(config.languages.contains("rs"));
+        // deny_unknown_fields causes parse failure; warn-and-fallback returns defaults
+        assert_eq!(config.languages.len(), 29);
     }
 
     #[test]
-    fn handles_invalid_toml_as_error() {
+    fn malformed_toml_falls_back_to_defaults() {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join(".fmmrc.toml"), "not = toml = at = all %%%").unwrap();
-        let result = Config::load_from_dir(tmp.path());
-        assert!(result.is_err());
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        // Malformed TOML warns and returns defaults (fail-open)
+        assert_eq!(config.languages.len(), 29);
     }
 
     #[test]
@@ -480,5 +484,154 @@ filename_suffixes = [".myspec.ts"]
         assert!(config.is_test_file("src/bar.myspec.ts"));
         assert!(!config.is_test_file("src/auth.spec.ts"));
         assert!(!config.is_test_file("src/test/foo.ts"));
+    }
+
+    // Env var override tests
+    // nextest runs each test in its own process, so env vars are isolated.
+
+    #[test]
+    fn env_fmm_max_lines_overrides_toml() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".fmmrc.toml"), "max_lines = 5000\n").unwrap();
+        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        unsafe { std::env::set_var("FMM_MAX_LINES", "999") };
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.max_lines, 999);
+    }
+
+    #[test]
+    fn env_fmm_max_lines_overrides_default() {
+        let tmp = TempDir::new().unwrap();
+        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        unsafe { std::env::set_var("FMM_MAX_LINES", "42") };
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.max_lines, 42);
+    }
+
+    #[test]
+    fn env_fmm_max_lines_invalid_keeps_current() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".fmmrc.toml"), "max_lines = 5000\n").unwrap();
+        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        unsafe { std::env::set_var("FMM_MAX_LINES", "not_a_number") };
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        // Invalid env var is warned and ignored; TOML value preserved
+        assert_eq!(config.max_lines, 5000);
+    }
+
+    #[test]
+    fn env_fmm_languages_overrides_toml() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join(".fmmrc.toml"),
+            r#"languages = ["rs", "py"]"#,
+        )
+        .unwrap();
+        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        unsafe { std::env::set_var("FMM_LANGUAGES", "go, java, kt") };
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.languages.len(), 3);
+        assert!(config.languages.contains("go"));
+        assert!(config.languages.contains("java"));
+        assert!(config.languages.contains("kt"));
+    }
+
+    #[test]
+    fn env_fmm_languages_trims_whitespace() {
+        let tmp = TempDir::new().unwrap();
+        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        unsafe { std::env::set_var("FMM_LANGUAGES", "  rs , py  ") };
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.languages.len(), 2);
+        assert!(config.languages.contains("rs"));
+        assert!(config.languages.contains("py"));
+    }
+
+    #[test]
+    fn env_fmm_exclude_overrides_toml() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".fmmrc.toml"), r#"exclude = ["vendor/**"]"#).unwrap();
+        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        unsafe { std::env::set_var("FMM_EXCLUDE", "dist/**, build/**") };
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.exclude.len(), 2);
+        assert_eq!(config.exclude[0], "dist/**");
+        assert_eq!(config.exclude[1], "build/**");
+    }
+
+    #[test]
+    fn env_vars_applied_without_toml_file() {
+        let tmp = TempDir::new().unwrap();
+        // No .fmmrc.toml exists
+        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        unsafe {
+            std::env::set_var("FMM_MAX_LINES", "777");
+            std::env::set_var("FMM_LANGUAGES", "zig,lua");
+            std::env::set_var("FMM_EXCLUDE", "tmp/**");
+        }
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.max_lines, 777);
+        assert_eq!(config.languages.len(), 2);
+        assert!(config.languages.contains("zig"));
+        assert!(config.languages.contains("lua"));
+        assert_eq!(config.exclude, vec!["tmp/**"]);
+    }
+
+    #[test]
+    fn file_config_partial_deserialization() {
+        let tmp = TempDir::new().unwrap();
+        // Only max_lines set; languages, exclude, test_patterns use defaults
+        fs::write(tmp.path().join(".fmmrc.toml"), "max_lines = 42\n").unwrap();
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        assert_eq!(config.max_lines, 42);
+        assert_eq!(config.languages.len(), 29); // default
+        assert!(config.exclude.is_empty()); // default
+        assert_eq!(config.test_patterns.path_contains.len(), 5); // default
+    }
+
+    #[test]
+    fn three_layer_precedence() {
+        let tmp = TempDir::new().unwrap();
+        // File sets max_lines=5000 and languages=["rs","py"]
+        fs::write(
+            tmp.path().join(".fmmrc.toml"),
+            "max_lines = 5000\nlanguages = [\"rs\", \"py\"]\n",
+        )
+        .unwrap();
+        // Env overrides max_lines and exclude; languages from file survives
+        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        unsafe {
+            std::env::set_var("FMM_MAX_LINES", "123");
+            std::env::set_var("FMM_EXCLUDE", "dist/**");
+        }
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        // max_lines: env wins over file
+        assert_eq!(config.max_lines, 123);
+        // languages: file wins over default (env not set)
+        assert_eq!(config.languages.len(), 2);
+        assert!(config.languages.contains("rs"));
+        // exclude: env wins over default (file not set)
+        assert_eq!(config.exclude, vec!["dist/**"]);
+        // test_patterns: default (not in file or env)
+        assert_eq!(config.test_patterns.path_contains.len(), 5);
+    }
+
+    #[test]
+    fn env_fmm_languages_empty_string_falls_back_to_defaults() {
+        let tmp = TempDir::new().unwrap();
+        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        unsafe { std::env::set_var("FMM_LANGUAGES", "") };
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        // Empty strings filtered out, leaving empty set; validate() rejects it
+        assert_eq!(config.languages.len(), 29);
+    }
+
+    #[test]
+    fn max_lines_zero_is_valid() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".fmmrc.toml"), "max_lines = 0\n").unwrap();
+        let config = Config::load_from_dir(tmp.path()).unwrap();
+        // 0 means "no limit" per field docs; validate() accepts it
+        assert_eq!(config.max_lines, 0);
     }
 }
