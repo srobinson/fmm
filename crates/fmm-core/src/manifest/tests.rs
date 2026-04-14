@@ -417,6 +417,118 @@ fn export_all_remove_file_cleans_up() {
 }
 
 #[test]
+fn python_reexport_does_not_claim_export_index_slot() {
+    // `foo.py` defines `bar` locally; `__init__.py` re-exports it via
+    // `from .foo import bar` + `__all__ = ["bar"]`. After add_file, the
+    // export_index must still point at foo.py (the true definition).
+    let mut manifest = Manifest::new();
+    manifest.add_file(
+        "pkg/foo.py",
+        Metadata {
+            exports: vec![entry("bar", 1, 3)],
+            imports: vec![],
+            dependencies: vec![],
+            loc: 3,
+            ..Default::default()
+        },
+    );
+
+    let mut named: HashMap<String, Vec<String>> = HashMap::new();
+    named.insert(".foo".to_string(), vec!["bar".to_string()]);
+    manifest.add_file(
+        "pkg/__init__.py",
+        Metadata {
+            exports: vec![entry("bar", 2, 2)], // points at import line (Phase 1)
+            imports: vec![],
+            dependencies: vec!["./foo".to_string()],
+            loc: 3,
+            named_imports: named,
+            ..Default::default()
+        },
+    );
+
+    // export_index still points at the original definition
+    assert_eq!(
+        manifest.export_index.get("bar"),
+        Some(&"pkg/foo.py".to_string()),
+        "re-export must not shadow the original definition"
+    );
+    // export_all tracks both files so glossary/discovery still works
+    let all = manifest.export_all.get("bar").unwrap();
+    assert_eq!(all.len(), 2);
+    let files: Vec<&str> = all.iter().map(|l| l.file.as_str()).collect();
+    assert!(files.contains(&"pkg/foo.py"));
+    assert!(files.contains(&"pkg/__init__.py"));
+}
+
+#[test]
+fn python_aliased_reexport_treated_as_local_bind() {
+    // `extract_named_imports` stores the ORIGINAL name for `A as B`, so
+    // `from .foo import bar as baz` stores `bar`, not `baz`. The alias
+    // `baz` is a local bind unique to this file — treat it as a local
+    // define for shadow detection.
+    let mut manifest = Manifest::new();
+    manifest.add_file(
+        "pkg/foo.py",
+        Metadata {
+            exports: vec![entry("bar", 1, 3)],
+            ..Default::default()
+        },
+    );
+
+    let mut named: HashMap<String, Vec<String>> = HashMap::new();
+    named.insert(".foo".to_string(), vec!["bar".to_string()]);
+    manifest.add_file(
+        "pkg/__init__.py",
+        Metadata {
+            exports: vec![entry("baz", 2, 2)],
+            named_imports: named,
+            ..Default::default()
+        },
+    );
+
+    // baz: unique name, treated as local — this file owns export_index["baz"]
+    assert_eq!(
+        manifest.export_index.get("baz"),
+        Some(&"pkg/__init__.py".to_string())
+    );
+    // bar: original file still owns it (re-export was via aliased form)
+    assert_eq!(
+        manifest.export_index.get("bar"),
+        Some(&"pkg/foo.py".to_string())
+    );
+}
+
+#[test]
+fn python_true_name_collision_still_warns_and_shadows() {
+    // Two files both DEFINE `bar` locally (no named_imports). This is a real
+    // collision — last-writer-wins behavior must be preserved.
+    let mut manifest = Manifest::new();
+    manifest.add_file(
+        "pkg/a.py",
+        Metadata {
+            exports: vec![entry("bar", 1, 5)],
+            ..Default::default()
+        },
+    );
+    manifest.add_file(
+        "pkg/b.py",
+        Metadata {
+            exports: vec![entry("bar", 1, 5)],
+            ..Default::default()
+        },
+    );
+
+    // Last writer wins (no TS/JS priority for .py)
+    assert_eq!(
+        manifest.export_index.get("bar"),
+        Some(&"pkg/b.py".to_string())
+    );
+    // export_all has both
+    assert_eq!(manifest.export_all.get("bar").unwrap().len(), 2);
+}
+
+#[test]
 fn export_all_remove_last_entry_cleans_key() {
     let mut manifest = Manifest::new();
     manifest.add_file(

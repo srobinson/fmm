@@ -251,6 +251,48 @@ __all__ = ["shared", "local_fn"]
 }
 
 #[test]
+fn dunder_all_reexport_aliased_plain_import() {
+    // `import mymod as other` + `__all__ = ["other"]` — local binding is the
+    // alias, so the key in the import map must be `other`.
+    let mut parser = PythonParser::new().unwrap();
+    let source = r#"
+import mymod as other
+
+__all__ = ["other"]
+"#;
+    let result = parser.parse(source).unwrap();
+    let other = result
+        .metadata
+        .exports
+        .iter()
+        .find(|e| e.name == "other")
+        .expect("other should be exported");
+    assert_eq!(other.start_line, 2);
+    assert_eq!(other.end_line, 2);
+}
+
+#[test]
+fn dunder_all_reexport_dotted_plain_import_uses_first_segment() {
+    // `import os.path` binds `os` locally. `__all__ = ["os"]` should resolve
+    // to the `import os.path` line via the first-segment rule.
+    let mut parser = PythonParser::new().unwrap();
+    let source = r#"
+import os.path
+
+__all__ = ["os"]
+"#;
+    let result = parser.parse(source).unwrap();
+    let os = result
+        .metadata
+        .exports
+        .iter()
+        .find(|e| e.name == "os")
+        .expect("os should be exported");
+    assert_eq!(os.start_line, 2);
+    assert_eq!(os.end_line, 2);
+}
+
+#[test]
 fn dunder_all_unknown_name_falls_back_to_zero() {
     // A name in __all__ with no local def and no matching import must get
     // (0, 0) — the "no position" sentinel — not the __all__ literal's range.

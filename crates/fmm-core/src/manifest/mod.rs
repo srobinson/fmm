@@ -270,6 +270,21 @@ impl Manifest {
                     lines: lines.clone(),
                 });
 
+            // Re-exports (`from X import Y` + `__all__ = [Y]`) must not claim the
+            // `export_index` slot or emit shadow warnings — the original definition
+            // already owns that slot. Detection: this name appears as a value in
+            // the file's `named_imports`. `extract_named_imports` stores the
+            // original name for aliased imports (`from X import A as B` → A), so
+            // aliased re-exports like `manifest_write` naturally fall through here
+            // and are treated as local binds.
+            if metadata
+                .named_imports
+                .values()
+                .any(|names| names.contains(&export_entry.name))
+            {
+                continue;
+            }
+
             let (should_insert, should_warn) = match self.export_index.get(&export_entry.name) {
                 None => (true, false),
                 Some(existing) if existing == path => (true, false),
