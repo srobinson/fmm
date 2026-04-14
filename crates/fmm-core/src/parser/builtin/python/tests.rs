@@ -151,6 +151,161 @@ class _InternalClass:
 }
 
 #[test]
+fn dunder_all_reexport_from_relative_import_range_matches_import_line() {
+    // `from .foo import bar` + `__all__ = ["bar"]` → bar range should point at
+    // the import line, not the __all__ literal.
+    let mut parser = PythonParser::new().unwrap();
+    let source = r#"
+from .foo import bar
+
+__all__ = ["bar"]
+"#;
+    let result = parser.parse(source).unwrap();
+    let bar = result
+        .metadata
+        .exports
+        .iter()
+        .find(|e| e.name == "bar")
+        .expect("bar should be exported");
+    // Line 2 = `from .foo import bar`, line 4 = `__all__ = [...]`.
+    assert_eq!(
+        bar.start_line, 2,
+        "re-exported name should point at its import line, not __all__"
+    );
+    assert_eq!(bar.end_line, 2);
+}
+
+#[test]
+fn dunder_all_reexport_aliased_uses_alias_as_key() {
+    // `from .foo import bar as baz` + `__all__ = ["baz"]` → the local binding
+    // is `baz`; the range should be the import line.
+    let mut parser = PythonParser::new().unwrap();
+    let source = r#"
+from .foo import bar as baz
+
+__all__ = ["baz"]
+"#;
+    let result = parser.parse(source).unwrap();
+    let baz = result
+        .metadata
+        .exports
+        .iter()
+        .find(|e| e.name == "baz")
+        .expect("baz should be exported");
+    assert_eq!(baz.start_line, 2);
+    assert_eq!(baz.end_line, 2);
+}
+
+#[test]
+fn dunder_all_reexport_from_plain_import_range_matches_import_line() {
+    // `import mymod` + `__all__ = ["mymod"]` → range == import line.
+    let mut parser = PythonParser::new().unwrap();
+    let source = r#"
+import mymod
+
+__all__ = ["mymod"]
+"#;
+    let result = parser.parse(source).unwrap();
+    let m = result
+        .metadata
+        .exports
+        .iter()
+        .find(|e| e.name == "mymod")
+        .expect("mymod should be exported");
+    assert_eq!(m.start_line, 2);
+    assert_eq!(m.end_line, 2);
+}
+
+#[test]
+fn dunder_all_mixed_local_and_reexport() {
+    // Local def + re-export in same __all__: local wins with its own range,
+    // re-export resolves to its import line.
+    let mut parser = PythonParser::new().unwrap();
+    let source = r#"
+from .helpers import shared
+
+def local_fn():
+    return 1
+
+__all__ = ["shared", "local_fn"]
+"#;
+    let result = parser.parse(source).unwrap();
+    let shared = result
+        .metadata
+        .exports
+        .iter()
+        .find(|e| e.name == "shared")
+        .expect("shared should be exported");
+    // Line 2: `from .helpers import shared`
+    assert_eq!(shared.start_line, 2, "re-export points at import line");
+
+    let local = result
+        .metadata
+        .exports
+        .iter()
+        .find(|e| e.name == "local_fn")
+        .expect("local_fn should be exported");
+    // Line 4: `def local_fn():`; line 5: `return 1`
+    assert_eq!(local.start_line, 4, "local def points at its definition");
+    assert_eq!(local.end_line, 5);
+}
+
+#[test]
+fn dunder_all_unknown_name_falls_back_to_zero() {
+    // A name in __all__ with no local def and no matching import must get
+    // (0, 0) — the "no position" sentinel — not the __all__ literal's range.
+    let mut parser = PythonParser::new().unwrap();
+    let source = r#"
+__all__ = ["orphan"]
+
+def actual_thing():
+    pass
+"#;
+    let result = parser.parse(source).unwrap();
+    let orphan = result
+        .metadata
+        .exports
+        .iter()
+        .find(|e| e.name == "orphan")
+        .expect("orphan should be in exports even without a definition");
+    assert_eq!(orphan.start_line, 0, "orphan should get (0, 0) sentinel");
+    assert_eq!(orphan.end_line, 0);
+}
+
+#[test]
+fn dunder_all_multiline_import_uses_full_statement_range() {
+    // A multi-line `from X import (A, B)` should give both names the full
+    // import_from_statement range.
+    let mut parser = PythonParser::new().unwrap();
+    let source = r#"
+from .pkg import (
+    one,
+    two,
+)
+
+__all__ = ["one", "two"]
+"#;
+    let result = parser.parse(source).unwrap();
+    let one = result
+        .metadata
+        .exports
+        .iter()
+        .find(|e| e.name == "one")
+        .unwrap();
+    // The import_from_statement spans lines 2..=5.
+    assert_eq!(one.start_line, 2);
+    assert_eq!(one.end_line, 5);
+    let two = result
+        .metadata
+        .exports
+        .iter()
+        .find(|e| e.name == "two")
+        .unwrap();
+    assert_eq!(two.start_line, 2);
+    assert_eq!(two.end_line, 5);
+}
+
+#[test]
 fn parse_python_aliased_import() {
     let mut parser = PythonParser::new().unwrap();
     let source = "import pandas as pd\nimport numpy as np\nimport os\n";
