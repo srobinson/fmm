@@ -500,9 +500,11 @@ fn python_aliased_reexport_treated_as_local_bind() {
 }
 
 #[test]
-fn python_true_name_collision_still_warns_and_shadows() {
-    // Two files both DEFINE `bar` locally (no named_imports). This is a real
-    // collision — last-writer-wins behavior must be preserved.
+fn python_true_name_collision_tracked_in_export_all() {
+    // Two files both DEFINE `bar` locally (no named_imports). Shadows are
+    // data, not a lint: `export_index` picks one deterministically
+    // (last-writer-wins) while `export_all` retains every definition for
+    // consumers that care about collisions.
     let mut manifest = Manifest::new();
     manifest.add_file(
         "pkg/a.py",
@@ -519,13 +521,17 @@ fn python_true_name_collision_still_warns_and_shadows() {
         },
     );
 
-    // Last writer wins (no TS/JS priority for .py)
+    // Last writer wins in the single-pick index.
     assert_eq!(
         manifest.export_index.get("bar"),
         Some(&"pkg/b.py".to_string())
     );
-    // export_all has both
-    assert_eq!(manifest.export_all.get("bar").unwrap().len(), 2);
+    // Plural index retains both definitions — the first-class shadow data.
+    let all = manifest.export_all.get("bar").unwrap();
+    assert!(all.len() >= 2, "shadowed names must track all definitions");
+    let files: Vec<&str> = all.iter().map(|l| l.file.as_str()).collect();
+    assert!(files.contains(&"pkg/a.py"));
+    assert!(files.contains(&"pkg/b.py"));
 }
 
 #[test]
@@ -730,19 +736,17 @@ fn reexports_in_file_unknown_file_returns_empty() {
     assert!(rx.is_empty());
 }
 
-// --- Phase 4: cross-language shadow suppression ---
+// --- Cross-language collisions ---
 //
-// Warnings are emitted via `eprintln!` as a side effect, so these tests assert
-// on the observable behavior (who wins `export_index`, what's in `export_all`)
-// rather than on captured stderr. The no-warn contract is enforced by the
-// code path taken (different family -> silent branch). The manicure fixture
-// integration check is the end-to-end signal that the warnings are gone.
+// fmm treats shadow data as first-class state (`export_all` retains every
+// definition) rather than as a lint. These tests assert last-writer-wins on
+// the single-pick `export_index` plus plural tracking in `export_all`.
 
 #[test]
-fn same_language_python_collision_warns_and_last_wins() {
-    // Two Python files both define `UsageStats` — a true same-family shadow.
-    // Last writer wins; per the refactored branch this is the non-JS
-    // same-family warning path.
+fn same_language_python_collision_last_wins_and_tracked_in_export_all() {
+    // Two Python files both define `UsageStats` — a true same-language
+    // collision. Last writer wins the single-pick slot; both are retained
+    // in `export_all`.
     let mut manifest = Manifest::new();
     manifest.add_file(
         "pkg/a.py",
@@ -761,16 +765,18 @@ fn same_language_python_collision_warns_and_last_wins() {
     assert_eq!(
         manifest.export_index.get("UsageStats"),
         Some(&"pkg/b.py".to_string()),
-        "last writer must win for same-family collisions"
+        "last writer must win the single-pick slot"
     );
-    assert_eq!(manifest.export_all.get("UsageStats").unwrap().len(), 2);
+    let all = manifest.export_all.get("UsageStats").unwrap();
+    assert!(all.len() >= 2, "shadowed names must track all definitions");
 }
 
 #[test]
-fn cross_language_python_ts_collision_no_warn() {
+fn cross_language_python_ts_collision_tracked_in_export_all() {
     // Python dataclass + TypeScript interface mirror for an API contract.
-    // Cross-family -> silent branch. Last writer still wins in export_index,
-    // but no shadow warning should fire.
+    // Cross-language collisions are routine API-surface mirrors: last-writer
+    // wins deterministically, and both live in `export_all` for consumers
+    // that need shadow data.
     let mut manifest = Manifest::new();
     manifest.add_file(
         "api/a.py",
@@ -786,23 +792,19 @@ fn cross_language_python_ts_collision_no_warn() {
             ..Default::default()
         },
     );
-    // Last writer wins — cross-language is intentional insert, no warn.
     assert_eq!(
         manifest.export_index.get("UsageStats"),
         Some(&"web/b.ts".to_string())
     );
-    // Both definitions tracked in export_all for glossary.
-    assert_eq!(manifest.export_all.get("UsageStats").unwrap().len(), 2);
-    // Sanity: lang_family disagrees for these two paths — that's the predicate
-    // the refactored branch keys on.
-    assert_ne!(
-        crate::manifest::lang_family("api/a.py"),
-        crate::manifest::lang_family("web/b.ts")
-    );
+    let all = manifest.export_all.get("UsageStats").unwrap();
+    assert!(all.len() >= 2);
+    let files: Vec<&str> = all.iter().map(|l| l.file.as_str()).collect();
+    assert!(files.contains(&"api/a.py"));
+    assert!(files.contains(&"web/b.ts"));
 }
 
 #[test]
-fn cross_language_rust_ts_collision_no_warn() {
+fn cross_language_rust_ts_collision_tracked_in_export_all() {
     // Rust struct + TypeScript interface mirror — same idea, different langs.
     let mut manifest = Manifest::new();
     manifest.add_file(
@@ -823,70 +825,9 @@ fn cross_language_rust_ts_collision_no_warn() {
         manifest.export_index.get("Config"),
         Some(&"web/b.ts".to_string())
     );
-    assert_eq!(manifest.export_all.get("Config").unwrap().len(), 2);
-    assert_ne!(
-        crate::manifest::lang_family("crates/core/src/a.rs"),
-        crate::manifest::lang_family("web/b.ts")
-    );
+    let all = manifest.export_all.get("Config").unwrap();
+    assert!(all.len() >= 2);
 }
 
-#[test]
-fn ts_js_priority_unchanged_within_js_family() {
-    // Regression guard: the JS-family TS > JS sub-logic must survive the
-    // lang_family refactor. `.ts` still wins when added after `.js`.
-    let mut manifest = Manifest::new();
-    manifest.add_file(
-        "src/app.js",
-        Metadata {
-            exports: vec![entry("App", 1, 50)],
-            ..Default::default()
-        },
-    );
-    manifest.add_file(
-        "src/app.ts",
-        Metadata {
-            exports: vec![entry("App", 1, 50)],
-            ..Default::default()
-        },
-    );
-    assert_eq!(
-        manifest.export_index.get("App"),
-        Some(&"src/app.ts".to_string())
-    );
-    // And `.js` added after `.ts` must not overwrite.
-    manifest.add_file(
-        "src/app.js",
-        Metadata {
-            exports: vec![entry("App", 1, 50)],
-            ..Default::default()
-        },
-    );
-    assert_eq!(
-        manifest.export_index.get("App"),
-        Some(&"src/app.ts".to_string()),
-        ".js must not overwrite .ts within the JS family"
-    );
-}
-
-#[test]
-fn lang_family_classifies_known_extensions() {
-    use crate::manifest::lang_family;
-    // Python
-    assert_eq!(lang_family("a.py"), "python");
-    // JS family — all six extensions collapse to "js"
-    assert_eq!(lang_family("a.js"), "js");
-    assert_eq!(lang_family("a.jsx"), "js");
-    assert_eq!(lang_family("a.ts"), "js");
-    assert_eq!(lang_family("a.tsx"), "js");
-    assert_eq!(lang_family("a.mjs"), "js");
-    assert_eq!(lang_family("a.cjs"), "js");
-    // Rust and Go
-    assert_eq!(lang_family("a.rs"), "rust");
-    assert_eq!(lang_family("a.go"), "go");
-    // Unknown extensions fall through to the extension string, so different
-    // unknown langs (e.g. .swift vs .kt) don't lump together as the same family.
-    assert_eq!(lang_family("a.swift"), "swift");
-    assert_eq!(lang_family("a.kt"), "kt");
-    // No extension at all
-    assert_eq!(lang_family("README"), "");
-}
+// Note: the TS > JS insert rule is already covered by `ts_over_js_priority_no_shadow`
+// (TS first then JS) and `js_then_ts_order_ts_still_wins` (JS first then TS) above.

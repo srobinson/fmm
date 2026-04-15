@@ -133,34 +133,6 @@ pub struct ExportLocation {
     pub lines: Option<ExportLines>,
 }
 
-/// Classify a file path into a language family for cross-language collision
-/// handling. Files in different families that define the same exported name
-/// are treated as intentional parallel definitions (e.g. a Python dataclass
-/// and a TypeScript interface mirroring the same API shape) and must not
-/// trigger a shadow warning.
-///
-/// Families:
-/// - `"python"` — `.py`
-/// - `"js"` — `.js .jsx .mjs .cjs .ts .tsx`. TS > JS priority applies within
-///   this family (see the collision-resolution call sites).
-/// - `"rust"` — `.rs`
-/// - `"go"` — `.go`
-/// - otherwise — the extension itself (so distinct unknown extensions don't
-///   lump together), or `""` if the path has no extension.
-pub fn lang_family(path: &str) -> &str {
-    let ext = std::path::Path::new(path)
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
-    match ext {
-        "py" => "python",
-        "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" => "js",
-        "rs" => "rust",
-        "go" => "go",
-        _ => ext,
-    }
-}
-
 /// A re-export surfaced from another module, resolved to its origin definition.
 ///
 /// Produced by [`Manifest::reexports_in_file`] and rendered by
@@ -326,48 +298,20 @@ impl Manifest {
                 continue;
             }
 
-            let (should_insert, should_warn) = match self.export_index.get(&export_entry.name) {
-                None => (true, false),
-                Some(existing) if existing == path => (true, false),
+            // Shadow is not a linter concern — the full list of definitions for
+            // a name lives in `export_all`; consumers that care about
+            // collisions query that. The only deterministic insert rule is
+            // `.ts` > `.js`: .js must not overwrite .ts within the TS/JS
+            // family. Everything else is last-one-wins.
+            let should_insert = match self.export_index.get(&export_entry.name) {
+                None => true,
+                Some(existing) if existing == path => true,
                 Some(existing) => {
-                    let existing_family = lang_family(existing);
-                    let new_family = lang_family(path);
-                    if existing_family != new_family {
-                        // Cross-language collision (e.g. Python dataclass mirrored
-                        // as a TS interface for an API contract). Last one wins
-                        // deterministically per insert order, but no warning —
-                        // these are intentional API-surface mirrors, not shadows.
-                        (true, false)
-                    } else if existing_family == "js" {
-                        // Within the JS family, TS takes priority over JS.
-                        let existing_is_ts =
-                            existing.ends_with(".ts") || existing.ends_with(".tsx");
-                        let existing_is_js =
-                            existing.ends_with(".js") || existing.ends_with(".jsx");
-                        let new_is_ts = path.ends_with(".ts") || path.ends_with(".tsx");
-                        let new_is_js = path.ends_with(".js") || path.ends_with(".jsx");
-                        if existing_is_ts && new_is_js {
-                            // .js never overwrites .ts — expected, no warning
-                            (false, false)
-                        } else if existing_is_js && new_is_ts {
-                            // .ts takes priority over .js — expected, no warning
-                            (true, false)
-                        } else {
-                            (true, true)
-                        }
-                    } else {
-                        // Same non-JS family — real shadow collision.
-                        (true, true)
-                    }
+                    let existing_is_ts = existing.ends_with(".ts") || existing.ends_with(".tsx");
+                    let new_is_js = path.ends_with(".js") || path.ends_with(".jsx");
+                    !(existing_is_ts && new_is_js)
                 }
             };
-            if should_warn {
-                let old = &self.export_index[&export_entry.name];
-                eprintln!(
-                    "warning: export '{}' in {} shadows {}",
-                    export_entry.name, path, old
-                );
-            }
             if should_insert {
                 self.export_index
                     .insert(export_entry.name.clone(), path.to_string());
