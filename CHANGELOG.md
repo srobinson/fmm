@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/srobinson/fmm/compare/v0.2.1...v0.2.2) (2026-04-15)
+
+
+### Features
+
+* **outline:** surface re-exports separately; treat shadows as data not log noise ([50f9850](https://github.com/srobinson/fmm/commit/50f985080f396b0873858a25705a02d56dbe473c))
+
 ## [0.2.1](https://github.com/srobinson/fmm/compare/v0.2.0...v0.2.1) (2026-03-22)
 
 
