@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use std::collections::HashMap;
 use std::path::Path;
 
-use fmm_core::manifest::{ExportLines, ExportLocation, FileEntry, Manifest};
+use fmm_core::manifest::{ExportLines, ExportLocation, FileEntry, Manifest, lang_family};
 
 /// Build a complete `Manifest` by reading all tables from the open connection.
 ///
@@ -198,20 +198,39 @@ fn load_exports(conn: &Connection, manifest: &mut Manifest) -> Result<()> {
                 continue;
             }
 
-            // export_index / export_locations: apply TS > JS collision logic
+            // export_index / export_locations: apply collision logic.
+            // Cross-language collisions (e.g. Python dataclass mirrored as a TS
+            // interface) are intentional API-surface mirrors — last-one-wins,
+            // no warning. Within the JS family, TS > JS.
             let should_insert = match manifest.export_index.get(name) {
                 None => true,
                 Some(existing) if existing == &file_path => true,
                 Some(existing) => {
-                    let existing_is_ts = existing.ends_with(".ts") || existing.ends_with(".tsx");
-                    let existing_is_js = existing.ends_with(".js") || existing.ends_with(".jsx");
-                    let new_is_ts = file_path.ends_with(".ts") || file_path.ends_with(".tsx");
-                    let new_is_js = file_path.ends_with(".js") || file_path.ends_with(".jsx");
-                    if existing_is_ts && new_is_js {
-                        false // .js never overwrites .ts
-                    } else if existing_is_js && new_is_ts {
-                        true // .ts takes priority over .js
+                    let existing_family = lang_family(existing);
+                    let new_family = lang_family(&file_path);
+                    if existing_family != new_family {
+                        // Cross-language collision — silent, insert.
+                        true
+                    } else if existing_family == "js" {
+                        let existing_is_ts =
+                            existing.ends_with(".ts") || existing.ends_with(".tsx");
+                        let existing_is_js =
+                            existing.ends_with(".js") || existing.ends_with(".jsx");
+                        let new_is_ts = file_path.ends_with(".ts") || file_path.ends_with(".tsx");
+                        let new_is_js = file_path.ends_with(".js") || file_path.ends_with(".jsx");
+                        if existing_is_ts && new_is_js {
+                            false // .js never overwrites .ts
+                        } else if existing_is_js && new_is_ts {
+                            true // .ts takes priority over .js
+                        } else {
+                            eprintln!(
+                                "warning: export '{}' in {} shadows {}",
+                                name, file_path, existing
+                            );
+                            true
+                        }
                     } else {
+                        // Same non-JS family — real shadow collision.
                         eprintln!(
                             "warning: export '{}' in {} shadows {}",
                             name, file_path, existing

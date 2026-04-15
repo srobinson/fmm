@@ -729,3 +729,141 @@ fn reexports_in_file_unknown_file_returns_empty() {
     let rx = manifest.reexports_in_file("does/not/exist.py");
     assert!(rx.is_empty());
 }
+
+// --- Phase 4: cross-language shadow suppression ---
+//
+// Warnings are emitted via `eprintln!` as a side effect, so these tests assert
+// on the observable behavior (who wins `export_index`, what's in `export_all`)
+// rather than on captured stderr. The no-warn contract is enforced by the
+// code path taken (different family -> silent branch). The manicure fixture
+// integration check is the end-to-end signal that the warnings are gone.
+
+#[test]
+fn same_language_python_collision_warns_and_last_wins() {
+    // Two Python files both define `UsageStats` — a true same-family shadow.
+    // Last writer wins; per the refactored branch this is the non-JS
+    // same-family warning path.
+    let mut manifest = Manifest::new();
+    manifest.add_file(
+        "pkg/a.py",
+        Metadata {
+            exports: vec![entry("UsageStats", 1, 5)],
+            ..Default::default()
+        },
+    );
+    manifest.add_file(
+        "pkg/b.py",
+        Metadata {
+            exports: vec![entry("UsageStats", 1, 5)],
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        manifest.export_index.get("UsageStats"),
+        Some(&"pkg/b.py".to_string()),
+        "last writer must win for same-family collisions"
+    );
+    assert_eq!(manifest.export_all.get("UsageStats").unwrap().len(), 2);
+}
+
+#[test]
+fn cross_language_python_ts_collision_no_warn() {
+    // Python dataclass + TypeScript interface mirror for an API contract.
+    // Cross-family -> silent branch. Last writer still wins in export_index,
+    // but no shadow warning should fire.
+    let mut manifest = Manifest::new();
+    manifest.add_file(
+        "api/a.py",
+        Metadata {
+            exports: vec![entry("UsageStats", 1, 5)],
+            ..Default::default()
+        },
+    );
+    manifest.add_file(
+        "web/b.ts",
+        Metadata {
+            exports: vec![entry("UsageStats", 1, 5)],
+            ..Default::default()
+        },
+    );
+    // Last writer wins — cross-language is intentional insert, no warn.
+    assert_eq!(
+        manifest.export_index.get("UsageStats"),
+        Some(&"web/b.ts".to_string())
+    );
+    // Both definitions tracked in export_all for glossary.
+    assert_eq!(manifest.export_all.get("UsageStats").unwrap().len(), 2);
+    // Sanity: lang_family disagrees for these two paths — that's the predicate
+    // the refactored branch keys on.
+    assert_ne!(
+        crate::manifest::lang_family("api/a.py"),
+        crate::manifest::lang_family("web/b.ts")
+    );
+}
+
+#[test]
+fn cross_language_rust_ts_collision_no_warn() {
+    // Rust struct + TypeScript interface mirror — same idea, different langs.
+    let mut manifest = Manifest::new();
+    manifest.add_file(
+        "crates/core/src/a.rs",
+        Metadata {
+            exports: vec![entry("Config", 1, 10)],
+            ..Default::default()
+        },
+    );
+    manifest.add_file(
+        "web/b.ts",
+        Metadata {
+            exports: vec![entry("Config", 1, 10)],
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        manifest.export_index.get("Config"),
+        Some(&"web/b.ts".to_string())
+    );
+    assert_eq!(manifest.export_all.get("Config").unwrap().len(), 2);
+    assert_ne!(
+        crate::manifest::lang_family("crates/core/src/a.rs"),
+        crate::manifest::lang_family("web/b.ts")
+    );
+}
+
+#[test]
+fn ts_js_priority_unchanged_within_js_family() {
+    // Regression guard: the JS-family TS > JS sub-logic must survive the
+    // lang_family refactor. `.ts` still wins when added after `.js`.
+    let mut manifest = Manifest::new();
+    manifest.add_file(
+        "src/app.js",
+        Metadata {
+            exports: vec![entry("App", 1, 50)],
+            ..Default::default()
+        },
+    );
+    manifest.add_file(
+        "src/app.ts",
+        Metadata {
+            exports: vec![entry("App", 1, 50)],
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        manifest.export_index.get("App"),
+        Some(&"src/app.ts".to_string())
+    );
+    // And `.js` added after `.ts` must not overwrite.
+    manifest.add_file(
+        "src/app.js",
+        Metadata {
+            exports: vec![entry("App", 1, 50)],
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        manifest.export_index.get("App"),
+        Some(&"src/app.ts".to_string()),
+        ".js must not overwrite .ts within the JS family"
+    );
+}
