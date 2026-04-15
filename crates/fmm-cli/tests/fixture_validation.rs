@@ -99,9 +99,11 @@ fn validate_python_heuristic_fixture() {
         "constant missing"
     );
 
-    // Private items excluded
-    assert!(!names.contains(&"_internal_setup".to_string()));
-    assert!(!names.contains(&"_Registry".to_string()));
+    // Underscore-prefix top-level defs are surfaced so barrel re-export
+    // dereferencing (e.g. `_port_in_use` re-exported from __init__.py)
+    // can resolve to the origin def line.
+    assert!(names.contains(&"_internal_setup".to_string()));
+    assert!(names.contains(&"_Registry".to_string()));
 
     // Line range for decorated class should start at decorator
     let agent = result
@@ -130,8 +132,8 @@ fn validate_python_decorated_fixture() {
     assert!(names.contains(&"bare_function".to_string()));
     assert!(names.contains(&"BareClass".to_string()));
 
-    // Private decorated class excluded
-    assert!(!names.contains(&"_PrivateDecorated".to_string()));
+    // Underscore-prefix decorated classes are still surfaced — no structural filter.
+    assert!(names.contains(&"_PrivateDecorated".to_string()));
 
     // Decorators captured in custom fields
     let fields = result.custom_fields.expect("should have custom fields");

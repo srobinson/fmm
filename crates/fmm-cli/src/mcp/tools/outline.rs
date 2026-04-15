@@ -48,9 +48,12 @@ pub(in crate::mcp) fn tool_file_outline(
         None
     };
 
+    let reexports = manifest.reexports_in_file(&args.file);
+
     Ok(fmm_core::format::format_file_outline(
         &args.file,
         entry,
+        &reexports,
         private_by_class.as_ref(),
         top_level_fns.as_deref(),
     ))

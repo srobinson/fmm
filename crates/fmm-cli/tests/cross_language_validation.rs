@@ -314,8 +314,13 @@ def _internal_validator(data):
         names.contains(&"process_item".to_string()),
         "decorated @app.post function missing"
     );
-    // Private excluded
-    assert!(!names.contains(&"_internal_validator".to_string()));
+    // Underscore-prefix is Python social convention, not a structural property.
+    // fmm surfaces all top-level defs so re-export dereferencing works across
+    // modules (e.g. `_port_in_use` re-exported from a barrel `__init__.py`).
+    assert!(
+        names.contains(&"_internal_validator".to_string()),
+        "underscore-prefix top-level defs must be surfaced as exports"
+    );
 
     // Line ranges: AppConfig should start at @dataclass, not class keyword
     let config = result

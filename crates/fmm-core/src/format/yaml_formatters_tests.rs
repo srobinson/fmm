@@ -1,5 +1,5 @@
 use super::*;
-use crate::manifest::{ExportLines, FileEntry};
+use crate::manifest::{ExportLines, FileEntry, OutlineReExport};
 use std::collections::HashMap;
 
 fn make_entry_with_methods(
@@ -55,7 +55,7 @@ fn file_outline_shows_methods_under_class() {
             ("NestFactoryStatic.createApplicationContext", 132, 158),
         ],
     );
-    let out = format_file_outline("src/factory.ts", &entry, None, None);
+    let out = format_file_outline("src/factory.ts", &entry, &[], None, None);
 
     // Class line shows method count
     assert!(out.contains("NestFactoryStatic: [43, 381]"));
@@ -80,7 +80,7 @@ fn file_outline_methods_sorted_by_size_descending() {
             ("MyClass.medium", 160, 189), // 29 lines
         ],
     );
-    let out = format_file_outline("src/my.ts", &entry, None, None);
+    let out = format_file_outline("src/my.ts", &entry, &[], None, None);
     let large_pos = out.find("large:").unwrap();
     let medium_pos = out.find("medium:").unwrap();
     let small_pos = out.find("small:").unwrap();
@@ -93,7 +93,7 @@ fn file_outline_methods_sorted_by_size_descending() {
 #[test]
 fn file_outline_no_methods_unchanged() {
     let entry = make_entry_with_methods(vec![("foo", 1, 10), ("bar", 12, 20)], vec![]);
-    let out = format_file_outline("src/mod.ts", &entry, None, None);
+    let out = format_file_outline("src/mod.ts", &entry, &[], None, None);
     assert!(out.contains("  foo: [1, 10]  # 10 lines"));
     assert!(out.contains("  bar: [12, 20]  # 9 lines"));
     assert!(!out.contains("public methods"));
@@ -190,7 +190,7 @@ fn file_outline_private_field_annotated_correctly_when_public_methods_present() 
         ],
     );
 
-    let out = format_file_outline("src/my.ts", &entry, Some(&private_map), None);
+    let out = format_file_outline("src/my.ts", &entry, &[], Some(&private_map), None);
 
     assert!(
         out.contains("pool: [3, 3]  # private field"),
@@ -254,4 +254,112 @@ fn read_symbol_line_numbers_aligned_to_max_width() {
     );
     assert!(out.contains("100  b"), "line 100 missing; got:\n{}", out);
     assert!(out.contains("101  c"), "line 101 missing; got:\n{}", out);
+}
+
+// --- Phase 3: re-exports rendering ---
+
+#[test]
+fn file_outline_mixed_local_and_reexports() {
+    // `main` is local; `BindFailure` and `Manifest` are re-exported.
+    let entry = make_entry_with_methods(
+        vec![("main", 83, 90), ("BindFailure", 3, 3), ("Manifest", 4, 4)],
+        vec![],
+    );
+    let reexports = vec![
+        OutlineReExport {
+            name: "BindFailure".to_string(),
+            origin_file: "pkg/runner.py".to_string(),
+            origin_start: 12,
+            origin_end: 30,
+        },
+        OutlineReExport {
+            name: "Manifest".to_string(),
+            origin_file: "pkg/manifest.py".to_string(),
+            origin_start: 5,
+            origin_end: 60,
+        },
+    ];
+
+    let out = format_file_outline("pkg/__init__.py", &entry, &reexports, None, None);
+
+    // Local def stays in symbols with its in-file line range.
+    assert!(
+        out.contains("  main: [83, 90]  # 8 lines"),
+        "local def must render in symbols; got:\n{}",
+        out
+    );
+    // Re-exported names must NOT appear in the symbols block with their
+    // in-file import-line ranges.
+    assert!(
+        !out.contains("  BindFailure: [3, 3]"),
+        "re-export leaked into symbols block; got:\n{}",
+        out
+    );
+    assert!(
+        !out.contains("  Manifest: [4, 4]"),
+        "re-export leaked into symbols block; got:\n{}",
+        out
+    );
+
+    // Re-exports section renders with origin file + line range.
+    assert!(
+        out.contains("re-exports:"),
+        "re-exports header missing; got:\n{}",
+        out
+    );
+    assert!(
+        out.contains("  BindFailure: pkg/runner.py:[12, 30]"),
+        "BindFailure re-export missing; got:\n{}",
+        out
+    );
+    assert!(
+        out.contains("  Manifest: pkg/manifest.py:[5, 60]"),
+        "Manifest re-export missing; got:\n{}",
+        out
+    );
+}
+
+#[test]
+fn file_outline_no_reexports_omits_section() {
+    let entry = make_entry_with_methods(vec![("foo", 1, 10), ("bar", 12, 20)], vec![]);
+    let out = format_file_outline("src/mod.ts", &entry, &[], None, None);
+
+    assert!(
+        !out.contains("re-exports:"),
+        "re-exports section must be omitted when empty; got:\n{}",
+        out
+    );
+    assert!(out.contains("  foo: [1, 10]"));
+    assert!(out.contains("  bar: [12, 20]"));
+}
+
+#[test]
+fn file_outline_only_reexports_omits_symbols_block() {
+    // A pure re-export file (no local defs) should not emit an empty
+    // `symbols:` label above the `re-exports:` section.
+    let entry = make_entry_with_methods(vec![("bar", 2, 2)], vec![]);
+    let reexports = vec![OutlineReExport {
+        name: "bar".to_string(),
+        origin_file: "pkg/foo.py".to_string(),
+        origin_start: 1,
+        origin_end: 3,
+    }];
+
+    let out = format_file_outline("pkg/__init__.py", &entry, &reexports, None, None);
+
+    assert!(
+        !out.contains("symbols:"),
+        "symbols: header must be omitted when no local defs; got:\n{}",
+        out
+    );
+    assert!(
+        out.contains("re-exports:"),
+        "re-exports header missing; got:\n{}",
+        out
+    );
+    assert!(
+        out.contains("  bar: pkg/foo.py:[1, 3]"),
+        "re-export entry missing; got:\n{}",
+        out
+    );
 }

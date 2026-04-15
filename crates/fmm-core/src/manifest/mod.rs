@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use crate::parser::Metadata;
@@ -131,6 +131,19 @@ impl From<Metadata> for FileEntry {
 pub struct ExportLocation {
     pub file: String,
     pub lines: Option<ExportLines>,
+}
+
+/// A re-export surfaced from another module, resolved to its origin definition.
+///
+/// Produced by [`Manifest::reexports_in_file`] and rendered by
+/// `format_file_outline` into a separate `re-exports:` section so agents can
+/// distinguish surface re-exports from local definitions at a glance.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutlineReExport {
+    pub name: String,
+    pub origin_file: String,
+    pub origin_start: usize,
+    pub origin_end: usize,
 }
 
 /// In-memory index built from the SQLite database.
@@ -270,32 +283,35 @@ impl Manifest {
                     lines: lines.clone(),
                 });
 
-            let (should_insert, should_warn) = match self.export_index.get(&export_entry.name) {
-                None => (true, false),
-                Some(existing) if existing == path => (true, false),
+            // Re-exports (`from X import Y` + `__all__ = [Y]`) must not claim the
+            // `export_index` slot or emit shadow warnings — the original definition
+            // already owns that slot. Detection: this name appears as a value in
+            // the file's `named_imports`. `extract_named_imports` stores the
+            // original name for aliased imports (`from X import A as B` → A), so
+            // aliased re-exports like `manifest_write` naturally fall through here
+            // and are treated as local binds.
+            if metadata
+                .named_imports
+                .values()
+                .any(|names| names.contains(&export_entry.name))
+            {
+                continue;
+            }
+
+            // Shadow is not a linter concern — the full list of definitions for
+            // a name lives in `export_all`; consumers that care about
+            // collisions query that. The only deterministic insert rule is
+            // `.ts` > `.js`: .js must not overwrite .ts within the TS/JS
+            // family. Everything else is last-one-wins.
+            let should_insert = match self.export_index.get(&export_entry.name) {
+                None => true,
+                Some(existing) if existing == path => true,
                 Some(existing) => {
                     let existing_is_ts = existing.ends_with(".ts") || existing.ends_with(".tsx");
-                    let existing_is_js = existing.ends_with(".js") || existing.ends_with(".jsx");
-                    let new_is_ts = path.ends_with(".ts") || path.ends_with(".tsx");
                     let new_is_js = path.ends_with(".js") || path.ends_with(".jsx");
-                    if existing_is_ts && new_is_js {
-                        // .js never overwrites .ts — expected, no warning
-                        (false, false)
-                    } else if existing_is_js && new_is_ts {
-                        // .ts takes priority over .js — expected, no warning
-                        (true, false)
-                    } else {
-                        (true, true)
-                    }
+                    !(existing_is_ts && new_is_js)
                 }
             };
-            if should_warn {
-                let old = &self.export_index[&export_entry.name];
-                eprintln!(
-                    "warning: export '{}' in {} shadows {}",
-                    export_entry.name, path, old
-                );
-            }
             if should_insert {
                 self.export_index
                     .insert(export_entry.name.clone(), path.to_string());
@@ -386,6 +402,83 @@ impl Manifest {
     /// benchmarks) to ensure downstream lookups are accurate.
     pub fn rebuild_reverse_deps(&mut self) {
         self.reverse_deps = build_reverse_deps(self);
+    }
+
+    /// Return the re-exports surfaced by `file`, each resolved to its origin
+    /// definition. A re-export is an exported name whose string also appears
+    /// as a value in the file's `named_imports` map (i.e. imported by name
+    /// from another module and re-surfaced in this file's public API).
+    ///
+    /// Aliased imports like `from X import A as B` are NOT re-exports:
+    /// `named_imports` stores the original name `A`, while the file exports
+    /// the local alias `B`. The name lookup therefore treats `B` as a local
+    /// definition, matching the Phase 2 shadow-silencing logic.
+    ///
+    /// Origin resolution:
+    /// 1. `export_locations[name]` with a valid (non-self, lines.start > 0)
+    ///    entry — first choice.
+    /// 2. Fallback to `(file, import_line, import_line)` using the
+    ///    re-exporter's own `export_lines[i]` when the origin is not in the
+    ///    index (e.g. imported from a third-party package outside the
+    ///    workspace). The entry is still actionable — agents can jump to
+    ///    the import line to see where it comes from.
+    ///
+    /// Results are sorted alphabetically by name for stable output.
+    pub fn reexports_in_file(&self, file: &str) -> Vec<OutlineReExport> {
+        let Some(entry) = self.files.get(file) else {
+            return Vec::new();
+        };
+
+        let imported_names: HashSet<&str> = entry
+            .named_imports
+            .values()
+            .flat_map(|v| v.iter().map(String::as_str))
+            .collect();
+
+        let mut out = Vec::with_capacity(entry.exports.len());
+        for (i, name) in entry.exports.iter().enumerate() {
+            if !imported_names.contains(name.as_str()) {
+                continue;
+            }
+
+            // Prefer the indexed origin definition when available.
+            let origin = self
+                .export_locations
+                .get(name)
+                .filter(|loc| loc.file != file)
+                .and_then(|loc| {
+                    let lines = loc.lines.as_ref()?;
+                    if lines.start == 0 {
+                        return None;
+                    }
+                    Some((loc.file.clone(), lines.start, lines.end))
+                });
+
+            let (origin_file, origin_start, origin_end) = match origin {
+                Some(r) => r,
+                None => {
+                    // Fall back to the re-exporter's own import line.
+                    let (s, e) = entry
+                        .export_lines
+                        .as_ref()
+                        .and_then(|els| els.get(i))
+                        .filter(|el| el.start > 0)
+                        .map(|el| (el.start, el.end))
+                        .unwrap_or((0, 0));
+                    (file.to_string(), s, e)
+                }
+            };
+
+            out.push(OutlineReExport {
+                name: name.clone(),
+                origin_file,
+                origin_start,
+                origin_end,
+            });
+        }
+
+        out.sort_by(|a, b| a.name.cmp(&b.name));
+        out
     }
 }
 

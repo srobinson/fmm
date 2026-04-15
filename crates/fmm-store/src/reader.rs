@@ -119,7 +119,14 @@ fn load_exports(conn: &Connection, manifest: &mut Manifest) -> Result<()> {
         by_file.entry(file_path).or_default().push((name, lines));
     }
 
-    for (file_path, entries) in by_file {
+    // Iterate in deterministic order so shadow warnings and index-building are
+    // reproducible across runs. HashMap iteration is intentionally randomized.
+    #[allow(clippy::type_complexity)]
+    let mut sorted: Vec<(String, Vec<(String, Option<ExportLines>)>)> =
+        by_file.into_iter().collect();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
+
+    for (file_path, entries) in sorted {
         // Populate FileEntry.exports / export_lines
         let mut names: Vec<String> = Vec::with_capacity(entries.len());
         let mut line_ranges: Vec<ExportLines> = Vec::with_capacity(entries.len());
@@ -174,26 +181,35 @@ fn load_exports(conn: &Connection, manifest: &mut Manifest) -> Result<()> {
                     });
             }
 
-            // export_index / export_locations: apply TS > JS collision logic
+            // Re-exports (`from X import Y` + `__all__ = [Y]`) must not claim the
+            // `export_index` slot or emit shadow warnings — the original definition
+            // already owns that slot. Detection: this name appears as a value in
+            // this file's `named_imports` (populated by `load_files` above).
+            // `extract_named_imports` stores the original name for aliased imports
+            // (`from X import A as B` → A), so aliased re-exports like
+            // `manifest_write` naturally fall through and are treated as local
+            // binds.
+            let is_reexport = manifest
+                .files
+                .get(&file_path)
+                .map(|fe| fe.named_imports.values().any(|v| v.contains(name)))
+                .unwrap_or(false);
+            if is_reexport {
+                continue;
+            }
+
+            // Shadow is not a linter concern — the full list of definitions
+            // for a name lives in `export_all`; consumers that care about
+            // collisions query that. The only deterministic insert rule is
+            // `.ts` > `.js`: .js must not overwrite .ts within the TS/JS
+            // family. Everything else is last-one-wins.
             let should_insert = match manifest.export_index.get(name) {
                 None => true,
                 Some(existing) if existing == &file_path => true,
                 Some(existing) => {
                     let existing_is_ts = existing.ends_with(".ts") || existing.ends_with(".tsx");
-                    let existing_is_js = existing.ends_with(".js") || existing.ends_with(".jsx");
-                    let new_is_ts = file_path.ends_with(".ts") || file_path.ends_with(".tsx");
                     let new_is_js = file_path.ends_with(".js") || file_path.ends_with(".jsx");
-                    if existing_is_ts && new_is_js {
-                        false // .js never overwrites .ts
-                    } else if existing_is_js && new_is_ts {
-                        true // .ts takes priority over .js
-                    } else {
-                        eprintln!(
-                            "warning: export '{}' in {} shadows {}",
-                            name, file_path, existing
-                        );
-                        true
-                    }
+                    !(existing_is_ts && new_is_js)
                 }
             };
 
@@ -428,6 +444,106 @@ mod tests {
         let loc = manifest.method_index.get("Server.run").unwrap();
         assert_eq!(loc.file, "src/server.ts");
         assert_eq!(loc.lines.as_ref().unwrap().start, 5);
+    }
+
+    #[test]
+    fn python_reexport_does_not_claim_export_index_slot_after_load() {
+        // foo.py defines `bar` locally; __init__.py re-exports it. After DB
+        // round-trip, export_index["bar"] must still point at foo.py.
+        let dir = TempDir::new().unwrap();
+        let mut conn = open_or_create(dir.path()).unwrap();
+
+        let foo = make_result(vec![ExportEntry::new("bar".into(), 1, 3)], vec![], vec![]);
+
+        let mut named: HashMap<String, Vec<String>> = HashMap::new();
+        named.insert(".foo".into(), vec!["bar".into()]);
+        let init = ParseResult {
+            metadata: Metadata {
+                exports: vec![ExportEntry::new("bar".into(), 2, 2)],
+                imports: vec![],
+                dependencies: vec!["./foo".into()],
+                loc: 3,
+                named_imports: named,
+                ..Default::default()
+            },
+            custom_fields: None,
+        };
+
+        write_file(&mut conn, "pkg/foo.py", &foo);
+        write_file(&mut conn, "pkg/__init__.py", &init);
+
+        let manifest = load_manifest_from_db(&conn, dir.path()).unwrap();
+
+        assert_eq!(
+            manifest.export_index.get("bar").map(String::as_str),
+            Some("pkg/foo.py"),
+            "re-export must not shadow original definition through DB load"
+        );
+        assert_eq!(manifest.export_all.get("bar").unwrap().len(), 2);
+    }
+
+    #[test]
+    fn python_aliased_reexport_owns_its_own_slot_after_load() {
+        // `from .foo import bar as baz` stores `bar` in named_imports, so the
+        // local name `baz` is unique to __init__.py. __init__.py should own
+        // export_index["baz"].
+        let dir = TempDir::new().unwrap();
+        let mut conn = open_or_create(dir.path()).unwrap();
+
+        let foo = make_result(vec![ExportEntry::new("bar".into(), 1, 3)], vec![], vec![]);
+
+        let mut named: HashMap<String, Vec<String>> = HashMap::new();
+        named.insert(".foo".into(), vec!["bar".into()]);
+        let init = ParseResult {
+            metadata: Metadata {
+                exports: vec![ExportEntry::new("baz".into(), 2, 2)],
+                imports: vec![],
+                dependencies: vec!["./foo".into()],
+                loc: 3,
+                named_imports: named,
+                ..Default::default()
+            },
+            custom_fields: None,
+        };
+
+        write_file(&mut conn, "pkg/foo.py", &foo);
+        write_file(&mut conn, "pkg/__init__.py", &init);
+
+        let manifest = load_manifest_from_db(&conn, dir.path()).unwrap();
+
+        assert_eq!(
+            manifest.export_index.get("baz").map(String::as_str),
+            Some("pkg/__init__.py")
+        );
+        assert_eq!(
+            manifest.export_index.get("bar").map(String::as_str),
+            Some("pkg/foo.py")
+        );
+    }
+
+    #[test]
+    fn python_true_collision_still_shadows_after_load() {
+        // Two files both define `bar` locally (no named_imports). Regression
+        // guard: the re-export skip must not affect true collisions.
+        let dir = TempDir::new().unwrap();
+        let mut conn = open_or_create(dir.path()).unwrap();
+
+        let a = make_result(vec![ExportEntry::new("bar".into(), 1, 5)], vec![], vec![]);
+        let b = make_result(vec![ExportEntry::new("bar".into(), 1, 5)], vec![], vec![]);
+
+        write_file(&mut conn, "pkg/a.py", &a);
+        write_file(&mut conn, "pkg/b.py", &b);
+
+        let manifest = load_manifest_from_db(&conn, dir.path()).unwrap();
+
+        // Last loaded (sorted) wins when both are real definitions. Sort
+        // order is ascending file_path, so pkg/b.py is loaded after pkg/a.py
+        // and wins the slot.
+        assert_eq!(
+            manifest.export_index.get("bar").map(String::as_str),
+            Some("pkg/b.py")
+        );
+        assert_eq!(manifest.export_all.get("bar").unwrap().len(), 2);
     }
 
     #[test]

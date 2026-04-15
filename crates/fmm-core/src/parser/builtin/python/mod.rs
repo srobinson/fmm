@@ -126,13 +126,16 @@ impl PythonParser {
         let mut exports = Vec::new();
         let source_bytes = source.as_bytes();
 
+        // fmm is a structural tool, not a Python visibility checker: underscore
+        // prefix is social convention, not a structural property. Include all
+        // top-level def/class/assign names so re-export dereferencing can find
+        // them in origin files (e.g. `_port_in_use` in `net.py`).
         let mut collect_filtered = |query: &Query, filter: fn(&str) -> bool| {
             let mut cursor = QueryCursor::new();
             let mut iter = cursor.matches(query, root_node, source_bytes);
             while let Some(m) = iter.next() {
                 for capture in m.captures {
                     if let Ok(text) = capture.node.utf8_text(source_bytes)
-                        && !text.starts_with('_')
                         && filter(text)
                         && seen.insert(text.to_string())
                     {
@@ -189,7 +192,97 @@ impl PythonParser {
         defs
     }
 
+    /// Build a map of locally bound import names → line range of the import statement.
+    ///
+    /// Handles all module-level import forms, keyed by the *local* binding:
+    /// - `from X import Y` → `Y`
+    /// - `from X import Y as Z` → `Z`
+    /// - `import X` → `X`
+    /// - `import X.Y.Z` → `X` (first segment, matching Python binding semantics)
+    /// - `import X as Y` → `Y`
+    ///
+    /// Used by `extract_dunder_all` to resolve re-exported names (names in
+    /// `__all__` that came from an import, not a local definition) to their
+    /// import-statement line range.
+    fn build_import_position_map(
+        &self,
+        source: &str,
+        root_node: tree_sitter::Node,
+    ) -> HashMap<String, (usize, usize)> {
+        let source_bytes = source.as_bytes();
+        let mut imports: HashMap<String, (usize, usize)> = HashMap::new();
+
+        let mut cursor = root_node.walk();
+        for child in root_node.children(&mut cursor) {
+            let range = (child.start_position().row + 1, child.end_position().row + 1);
+            match child.kind() {
+                "import_from_statement" => {
+                    let module_name_node = child.child_by_field_name("module_name");
+                    let mut inner = child.walk();
+                    for c in child.children(&mut inner) {
+                        match c.kind() {
+                            "dotted_name" | "identifier" => {
+                                // Skip the module_name node itself
+                                if module_name_node == Some(c) {
+                                    continue;
+                                }
+                                if let Ok(text) = c.utf8_text(source_bytes) {
+                                    imports.insert(text.to_string(), range);
+                                }
+                            }
+                            "aliased_import" => {
+                                // `Y as Z` — the local binding is the alias
+                                if let Some(alias) = c.child_by_field_name("alias")
+                                    && let Ok(text) = alias.utf8_text(source_bytes)
+                                {
+                                    imports.insert(text.to_string(), range);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                "import_statement" => {
+                    let mut inner = child.walk();
+                    for c in child.children(&mut inner) {
+                        match c.kind() {
+                            "dotted_name" => {
+                                // `import X` or `import X.Y.Z` — local binding is
+                                // the first segment of the dotted name.
+                                if let Ok(text) = c.utf8_text(source_bytes) {
+                                    let first = text.split('.').next().unwrap_or(text);
+                                    imports.insert(first.to_string(), range);
+                                }
+                            }
+                            "aliased_import" => {
+                                if let Some(alias) = c.child_by_field_name("alias")
+                                    && let Ok(text) = alias.utf8_text(source_bytes)
+                                {
+                                    imports.insert(text.to_string(), range);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        imports
+    }
+
     /// Extract names from `__all__ = [...]` if present, resolving to definition sites.
+    ///
+    /// Resolution order for each name in `__all__`:
+    /// 1. Local top-level definition (function, class, module-level assignment).
+    /// 2. Import statement that binds this name (re-export case).
+    /// 3. `(0, 0)` sentinel meaning "no position". Downstream code (reader.rs,
+    ///    manifest/mod.rs) treats `start == 0` as `None`.
+    ///
+    /// Never falls back to the `__all__` literal's line range — that's structurally
+    /// wrong and caused every re-exported name in a manicure `__init__.py` to
+    /// collapse to the same 20-line range.
     fn extract_dunder_all(
         &self,
         source: &str,
@@ -213,12 +306,9 @@ impl PythonParser {
                 continue;
             }
 
-            // Build definition map to resolve names to their actual definition sites
+            // Build lookup maps to resolve names to their source positions.
             let def_map = self.build_definition_map(source, root_node);
-
-            let all_node = top_level_ancestor(name_capture.node);
-            let all_start = all_node.start_position().row + 1;
-            let all_end = all_node.end_position().row + 1;
+            let import_map = self.build_import_position_map(source, root_node);
 
             let mut seen = HashSet::new();
             let mut exports = Vec::new();
@@ -230,8 +320,11 @@ impl PythonParser {
                 {
                     let name = text.trim_matches('\'').trim_matches('"').to_string();
                     if !name.is_empty() && seen.insert(name.clone()) {
-                        let (start, end) =
-                            def_map.get(&name).copied().unwrap_or((all_start, all_end));
+                        let (start, end) = def_map
+                            .get(&name)
+                            .copied()
+                            .or_else(|| import_map.get(&name).copied())
+                            .unwrap_or((0, 0));
                         exports.push(ExportEntry::new(name, start, end));
                     }
                 }

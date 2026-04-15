@@ -4,11 +4,17 @@ use std::collections::{HashMap, HashSet};
 
 use crate::format::yaml_escape;
 use crate::manifest::private_members::{PrivateMember, TopLevelFunction};
-use crate::manifest::{ExportLines, FileEntry};
+use crate::manifest::{ExportLines, FileEntry, OutlineReExport};
 
 use super::helpers::{push_exports_map, push_inline_list};
 
 /// Format file outline: sidecar YAML with symbol sizes and method sub-entries.
+///
+/// `reexports` lists names that this file surfaces from other modules.
+/// When non-empty, those names are hidden from the `symbols:` block and
+/// rendered in a dedicated `re-exports:` section dereferenced to their
+/// origin file + line range.
+///
 /// `private_by_class` is populated only when `include_private: true` is requested.
 /// When `Some`, private members are merged with public methods and annotated `# private`.
 /// `top_level_fns` is also populated when `include_private: true` and contains
@@ -16,6 +22,7 @@ use super::helpers::{push_exports_map, push_inline_list};
 pub fn format_file_outline(
     file: &str,
     entry: &FileEntry,
+    reexports: &[OutlineReExport],
     private_by_class: Option<&HashMap<String, Vec<PrivateMember>>>,
     top_level_fns: Option<&[TopLevelFunction]>,
 ) -> String {
@@ -26,9 +33,20 @@ pub fn format_file_outline(
     push_inline_list(&mut lines, "imports", &entry.imports);
     push_inline_list(&mut lines, "dependencies", &entry.dependencies);
 
-    if !entry.exports.is_empty() {
+    // Names surfaced via `re-exports:` are hidden from `symbols:` so the two
+    // sections stay disjoint (local defs vs re-exports).
+    let reexport_names: HashSet<&str> = reexports.iter().map(|r| r.name.as_str()).collect();
+    let has_local_def = entry
+        .exports
+        .iter()
+        .any(|n| !reexport_names.contains(n.as_str()));
+
+    if has_local_def {
         lines.push("symbols:".to_string());
         for (i, name) in entry.exports.iter().enumerate() {
+            if reexport_names.contains(name.as_str()) {
+                continue;
+            }
             let prefix = format!("{}.", name);
 
             // Collect public methods belonging to this class (prefix "ClassName.")
@@ -202,6 +220,21 @@ pub fn format_file_outline(
             } else {
                 lines.push(format!("  {}", yaml_escape(name)));
             }
+        }
+    }
+
+    // Render re-exports dereferenced to their origin definitions. Entries
+    // arrive alphabetically sorted from `Manifest::reexports_in_file`.
+    if !reexports.is_empty() {
+        lines.push("re-exports:".to_string());
+        for r in reexports {
+            lines.push(format!(
+                "  {}: {}:[{}, {}]",
+                yaml_escape(&r.name),
+                yaml_escape(&r.origin_file),
+                r.origin_start,
+                r.origin_end
+            ));
         }
     }
 
