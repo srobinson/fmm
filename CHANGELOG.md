@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/srobinson/fmm/compare/v0.2.2...v0.2.3) (2026-04-15)
+
+
+### Bug Fixes
+
+* **release:** unbreak npm publish + bump GHA actions to Node 24 ([#124](https://github.com/srobinson/fmm/issues/124)) ([4f5e540](https://github.com/srobinson/fmm/commit/4f5e540f7864b9947ba612d93183e7ee3d9f99b5))
+
 ## [0.2.2](https://github.com/srobinson/fmm/compare/v0.2.1...v0.2.2) (2026-04-15)
 
 
