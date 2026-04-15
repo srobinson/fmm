@@ -23,21 +23,15 @@ fn parse_python_functions() {
 
 #[test]
 fn parse_python_classes() {
+    // Underscore prefix is Python social convention, not a structural property —
+    // fmm surfaces all top-level classes/functions so downstream re-export
+    // dereferencing can resolve origins.
     let mut parser = PythonParser::new().unwrap();
     let source = "class MyClass:\n    pass\n\nclass _Private:\n    pass\n";
     let result = parser.parse(source).unwrap();
-    assert!(
-        result
-            .metadata
-            .export_names()
-            .contains(&"MyClass".to_string())
-    );
-    assert!(
-        !result
-            .metadata
-            .export_names()
-            .contains(&"_Private".to_string())
-    );
+    let names = result.metadata.export_names();
+    assert!(names.contains(&"MyClass".to_string()));
+    assert!(names.contains(&"_Private".to_string()));
 }
 
 #[test]
@@ -78,22 +72,15 @@ fn dot_import_to_path_conversions() {
 }
 
 #[test]
-fn parse_python_private_excluded() {
+fn parse_python_underscore_functions_are_surfaced() {
+    // Underscore prefix is not a structural filter. Both names become exports
+    // so downstream re-export dereferencing can resolve origins.
     let mut parser = PythonParser::new().unwrap();
     let source = "def _private():\n    pass\n\ndef public():\n    pass\n";
     let result = parser.parse(source).unwrap();
-    assert!(
-        !result
-            .metadata
-            .export_names()
-            .contains(&"_private".to_string())
-    );
-    assert!(
-        result
-            .metadata
-            .export_names()
-            .contains(&"public".to_string())
-    );
+    let names = result.metadata.export_names();
+    assert!(names.contains(&"_private".to_string()));
+    assert!(names.contains(&"public".to_string()));
 }
 
 #[test]
@@ -538,13 +525,15 @@ fn python_methods_other_dunder_excluded() {
 }
 
 #[test]
-fn python_methods_non_exported_class_excluded() {
+fn python_methods_of_underscore_class_are_indexed() {
+    // `_Internal` is now surfaced as an export (no underscore filter), so its
+    // methods follow the normal class-method indexing path.
     let mut parser = PythonParser::new().unwrap();
     let source = "class _Internal:\n    def method(self):\n        pass\n";
     let result = parser.parse(source).unwrap();
     assert!(
-        get_method(&result.metadata.exports, "_Internal", "method").is_none(),
-        "methods of non-exported class should NOT be indexed"
+        get_method(&result.metadata.exports, "_Internal", "method").is_some(),
+        "methods of an underscore-prefixed class should be indexed now that the class is exported"
     );
 }
 

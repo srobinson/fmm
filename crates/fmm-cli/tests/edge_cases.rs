@@ -128,11 +128,17 @@ fn typescript_no_exports() {
 }
 
 #[test]
-fn python_no_exports_all_private() {
+fn python_underscore_top_level_defs_are_exported() {
+    // Underscore-prefix is Python social convention, not a structural property.
+    // fmm surfaces all top-level defs so cross-module re-export dereferencing
+    // works (e.g. `_port_in_use` defined in `net.py` and re-exported from a
+    // barrel `__init__.py`).
     let mut parser = PythonParser::new().unwrap();
     let source = "def _private():\n    pass\n\n_INTERNAL = 42\n";
     let result = parser.parse(source).unwrap();
-    assert!(result.metadata.exports.is_empty());
+    let names = result.metadata.export_names();
+    assert!(names.contains(&"_private".to_string()));
+    assert!(names.contains(&"_INTERNAL".to_string()));
 }
 
 #[test]
@@ -283,15 +289,16 @@ fn rust_comments_only() {
 // --- Decorated definitions (Python-specific) ---
 
 #[test]
-fn python_decorated_all_private() {
+fn python_decorated_underscore_items_are_exported() {
+    // Matching `python_underscore_top_level_defs_are_exported`: underscore
+    // prefix is not a structural filter, even for decorated items.
     let mut parser = PythonParser::new().unwrap();
     let source =
         "@dataclass\nclass _Internal:\n    x: int\n\n@staticmethod\ndef _helper():\n    pass\n";
     let result = parser.parse(source).unwrap();
-    assert!(
-        result.metadata.exports.is_empty(),
-        "private decorated items should not be exported"
-    );
+    let names = result.metadata.export_names();
+    assert!(names.contains(&"_Internal".to_string()));
+    assert!(names.contains(&"_helper".to_string()));
 }
 
 #[test]

@@ -126,13 +126,16 @@ impl PythonParser {
         let mut exports = Vec::new();
         let source_bytes = source.as_bytes();
 
+        // fmm is a structural tool, not a Python visibility checker: underscore
+        // prefix is social convention, not a structural property. Include all
+        // top-level def/class/assign names so re-export dereferencing can find
+        // them in origin files (e.g. `_port_in_use` in `net.py`).
         let mut collect_filtered = |query: &Query, filter: fn(&str) -> bool| {
             let mut cursor = QueryCursor::new();
             let mut iter = cursor.matches(query, root_node, source_bytes);
             while let Some(m) = iter.next() {
                 for capture in m.captures {
                     if let Ok(text) = capture.node.utf8_text(source_bytes)
-                        && !text.starts_with('_')
                         && filter(text)
                         && seen.insert(text.to_string())
                     {
