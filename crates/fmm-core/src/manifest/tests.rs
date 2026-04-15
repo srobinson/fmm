@@ -867,3 +867,26 @@ fn ts_js_priority_unchanged_within_js_family() {
         ".js must not overwrite .ts within the JS family"
     );
 }
+
+#[test]
+fn lang_family_classifies_known_extensions() {
+    use crate::manifest::lang_family;
+    // Python
+    assert_eq!(lang_family("a.py"), "python");
+    // JS family — all six extensions collapse to "js"
+    assert_eq!(lang_family("a.js"), "js");
+    assert_eq!(lang_family("a.jsx"), "js");
+    assert_eq!(lang_family("a.ts"), "js");
+    assert_eq!(lang_family("a.tsx"), "js");
+    assert_eq!(lang_family("a.mjs"), "js");
+    assert_eq!(lang_family("a.cjs"), "js");
+    // Rust and Go
+    assert_eq!(lang_family("a.rs"), "rust");
+    assert_eq!(lang_family("a.go"), "go");
+    // Unknown extensions fall through to the extension string, so different
+    // unknown langs (e.g. .swift vs .kt) don't lump together as the same family.
+    assert_eq!(lang_family("a.swift"), "swift");
+    assert_eq!(lang_family("a.kt"), "kt");
+    // No extension at all
+    assert_eq!(lang_family("README"), "");
+}
