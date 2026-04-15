@@ -121,6 +121,7 @@ fn load_exports(conn: &Connection, manifest: &mut Manifest) -> Result<()> {
 
     // Iterate in deterministic order so shadow warnings and index-building are
     // reproducible across runs. HashMap iteration is intentionally randomized.
+    #[allow(clippy::type_complexity)]
     let mut sorted: Vec<(String, Vec<(String, Option<ExportLines>)>)> =
         by_file.into_iter().collect();
     sorted.sort_by(|a, b| a.0.cmp(&b.0));
