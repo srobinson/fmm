@@ -22,6 +22,10 @@ jobs:
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
+        env:
+          # release-please-action has no v5 yet; opt this action into Node 24
+          # ahead of the 2026-06-02 runner-enforced deprecation.
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
@@ -55,7 +59,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -85,7 +89,7 @@ jobs:
           Compress-Archive -Path fmm.exe -DestinationPath ../../../fmm-${{ matrix.target }}.zip
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: fmm-${{ matrix.target }}
           path: fmm-${{ matrix.target }}.*
@@ -98,7 +102,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: artifacts
           merge-multiple: true
@@ -121,15 +125,18 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
-      - name: Upgrade npm for OIDC support
-        run: npm install -g npm@latest
+      # npm 10.9+ shipped with Node 22 already supports OIDC/provenance.
+      # The previous `npm install -g npm@latest` step broke the runner on
+      # 2026-04-15 (`Cannot find module 'promise-retry'`) when npm@11's
+      # self-replacement on top of npm@10.9.7 left the tree in a partial
+      # state. Removing it; no functional loss.
 
       - name: Publish npm packages
         run: |
