@@ -80,6 +80,6 @@ Three GitHub Actions workflows:
 
 ## Current status
 
-Version **0.2.1**. Actively developed. Core indexing pipeline is stable. MCP server and CLI are production-ready for TypeScript/Python/Rust codebases. Other language parsers exist but have less validation.
+Version **0.2.3**. Actively developed. Core indexing pipeline is stable. MCP server and CLI are production-ready for TypeScript/Python/Rust codebases. Other language parsers exist but have less validation.
 
 Part of the [Helioy](https://github.com/srobinson) ecosystem.
