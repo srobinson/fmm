@@ -21,6 +21,77 @@ pub(crate) struct ReadMethodHint {
     pub(crate) lines: ExportLines,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ReadSymbolGuidance {
+    Cli,
+    Mcp,
+}
+
+impl ReadSymbolGuidance {
+    fn empty_symbol(self) -> &'static str {
+        match self {
+            Self::Cli => {
+                "Symbol name must not be empty. Use fmm exports to discover available symbols."
+            }
+            Self::Mcp => {
+                "Symbol name must not be empty. Use fmm_list_exports to discover available symbols."
+            }
+        }
+    }
+
+    fn missing_top_level_function(self, symbol: &str, file: &str) -> String {
+        match self {
+            Self::Cli => format!(
+                "Symbol '{}' not found in '{}'. Exported symbols must be read by plain name. Use fmm outline {} --include-private to see all top-level declarations.",
+                symbol, file, file
+            ),
+            Self::Mcp => format!(
+                "Symbol '{}' not found in '{}'. Exported symbols must be read by plain name. Use fmm_file_outline(file: \"{}\", include_private: true) to see all top-level declarations.",
+                symbol, file, file
+            ),
+        }
+    }
+
+    fn unknown_class(self, name: &str, class_name: &str) -> String {
+        match self {
+            Self::Cli => format!(
+                "Method '{}' not found. Class '{}' is not a known export. Use fmm exports or fmm search to discover available symbols.",
+                name, class_name
+            ),
+            Self::Mcp => format!(
+                "Method '{}' not found. Class '{}' is not a known export. Use fmm_file_outline to inspect the file.",
+                name, class_name
+            ),
+        }
+    }
+
+    fn missing_method(self, name: &str, method_name: &str, class_name: &str, file: &str) -> String {
+        match self {
+            Self::Cli => format!(
+                "Method '{}' not found. '{}' is not a public or private method of '{}'. Use fmm outline {} --include-private to see all members.",
+                name, method_name, class_name, file
+            ),
+            Self::Mcp => format!(
+                "Method '{}' not found. '{}' is not a public or private method of '{}'. Use fmm_file_outline(include_private: true) to see all members.",
+                name, method_name, class_name
+            ),
+        }
+    }
+
+    fn missing_export(self, name: &str) -> String {
+        match self {
+            Self::Cli => format!(
+                "Export '{}' not found. Use fmm exports or fmm search to discover available symbols.",
+                name
+            ),
+            Self::Mcp => format!(
+                "Export '{}' not found. Use fmm_list_exports or fmm_search to discover available symbols.",
+                name
+            ),
+        }
+    }
+}
+
 impl ReadSymbolResult {
     pub(crate) fn format_text(&self, line_numbers: bool) -> String {
         match &self.content {
@@ -52,15 +123,13 @@ pub(crate) fn read_symbol_result(
     root: &Path,
     name: &str,
     truncate: bool,
+    guidance: ReadSymbolGuidance,
 ) -> Result<ReadSymbolResult, String> {
     if name.trim().is_empty() {
-        return Err(
-            "Symbol name must not be empty. Use fmm_list_exports to discover available symbols."
-                .to_string(),
-        );
+        return Err(guidance.empty_symbol().to_string());
     }
 
-    let (resolved_file, resolved_lines) = resolve_symbol_location(manifest, root, name)?;
+    let (resolved_file, resolved_lines) = resolve_symbol_location(manifest, root, name, guidance)?;
     let lines = resolved_lines.ok_or_else(|| {
         format!(
             "No line range for '{}' in '{}'. Run 'fmm generate' to re-index.",
@@ -115,13 +184,14 @@ fn resolve_symbol_location(
     manifest: &Manifest,
     root: &Path,
     name: &str,
+    guidance: ReadSymbolGuidance,
 ) -> Result<(String, Option<ExportLines>), String> {
     if let Some(colon_pos) = name.find(':') {
-        resolve_colon_notation(root, name, colon_pos)
+        resolve_colon_notation(root, name, colon_pos, guidance)
     } else if name.contains('.') {
-        resolve_dotted_notation(manifest, root, name)
+        resolve_dotted_notation(manifest, root, name, guidance)
     } else {
-        resolve_export(manifest, name)
+        resolve_export(manifest, name, guidance)
     }
 }
 
@@ -129,23 +199,18 @@ fn resolve_colon_notation(
     root: &Path,
     name: &str,
     colon_pos: usize,
+    guidance: ReadSymbolGuidance,
 ) -> Result<(String, Option<ExportLines>), String> {
     let file_part = &name[..colon_pos];
     let symbol_part = &name[colon_pos + 1..];
 
     if (file_part.contains('/') || file_part.contains('.')) && !symbol_part.is_empty() {
-        let (start, end) =
-            fmm_core::manifest::private_members::find_top_level_function_range(
-                root,
-                file_part,
-                symbol_part,
-            )
-            .ok_or_else(|| {
-                format!(
-                    "Symbol '{}' not found in '{}'. Exported symbols must be read by plain name. Use fmm_file_outline(file: \"{}\", include_private: true) to see all top-level declarations.",
-                    symbol_part, file_part, file_part
-                )
-            })?;
+        let (start, end) = fmm_core::manifest::private_members::find_top_level_function_range(
+            root,
+            file_part,
+            symbol_part,
+        )
+        .ok_or_else(|| guidance.missing_top_level_function(symbol_part, file_part))?;
         Ok((
             file_part.to_string(),
             Some(fmm_core::manifest::ExportLines { start, end }),
@@ -162,6 +227,7 @@ fn resolve_dotted_notation(
     manifest: &Manifest,
     root: &Path,
     name: &str,
+    guidance: ReadSymbolGuidance,
 ) -> Result<(String, Option<ExportLines>), String> {
     if let Some(loc) = manifest.method_index.get(name) {
         return Ok((loc.file.clone(), loc.lines.clone()));
@@ -175,12 +241,7 @@ fn resolve_dotted_notation(
         .export_locations
         .get(class_name)
         .map(|loc| loc.file.clone())
-        .ok_or_else(|| {
-            format!(
-                "Method '{}' not found. Class '{}' is not a known export. Use fmm_file_outline to inspect the file.",
-                name, class_name
-            )
-        })?;
+        .ok_or_else(|| guidance.unknown_class(name, class_name))?;
 
     let (start, end) = fmm_core::manifest::private_members::find_private_method_range(
         root,
@@ -188,12 +249,7 @@ fn resolve_dotted_notation(
         class_name,
         method_name,
     )
-    .ok_or_else(|| {
-        format!(
-            "Method '{}' not found. '{}' is not a public or private method of '{}'. Use fmm_file_outline(include_private: true) to see all members.",
-            name, method_name, class_name
-        )
-    })?;
+    .ok_or_else(|| guidance.missing_method(name, method_name, class_name, &class_file))?;
 
     Ok((
         class_file,
@@ -204,13 +260,12 @@ fn resolve_dotted_notation(
 fn resolve_export(
     manifest: &Manifest,
     name: &str,
+    guidance: ReadSymbolGuidance,
 ) -> Result<(String, Option<ExportLines>), String> {
-    let location = manifest.export_locations.get(name).ok_or_else(|| {
-        format!(
-            "Export '{}' not found. Use fmm_list_exports or fmm_search to discover available symbols.",
-            name
-        )
-    })?;
+    let location = manifest
+        .export_locations
+        .get(name)
+        .ok_or_else(|| guidance.missing_export(name))?;
 
     if crate::mcp::tools::is_reexport_file(&location.file)
         && let Some((concrete_file, concrete_lines)) =

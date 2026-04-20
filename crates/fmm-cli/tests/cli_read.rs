@@ -79,6 +79,51 @@ fn parse_json(output: &Output) -> Value {
 }
 
 #[test]
+fn read_missing_export_suggests_cli_commands() {
+    let tmp = setup_read_project();
+    let output = run_fmm(tmp.path(), &["read", "NoSuchSymbol"]);
+
+    assert!(
+        !output.status.success(),
+        "fmm read should fail for missing export"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        stderr.contains("Export 'NoSuchSymbol' not found"),
+        "got: {stderr}"
+    );
+    assert!(
+        stderr.contains("Use fmm exports or fmm search"),
+        "got: {stderr}"
+    );
+    assert!(!stderr.contains("fmm_list_exports"), "got: {stderr}");
+    assert!(!stderr.contains("fmm_search"), "got: {stderr}");
+}
+
+#[test]
+fn read_missing_method_suggests_cli_outline() {
+    let tmp = setup_read_project();
+    let output = run_fmm(tmp.path(), &["read", "SecretService.missing"]);
+
+    assert!(
+        !output.status.success(),
+        "fmm read should fail for missing method"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        stderr.contains("Method 'SecretService.missing' not found"),
+        "got: {stderr}"
+    );
+    assert!(
+        stderr.contains("Use fmm outline src/service.ts --include-private"),
+        "got: {stderr}"
+    );
+    assert!(!stderr.contains("fmm_file_outline"), "got: {stderr}");
+}
+
+#[test]
 fn read_public_symbol_still_works_with_line_numbers() {
     let tmp = setup_read_project();
     let output = run_fmm(

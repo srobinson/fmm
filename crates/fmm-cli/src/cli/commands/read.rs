@@ -2,7 +2,9 @@ use anyhow::{Context, Result};
 use fmm_core::manifest::ExportLines;
 
 use super::{load_manifest, warn_no_sidecars};
-use crate::read_symbol::{ReadMethodHint, ReadSymbolContent, read_symbol_result};
+use crate::read_symbol::{
+    ReadMethodHint, ReadSymbolContent, ReadSymbolGuidance, read_symbol_result,
+};
 
 #[derive(serde::Serialize)]
 struct ReadSymbolJson {
@@ -44,9 +46,15 @@ pub fn read_symbol(
         return Ok(());
     }
 
-    let mut result = read_symbol_result(&manifest, &root, name, !no_truncate)
-        .map_err(anyhow::Error::msg)
-        .with_context(|| format!("Failed to read symbol '{name}'"))?;
+    let mut result = read_symbol_result(
+        &manifest,
+        &root,
+        name,
+        !no_truncate,
+        ReadSymbolGuidance::Cli,
+    )
+    .map_err(anyhow::Error::msg)
+    .with_context(|| format!("Failed to read symbol '{name}'"))?;
 
     truncate_cli_source(&mut result.content, no_truncate);
 
