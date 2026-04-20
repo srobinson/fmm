@@ -534,6 +534,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm exports</bold>                              <dim># All exports (grouped by file)</dim>
   <dim>$</dim> <bold>fmm exports Module</bold>                       <dim># Substring match "Module"</dim>
   <dim>$</dim> <bold>fmm exports create</bold>                       <dim># All exports containing "create"</dim>
+  <dim>$</dim> <bold>fmm exports --file src/app.ts</bold>             <dim># All exports from one file</dim>
   <dim>$</dim> <bold>fmm exports '^handle'</bold>                    <dim># Regex: exports starting with "handle"</dim>
   <dim>$</dim> <bold>fmm exports 'Service$'</bold>                   <dim># Regex: exports ending in "Service"</dim>
   <dim>$</dim> <bold>fmm exports '^[A-Z]'</bold>                     <dim># Regex: PascalCase exports only</dim>
@@ -545,6 +546,10 @@ pub enum Commands {
         /// Pattern to filter exports — substring (case-insensitive) or regex (auto-detected when metacharacters present)
         #[arg(value_name = "PATTERN")]
         pattern: Option<String>,
+
+        /// File path — returns all exports from this file
+        #[arg(long = "file")]
+        file: Option<String>,
 
         /// Scope results to a directory prefix (e.g. packages/core/)
         #[arg(long = "dir")]

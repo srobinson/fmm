@@ -166,12 +166,20 @@ fn run() -> anyhow::Result<()> {
         }
         Commands::Exports {
             pattern,
+            file,
             dir,
             limit,
             offset,
             json,
         } => {
-            cli::exports(pattern.as_deref(), dir.as_deref(), limit, offset, json)?;
+            cli::exports(
+                pattern.as_deref(),
+                file.as_deref(),
+                dir.as_deref(),
+                limit,
+                offset,
+                json,
+            )?;
         }
         Commands::Mcp | Commands::Serve => {
             let mut server = mcp::McpServer::new();

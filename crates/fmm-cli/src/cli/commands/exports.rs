@@ -13,6 +13,7 @@ struct ExportJson {
 
 pub fn exports(
     pattern: Option<&str>,
+    file: Option<&str>,
     directory: Option<&str>,
     limit: Option<usize>,
     offset: usize,
@@ -25,7 +26,32 @@ pub fn exports(
         return Ok(());
     }
 
-    if let Some(pat) = pattern {
+    if let Some(file_path) = file {
+        if pattern.is_some() {
+            anyhow::bail!("--file cannot be combined with a pattern");
+        }
+        if directory.is_some() {
+            anyhow::bail!("--file cannot be combined with --dir");
+        }
+
+        let entry = manifest
+            .files
+            .get(file_path)
+            .ok_or_else(|| anyhow::anyhow!("File '{}' not found in manifest", file_path))?;
+
+        if json_output {
+            let json = FileExportsJson {
+                file: file_path.to_string(),
+                exports: entry_exports_json(file_path, entry),
+            };
+            println!("{}", serde_json::to_string_pretty(&json)?);
+        } else {
+            println!(
+                "{}",
+                fmm_core::format::format_list_exports_file(file_path, entry)
+            );
+        }
+    } else if let Some(pat) = pattern {
         // Auto-detect regex: metacharacters trigger compiled regex (case-sensitive).
         // Plain patterns keep the existing case-insensitive substring match.
         const METACHAR: &[char] = &['^', '$', '[', '(', '\\', '.', '*', '+', '?', '{'];
@@ -127,33 +153,11 @@ pub fn exports(
         let by_file = &by_file[page_start..page_end];
 
         if json_output {
-            #[derive(serde::Serialize)]
-            struct FileExportsJson {
-                file: String,
-                exports: Vec<ExportJson>,
-            }
             let json: Vec<FileExportsJson> = by_file
                 .iter()
                 .map(|(file, entry)| FileExportsJson {
                     file: file.to_string(),
-                    exports: entry
-                        .exports
-                        .iter()
-                        .enumerate()
-                        .map(|(i, name)| {
-                            let lines = entry
-                                .export_lines
-                                .as_ref()
-                                .and_then(|el| el.get(i))
-                                .filter(|l| l.start > 0)
-                                .map(|l| [l.start, l.end]);
-                            ExportJson {
-                                name: name.clone(),
-                                file: file.to_string(),
-                                lines,
-                            }
-                        })
-                        .collect(),
+                    exports: entry_exports_json(file, entry),
                 })
                 .collect();
             println!("{}", serde_json::to_string_pretty(&json)?);
@@ -166,4 +170,31 @@ pub fn exports(
     }
 
     Ok(())
+}
+
+#[derive(serde::Serialize)]
+struct FileExportsJson {
+    file: String,
+    exports: Vec<ExportJson>,
+}
+
+fn entry_exports_json(file: &str, entry: &fmm_core::manifest::FileEntry) -> Vec<ExportJson> {
+    entry
+        .exports
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            let lines = entry
+                .export_lines
+                .as_ref()
+                .and_then(|el| el.get(i))
+                .filter(|l| l.start > 0)
+                .map(|l| [l.start, l.end]);
+            ExportJson {
+                name: name.clone(),
+                file: file.to_string(),
+                lines,
+            }
+        })
+        .collect()
 }
