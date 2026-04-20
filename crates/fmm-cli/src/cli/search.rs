@@ -264,7 +264,12 @@ fn flag_search(manifest: &Manifest, options: SearchOptions) -> Result<()> {
         && options.min_loc.is_none()
         && options.max_loc.is_none()
     {
-        let matches = scoped_export_matches(manifest, export_name, options.directory.as_deref());
+        let (matches, total) = limited_scoped_export_matches(
+            manifest,
+            export_name,
+            options.directory.as_deref(),
+            options.limit,
+        );
         if matches.is_empty() {
             println!("{} No matching exports", "!".yellow());
             println!(
@@ -276,7 +281,6 @@ fn flag_search(manifest: &Manifest, options: SearchOptions) -> Result<()> {
                 .iter()
                 .map(|h| (h.name.clone(), h.file.clone(), h.lines))
                 .collect();
-            let total = tuples.len();
             println!(
                 "{}",
                 fmm_core::format::format_list_exports_pattern(&tuples, total, 0)
@@ -307,8 +311,12 @@ fn flag_search(manifest: &Manifest, options: SearchOptions) -> Result<()> {
             && filters.min_loc.is_none()
             && filters.max_loc.is_none()
         {
-            let matches =
-                scoped_export_matches(manifest, export_name, options.directory.as_deref());
+            let (matches, _) = limited_scoped_export_matches(
+                manifest,
+                export_name,
+                options.directory.as_deref(),
+                options.limit,
+            );
             let export_json: Vec<ExportMatchJson> = matches
                 .iter()
                 .map(|h| ExportMatchJson {
@@ -371,6 +379,21 @@ fn scoped_export_matches(
         .into_iter()
         .filter(|h| directory.is_none_or(|d| h.file.starts_with(d)))
         .collect()
+}
+
+fn limited_scoped_export_matches(
+    manifest: &Manifest,
+    export_name: &str,
+    directory: Option<&str>,
+    limit: Option<usize>,
+) -> (Vec<fmm_core::search::ExportHit>, usize) {
+    let matches = scoped_export_matches(manifest, export_name, directory);
+    let total = matches.len();
+    let page = match limit {
+        Some(limit) => matches.into_iter().take(limit).collect(),
+        None => matches,
+    };
+    (page, total)
 }
 
 fn validate_loc_flags(

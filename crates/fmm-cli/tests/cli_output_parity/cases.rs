@@ -153,6 +153,13 @@ pub(super) fn mcp_parity_cases() -> Vec<McpParityCase> {
             projection: Projection::SearchBare,
         },
         McpParityCase {
+            name: "mcp-search-export",
+            cli_args: &["search", "--export", "Parser", "--limit", "3"],
+            tool: "fmm_search",
+            arguments: json!({"export": "Parser", "limit": 3}),
+            projection: Projection::SearchExport,
+        },
+        McpParityCase {
             name: "mcp-search-filter",
             cli_args: &["search", "--imports", "serde", "--min-loc", "600"],
             tool: "fmm_search",

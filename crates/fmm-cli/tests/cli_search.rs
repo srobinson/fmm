@@ -184,6 +184,41 @@ fn search_export_dir_filter_applies_to_json_results() {
 }
 
 #[test]
+fn search_export_limit_caps_text_results() {
+    let tmp = setup_search_project();
+    let output = run_fmm(
+        tmp.path(),
+        &["search", "--export", "create", "--limit", "1"],
+    );
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let rows: Vec<&str> = stdout
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            !trimmed.is_empty() && !trimmed.starts_with('#')
+        })
+        .collect();
+
+    assert_eq!(rows.len(), 1, "got: {stdout}");
+    assert!(stdout.contains("# showing: 1-1 of 2"), "got: {stdout}");
+}
+
+#[test]
+fn search_export_limit_caps_json_results() {
+    let tmp = setup_search_project();
+    let output = run_fmm(
+        tmp.path(),
+        &["search", "--export", "create", "--limit", "1", "--json"],
+    );
+    let json = parse_json(&output);
+    let results = json.as_array().unwrap();
+
+    assert_eq!(results.len(), 1, "got: {json:#}");
+}
+
+#[test]
 fn search_loc_conflicts_with_min_loc() {
     let tmp = TempDir::new().unwrap();
     let output = run_fmm(tmp.path(), &["search", "--loc", ">10", "--min-loc", "5"]);

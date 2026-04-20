@@ -66,6 +66,27 @@ pub(in crate::mcp) fn tool_search(
         return Ok(formatted);
     }
 
+    if let Some(export_name) = filters.export.as_deref()
+        && filters.imports.is_none()
+        && filters.depends_on.is_none()
+        && filters.min_loc.is_none()
+        && filters.max_loc.is_none()
+    {
+        let matches = fmm_core::search::find_export_matches(manifest, export_name);
+        let total = matches.len();
+        let matches: Vec<_> = match limit {
+            Some(limit) => matches.into_iter().take(limit).collect(),
+            None => matches,
+        };
+        let tuples: Vec<(String, String, Option<[usize; 2]>)> = matches
+            .iter()
+            .map(|h| (h.name.clone(), h.file.clone(), h.lines))
+            .collect();
+        return Ok(fmm_core::format::format_list_exports_pattern(
+            &tuples, total, 0,
+        ));
+    }
+
     // Structured filter search (no term)
     let results = fmm_core::search::filter_search(manifest, &filters);
     let total_count = results.len();
