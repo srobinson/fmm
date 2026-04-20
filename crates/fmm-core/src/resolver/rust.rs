@@ -29,19 +29,8 @@ impl RustImportResolver {
         let mut crates_by_name = HashMap::new();
         let mut crates_by_dir = Vec::new();
 
-        for (name, dir) in workspace_packages {
-            if let Some(krate) = read_rust_crate(dir).or_else(|| {
-                let lib_root = dir.join("src/lib.rs");
-                Some(RustCrate {
-                    name: name.clone(),
-                    package_dir: dir.clone(),
-                    src_dir: lib_root
-                        .parent()
-                        .map(Path::to_path_buf)
-                        .unwrap_or_else(|| dir.join("src")),
-                    lib_root,
-                })
-            }) {
+        for dir in workspace_packages.values() {
+            if let Some(krate) = read_rust_crate(dir) {
                 crates_by_name.insert(krate.name.clone(), krate.clone());
                 crates_by_dir.push(krate);
             }
@@ -154,19 +143,13 @@ impl RustImportResolver {
 
     fn resolve_cross_crate(&self, importer: &Path, specifier: &str) -> Option<PathBuf> {
         let (crate_name, rest) = split_crate_specifier(specifier)?;
-        let importer_crate = self.crate_for_importer(importer);
-
-        let resolved_crate_name = importer_crate
-            .and_then(|krate| self.dependency_aliases_by_member.get(&krate.package_dir))
+        let importer_crate = self.crate_for_importer(importer)?;
+        let resolved_crate_name = self
+            .dependency_aliases_by_member
+            .get(&importer_crate.package_dir)
             .and_then(|aliases| aliases.get(crate_name))
             .cloned()
-            .or_else(|| {
-                if self.crates_by_name.contains_key(crate_name) {
-                    Some(crate_name.to_string())
-                } else {
-                    None
-                }
-            })?;
+            .or_else(|| (importer_crate.name == crate_name).then(|| importer_crate.name.clone()))?;
 
         let target_crate = self.crates_by_name.get(&resolved_crate_name)?;
         self.resolve_from_crate_root(target_crate, split_rust_path(rest))

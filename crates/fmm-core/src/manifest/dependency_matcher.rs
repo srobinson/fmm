@@ -25,6 +25,14 @@ fn is_rust_source_file(path: &Path) -> bool {
         .is_some_and(|ext| RUST_SOURCE_EXTENSIONS.contains(&ext))
 }
 
+fn is_cargo_workspace_source(path: &Path, manifest: &Manifest) -> bool {
+    is_rust_source_file(path)
+        && manifest
+            .workspace_packages
+            .values()
+            .any(|dir| path.starts_with(dir) && dir.join("Cargo.toml").exists())
+}
+
 /// Return a reference to the lazily-initialised set of source-file extensions
 /// from the builtin `ParserRegistry`.
 ///
@@ -337,20 +345,20 @@ pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<Str
     // Pass 1: relative and non-relative dependencies (unchanged behavior)
     for (source, entry) in &manifest.files {
         let source_path = Path::new(source.as_str());
+        let rust_workspace_source =
+            has_workspace && is_cargo_workspace_source(source_path, manifest);
         for dep in &entry.dependencies {
-            if dep.starts_with("./") || dep.starts_with("../") {
+            if rust_workspace_source
+                && (dep.starts_with("./") || dep.starts_with("../") || dep.starts_with("crate::"))
+            {
+                // Rust local paths need module semantics. Generic relative
+                // matching can misread `super::foo` as a filesystem `../foo`.
+                continue;
+            } else if dep.starts_with("./") || dep.starts_with("../") {
                 // Relative: try_resolve_local_dep gives the single canonical target
                 if let Some(target) = try_resolve_local_dep(dep, source, manifest, exts) {
                     rev.entry(target).or_default().push(source.clone());
                 }
-            } else if has_workspace
-                && is_rust_source_file(source_path)
-                && dep.starts_with("crate::")
-            {
-                // Rust `crate::` paths need the importing crate root to avoid
-                // suffix false positives across sibling crates. Pass 2b handles
-                // them through RustImportResolver when workspace metadata exists.
-                continue;
             } else {
                 // Non-relative: mirror dep_matches + python_dep_matches (same as dep_targets_file)
                 for target in manifest.files.keys() {
@@ -481,20 +489,34 @@ fn rust_workspace_edges(
     original_keys: &HashSet<String>,
     canonical_to_original: &HashMap<String, String>,
 ) -> Vec<(String, String)> {
-    entry
-        .dependencies
-        .iter()
-        .chain(entry.named_imports.keys())
-        .chain(entry.namespace_imports.iter())
+    rust_import_specifiers(entry)
+        .into_iter()
         .filter_map(|specifier| {
             resolver
-                .resolve(importer, specifier)
+                .resolve(importer, &specifier)
                 .and_then(|resolved| {
                     resolved_to_manifest_key(&resolved, original_keys, canonical_to_original)
                 })
                 .map(|target_key| (target_key, file_path.to_string()))
         })
         .collect()
+}
+
+fn rust_import_specifiers(entry: &FileEntry) -> Vec<String> {
+    let mut specifiers: Vec<String> = entry
+        .dependencies
+        .iter()
+        .filter(|dep| !dep.starts_with("./") && !dep.starts_with("../"))
+        .cloned()
+        .collect();
+    for (path, names) in &entry.named_imports {
+        specifiers.push(path.clone());
+        specifiers.extend(names.iter().map(|name| format!("{path}::{name}")));
+    }
+    specifiers.extend(entry.namespace_imports.clone());
+    specifiers.sort();
+    specifiers.dedup();
+    specifiers
 }
 
 #[cfg(test)]

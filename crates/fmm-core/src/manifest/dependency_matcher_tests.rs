@@ -149,6 +149,176 @@ cm-core.workspace = true
 }
 
 #[test]
+fn build_reverse_deps_resolves_rust_cross_crate_module_import() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_file(
+        tmp.path(),
+        "Cargo.toml",
+        r#"
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.dependencies]
+cm-core = { path = "crates/cm-core" }
+"#,
+    );
+    write_file(
+        tmp.path(),
+        "crates/cm-core/Cargo.toml",
+        r#"
+[package]
+name = "cm-core"
+version = "0.1.0"
+edition = "2024"
+"#,
+    );
+    let root = write_file(tmp.path(), "crates/cm-core/src/lib.rs", "pub mod store;");
+    let target = write_file(
+        tmp.path(),
+        "crates/cm-core/src/store.rs",
+        "pub struct CxStore;",
+    );
+    write_file(
+        tmp.path(),
+        "crates/cm-cli/Cargo.toml",
+        r#"
+[package]
+name = "cm-cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cm-core.workspace = true
+"#,
+    );
+    let importer = write_file(
+        tmp.path(),
+        "crates/cm-cli/src/main.rs",
+        "use cm_core::store;",
+    );
+
+    let root_key = root.to_string_lossy().into_owned();
+    let target_key = target.to_string_lossy().into_owned();
+    let importer_key = importer.to_string_lossy().into_owned();
+    let mut manifest = Manifest::new();
+    manifest
+        .workspace_packages
+        .insert("cm_core".into(), tmp.path().join("crates/cm-core"));
+    manifest
+        .workspace_packages
+        .insert("cm_cli".into(), tmp.path().join("crates/cm-cli"));
+    manifest
+        .files
+        .insert(root_key.clone(), crate::manifest::FileEntry::default());
+    manifest
+        .files
+        .insert(target_key.clone(), crate::manifest::FileEntry::default());
+    manifest.files.insert(
+        importer_key.clone(),
+        crate::manifest::FileEntry {
+            named_imports: std::collections::HashMap::from([(
+                "cm_core".to_string(),
+                vec!["store".to_string()],
+            )]),
+            ..Default::default()
+        },
+    );
+
+    let reverse_deps = build_reverse_deps(&manifest);
+    let importers = reverse_deps.get(&target_key).cloned().unwrap_or_default();
+    let root_importers = reverse_deps.get(&root_key).cloned().unwrap_or_default();
+
+    assert!(
+        importers.contains(&importer_key),
+        "Rust module import should resolve to the module file, got: {:?}",
+        importers
+    );
+    assert!(
+        root_importers.contains(&importer_key),
+        "Rust module import should also keep the crate root edge, got: {:?}",
+        root_importers
+    );
+}
+
+#[test]
+fn build_reverse_deps_ignores_undeclared_rust_workspace_dependency() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_file(
+        tmp.path(),
+        "Cargo.toml",
+        r#"
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+"#,
+    );
+    write_file(
+        tmp.path(),
+        "crates/cm-core/Cargo.toml",
+        r#"
+[package]
+name = "cm-core"
+version = "0.1.0"
+edition = "2024"
+"#,
+    );
+    let target = write_file(
+        tmp.path(),
+        "crates/cm-core/src/store.rs",
+        "pub struct CxStore;",
+    );
+    write_file(tmp.path(), "crates/cm-core/src/lib.rs", "pub mod store;");
+    write_file(
+        tmp.path(),
+        "crates/cm-cli/Cargo.toml",
+        r#"
+[package]
+name = "cm-cli"
+version = "0.1.0"
+edition = "2024"
+"#,
+    );
+    let importer = write_file(
+        tmp.path(),
+        "crates/cm-cli/src/main.rs",
+        "use cm_core::store::CxStore;",
+    );
+
+    let target_key = target.to_string_lossy().into_owned();
+    let importer_key = importer.to_string_lossy().into_owned();
+    let mut manifest = Manifest::new();
+    manifest
+        .workspace_packages
+        .insert("cm_core".into(), tmp.path().join("crates/cm-core"));
+    manifest
+        .workspace_packages
+        .insert("cm_cli".into(), tmp.path().join("crates/cm-cli"));
+    manifest
+        .files
+        .insert(target_key.clone(), crate::manifest::FileEntry::default());
+    manifest.files.insert(
+        importer_key.clone(),
+        crate::manifest::FileEntry {
+            named_imports: std::collections::HashMap::from([(
+                "cm_core::store".to_string(),
+                vec!["CxStore".to_string()],
+            )]),
+            ..Default::default()
+        },
+    );
+
+    let reverse_deps = build_reverse_deps(&manifest);
+    let importers = reverse_deps.get(&target_key).cloned().unwrap_or_default();
+
+    assert!(
+        !importers.contains(&importer_key),
+        "undeclared Rust workspace dependency should not resolve, got: {:?}",
+        importers
+    );
+}
+
+#[test]
 fn build_reverse_deps_resolves_rust_crate_path_from_importer_root() {
     let tmp = tempfile::TempDir::new().unwrap();
     write_file(
@@ -201,6 +371,113 @@ edition = "2024"
     assert!(
         importers.contains(&importer_key),
         "Rust crate:: dependency should resolve from the importing crate root, got: {:?}",
+        importers
+    );
+}
+
+#[test]
+fn build_reverse_deps_avoids_generic_relative_match_for_rust_super_paths() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_file(
+        tmp.path(),
+        "Cargo.toml",
+        r#"
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+"#,
+    );
+    write_file(
+        tmp.path(),
+        "crates/app/Cargo.toml",
+        r#"
+[package]
+name = "app"
+version = "0.1.0"
+edition = "2024"
+"#,
+    );
+    write_file(tmp.path(), "crates/app/src/lib.rs", "pub mod parser;");
+    let importer = write_file(
+        tmp.path(),
+        "crates/app/src/parser/builtin/rust.rs",
+        "use super::query_helpers;",
+    );
+    let correct_target = write_file(
+        tmp.path(),
+        "crates/app/src/parser/builtin/query_helpers.rs",
+        "",
+    );
+    let wrong_target = write_file(tmp.path(), "crates/app/src/parser/query_helpers.rs", "");
+
+    let importer_key = importer.to_string_lossy().into_owned();
+    let correct_key = correct_target.to_string_lossy().into_owned();
+    let wrong_key = wrong_target.to_string_lossy().into_owned();
+    let mut manifest = Manifest::new();
+    manifest
+        .workspace_packages
+        .insert("app".into(), tmp.path().join("crates/app"));
+    manifest
+        .files
+        .insert(correct_key.clone(), crate::manifest::FileEntry::default());
+    manifest
+        .files
+        .insert(wrong_key.clone(), crate::manifest::FileEntry::default());
+    manifest.files.insert(
+        importer_key.clone(),
+        crate::manifest::FileEntry {
+            dependencies: vec!["../query_helpers".to_string()],
+            named_imports: std::collections::HashMap::from([(
+                "super".to_string(),
+                vec!["query_helpers".to_string()],
+            )]),
+            ..Default::default()
+        },
+    );
+
+    let reverse_deps = build_reverse_deps(&manifest);
+    let correct_importers = reverse_deps.get(&correct_key).cloned().unwrap_or_default();
+    let wrong_importers = reverse_deps.get(&wrong_key).cloned().unwrap_or_default();
+
+    assert!(
+        correct_importers.contains(&importer_key),
+        "Rust super path should resolve through module semantics, got: {:?}",
+        correct_importers
+    );
+    assert!(
+        !wrong_importers.contains(&importer_key),
+        "Rust super path should not use generic filesystem relative matching, got: {:?}",
+        wrong_importers
+    );
+}
+
+#[test]
+fn build_reverse_deps_keeps_generic_rust_deps_without_cargo_workspace() {
+    let mut manifest = Manifest::new();
+    manifest
+        .workspace_roots
+        .push(std::path::PathBuf::from("packages/ui"));
+    manifest.files.insert(
+        "src/config.rs".to_string(),
+        crate::manifest::FileEntry::default(),
+    );
+    manifest.files.insert(
+        "src/main.rs".to_string(),
+        crate::manifest::FileEntry {
+            dependencies: vec!["crate::config".to_string()],
+            ..Default::default()
+        },
+    );
+
+    let reverse_deps = build_reverse_deps(&manifest);
+    let importers = reverse_deps
+        .get("src/config.rs")
+        .cloned()
+        .unwrap_or_default();
+
+    assert!(
+        importers.contains(&"src/main.rs".to_string()),
+        "Rust fallback deps should still work without Cargo metadata, got: {:?}",
         importers
     );
 }

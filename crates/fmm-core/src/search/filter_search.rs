@@ -128,7 +128,8 @@ fn dependency_query_targets(
 }
 
 fn transitive_dependents(manifest: &Manifest, targets: &HashSet<String>) -> HashSet<String> {
-    let mut seen = HashSet::new();
+    let mut seen = targets.clone();
+    let mut dependents = HashSet::new();
     let mut queue = VecDeque::new();
 
     for target in targets {
@@ -141,12 +142,13 @@ fn transitive_dependents(manifest: &Manifest, targets: &HashSet<String>) -> Hash
         if !seen.insert(file.clone()) {
             continue;
         }
+        dependents.insert(file.clone());
         if let Some(next) = manifest.reverse_deps.get(&file) {
             queue.extend(next.iter().filter(|path| !seen.contains(*path)).cloned());
         }
     }
 
-    seen
+    dependents
 }
 
 /// Check whether a dependency string `dep` (from file `source`) resolves to `target` in `manifest`.

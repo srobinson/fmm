@@ -66,6 +66,43 @@ fn depends_on_with_extension_equals_without() {
 }
 
 #[test]
+fn depends_on_cycle_does_not_return_target_file() {
+    let manifest = manifest_with(vec![
+        ("src/a.ts", vec!["./b"]),
+        ("src/b.ts", vec!["./a"]),
+        ("src/c.ts", vec!["./b"]),
+    ]);
+
+    let results = filter_search(
+        &manifest,
+        &SearchFilters {
+            export: None,
+            imports: None,
+            depends_on: Some("src/a.ts".to_string()),
+            min_loc: None,
+            max_loc: None,
+        },
+    );
+    let files: Vec<&str> = results.iter().map(|r| r.file.as_str()).collect();
+
+    assert!(
+        files.contains(&"src/b.ts"),
+        "direct dependent should match; got: {:?}",
+        files
+    );
+    assert!(
+        files.contains(&"src/c.ts"),
+        "transitive dependent should match; got: {:?}",
+        files
+    );
+    assert!(
+        !files.contains(&"src/a.ts"),
+        "target file should not be its own dependent; got: {:?}",
+        files
+    );
+}
+
+#[test]
 fn depends_on_uses_reverse_index_for_rust_cross_crate_edges() {
     use crate::manifest::{FileEntry, Manifest};
     use std::collections::HashMap;
