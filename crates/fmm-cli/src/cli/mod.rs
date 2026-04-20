@@ -26,7 +26,7 @@ mod generated_help;
 pub use commands::{deps, exports, lookup, ls, outline, read_symbol};
 pub use glossary::glossary;
 pub use init::init;
-pub use search::search;
+pub use search::{SearchOptions, search};
 pub use sidecar::{clean, generate, validate};
 pub use status::status;
 pub use watch::watch;
@@ -287,6 +287,8 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm search --loc ">>500"</bold>            <dim># Large files (over 500 lines)</dim>
   <dim>$</dim> <bold>fmm search --loc "<<50"</bold>             <dim># Small files (under 50 lines)</dim>
   <dim>$</dim> <bold>fmm search --loc ">=100"</bold>            <dim># Files with 100+ lines</dim>
+  <dim>$</dim> <bold>fmm search --min-loc 100 --max-loc 500</bold> <dim># Files in a LOC range</dim>
+  <dim>$</dim> <bold>fmm search auth --limit 5</bold>           <dim># Cap fuzzy export matches</dim>
 
   <dim># Combined filters (AND logic):</dim>
   <dim>$</dim> <bold>fmm search --imports react --loc ">>200"</bold>  <dim># Large React files</dim>
@@ -324,6 +326,18 @@ pub enum Commands {
                 A bare number is treated as exact match (=)."
         )]
         loc: Option<String>,
+
+        /// Minimum lines of code
+        #[arg(long = "min-loc", value_name = "MIN_LOC")]
+        min_loc: Option<usize>,
+
+        /// Maximum lines of code
+        #[arg(long = "max-loc", value_name = "MAX_LOC")]
+        max_loc: Option<usize>,
+
+        /// Maximum number of fuzzy export results
+        #[arg(long, value_name = "LIMIT")]
+        limit: Option<usize>,
 
         /// Find files that depend on a path
         #[arg(short = 'd', long = "depends-on")]

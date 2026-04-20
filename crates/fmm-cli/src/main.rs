@@ -105,11 +105,25 @@ fn run_command(command: Commands) -> anyhow::Result<()> {
             export,
             imports,
             loc,
+            min_loc,
+            max_loc,
+            limit,
             depends_on,
             dir,
             json,
         } => {
-            cli::search(term, export, imports, loc, depends_on, dir, json)?;
+            cli::search(cli::SearchOptions {
+                term,
+                export,
+                imports,
+                loc,
+                min_loc,
+                max_loc,
+                limit,
+                depends_on,
+                directory: dir,
+                json_output: json,
+            })?;
         }
         Commands::Glossary {
             pattern,
