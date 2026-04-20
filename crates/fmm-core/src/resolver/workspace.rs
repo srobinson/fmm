@@ -1,8 +1,8 @@
 //! Workspace manifest discovery for monorepo cross-package import resolution.
 //!
 //! Pluggable per ecosystem. The shipped discoverers cover JS/TS package
-//! managers and Cargo workspaces. Future discoverers (Go, uv, Deno) plug in
-//! via the [`WorkspaceDiscoverer`] trait and merge into the same
+//! managers, Cargo workspaces, and Go modules. Future discoverers (uv, Deno)
+//! plug in via the [`WorkspaceDiscoverer`] trait and merge into the same
 //! [`WorkspaceInfo`].
 
 use std::collections::HashMap;
@@ -52,6 +52,10 @@ pub struct JsWorkspaceDiscoverer;
 /// Cargo workspace discoverer. Reads a root `Cargo.toml` `[workspace]`
 /// manifest, expands member globs, and maps Rust crate names to package roots.
 pub struct CargoWorkspaceDiscoverer;
+
+/// Go workspace discoverer. Reads root `go.work` `use` directives or falls
+/// back to a single root `go.mod`.
+pub struct GoWorkspaceDiscoverer;
 
 impl WorkspaceDiscoverer for JsWorkspaceDiscoverer {
     fn detect(&self, repo_root: &Path) -> bool {
@@ -249,6 +253,21 @@ impl WorkspaceDiscoverer for CargoWorkspaceDiscoverer {
     }
 }
 
+impl WorkspaceDiscoverer for GoWorkspaceDiscoverer {
+    fn detect(&self, repo_root: &Path) -> bool {
+        repo_root.join("go.work").exists() || repo_root.join("go.mod").exists()
+    }
+
+    fn discover(&self, repo_root: &Path) -> WorkspaceInfo {
+        let go_work = repo_root.join("go.work");
+        if go_work.exists() {
+            return discover_go_work(repo_root, &go_work);
+        }
+
+        discover_single_go_module(repo_root)
+    }
+}
+
 fn read_cargo_manifest(dir: &Path) -> Option<toml::Value> {
     let content = std::fs::read_to_string(dir.join("Cargo.toml")).ok()?;
     toml::from_str(&content).ok()
@@ -307,6 +326,141 @@ fn crate_name_from_cargo_manifest(manifest: &toml::Value) -> Option<String> {
     )
 }
 
+fn discover_go_work(repo_root: &Path, go_work: &Path) -> WorkspaceInfo {
+    let mut roots = Vec::new();
+    let mut packages = HashMap::new();
+
+    for member_path in parse_go_work_use_paths(go_work) {
+        let root = resolve_go_work_member_path(repo_root, &member_path);
+        if let Some(module_path) = read_go_module_path(&root) {
+            packages.insert(module_path, root.clone());
+            roots.push(root);
+        }
+    }
+
+    roots.sort();
+    roots.dedup();
+
+    WorkspaceInfo { packages, roots }
+}
+
+fn discover_single_go_module(repo_root: &Path) -> WorkspaceInfo {
+    let Some(module_path) = read_go_module_path(repo_root) else {
+        return WorkspaceInfo::default();
+    };
+
+    let root = repo_root.to_path_buf();
+    let mut packages = HashMap::new();
+    packages.insert(module_path, root.clone());
+
+    WorkspaceInfo {
+        packages,
+        roots: vec![root],
+    }
+}
+
+fn parse_go_work_use_paths(path: &Path) -> Vec<String> {
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+
+    let mut in_use_block = false;
+    let mut results = Vec::new();
+
+    for line in content.lines() {
+        let trimmed = strip_go_line_comment(line).trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if in_use_block {
+            if trimmed.starts_with(')') {
+                in_use_block = false;
+                continue;
+            }
+            if let Some(path) = first_go_token(trimmed.trim_end_matches(')').trim()) {
+                results.push(path);
+            }
+            if trimmed.ends_with(')') {
+                in_use_block = false;
+            }
+            continue;
+        }
+
+        let Some(rest) = go_directive_value(trimmed, "use") else {
+            continue;
+        };
+        if rest.starts_with('(') {
+            in_use_block = true;
+            let inline = rest.trim_start_matches('(').trim();
+            if !inline.is_empty()
+                && !inline.starts_with(')')
+                && let Some(path) = first_go_token(inline.trim_end_matches(')').trim())
+            {
+                results.push(path);
+            }
+            if rest.ends_with(')') {
+                in_use_block = false;
+            }
+        } else if let Some(path) = first_go_token(rest) {
+            results.push(path);
+        }
+    }
+
+    results
+}
+
+fn read_go_module_path(dir: &Path) -> Option<String> {
+    let content = std::fs::read_to_string(dir.join("go.mod")).ok()?;
+    for line in content.lines() {
+        let trimmed = strip_go_line_comment(line).trim();
+        let Some(rest) = go_directive_value(trimmed, "module") else {
+            continue;
+        };
+        if let Some(module_path) = first_go_token(rest) {
+            return Some(module_path);
+        }
+    }
+    None
+}
+
+fn resolve_go_work_member_path(repo_root: &Path, member_path: &str) -> PathBuf {
+    let path = Path::new(member_path);
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        repo_root.join(path)
+    }
+}
+
+fn go_directive_value<'a>(line: &'a str, directive: &str) -> Option<&'a str> {
+    let rest = line.strip_prefix(directive)?;
+    let has_boundary = matches!(rest.chars().next(), Some(c) if c.is_whitespace() || c == '(');
+    if !has_boundary {
+        return None;
+    }
+    Some(rest.trim())
+}
+
+fn first_go_token(value: &str) -> Option<String> {
+    let token = value
+        .split_whitespace()
+        .next()?
+        .trim_matches('"')
+        .trim_matches('`');
+    if token.is_empty() {
+        None
+    } else {
+        Some(token.to_string())
+    }
+}
+
+fn strip_go_line_comment(line: &str) -> &str {
+    line.split_once("//")
+        .map(|(before, _comment)| before)
+        .unwrap_or(line)
+}
+
 /// Read the `name` field from `package.json` at `dir`. Returns `None` when
 /// the file is missing, malformed, or has no string `name` field.
 pub fn read_package_name(dir: &Path) -> Option<String> {
@@ -322,6 +476,7 @@ pub fn read_package_name(dir: &Path) -> Option<String> {
 pub fn discover(repo_root: &Path) -> WorkspaceInfo {
     let discoverers: Vec<Box<dyn WorkspaceDiscoverer>> = vec![
         Box::new(CargoWorkspaceDiscoverer),
+        Box::new(GoWorkspaceDiscoverer),
         Box::new(JsWorkspaceDiscoverer),
     ];
     discover_with(repo_root, &discoverers)

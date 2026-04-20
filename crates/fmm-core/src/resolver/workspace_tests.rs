@@ -24,6 +24,14 @@ fn write_crate(base: &Path, rel: &str, name: &str) {
     );
 }
 
+fn write_go_module(base: &Path, rel: &str, module_path: &str) {
+    write_file(
+        base,
+        &format!("{rel}/go.mod"),
+        &format!("module {module_path}\n\ngo 1.23.0\n"),
+    );
+}
+
 #[test]
 fn no_workspace_config_returns_empty() {
     let tmp = TempDir::new().unwrap();
@@ -409,6 +417,94 @@ fn cargo_lib_name_overrides_package_name() {
 }
 
 #[test]
+fn go_discoverer_detects_go_work() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "go.work", "go 1.23.0\n");
+    assert!(GoWorkspaceDiscoverer.detect(tmp.path()));
+}
+
+#[test]
+fn go_discoverer_detects_go_mod() {
+    let tmp = TempDir::new().unwrap();
+    write_go_module(tmp.path(), ".", "github.com/acme/root");
+    assert!(GoWorkspaceDiscoverer.detect(tmp.path()));
+}
+
+#[test]
+fn go_discoverer_does_not_detect_empty_dir() {
+    let tmp = TempDir::new().unwrap();
+    assert!(!GoWorkspaceDiscoverer.detect(tmp.path()));
+}
+
+#[test]
+fn go_work_single_use_discovers_module() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "go.work", "go 1.23.0\nuse ./module-a\n");
+    write_go_module(tmp.path(), "module-a", "github.com/acme/module-a");
+
+    let info = discover(tmp.path());
+
+    assert_eq!(info.roots, vec![tmp.path().join("module-a")]);
+    assert_eq!(
+        info.packages.get("github.com/acme/module-a").unwrap(),
+        &tmp.path().join("module-a")
+    );
+}
+
+#[test]
+fn go_work_parenthesized_use_block_discovers_modules() {
+    let tmp = TempDir::new().unwrap();
+    write_file(
+        tmp.path(),
+        "go.work",
+        "go 1.23.0\n\
+         toolchain go1.23.1\n\
+         use (\n\
+             ./module-a // local module\n\
+             \"./module-b\"\n\
+         )\n\
+         replace example.com/old => example.com/new v1.0.0\n",
+    );
+    write_go_module(tmp.path(), "module-a", "github.com/acme/module-a");
+    write_go_module(tmp.path(), "module-b", "github.com/acme/module-b");
+
+    let info = discover(tmp.path());
+
+    assert_eq!(info.roots.len(), 2);
+    assert!(info.packages.contains_key("github.com/acme/module-a"));
+    assert!(info.packages.contains_key("github.com/acme/module-b"));
+}
+
+#[test]
+fn go_module_path_read_from_go_mod() {
+    let tmp = TempDir::new().unwrap();
+    write_file(
+        tmp.path(),
+        "go.mod",
+        "// module comment\nmodule github.com/acme/root // trailing comment\n",
+    );
+
+    assert_eq!(
+        read_go_module_path(tmp.path()),
+        Some("github.com/acme/root".into())
+    );
+}
+
+#[test]
+fn single_go_mod_returns_single_member() {
+    let tmp = TempDir::new().unwrap();
+    write_go_module(tmp.path(), ".", "github.com/acme/root");
+
+    let info = discover(tmp.path());
+
+    assert_eq!(info.roots, vec![tmp.path().to_path_buf()]);
+    assert_eq!(
+        info.packages.get("github.com/acme/root").unwrap(),
+        tmp.path()
+    );
+}
+
+#[test]
 fn default_discover_merges_js_and_cargo_workspaces() {
     let tmp = TempDir::new().unwrap();
     write_file(
@@ -424,10 +520,13 @@ fn default_discover_merges_js_and_cargo_workspaces() {
         "[workspace]\nmembers = [\"crates/*\"]\n",
     );
     write_crate(tmp.path(), "crates/fmm-core", "fmm-core");
+    write_file(tmp.path(), "go.work", "go 1.23.0\nuse ./services/api\n");
+    write_go_module(tmp.path(), "services/api", "github.com/acme/api");
 
     let info = discover(tmp.path());
 
-    assert_eq!(info.roots.len(), 2);
+    assert_eq!(info.roots.len(), 3);
     assert!(info.packages.contains_key("web"));
     assert!(info.packages.contains_key("fmm_core"));
+    assert!(info.packages.contains_key("github.com/acme/api"));
 }
