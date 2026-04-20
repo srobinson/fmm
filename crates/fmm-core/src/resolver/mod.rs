@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 pub mod go;
 pub mod rust;
+mod rust_path;
 pub use go::GoImportResolver;
 pub use rust::RustImportResolver;
 

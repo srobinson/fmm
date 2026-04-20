@@ -2,7 +2,10 @@ use std::collections::{BTreeSet, HashSet, VecDeque};
 
 use crate::manifest::{FileEntry, Manifest, builtin_source_extensions, try_resolve_local_dep};
 
-use super::helpers::{direct_upstream_from_reverse_deps, reverse_deps_resolve_specifier};
+use super::helpers::{
+    direct_upstream_from_reverse_deps, reverse_deps_resolve_specifier, rust_workspace_resolver,
+    workspace_specifier_names_for_source,
+};
 
 /// Transitive dependency traversal with BFS and cycle detection.
 ///
@@ -32,13 +35,20 @@ pub fn dependency_graph_transitive(
 
     let exts = builtin_source_extensions();
     let mut queue_up: VecDeque<(String, i32)> = VecDeque::new();
+    let rust_resolver = rust_workspace_resolver(manifest, file);
     let reverse_upstream = direct_upstream_from_reverse_deps(manifest, file);
+    let workspace_specifier_names =
+        workspace_specifier_names_for_source(manifest, rust_resolver.as_ref(), file);
     for dep in &entry.dependencies {
         if let Some(resolved) = try_resolve_local_dep(dep, file, manifest, exts) {
             if !visited_up.contains(&resolved) {
                 queue_up.push_back((resolved, 1));
             }
-        } else if !reverse_deps_resolve_specifier(manifest, &reverse_upstream, dep) {
+        } else if !reverse_deps_resolve_specifier(
+            &workspace_specifier_names,
+            &reverse_upstream,
+            dep,
+        ) {
             external_set.insert(dep.clone());
         }
     }
@@ -51,7 +61,7 @@ pub fn dependency_graph_transitive(
             }
             continue;
         }
-        if !reverse_deps_resolve_specifier(manifest, &reverse_upstream, imp) {
+        if !reverse_deps_resolve_specifier(&workspace_specifier_names, &reverse_upstream, imp) {
             external_set.insert(imp.clone());
         }
     }
@@ -72,13 +82,18 @@ pub fn dependency_graph_transitive(
             && let Some(e) = manifest.files.get(&current)
         {
             let current_reverse_upstream = direct_upstream_from_reverse_deps(manifest, &current);
+            let current_workspace_specifier_names =
+                workspace_specifier_names_for_source(manifest, rust_resolver.as_ref(), &current);
             for dep in &e.dependencies {
                 if let Some(resolved) = try_resolve_local_dep(dep, &current, manifest, exts) {
                     if !visited_up.contains(&resolved) {
                         queue_up.push_back((resolved, d + 1));
                     }
-                } else if !reverse_deps_resolve_specifier(manifest, &current_reverse_upstream, dep)
-                {
+                } else if !reverse_deps_resolve_specifier(
+                    &current_workspace_specifier_names,
+                    &current_reverse_upstream,
+                    dep,
+                ) {
                     external_set.insert(dep.clone());
                 }
             }
@@ -91,7 +106,11 @@ pub fn dependency_graph_transitive(
                     }
                     continue;
                 }
-                if !reverse_deps_resolve_specifier(manifest, &current_reverse_upstream, imp) {
+                if !reverse_deps_resolve_specifier(
+                    &current_workspace_specifier_names,
+                    &current_reverse_upstream,
+                    imp,
+                ) {
                     external_set.insert(imp.clone());
                 }
             }

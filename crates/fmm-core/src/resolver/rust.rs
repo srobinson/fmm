@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use super::ImportResolver;
+use super::rust_path::relative_importer_starts_with_package_dir;
 
 #[derive(Debug, Clone)]
 struct RustCrate {
@@ -136,9 +137,24 @@ impl RustImportResolver {
     }
 
     fn crate_for_importer(&self, importer: &Path) -> Option<&RustCrate> {
-        self.crates_by_dir
-            .iter()
-            .find(|krate| importer.starts_with(&krate.package_dir))
+        self.crates_by_dir.iter().find(|krate| {
+            importer.starts_with(&krate.package_dir)
+                || relative_importer_starts_with_package_dir(importer, &krate.package_dir)
+        })
+    }
+
+    pub(crate) fn workspace_dependency_names_for_importer(&self, importer: &Path) -> Vec<String> {
+        let Some(krate) = self.crate_for_importer(importer) else {
+            return Vec::new();
+        };
+        let mut names: Vec<String> = self
+            .dependency_aliases_by_member
+            .get(&krate.package_dir)
+            .map(|aliases| aliases.keys().cloned().collect())
+            .unwrap_or_default();
+        names.sort();
+        names.dedup();
+        names
     }
 
     fn resolve_cross_crate(&self, importer: &Path, specifier: &str) -> Option<PathBuf> {

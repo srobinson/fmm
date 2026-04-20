@@ -21,7 +21,7 @@ members = ["crates/*"]
 resolver = "3"
 
 [workspace.dependencies]
-cm-core = { path = "crates/core" }
+core-alias = { package = "cm-core", path = "crates/core" }
 "#,
     );
 
@@ -52,13 +52,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-cm-core.workspace = true
+core-alias.workspace = true
 "#,
     );
     write_file(
         root,
         "crates/cli/src/main.rs",
-        "use cm_core::store::CxStore;\nuse serde::Serialize;\n\nfn main() {\n    let _store = CxStore::new();\n}\n",
+        "use core_alias::store::CxStore;\nuse serde::Serialize;\n\nfn main() {\n    let _store = CxStore::new();\n}\n",
     );
 
     write_file(
@@ -141,7 +141,7 @@ fn multi_lang_repo_resolves_rust_and_typescript_dependency_graphs() {
     );
     assert_contains(&cli_graph, "crates/core/src/store.rs");
     assert_contains(&cli_graph, "external: [serde]");
-    assert_not_contains(&cli_graph, "external: [cm_core]");
+    assert_not_contains(&cli_graph, "external: [core_alias]");
     assert_not_contains(&cli_graph, "crates/web/frontend/src/api.ts");
 
     let rust_search = call_tool_text(

@@ -1,6 +1,8 @@
 use std::collections::HashSet;
+use std::path::Path;
 
 use crate::manifest::{ExportLocation, FileEntry, Manifest};
+use crate::resolver::RustImportResolver;
 
 use super::{ExportHit, ExportHitCompact, FileSearchResult};
 
@@ -55,17 +57,41 @@ pub(super) fn direct_upstream_from_reverse_deps(manifest: &Manifest, file: &str)
 }
 
 pub(super) fn reverse_deps_resolve_specifier(
-    manifest: &Manifest,
+    workspace_specifier_names: &[String],
     direct_upstream: &[String],
     specifier: &str,
 ) -> bool {
     !direct_upstream.is_empty()
-        && manifest.workspace_packages.keys().any(|package| {
-            workspace_package_matches_specifier(package, specifier)
+        && workspace_specifier_names.iter().any(|name| {
+            workspace_package_matches_specifier(name, specifier)
                 && direct_upstream
                     .iter()
-                    .any(|target| target_matches_workspace_specifier(target, package, specifier))
+                    .any(|target| target_matches_workspace_specifier(target, name, specifier))
         })
+}
+
+pub(super) fn workspace_specifier_names_for_source(
+    manifest: &Manifest,
+    rust_resolver: Option<&RustImportResolver>,
+    source_file: &str,
+) -> Vec<String> {
+    let mut names: Vec<String> = manifest.workspace_packages.keys().cloned().collect();
+    if source_file.ends_with(".rs")
+        && let Some(resolver) = rust_resolver
+    {
+        names.extend(resolver.workspace_dependency_names_for_importer(Path::new(source_file)));
+    }
+    names.sort();
+    names.dedup();
+    names
+}
+
+pub(super) fn rust_workspace_resolver(
+    manifest: &Manifest,
+    source_file: &str,
+) -> Option<RustImportResolver> {
+    (source_file.ends_with(".rs") && !manifest.workspace_packages.is_empty())
+        .then(|| RustImportResolver::new(&manifest.workspace_packages))
 }
 
 fn workspace_package_matches_specifier(package: &str, specifier: &str) -> bool {
