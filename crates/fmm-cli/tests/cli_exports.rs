@@ -113,6 +113,19 @@ fn exports_file_rejects_pattern_conflict() {
 }
 
 #[test]
+fn exports_file_rejects_pattern_conflict_without_index() {
+    let tmp = TempDir::new().unwrap();
+    let output = run_fmm(tmp.path(), &["exports", "App", "--file", "src/app.ts"]);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--file cannot be combined with a pattern"),
+        "got: {stderr}"
+    );
+}
+
+#[test]
 fn exports_file_rejects_directory_conflict() {
     let tmp = setup_export_project();
     let output = run_fmm(

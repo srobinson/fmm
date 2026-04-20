@@ -66,6 +66,10 @@ fn run() -> anyhow::Result<()> {
         }
     };
 
+    run_command(command)
+}
+
+fn run_command(command: Commands) -> anyhow::Result<()> {
     match command {
         Commands::Generate {
             paths,
