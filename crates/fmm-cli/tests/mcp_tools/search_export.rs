@@ -52,3 +52,15 @@ fn search_export_limit_caps_results() {
     assert_eq!(rows.len(), 1, "got: {text}");
     assert!(text.contains("# showing: 1-1 of 2"), "got: {text}");
 }
+
+#[test]
+fn search_export_limit_zero_reports_empty_page() {
+    let (_tmp, server) = setup_mcp_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_search",
+        json!({"export": "create", "limit": 0}),
+    );
+
+    assert_eq!(text.trim(), "# showing: 0 of 2", "got: {text}");
+}

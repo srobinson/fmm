@@ -16,7 +16,11 @@ pub fn format_list_exports_pattern(
     offset: usize,
 ) -> String {
     if matches.is_empty() {
-        return String::new();
+        return if total == 0 {
+            String::new()
+        } else {
+            format!("# showing: 0 of {total}")
+        };
     }
     let name_width = matches.iter().map(|(n, _, _)| n.len()).max().unwrap_or(0);
     let file_width = matches.iter().map(|(_, f, _)| f.len()).max().unwrap_or(0);

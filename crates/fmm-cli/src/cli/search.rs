@@ -270,7 +270,7 @@ fn flag_search(manifest: &Manifest, options: SearchOptions) -> Result<()> {
             options.directory.as_deref(),
             options.limit,
         );
-        if matches.is_empty() {
+        if total == 0 {
             println!("{} No matching exports", "!".yellow());
             println!(
                 "\n  {} Export search is case-insensitive. Try a shorter term or 'fmm search' to browse all",

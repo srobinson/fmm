@@ -206,6 +206,20 @@ fn search_export_limit_caps_text_results() {
 }
 
 #[test]
+fn search_export_limit_zero_reports_empty_page() {
+    let tmp = setup_search_project();
+    let output = run_fmm(
+        tmp.path(),
+        &["search", "--export", "create", "--limit", "0"],
+    );
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("# showing: 0 of 2"), "got: {stdout}");
+    assert!(!stdout.contains("No matching exports"), "got: {stdout}");
+}
+
+#[test]
 fn search_export_limit_caps_json_results() {
     let tmp = setup_search_project();
     let output = run_fmm(
