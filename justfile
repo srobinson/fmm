@@ -1,6 +1,8 @@
 default:
     @just --list
 
+FMM_LOCAL_BIN := env_var_or_default("FMM_LOCAL_BIN", "/Users/alphab/Dev/LLM/DEV/helioy/fmm/target/release/fmm")
+
 # Regenerate docs (templates/SKILL.md, generated_schema.rs, generated_help.rs) from tools.toml.
 # Touches tools.toml to force build.rs to re-run without a full recompile.
 gen-docs:
@@ -15,6 +17,10 @@ release:
 
 install: release
     cargo install --path crates/fmm-cli
+
+install-local:
+    cargo build --release -p fmm
+    install -m 755 target/release/fmm "{{FMM_LOCAL_BIN}}"
 
 test:
     cargo nextest run --workspace

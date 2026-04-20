@@ -32,3 +32,35 @@ fn search_results_include_line_ranges() {
 
     assert!(text.contains("[6, 8]"));
 }
+
+#[test]
+fn search_export_limit_caps_results() {
+    let (_tmp, server) = setup_mcp_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_search",
+        json!({"export": "create", "limit": 1}),
+    );
+    let rows: Vec<&str> = text
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            !trimmed.is_empty() && !trimmed.starts_with('#')
+        })
+        .collect();
+
+    assert_eq!(rows.len(), 1, "got: {text}");
+    assert!(text.contains("# showing: 1-1 of 2"), "got: {text}");
+}
+
+#[test]
+fn search_export_limit_zero_reports_empty_page() {
+    let (_tmp, server) = setup_mcp_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_search",
+        json!({"export": "create", "limit": 0}),
+    );
+
+    assert_eq!(text.trim(), "# showing: 0 of 2", "got: {text}");
+}

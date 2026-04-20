@@ -21,6 +21,14 @@ fn read_symbol_not_found() {
     let (_tmp, server) = setup_mcp_server();
     let text = call_tool_expect_error(&server, "fmm_read_symbol", json!({"name": "nonExistent"}));
     assert!(text.contains("not found"));
+    assert!(
+        text.contains("Use fmm_list_exports or fmm_search"),
+        "MCP guidance should name MCP tools; got: {text}"
+    );
+    assert!(
+        !text.contains("Use fmm exports or fmm search"),
+        "MCP guidance should not name CLI commands; got: {text}"
+    );
 }
 
 #[test]

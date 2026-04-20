@@ -26,7 +26,7 @@ mod generated_help;
 pub use commands::{deps, exports, lookup, ls, outline, read_symbol};
 pub use glossary::glossary;
 pub use init::init;
-pub use search::search;
+pub use search::{SearchOptions, search};
 pub use sidecar::{clean, generate, validate};
 pub use status::status;
 pub use watch::watch;
@@ -68,16 +68,16 @@ pub enum Commands {
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm generate</bold>             <dim># All files in current directory</dim>
-  <dim>$</dim> <bold>fmm generate src/</bold>         <dim># Specific directory only</dim>
-  <dim>$</dim> <bold>fmm generate src/ lib/</bold>    <dim># Multiple directories</dim>
+  <dim>$</dim> <bold>fmm generate crates/fmm-core/src</bold> <dim># Specific directory only</dim>
+  <dim>$</dim> <bold>fmm generate crates/fmm-core/src crates/fmm-cli/src</bold> <dim># Multiple directories</dim>
   <dim>$</dim> <bold>fmm generate -n</bold>           <dim># Dry run — preview without writing</dim>
   <dim>$</dim> <bold>fmm generate --force</bold>       <dim># Regenerate all, even if unchanged</dim>"#),
         after_long_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm generate</bold>                       <dim># All files in current directory</dim>
-  <dim>$</dim> <bold>fmm generate src/</bold>                   <dim># Specific directory only</dim>
-  <dim>$</dim> <bold>fmm generate src/ lib/</bold>              <dim># Multiple directories</dim>
-  <dim>$</dim> <bold>fmm generate src/auth.ts src/db.ts</bold>  <dim># Multiple files</dim>
+  <dim>$</dim> <bold>fmm generate crates/fmm-core/src</bold>   <dim># Specific directory only</dim>
+  <dim>$</dim> <bold>fmm generate crates/fmm-core/src crates/fmm-cli/src</bold> <dim># Multiple directories</dim>
+  <dim>$</dim> <bold>fmm generate crates/fmm-cli/src/main.rs crates/fmm-core/src/lib.rs</bold> <dim># Multiple files</dim>
   <dim>$</dim> <bold>fmm generate -n</bold>                     <dim># Dry run — preview without writing</dim>
   <dim>$</dim> <bold>fmm generate --force</bold>                <dim># Regenerate all, even if unchanged</dim>
   <dim>$</dim> <bold>fmm generate && fmm validate</bold>        <dim># Generate then verify</dim>
@@ -114,11 +114,11 @@ pub enum Commands {
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm validate</bold>             <dim># Check all indexed files</dim>
-  <dim>$</dim> <bold>fmm validate src/</bold>         <dim># Check specific directory</dim>"#),
+  <dim>$</dim> <bold>fmm validate crates/fmm-core/src</bold> <dim># Check specific directory</dim>"#),
         after_long_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm validate</bold>                       <dim># Check all indexed files</dim>
-  <dim>$</dim> <bold>fmm validate src/</bold>                   <dim># Check specific directory</dim>
+  <dim>$</dim> <bold>fmm validate crates/fmm-core/src</bold>   <dim># Check specific directory</dim>
 
   <dim># CI pipeline:</dim>
   <dim>$</dim> <bold>fmm generate && fmm validate</bold>        <dim># Index then verify</dim>
@@ -182,12 +182,12 @@ pub enum Commands {
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm watch</bold>               <dim># Watch current directory</dim>
-  <dim>$</dim> <bold>fmm watch src/</bold>           <dim># Watch specific directory</dim>
+  <dim>$</dim> <bold>fmm watch crates/fmm-core/src</bold> <dim># Watch specific directory</dim>
   <dim>$</dim> <bold>fmm watch --debounce 500</bold> <dim># Custom debounce (500ms)</dim>"#),
         after_long_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm watch</bold>                          <dim># Watch current directory</dim>
-  <dim>$</dim> <bold>fmm watch src/</bold>                      <dim># Watch specific directory</dim>
+  <dim>$</dim> <bold>fmm watch crates/fmm-core/src</bold>        <dim># Watch specific directory</dim>
   <dim>$</dim> <bold>fmm watch --debounce 500</bold>            <dim># Custom debounce (500ms)</dim>
 
 <bold><underline>Notes</underline></bold>
@@ -259,45 +259,47 @@ pub enum Commands {
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm search store</bold>            <dim># Smart search across everything</dim>
-  <dim>$</dim> <bold>fmm search -e createStore</bold>   <dim># Export lookup (exact + fuzzy)</dim>
-  <dim>$</dim> <bold>fmm search -i react</bold>          <dim># Files importing react</dim>
+  <dim>$</dim> <bold>fmm search -e ParserRegistry</bold> <dim># Export lookup (exact + fuzzy)</dim>
+  <dim>$</dim> <bold>fmm search -i anyhow</bold>         <dim># Files importing anyhow</dim>
   <dim>$</dim> <bold>fmm search -l ">500"</bold>        <dim># Large files</dim>"#),
         after_long_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
 
   <dim># Smart search (searches everything, best matches first):</dim>
-  <dim>$</dim> <bold>fmm search store</bold>                   <dim># Exports, files, and imports matching "store"</dim>
-  <dim>$</dim> <bold>fmm search createStore</bold>              <dim># Exact export match ranked first</dim>
-  <dim>$</dim> <bold>fmm search auth</bold>                     <dim># Find auth-related symbols and files</dim>
+  <dim>$</dim> <bold>fmm search parser</bold>                  <dim># Exports, files, and imports matching "parser"</dim>
+  <dim>$</dim> <bold>fmm search ParserRegistry</bold>          <dim># Exact export match ranked first</dim>
+  <dim>$</dim> <bold>fmm search config</bold>                  <dim># Find config-related symbols and files</dim>
 
   <dim># Export lookup (exact O(1), then fuzzy substring):</dim>
-  <dim>$</dim> <bold>fmm search --export createStore</bold>    <dim># Exact match</dim>
-  <dim>$</dim> <bold>fmm search --export store</bold>           <dim># Fuzzy: createStore, useStore, StoreProvider</dim>
-  <dim>$</dim> <bold>fmm search --export STORE</bold>           <dim># Case-insensitive fuzzy match</dim>
+  <dim>$</dim> <bold>fmm search --export ParserRegistry</bold> <dim># Exact match</dim>
+  <dim>$</dim> <bold>fmm search --export parser</bold>         <dim># Fuzzy: ParserRegistry, Parser, CParser</dim>
+  <dim>$</dim> <bold>fmm search --export CONFIG</bold>         <dim># Case-insensitive fuzzy match</dim>
 
   <dim># Import analysis:</dim>
-  <dim>$</dim> <bold>fmm search --imports react</bold>          <dim># All files importing react</dim>
-  <dim>$</dim> <bold>fmm search --imports crypto</bold>         <dim># Find crypto usage across codebase</dim>
+  <dim>$</dim> <bold>fmm search --imports anyhow</bold>        <dim># All files importing anyhow</dim>
+  <dim>$</dim> <bold>fmm search --imports serde</bold>         <dim># Find serde usage across codebase</dim>
 
   <dim># Dependency graph (impact analysis):</dim>
-  <dim>$</dim> <bold>fmm search --depends-on src/auth.ts</bold> <dim># What breaks if auth changes?</dim>
-  <dim>$</dim> <bold>fmm search --depends-on src/db.ts</bold>   <dim># Downstream dependents of db</dim>
+  <dim>$</dim> <bold>fmm search --depends-on crates/fmm-core/src/parser/mod.rs</bold> <dim># What breaks if parser changes?</dim>
+  <dim>$</dim> <bold>fmm search --depends-on crates/fmm-core/src/config/mod.rs</bold> <dim># Downstream dependents of config</dim>
 
   <dim># Line count filters:</dim>
-  <dim>$</dim> <bold>fmm search --loc ">>500"</bold>            <dim># Large files (over 500 lines)</dim>
+  <dim>$</dim> <bold>fmm search --loc ">500"</bold>             <dim># Large files (over 500 lines)</dim>
   <dim>$</dim> <bold>fmm search --loc "<<50"</bold>             <dim># Small files (under 50 lines)</dim>
   <dim>$</dim> <bold>fmm search --loc ">=100"</bold>            <dim># Files with 100+ lines</dim>
+  <dim>$</dim> <bold>fmm search --min-loc 100 --max-loc 500</bold> <dim># Files in a LOC range</dim>
+  <dim>$</dim> <bold>fmm search parser --limit 5</bold>         <dim># Cap fuzzy export matches</dim>
 
   <dim># Combined filters (AND logic):</dim>
-  <dim>$</dim> <bold>fmm search --imports react --loc ">>200"</bold>  <dim># Large React files</dim>
+  <dim>$</dim> <bold>fmm search --imports anyhow --loc ">200"</bold> <dim># Large anyhow users</dim>
 
   <dim># Structured output:</dim>
-  <dim>$</dim> <bold>fmm search store --json</bold>             <dim># JSON for scripting/piping</dim>
-  <dim>$</dim> <bold>fmm search --export App --json</bold>      <dim># JSON for scripting/piping</dim>
+  <dim>$</dim> <bold>fmm search parser --json</bold>            <dim># JSON for scripting/piping</dim>
+  <dim>$</dim> <bold>fmm search --export ParserRegistry --json</bold> <dim># JSON for scripting/piping</dim>
   <dim>$</dim> <bold>fmm search --json</bold>                   <dim># All indexed files as JSON</dim>
 
 <bold><underline>Notes</underline></bold>
-  Bare search (<bold>fmm search <<term>></bold>) is the fastest way to find anything.
+  Bare search (<bold>fmm search TERM</bold>) is the fastest way to find anything.
   Export lookup is O(1) — uses a pre-built reverse index, not file scanning.
   Flags narrow search to one dimension. Without flags, searches everything.
   Use --json for machine-readable output (piping, scripts, CI)."#),
@@ -325,11 +327,23 @@ pub enum Commands {
         )]
         loc: Option<String>,
 
+        /// Minimum lines of code
+        #[arg(long = "min-loc", value_name = "MIN_LOC")]
+        min_loc: Option<usize>,
+
+        /// Maximum lines of code
+        #[arg(long = "max-loc", value_name = "MAX_LOC")]
+        max_loc: Option<usize>,
+
+        /// Maximum number of fuzzy export results
+        #[arg(long, value_name = "LIMIT")]
+        limit: Option<usize>,
+
         /// Find files that depend on a path
         #[arg(short = 'd', long = "depends-on")]
         depends_on: Option<String>,
 
-        /// Scope --export results to a directory prefix (e.g. packages/)
+        /// Scope --export results to a directory prefix (e.g. crates/fmm-core/src/)
         #[arg(long = "dir")]
         dir: Option<String>,
 
@@ -346,8 +360,10 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm glossary run_dispatch</bold>              <dim># Exact symbol lookup (source mode)</dim>
   <dim>$</dim> <bold>fmm glossary config</bold>                    <dim># All Config, loadConfig, AppConfig, ...</dim>
   <dim>$</dim> <bold>fmm glossary run_dispatch --mode tests</bold> <dim># What tests cover this symbol?</dim>
+  <dim>$</dim> <bold>fmm glossary scheduleUpdate --precision call-site</bold> <dim># Confirm direct callers</dim>
   <dim>$</dim> <bold>fmm glossary config --mode all</bold>         <dim># Source + tests combined</dim>
   <dim>$</dim> <bold>fmm glossary config --limit 20</bold>         <dim># Limit results</dim>
+  <dim>$</dim> <bold>fmm glossary config --no-truncate</bold>      <dim># Bypass 10KB cap</dim>
   <dim>$</dim> <bold>fmm glossary config --json</bold>             <dim># JSON output for scripting</dim>"#),
     )]
     Glossary {
@@ -363,6 +379,14 @@ pub enum Commands {
         #[arg(long)]
         limit: Option<usize>,
 
+        /// Precision level: named (default, fast) or call-site (tree-sitter verification)
+        #[arg(long, value_name = "PRECISION", default_value = "named", value_parser = ["named", "call-site"])]
+        precision: String,
+
+        /// Return full output, bypassing the 10KB truncation cap
+        #[arg(long = "no-truncate")]
+        no_truncate: bool,
+
         /// Output as JSON
         #[arg(short = 'j', long = "json")]
         json: bool,
@@ -373,9 +397,9 @@ pub enum Commands {
         long_about = generated_help::LOOKUP_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm lookup Injector</bold>           <dim># Find symbol definition</dim>
-  <dim>$</dim> <bold>fmm lookup createPipeline</bold>     <dim># Any exported name</dim>
-  <dim>$</dim> <bold>fmm lookup Injector --json</bold>    <dim># JSON output</dim>"#),
+  <dim>$</dim> <bold>fmm lookup Cli</bold>                <dim># Find symbol definition</dim>
+  <dim>$</dim> <bold>fmm lookup ParserRegistry</bold>     <dim># Any exported name</dim>
+  <dim>$</dim> <bold>fmm lookup Cli --json</bold>          <dim># JSON output</dim>"#),
     )]
     Lookup {
         /// Symbol name to look up (exact match; use 'fmm exports <term>' for fuzzy)
@@ -393,14 +417,14 @@ pub enum Commands {
         long_about = generated_help::READ_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm read Injector</bold>                       <dim># Full class source</dim>
-  <dim>$</dim> <bold>fmm read Injector.loadInstance</bold>          <dim># Single method</dim>
-  <dim>$</dim> <bold>fmm read Injector --no-truncate</bold>        <dim># Bypass 10KB cap</dim>
-  <dim>$</dim> <bold>fmm read Injector --line-numbers</bold>       <dim># With absolute line numbers</dim>
-  <dim>$</dim> <bold>fmm read createStore --json</bold>             <dim># JSON output</dim>"#),
+  <dim>$</dim> <bold>fmm read Commands</bold>                       <dim># Full enum source</dim>
+  <dim>$</dim> <bold>fmm read ParserRegistry.get_parser</bold>      <dim># Single method</dim>
+  <dim>$</dim> <bold>fmm read Commands --no-truncate</bold>         <dim># Bypass 10KB cap</dim>
+  <dim>$</dim> <bold>fmm read ParserRegistry.get_parser --line-numbers</bold> <dim># With absolute line numbers</dim>
+  <dim>$</dim> <bold>fmm read Cli --json</bold>                     <dim># JSON output</dim>"#),
     )]
     Read {
-        /// Symbol name (or ClassName.method for a specific public method)
+        /// Symbol name (or ClassName.method for a specific public/private method)
         #[arg(value_name = "SYMBOL")]
         symbol: String,
 
@@ -422,12 +446,12 @@ pub enum Commands {
         long_about = generated_help::DEPS_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm deps src/injector.ts</bold>                           <dim># Direct deps (depth=1)</dim>
-  <dim>$</dim> <bold>fmm deps src/injector.ts --depth 2</bold>                <dim># Transitive (2 hops)</dim>
-  <dim>$</dim> <bold>fmm deps src/injector.ts --depth -1</bold>               <dim># Full closure</dim>
-  <dim>$</dim> <bold>fmm deps src/injector.ts --filter source</bold>          <dim># Exclude test files from downstream</dim>
-  <dim>$</dim> <bold>fmm deps src/injector.ts --filter tests</bold>           <dim># Only test files in downstream</dim>
-  <dim>$</dim> <bold>fmm deps src/injector.ts --json</bold>                    <dim># JSON output</dim>"#),
+  <dim>$</dim> <bold>fmm deps crates/fmm-core/src/parser/mod.rs</bold>        <dim># Direct deps (depth=1)</dim>
+  <dim>$</dim> <bold>fmm deps crates/fmm-core/src/parser/mod.rs --depth 2</bold> <dim># Transitive (2 hops)</dim>
+  <dim>$</dim> <bold>fmm deps crates/fmm-core/src/parser/mod.rs --depth -1</bold> <dim># Full closure</dim>
+  <dim>$</dim> <bold>fmm deps crates/fmm-core/src/parser/mod.rs --filter source</bold> <dim># Exclude test files from downstream</dim>
+  <dim>$</dim> <bold>fmm deps crates/fmm-core/src/parser/mod.rs --filter tests</bold> <dim># Only test files in downstream</dim>
+  <dim>$</dim> <bold>fmm deps crates/fmm-core/src/parser/mod.rs --json</bold> <dim># JSON output</dim>"#),
     )]
     Deps {
         /// Source file path (relative to project root, as indexed by fmm)
@@ -452,9 +476,9 @@ pub enum Commands {
         long_about = generated_help::OUTLINE_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm outline src/injector.ts</bold>                  <dim># All exports + line ranges</dim>
-  <dim>$</dim> <bold>fmm outline src/injector.ts --include-private</bold> <dim># Include private members</dim>
-  <dim>$</dim> <bold>fmm outline src/injector.ts --json</bold>            <dim># JSON output</dim>"#),
+  <dim>$</dim> <bold>fmm outline crates/fmm-core/src/parser/mod.rs</bold> <dim># All exports + line ranges</dim>
+  <dim>$</dim> <bold>fmm outline crates/fmm-core/src/parser/mod.rs --include-private</bold> <dim># Include private members</dim>
+  <dim>$</dim> <bold>fmm outline crates/fmm-core/src/parser/mod.rs --json</bold> <dim># JSON output</dim>"#),
     )]
     Outline {
         /// Source file path (relative to project root)
@@ -476,7 +500,7 @@ pub enum Commands {
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm ls</bold>                                 <dim># All indexed files (sorted by LOC)</dim>
-  <dim>$</dim> <bold>fmm ls src/</bold>                            <dim># Files under src/</dim>
+  <dim>$</dim> <bold>fmm ls crates/fmm-core/src</bold>             <dim># Files under fmm-core source</dim>
   <dim>$</dim> <bold>fmm ls --sort-by downstream</bold>            <dim># Most-imported files first (pre-refactoring)</dim>
   <dim>$</dim> <bold>fmm ls --sort-by loc</bold>                   <dim># Heaviest files first</dim>
   <dim>$</dim> <bold>fmm ls --sort-by exports</bold>               <dim># Most exports first</dim>
@@ -486,10 +510,10 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm ls --filter source</bold>                 <dim># Source files only (no tests)</dim>
   <dim>$</dim> <bold>fmm ls --pattern "*.ts"</bold>                <dim># Filter by filename glob</dim>
   <dim>$</dim> <bold>fmm ls --limit 20 --offset 20</bold>          <dim># Pagination</dim>
-  <dim>$</dim> <bold>fmm ls src/ --json</bold>                     <dim># JSON output</dim>"#),
+  <dim>$</dim> <bold>fmm ls crates/fmm-core/src --json</bold>      <dim># JSON output</dim>"#),
     )]
     Ls {
-        /// Directory prefix to filter (e.g. src/, packages/core/)
+        /// Directory prefix to filter (e.g. crates/fmm-core/src/, crates/fmm-cli/src/)
         #[arg(value_name = "DIR")]
         directory: Option<String>,
 
@@ -532,21 +556,26 @@ pub enum Commands {
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>fmm exports</bold>                              <dim># All exports (grouped by file)</dim>
-  <dim>$</dim> <bold>fmm exports Module</bold>                       <dim># Substring match "Module"</dim>
-  <dim>$</dim> <bold>fmm exports create</bold>                       <dim># All exports containing "create"</dim>
-  <dim>$</dim> <bold>fmm exports '^handle'</bold>                    <dim># Regex: exports starting with "handle"</dim>
-  <dim>$</dim> <bold>fmm exports 'Service$'</bold>                   <dim># Regex: exports ending in "Service"</dim>
+  <dim>$</dim> <bold>fmm exports ParserRegistry</bold>               <dim># Substring match "ParserRegistry"</dim>
+  <dim>$</dim> <bold>fmm exports parser</bold>                       <dim># All exports containing "parser"</dim>
+  <dim>$</dim> <bold>fmm exports --file crates/fmm-cli/src/cli/mod.rs</bold> <dim># All exports from one file</dim>
+  <dim>$</dim> <bold>fmm exports '^Config'</bold>                    <dim># Regex: exports starting with "Config"</dim>
+  <dim>$</dim> <bold>fmm exports 'Parser$'</bold>                    <dim># Regex: exports ending in "Parser"</dim>
   <dim>$</dim> <bold>fmm exports '^[A-Z]'</bold>                     <dim># Regex: PascalCase exports only</dim>
-  <dim>$</dim> <bold>fmm exports Module --dir packages/core/</bold>   <dim># Scoped to directory</dim>
-  <dim>$</dim> <bold>fmm exports Module --limit 50 --offset 50</bold> <dim># Pagination</dim>
-  <dim>$</dim> <bold>fmm exports Module --json</bold>                 <dim># JSON output</dim>"#),
+  <dim>$</dim> <bold>fmm exports Parser --dir crates/fmm-core/src/parser</bold> <dim># Scoped to directory</dim>
+  <dim>$</dim> <bold>fmm exports Parser --limit 50 --offset 50</bold> <dim># Pagination</dim>
+  <dim>$</dim> <bold>fmm exports Parser --json</bold>                 <dim># JSON output</dim>"#),
     )]
     Exports {
         /// Pattern to filter exports — substring (case-insensitive) or regex (auto-detected when metacharacters present)
         #[arg(value_name = "PATTERN")]
         pattern: Option<String>,
 
-        /// Scope results to a directory prefix (e.g. packages/core/)
+        /// File path — returns all exports from this file
+        #[arg(long = "file")]
+        file: Option<String>,
+
+        /// Scope results to a directory prefix (e.g. crates/fmm-core/src/parser/)
         #[arg(long = "dir")]
         dir: Option<String>,
 
@@ -572,7 +601,7 @@ pub enum Commands {
         after_long_help = cstr!(
             r#"<bold><underline>Tools</underline></bold>
   <bold>fmm_lookup_export</bold>    Find which file defines a symbol — O(1)
-  <bold>fmm_read_symbol</bold>      Extract exact source; use ClassName.method for public methods
+  <bold>fmm_read_symbol</bold>      Extract exact source; use ClassName.method for methods
   <bold>fmm_dependency_graph</bold>  local_deps, external packages, and downstream blast radius
   <bold>fmm_file_outline</bold>     Table of contents with line ranges
   <bold>fmm_list_exports</bold>     Search exports by pattern (fuzzy)
@@ -586,8 +615,7 @@ pub enum Commands {
 
 <bold><underline>Notes</underline></bold>
   Communicates over stdio using the MCP JSON-RPC protocol.
-  Requires the index to be built first ('fmm generate').
-  88-97% token reduction vs reading source files directly."#),
+  Requires the index to be built first ('fmm generate')."#),
     )]
     Mcp,
 

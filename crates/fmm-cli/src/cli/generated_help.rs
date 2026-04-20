@@ -91,4 +91,4 @@ pub const GLOSSARY_MODE_HELP: &str = "Filter mode: source (default, no tests), t
 #[rustfmt::skip]
 pub const GLOSSARY_PRECISION_HELP: &str = "Precision level: named (default, fast) or call-site (tree-sitter verification)";
 #[rustfmt::skip]
-pub const GLOSSARY_TRUNCATE_HELP: &str = "Apply 10KB response cap (default: true, set false to bypass)";
+pub const GLOSSARY_TRUNCATE_HELP: &str = "Return full glossary output, bypassing the 10KB response cap";

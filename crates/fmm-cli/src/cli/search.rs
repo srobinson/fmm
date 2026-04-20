@@ -56,15 +56,23 @@ struct ExportWithLinesJson {
     lines: Option<[usize; 2]>,
 }
 
-pub fn search(
-    term: Option<String>,
-    export: Option<String>,
-    imports: Option<String>,
-    loc: Option<String>,
-    depends_on: Option<String>,
-    directory: Option<String>,
-    json_output: bool,
-) -> Result<()> {
+#[derive(Default)]
+pub struct SearchOptions {
+    pub term: Option<String>,
+    pub export: Option<String>,
+    pub imports: Option<String>,
+    pub loc: Option<String>,
+    pub min_loc: Option<usize>,
+    pub max_loc: Option<usize>,
+    pub limit: Option<usize>,
+    pub depends_on: Option<String>,
+    pub directory: Option<String>,
+    pub json_output: bool,
+}
+
+pub fn search(options: SearchOptions) -> Result<()> {
+    validate_loc_flags(options.loc.as_deref(), options.min_loc, options.max_loc)?;
+
     let root = std::env::current_dir()?;
     let manifest = SqliteStore::open(&root)?.load_manifest()?;
 
@@ -80,35 +88,29 @@ pub fn search(
         return Ok(());
     }
 
-    let has_flags = export.is_some() || imports.is_some() || depends_on.is_some() || loc.is_some();
+    let has_flags = options.export.is_some()
+        || options.imports.is_some()
+        || options.depends_on.is_some()
+        || options.loc.is_some()
+        || options.min_loc.is_some()
+        || options.max_loc.is_some();
 
-    if let Some(ref search_term) = term {
+    if let Some(ref search_term) = options.term {
         if has_flags {
             // Combined: intersect term results with the filter file set (AND semantics).
-            let (min_loc, max_loc) = if let Some(ref loc_expr) = loc {
-                let (op, value) = parse_loc_expr(loc_expr)?;
-                match op.as_str() {
-                    ">" => (Some(value + 1), None),
-                    ">=" => (Some(value), None),
-                    "<" => (None, Some(value.saturating_sub(1))),
-                    "<=" => (None, Some(value)),
-                    "=" => (Some(value), Some(value)),
-                    _ => (None, None),
-                }
-            } else {
-                (None, None)
-            };
+            let (min_loc, max_loc) =
+                resolve_loc_filters(options.loc.as_deref(), options.min_loc, options.max_loc)?;
             let filters = fmm_core::search::SearchFilters {
-                export,
-                imports,
-                depends_on,
+                export: options.export,
+                imports: options.imports,
+                depends_on: options.depends_on,
                 min_loc,
                 max_loc,
             };
             let filter_results = fmm_core::search::filter_search(&manifest, &filters);
             let filter_files: std::collections::HashSet<&str> =
                 filter_results.iter().map(|r| r.file.as_str()).collect();
-            let mut result = fmm_core::search::bare_search(&manifest, search_term, None);
+            let mut result = fmm_core::search::bare_search(&manifest, search_term, options.limit);
             result
                 .exports
                 .retain(|h| filter_files.contains(h.file.as_str()));
@@ -126,7 +128,7 @@ pub fn search(
             // because the relevance cap was hit. Clear it to avoid a misleading
             // "[N fuzzy matches — showing top 0]" notice.
             result.total_exports = None;
-            if json_output {
+            if options.json_output {
                 let json = BareSearchJson {
                     exports: result
                         .exports
@@ -170,20 +172,18 @@ pub fn search(
                 println!("{}", formatted);
             }
         } else {
-            bare_search(&manifest, search_term, json_output)?;
+            bare_search(&manifest, search_term, options.limit, options.json_output)?;
         }
     } else if has_flags {
+        flag_search(&manifest, options)?;
+    } else {
         flag_search(
             &manifest,
-            export,
-            imports,
-            loc,
-            depends_on,
-            directory,
-            json_output,
+            SearchOptions {
+                json_output: options.json_output,
+                ..Default::default()
+            },
         )?;
-    } else {
-        flag_search(&manifest, None, None, None, None, None, json_output)?;
     }
 
     Ok(())
@@ -191,8 +191,13 @@ pub fn search(
 
 // -- Bare search --
 
-fn bare_search(manifest: &Manifest, term: &str, json_output: bool) -> Result<()> {
-    let result = fmm_core::search::bare_search(manifest, term, None);
+fn bare_search(
+    manifest: &Manifest,
+    term: &str,
+    limit: Option<usize>,
+    json_output: bool,
+) -> Result<()> {
+    let result = fmm_core::search::bare_search(manifest, term, limit);
 
     if json_output {
         let json = BareSearchJson {
@@ -249,28 +254,23 @@ fn bare_search(manifest: &Manifest, term: &str, json_output: bool) -> Result<()>
 
 // -- Flag-based search --
 
-fn flag_search(
-    manifest: &Manifest,
-    export: Option<String>,
-    imports: Option<String>,
-    loc: Option<String>,
-    depends_on: Option<String>,
-    directory: Option<String>,
-    json_output: bool,
-) -> Result<()> {
+fn flag_search(manifest: &Manifest, options: SearchOptions) -> Result<()> {
     // For non-JSON export-only searches, use the column-aligned format
-    if !json_output
-        && let Some(ref export_name) = export
-        && imports.is_none()
-        && depends_on.is_none()
-        && loc.is_none()
+    if !options.json_output
+        && let Some(ref export_name) = options.export
+        && options.imports.is_none()
+        && options.depends_on.is_none()
+        && options.loc.is_none()
+        && options.min_loc.is_none()
+        && options.max_loc.is_none()
     {
-        let dir = directory.as_deref();
-        let matches: Vec<_> = fmm_core::search::find_export_matches(manifest, export_name)
-            .into_iter()
-            .filter(|h| dir.is_none_or(|d| h.file.starts_with(d)))
-            .collect();
-        if matches.is_empty() {
+        let (matches, total) = limited_scoped_export_matches(
+            manifest,
+            export_name,
+            options.directory.as_deref(),
+            options.limit,
+        );
+        if total == 0 {
             println!("{} No matching exports", "!".yellow());
             println!(
                 "\n  {} Export search is case-insensitive. Try a shorter term or 'fmm search' to browse all",
@@ -281,7 +281,6 @@ fn flag_search(
                 .iter()
                 .map(|h| (h.name.clone(), h.file.clone(), h.lines))
                 .collect();
-            let total = tuples.len();
             println!(
                 "{}",
                 fmm_core::format::format_list_exports_pattern(&tuples, total, 0)
@@ -291,37 +290,33 @@ fn flag_search(
     }
 
     // Convert LOC expression to min/max
-    let (min_loc, max_loc) = if let Some(ref loc_expr) = loc {
-        let (op, value) = parse_loc_expr(loc_expr)?;
-        match op.as_str() {
-            ">" => (Some(value + 1), None),
-            ">=" => (Some(value), None),
-            "<" => (None, Some(value.saturating_sub(1))),
-            "<=" => (None, Some(value)),
-            "=" => (Some(value), Some(value)),
-            _ => (None, None),
-        }
-    } else {
-        (None, None)
-    };
+    let (min_loc, max_loc) =
+        resolve_loc_filters(options.loc.as_deref(), options.min_loc, options.max_loc)?;
 
     let filters = fmm_core::search::SearchFilters {
-        export: export.clone(),
-        imports,
-        depends_on,
+        export: options.export.clone(),
+        imports: options.imports,
+        depends_on: options.depends_on,
         min_loc,
         max_loc,
     };
     let results = fmm_core::search::filter_search(manifest, &filters);
 
-    if json_output {
+    if options.json_output {
         // For export-only JSON, use the rich export format
-        if let Some(ref export_name) = export
+        if let Some(ref export_name) = options.export
             && filters.imports.is_none()
             && filters.depends_on.is_none()
-            && loc.is_none()
+            && options.loc.is_none()
+            && filters.min_loc.is_none()
+            && filters.max_loc.is_none()
         {
-            let matches = fmm_core::search::find_export_matches(manifest, export_name);
+            let (matches, _) = limited_scoped_export_matches(
+                manifest,
+                export_name,
+                options.directory.as_deref(),
+                options.limit,
+            );
             let export_json: Vec<ExportMatchJson> = matches
                 .iter()
                 .map(|h| ExportMatchJson {
@@ -373,6 +368,66 @@ fn flag_search(
     }
 
     Ok(())
+}
+
+fn scoped_export_matches(
+    manifest: &Manifest,
+    export_name: &str,
+    directory: Option<&str>,
+) -> Vec<fmm_core::search::ExportHit> {
+    fmm_core::search::find_export_matches(manifest, export_name)
+        .into_iter()
+        .filter(|h| directory.is_none_or(|d| h.file.starts_with(d)))
+        .collect()
+}
+
+fn limited_scoped_export_matches(
+    manifest: &Manifest,
+    export_name: &str,
+    directory: Option<&str>,
+    limit: Option<usize>,
+) -> (Vec<fmm_core::search::ExportHit>, usize) {
+    let matches = scoped_export_matches(manifest, export_name, directory);
+    let total = matches.len();
+    let page = match limit {
+        Some(limit) => matches.into_iter().take(limit).collect(),
+        None => matches,
+    };
+    (page, total)
+}
+
+fn validate_loc_flags(
+    loc: Option<&str>,
+    min_loc: Option<usize>,
+    max_loc: Option<usize>,
+) -> Result<()> {
+    if loc.is_some() && (min_loc.is_some() || max_loc.is_some()) {
+        anyhow::bail!("--loc cannot be combined with --min-loc or --max-loc");
+    }
+    Ok(())
+}
+
+fn resolve_loc_filters(
+    loc: Option<&str>,
+    min_loc: Option<usize>,
+    max_loc: Option<usize>,
+) -> Result<(Option<usize>, Option<usize>)> {
+    validate_loc_flags(loc, min_loc, max_loc)?;
+
+    if let Some(loc_expr) = loc {
+        let (op, value) = parse_loc_expr(loc_expr)?;
+        let range = match op.as_str() {
+            ">" => (Some(value + 1), None),
+            ">=" => (Some(value), None),
+            "<" => (None, Some(value.saturating_sub(1))),
+            "<=" => (None, Some(value)),
+            "=" => (Some(value), Some(value)),
+            _ => (None, None),
+        };
+        return Ok(range);
+    }
+
+    Ok((min_loc, max_loc))
 }
 
 fn parse_loc_expr(expr: &str) -> Result<(String, usize)> {

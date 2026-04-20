@@ -7,6 +7,7 @@ struct ListFileJson {
     file: String,
     loc: usize,
     exports: usize,
+    downstream: usize,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -178,10 +179,11 @@ pub fn ls(
     if json_output {
         let json: Vec<ListFileJson> = entries
             .iter()
-            .map(|(file, loc, exports, _, _)| ListFileJson {
+            .map(|(file, loc, exports, downstream, _)| ListFileJson {
                 file: file.to_string(),
                 loc: *loc,
                 exports: *exports,
+                downstream: *downstream,
             })
             .collect();
         println!("{}", serde_json::to_string_pretty(&json)?);

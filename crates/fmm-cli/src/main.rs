@@ -66,6 +66,10 @@ fn run() -> anyhow::Result<()> {
         }
     };
 
+    run_command(command)
+}
+
+fn run_command(command: Commands) -> anyhow::Result<()> {
     match command {
         Commands::Generate {
             paths,
@@ -101,19 +105,35 @@ fn run() -> anyhow::Result<()> {
             export,
             imports,
             loc,
+            min_loc,
+            max_loc,
+            limit,
             depends_on,
             dir,
             json,
         } => {
-            cli::search(term, export, imports, loc, depends_on, dir, json)?;
+            cli::search(cli::SearchOptions {
+                term,
+                export,
+                imports,
+                loc,
+                min_loc,
+                max_loc,
+                limit,
+                depends_on,
+                directory: dir,
+                json_output: json,
+            })?;
         }
         Commands::Glossary {
             pattern,
             mode,
             limit,
+            precision,
+            no_truncate,
             json,
         } => {
-            cli::glossary(pattern, &mode, limit, json)?;
+            cli::glossary(pattern, &mode, limit, &precision, no_truncate, json)?;
         }
         Commands::Lookup { symbol, json } => {
             cli::lookup(&symbol, json)?;
@@ -166,12 +186,20 @@ fn run() -> anyhow::Result<()> {
         }
         Commands::Exports {
             pattern,
+            file,
             dir,
             limit,
             offset,
             json,
         } => {
-            cli::exports(pattern.as_deref(), dir.as_deref(), limit, offset, json)?;
+            cli::exports(
+                pattern.as_deref(),
+                file.as_deref(),
+                dir.as_deref(),
+                limit,
+                offset,
+                json,
+            )?;
         }
         Commands::Mcp | Commands::Serve => {
             let mut server = mcp::McpServer::new();

@@ -4,11 +4,20 @@ use colored::Colorize;
 use super::{load_manifest, warn_no_sidecars};
 
 #[derive(serde::Serialize)]
+struct LookupExportJson {
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lines: Option<[usize; 2]>,
+}
+
+#[derive(serde::Serialize)]
 struct LookupJson {
     symbol: String,
     file: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     lines: Option<[usize; 2]>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    exports: Vec<LookupExportJson>,
     imports: Vec<String>,
     dependencies: Vec<String>,
     loc: usize,
@@ -67,6 +76,7 @@ pub fn lookup(symbol: &str, json_output: bool) -> Result<()> {
             symbol: symbol.to_string(),
             file,
             lines: symbol_lines.as_ref().map(|l| [l.start, l.end]),
+            exports: entry_exports_json(entry),
             imports: entry.imports.clone(),
             dependencies: entry.dependencies.clone(),
             loc: entry.loc,
@@ -86,4 +96,24 @@ pub fn lookup(symbol: &str, json_output: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn entry_exports_json(entry: &fmm_core::manifest::FileEntry) -> Vec<LookupExportJson> {
+    entry
+        .exports
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            let lines = entry
+                .export_lines
+                .as_ref()
+                .and_then(|el| el.get(i))
+                .filter(|l| l.start > 0)
+                .map(|l| [l.start, l.end]);
+            LookupExportJson {
+                name: name.clone(),
+                lines,
+            }
+        })
+        .collect()
 }

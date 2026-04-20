@@ -5,6 +5,8 @@
 
 use clap::{CommandFactory, Parser};
 use fmm::cli::{Cli, Commands};
+use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::fs;
 use tempfile::TempDir;
 
@@ -108,6 +110,45 @@ fn markdown_help_produces_markdown_output() {
     );
 }
 
+#[test]
+fn top_level_long_help_documents_navigation_workflows() {
+    let help = Cli::command().render_long_help().to_string();
+
+    for expected in [
+        "Frontmatter Matters: Structural intelligence for codebases",
+        "fmm ls crates/fmm-core/src --sort-by downstream --limit 20",
+        "fmm outline crates/fmm-core/src/parser/mod.rs --include-private",
+        "fmm read ParserRegistry.get_parser --line-numbers",
+        "fmm deps crates/fmm-core/src/parser/mod.rs --depth 2 --filter source",
+        "fmm exports --file crates/fmm-cli/src/cli/mod.rs",
+        "fmm search --imports anyhow --min-loc 100",
+        "fmm glossary ParserRegistry.get_parser --precision call-site",
+        "fmm glossary Config --mode tests --no-truncate",
+        "fmm read Commands --no-truncate",
+        "fmm lookup Cli --json | jq .file",
+        "fmm mcp",
+        "fmm clean",
+    ] {
+        assert!(
+            help.contains(expected),
+            "top-level long help should include {expected:?}; got:\n{help}"
+        );
+    }
+
+    for stale in [
+        "src/injector.ts",
+        "Injector.loadInstance",
+        "src/app.ts",
+        "--imports react",
+        "LargeClass",
+    ] {
+        assert!(
+            !help.contains(stale),
+            "top-level long help should use examples from this repo, but still includes {stale:?}; got:\n{help}"
+        );
+    }
+}
+
 // ── --generate-man-pages ─────────────────────────────────────────────
 
 #[test]
@@ -175,5 +216,78 @@ fn init_removed_flags_are_rejected() {
     for flag in &["--skill", "--mcp", "--all"] {
         let result = Cli::try_parse_from(["fmm", "init", flag]);
         assert!(result.is_err(), "{} should be rejected", flag);
+    }
+}
+
+// -- MCP parity surface ------------------------------------------------------
+
+#[derive(Deserialize)]
+struct ToolsToml {
+    tools: BTreeMap<String, ToolDoc>,
+}
+
+#[derive(Deserialize)]
+struct ToolDoc {
+    cli_name: String,
+    #[serde(default)]
+    params: Vec<ParamDoc>,
+}
+
+#[derive(Deserialize)]
+struct ParamDoc {
+    #[serde(default)]
+    cli_flag: Option<String>,
+}
+
+#[test]
+fn tools_toml_cli_flags_are_exposed_by_clap_commands() {
+    let tools: ToolsToml =
+        toml::from_str(include_str!("../tools.toml")).expect("tools.toml should parse");
+    let command = Cli::command();
+
+    for (tool_name, tool) in tools.tools {
+        let subcommand = command
+            .get_subcommands()
+            .find(|subcommand| subcommand.get_name() == tool.cli_name)
+            .unwrap_or_else(|| {
+                panic!(
+                    "{tool_name} declares cli_name {:?}, but Commands does not expose it",
+                    tool.cli_name
+                )
+            });
+
+        let rendered_help = subcommand.clone().render_long_help().to_string();
+
+        for param in tool.params {
+            let Some(cli_flag) = param.cli_flag else {
+                continue;
+            };
+
+            if let Some(long_flag) = cli_flag.strip_prefix("--") {
+                let has_long_arg = subcommand
+                    .get_arguments()
+                    .any(|arg| arg.get_long() == Some(long_flag));
+                assert!(
+                    has_long_arg,
+                    "{tool_name} declares {cli_flag}, but fmm {} does not expose it",
+                    tool.cli_name
+                );
+                assert!(
+                    rendered_help.contains(&cli_flag),
+                    "fmm {} help should document {cli_flag}; got:\n{rendered_help}",
+                    tool.cli_name
+                );
+            } else {
+                let parse_result =
+                    Cli::try_parse_from(["fmm", tool.cli_name.as_str(), "__fmm_contract_value__"]);
+                assert!(
+                    parse_result.is_ok(),
+                    "{tool_name} declares positional cli_flag {:?}, but fmm {} rejected a positional value: {:?}",
+                    cli_flag,
+                    tool.cli_name,
+                    parse_result.err()
+                );
+            }
+        }
     }
 }
