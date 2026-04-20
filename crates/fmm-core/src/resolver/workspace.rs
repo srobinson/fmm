@@ -1,9 +1,9 @@
 //! Workspace manifest discovery for monorepo cross-package import resolution.
 //!
-//! Pluggable per ecosystem. The shipped [`JsWorkspaceDiscoverer`] covers the
-//! four mainstream JS package managers (npm, yarn, pnpm, bun). Future
-//! discoverers (Cargo, Go, uv, Deno) plug in via the [`WorkspaceDiscoverer`]
-//! trait and merge into the same [`WorkspaceInfo`].
+//! Pluggable per ecosystem. The shipped discoverers cover JS/TS package
+//! managers and Cargo workspaces. Future discoverers (Go, uv, Deno) plug in
+//! via the [`WorkspaceDiscoverer`] trait and merge into the same
+//! [`WorkspaceInfo`].
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -48,6 +48,10 @@ pub trait WorkspaceDiscoverer: Send + Sync {
 /// Deno is a separate ecosystem (URL imports, JSR, import maps) and ships
 /// its own discoverer + resolver.
 pub struct JsWorkspaceDiscoverer;
+
+/// Cargo workspace discoverer. Reads a root `Cargo.toml` `[workspace]`
+/// manifest, expands member globs, and maps Rust crate names to package roots.
+pub struct CargoWorkspaceDiscoverer;
 
 impl WorkspaceDiscoverer for JsWorkspaceDiscoverer {
     fn detect(&self, repo_root: &Path) -> bool {
@@ -180,6 +184,129 @@ impl JsWorkspaceDiscoverer {
     }
 }
 
+impl WorkspaceDiscoverer for CargoWorkspaceDiscoverer {
+    fn detect(&self, repo_root: &Path) -> bool {
+        let Some(manifest) = read_cargo_manifest(repo_root) else {
+            return false;
+        };
+        manifest
+            .get("workspace")
+            .and_then(|v| v.as_table())
+            .is_some()
+    }
+
+    fn discover(&self, repo_root: &Path) -> WorkspaceInfo {
+        let Some(manifest) = read_cargo_manifest(repo_root) else {
+            return WorkspaceInfo::default();
+        };
+        if manifest
+            .get("workspace")
+            .and_then(|v| v.as_table())
+            .is_none()
+        {
+            return WorkspaceInfo::default();
+        }
+
+        let excludes = cargo_workspace_excludes(repo_root, &manifest);
+        let mut roots = Vec::new();
+        if crate_name_from_cargo_manifest(&manifest).is_some()
+            && !is_cargo_excluded(repo_root, &excludes)
+        {
+            roots.push(repo_root.to_path_buf());
+        }
+
+        for pattern in cargo_workspace_members(&manifest) {
+            let abs_pattern = repo_root.join(&pattern);
+            let pattern_str = abs_pattern.to_string_lossy();
+            match glob::glob(&pattern_str) {
+                Ok(entries) => {
+                    for entry in entries.filter_map(Result::ok) {
+                        if !entry.is_dir() || is_cargo_excluded(&entry, &excludes) {
+                            continue;
+                        }
+                        if read_cargo_crate_name(&entry).is_some() {
+                            roots.push(entry);
+                        }
+                    }
+                }
+                Err(e) => {
+                    debug_log(&format!("cargo workspace: bad glob '{}': {}", pattern, e));
+                }
+            }
+        }
+
+        roots.sort();
+        roots.dedup();
+
+        let mut packages = HashMap::new();
+        for root in &roots {
+            if let Some(name) = read_cargo_crate_name(root) {
+                packages.insert(name, root.to_path_buf());
+            }
+        }
+
+        WorkspaceInfo { packages, roots }
+    }
+}
+
+fn read_cargo_manifest(dir: &Path) -> Option<toml::Value> {
+    let content = std::fs::read_to_string(dir.join("Cargo.toml")).ok()?;
+    toml::from_str(&content).ok()
+}
+
+fn cargo_workspace_members(manifest: &toml::Value) -> Vec<String> {
+    cargo_workspace_string_list(manifest, "members")
+}
+
+fn cargo_workspace_excludes(repo_root: &Path, manifest: &toml::Value) -> Vec<PathBuf> {
+    cargo_workspace_string_list(manifest, "exclude")
+        .into_iter()
+        .map(|p| repo_root.join(p))
+        .collect()
+}
+
+fn cargo_workspace_string_list(manifest: &toml::Value, key: &str) -> Vec<String> {
+    manifest
+        .get("workspace")
+        .and_then(|workspace| workspace.get(key))
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn is_cargo_excluded(path: &Path, exclude_paths: &[PathBuf]) -> bool {
+    exclude_paths.iter().any(|excluded| excluded == path)
+}
+
+fn read_cargo_crate_name(dir: &Path) -> Option<String> {
+    let manifest = read_cargo_manifest(dir)?;
+    crate_name_from_cargo_manifest(&manifest)
+}
+
+fn crate_name_from_cargo_manifest(manifest: &toml::Value) -> Option<String> {
+    let package_name = manifest
+        .get("package")
+        .and_then(|package| package.get("name"))
+        .and_then(|name| name.as_str())?;
+
+    let lib_name = manifest
+        .get("lib")
+        .and_then(|lib| lib.get("name"))
+        .and_then(|name| name.as_str());
+
+    Some(
+        lib_name
+            .unwrap_or(package_name)
+            .replace('-', "_")
+            .to_string(),
+    )
+}
+
 /// Read the `name` field from `package.json` at `dir`. Returns `None` when
 /// the file is missing, malformed, or has no string `name` field.
 pub fn read_package_name(dir: &Path) -> Option<String> {
@@ -193,7 +320,10 @@ pub fn read_package_name(dir: &Path) -> Option<String> {
 /// package names follow last writer wins on collision (rare but possible
 /// across ecosystems).
 pub fn discover(repo_root: &Path) -> WorkspaceInfo {
-    let discoverers: Vec<Box<dyn WorkspaceDiscoverer>> = vec![Box::new(JsWorkspaceDiscoverer)];
+    let discoverers: Vec<Box<dyn WorkspaceDiscoverer>> = vec![
+        Box::new(CargoWorkspaceDiscoverer),
+        Box::new(JsWorkspaceDiscoverer),
+    ];
     discover_with(repo_root, &discoverers)
 }
 
@@ -263,297 +393,5 @@ fn debug_log(msg: &str) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use tempfile::TempDir;
-
-    fn make_dir(base: &Path, rel: &str) -> PathBuf {
-        let p = base.join(rel);
-        fs::create_dir_all(&p).unwrap();
-        p
-    }
-
-    fn write_file(base: &Path, rel: &str, content: &str) {
-        let p = base.join(rel);
-        if let Some(parent) = p.parent() {
-            fs::create_dir_all(parent).unwrap();
-        }
-        fs::write(p, content).unwrap();
-    }
-
-    #[test]
-    fn no_workspace_config_returns_empty() {
-        let tmp = TempDir::new().unwrap();
-        let info = discover(tmp.path());
-        assert!(info.packages.is_empty());
-        assert!(info.roots.is_empty());
-    }
-
-    #[test]
-    fn js_discoverer_detects_package_json() {
-        let tmp = TempDir::new().unwrap();
-        write_file(tmp.path(), "package.json", r#"{"name":"root"}"#);
-        assert!(JsWorkspaceDiscoverer.detect(tmp.path()));
-    }
-
-    #[test]
-    fn js_discoverer_detects_node_modules() {
-        let tmp = TempDir::new().unwrap();
-        make_dir(tmp.path(), "node_modules");
-        assert!(JsWorkspaceDiscoverer.detect(tmp.path()));
-    }
-
-    #[test]
-    fn js_discoverer_detects_pnpm_workspace_without_root_package_json() {
-        // pnpm allows a workspace root with only pnpm-workspace.yaml
-        // (no root package.json).
-        let tmp = TempDir::new().unwrap();
-        write_file(tmp.path(), "pnpm-workspace.yaml", "packages:\n  - 'a/*'\n");
-        assert!(JsWorkspaceDiscoverer.detect(tmp.path()));
-    }
-
-    #[test]
-    fn js_discoverer_does_not_detect_empty_dir() {
-        let tmp = TempDir::new().unwrap();
-        assert!(!JsWorkspaceDiscoverer.detect(tmp.path()));
-    }
-
-    #[test]
-    fn bare_package_json_detects_but_discovers_empty() {
-        // Bare package.json (no workspaces field) trips detect() because the
-        // gate is a cheap perf check. discover() then returns an empty
-        // WorkspaceInfo, which is the correct semantic answer.
-        let tmp = TempDir::new().unwrap();
-        write_file(tmp.path(), "package.json", r#"{"name":"root"}"#);
-        assert!(JsWorkspaceDiscoverer.detect(tmp.path()));
-        let info = JsWorkspaceDiscoverer.discover(tmp.path());
-        assert!(info.roots.is_empty());
-        assert!(info.packages.is_empty());
-    }
-
-    #[test]
-    fn npm_workspaces_single_glob() {
-        let tmp = TempDir::new().unwrap();
-        write_file(
-            tmp.path(),
-            "package.json",
-            r#"{"workspaces": ["packages/*"]}"#,
-        );
-        make_dir(tmp.path(), "packages/alpha");
-        write_file(
-            tmp.path(),
-            "packages/alpha/package.json",
-            r#"{"name": "alpha"}"#,
-        );
-        make_dir(tmp.path(), "packages/beta");
-        write_file(
-            tmp.path(),
-            "packages/beta/package.json",
-            r#"{"name": "@scope/beta"}"#,
-        );
-
-        let info = discover(tmp.path());
-        assert_eq!(info.roots.len(), 2);
-        assert_eq!(
-            info.packages.get("alpha").unwrap(),
-            &tmp.path().join("packages/alpha")
-        );
-        assert_eq!(
-            info.packages.get("@scope/beta").unwrap(),
-            &tmp.path().join("packages/beta")
-        );
-    }
-
-    #[test]
-    fn yarn_berry_object_form_workspaces() {
-        let tmp = TempDir::new().unwrap();
-        write_file(
-            tmp.path(),
-            "package.json",
-            r#"{"workspaces":{"packages":["packages/*"],"nohoist":["**/react"]}}"#,
-        );
-        make_dir(tmp.path(), "packages/lib");
-        write_file(tmp.path(), "packages/lib/package.json", r#"{"name":"lib"}"#);
-
-        let info = discover(tmp.path());
-        assert_eq!(info.roots.len(), 1);
-        assert!(info.packages.contains_key("lib"));
-    }
-
-    #[test]
-    fn bun_workspaces_use_npm_format() {
-        let tmp = TempDir::new().unwrap();
-        write_file(tmp.path(), "package.json", r#"{"workspaces":["apps/*"]}"#);
-        make_dir(tmp.path(), "apps/web");
-        write_file(tmp.path(), "apps/web/package.json", r#"{"name":"web"}"#);
-
-        let info = discover(tmp.path());
-        assert_eq!(info.roots.len(), 1);
-        assert!(info.packages.contains_key("web"));
-    }
-
-    #[test]
-    fn pnpm_workspace_takes_precedence_over_package_json() {
-        let tmp = TempDir::new().unwrap();
-        write_file(tmp.path(), "package.json", r#"{"workspaces": ["apps/*"]}"#);
-        write_file(
-            tmp.path(),
-            "pnpm-workspace.yaml",
-            "packages:\n  - 'packages/*'\n",
-        );
-        make_dir(tmp.path(), "packages/lib");
-        write_file(
-            tmp.path(),
-            "packages/lib/package.json",
-            r#"{"name": "lib"}"#,
-        );
-        make_dir(tmp.path(), "apps/web");
-        write_file(tmp.path(), "apps/web/package.json", r#"{"name": "web"}"#);
-
-        let info = discover(tmp.path());
-        assert!(info.packages.contains_key("lib"));
-        assert!(!info.packages.contains_key("web"));
-    }
-
-    #[test]
-    fn directory_without_package_json_included_in_roots_not_packages() {
-        let tmp = TempDir::new().unwrap();
-        write_file(
-            tmp.path(),
-            "package.json",
-            r#"{"workspaces": ["packages/*"]}"#,
-        );
-        make_dir(tmp.path(), "packages/unnamed");
-
-        let info = discover(tmp.path());
-        assert_eq!(info.roots.len(), 1);
-        assert!(info.packages.is_empty());
-    }
-
-    #[test]
-    fn multiple_workspace_glob_patterns() {
-        let tmp = TempDir::new().unwrap();
-        write_file(
-            tmp.path(),
-            "package.json",
-            r#"{"workspaces": ["packages/*", "apps/*"]}"#,
-        );
-        make_dir(tmp.path(), "packages/lib");
-        write_file(
-            tmp.path(),
-            "packages/lib/package.json",
-            r#"{"name": "lib"}"#,
-        );
-        make_dir(tmp.path(), "apps/frontend");
-        write_file(
-            tmp.path(),
-            "apps/frontend/package.json",
-            r#"{"name": "frontend"}"#,
-        );
-
-        let info = discover(tmp.path());
-        assert_eq!(info.roots.len(), 2);
-        assert!(info.packages.contains_key("lib"));
-        assert!(info.packages.contains_key("frontend"));
-    }
-
-    #[test]
-    fn exclusion_patterns_respected() {
-        let tmp = TempDir::new().unwrap();
-        write_file(
-            tmp.path(),
-            "pnpm-workspace.yaml",
-            "packages:\n  - 'packages/*'\n  - '!packages/test-utils'\n",
-        );
-        make_dir(tmp.path(), "packages/core");
-        write_file(
-            tmp.path(),
-            "packages/core/package.json",
-            r#"{"name": "core"}"#,
-        );
-        make_dir(tmp.path(), "packages/test-utils");
-        write_file(
-            tmp.path(),
-            "packages/test-utils/package.json",
-            r#"{"name": "test-utils"}"#,
-        );
-
-        let info = discover(tmp.path());
-        assert!(info.packages.contains_key("core"));
-        assert!(!info.packages.contains_key("test-utils"));
-    }
-
-    #[test]
-    fn discover_with_merges_dedups_and_sorts_roots() {
-        struct FakeDiscoverer {
-            extra_root: PathBuf,
-            pkg_name: String,
-        }
-        impl WorkspaceDiscoverer for FakeDiscoverer {
-            fn detect(&self, _r: &Path) -> bool {
-                true
-            }
-            fn discover(&self, _r: &Path) -> WorkspaceInfo {
-                let mut packages = HashMap::new();
-                packages.insert(self.pkg_name.clone(), self.extra_root.clone());
-                WorkspaceInfo {
-                    packages,
-                    roots: vec![self.extra_root.clone()],
-                }
-            }
-        }
-
-        let tmp = TempDir::new().unwrap();
-        write_file(
-            tmp.path(),
-            "package.json",
-            r#"{"workspaces":["packages/*"]}"#,
-        );
-        make_dir(tmp.path(), "packages/alpha");
-        write_file(
-            tmp.path(),
-            "packages/alpha/package.json",
-            r#"{"name":"alpha"}"#,
-        );
-
-        let alpha_root = tmp.path().join("packages/alpha");
-        let extra_root = tmp.path().join("crates/foo");
-        make_dir(tmp.path(), "crates/foo");
-
-        let discoverers: Vec<Box<dyn WorkspaceDiscoverer>> = vec![
-            Box::new(JsWorkspaceDiscoverer),
-            Box::new(FakeDiscoverer {
-                extra_root: extra_root.clone(),
-                pkg_name: "foo".into(),
-            }),
-            Box::new(FakeDiscoverer {
-                extra_root: alpha_root.clone(),
-                pkg_name: "alpha-twin".into(),
-            }),
-        ];
-        let merged = discover_with(tmp.path(), &discoverers);
-
-        assert_eq!(merged.roots, {
-            let mut v = vec![alpha_root.clone(), extra_root.clone()];
-            v.sort();
-            v
-        });
-        assert_eq!(merged.packages.get("alpha").unwrap(), &alpha_root);
-        assert_eq!(merged.packages.get("foo").unwrap(), &extra_root);
-        assert_eq!(merged.packages.get("alpha-twin").unwrap(), &alpha_root);
-    }
-
-    #[test]
-    fn read_package_name_returns_name_field() {
-        let tmp = TempDir::new().unwrap();
-        write_file(tmp.path(), "package.json", r#"{"name":"hello"}"#);
-        assert_eq!(read_package_name(tmp.path()), Some("hello".into()));
-    }
-
-    #[test]
-    fn read_package_name_missing_file_returns_none() {
-        let tmp = TempDir::new().unwrap();
-        assert!(read_package_name(tmp.path()).is_none());
-    }
-}
+#[path = "workspace_tests.rs"]
+mod workspace_tests;
