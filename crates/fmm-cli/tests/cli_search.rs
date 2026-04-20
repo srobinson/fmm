@@ -174,4 +174,13 @@ fn search_help_documents_mcp_flags() {
     assert!(stdout.contains("--limit <LIMIT>"), "got: {stdout}");
     assert!(stdout.contains("--min-loc <MIN_LOC>"), "got: {stdout}");
     assert!(stdout.contains("--max-loc <MAX_LOC>"), "got: {stdout}");
+    assert!(
+        stdout.contains("fmm search --loc \">500\""),
+        "got: {stdout}"
+    );
+    assert!(stdout.contains("fmm search --loc \"<50\""), "got: {stdout}");
+    assert!(stdout.contains("fmm search TERM"), "got: {stdout}");
+    assert!(!stdout.contains(">>500"), "got: {stdout}");
+    assert!(!stdout.contains("<<50"), "got: {stdout}");
+    assert!(!stdout.contains("<term>>"), "got: {stdout}");
 }

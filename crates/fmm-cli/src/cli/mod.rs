@@ -284,7 +284,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm search --depends-on src/db.ts</bold>   <dim># Downstream dependents of db</dim>
 
   <dim># Line count filters:</dim>
-  <dim>$</dim> <bold>fmm search --loc ">>500"</bold>            <dim># Large files (over 500 lines)</dim>
+  <dim>$</dim> <bold>fmm search --loc ">500"</bold>             <dim># Large files (over 500 lines)</dim>
   <dim>$</dim> <bold>fmm search --loc "<<50"</bold>             <dim># Small files (under 50 lines)</dim>
   <dim>$</dim> <bold>fmm search --loc ">=100"</bold>            <dim># Files with 100+ lines</dim>
   <dim>$</dim> <bold>fmm search --min-loc 100 --max-loc 500</bold> <dim># Files in a LOC range</dim>
@@ -299,7 +299,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm search --json</bold>                   <dim># All indexed files as JSON</dim>
 
 <bold><underline>Notes</underline></bold>
-  Bare search (<bold>fmm search <<term>></bold>) is the fastest way to find anything.
+  Bare search (<bold>fmm search TERM</bold>) is the fastest way to find anything.
   Export lookup is O(1) — uses a pre-built reverse index, not file scanning.
   Flags narrow search to one dimension. Without flags, searches everything.
   Use --json for machine-readable output (piping, scripts, CI)."#),
