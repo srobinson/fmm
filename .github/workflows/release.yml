@@ -18,6 +18,10 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # Opt JavaScript actions still targeting Node 20 (upload-artifact@v5,
+  # download-artifact@v5, release-please-action@v4) into Node 24 ahead of
+  # the 2026-06-02 runner-enforced deprecation.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   release-please:
@@ -29,10 +33,6 @@ jobs:
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
-        env:
-          # release-please-action has no v5 yet; opt this action into Node 24
-          # ahead of the 2026-06-02 runner-enforced deprecation.
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
