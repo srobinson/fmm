@@ -32,6 +32,14 @@ fn write_go_module(base: &Path, rel: &str, module_path: &str) {
     );
 }
 
+fn write_python_project(base: &Path, rel: &str, name: &str) {
+    write_file(
+        base,
+        &format!("{rel}/pyproject.toml"),
+        &format!("[project]\nname = \"{name}\"\n"),
+    );
+}
+
 #[test]
 fn no_workspace_config_returns_empty() {
     let tmp = TempDir::new().unwrap();
@@ -414,6 +422,121 @@ fn cargo_lib_name_overrides_package_name() {
     );
 
     assert_eq!(read_cargo_crate_name(tmp.path()), Some("custom_lib".into()));
+}
+
+#[test]
+fn python_discoverer_detects_uv_workspace() {
+    let tmp = TempDir::new().unwrap();
+    write_file(
+        tmp.path(),
+        "pyproject.toml",
+        "[project]\nname = \"root-app\"\n\n[tool.uv.workspace]\nmembers = []\n",
+    );
+
+    assert!(PythonWorkspaceDiscoverer.detect(tmp.path()));
+}
+
+#[test]
+fn python_discoverer_does_not_detect_plain_pyproject() {
+    let tmp = TempDir::new().unwrap();
+    write_python_project(tmp.path(), ".", "root-app");
+
+    assert!(!PythonWorkspaceDiscoverer.detect(tmp.path()));
+    let info = PythonWorkspaceDiscoverer.discover(tmp.path());
+    assert!(info.roots.is_empty());
+    assert!(info.packages.is_empty());
+}
+
+#[test]
+fn uv_workspace_single_glob_discovers_members_and_root() {
+    let tmp = TempDir::new().unwrap();
+    write_file(
+        tmp.path(),
+        "pyproject.toml",
+        "[project]\nname = \"root-app\"\n\n[tool.uv.workspace]\nmembers = [\"packages/*\"]\n",
+    );
+    make_dir(tmp.path(), "src/root_app");
+    write_python_project(tmp.path(), "packages/alpha", "alpha-lib");
+    make_dir(tmp.path(), "packages/alpha/src/alpha_lib");
+    write_python_project(tmp.path(), "packages/beta", "beta.lib");
+    make_dir(tmp.path(), "packages/beta/beta_lib");
+
+    let info = discover(tmp.path());
+    let mut expected_roots = vec![
+        tmp.path().to_path_buf(),
+        tmp.path().join("packages/alpha"),
+        tmp.path().join("packages/beta"),
+    ];
+    expected_roots.sort();
+
+    assert_eq!(info.roots, expected_roots);
+    assert_eq!(info.packages.get("root_app").unwrap(), tmp.path());
+    assert_eq!(
+        info.packages.get("alpha_lib").unwrap(),
+        &tmp.path().join("packages/alpha")
+    );
+    assert_eq!(
+        info.packages.get("beta_lib").unwrap(),
+        &tmp.path().join("packages/beta")
+    );
+}
+
+#[test]
+fn uv_workspace_exclude_filters_members() {
+    let tmp = TempDir::new().unwrap();
+    write_file(
+        tmp.path(),
+        "pyproject.toml",
+        "[tool.uv.workspace]\nmembers = [\"packages/*\"]\nexclude = [\"packages/internal\"]\n",
+    );
+    write_python_project(tmp.path(), "packages/core", "core");
+    make_dir(tmp.path(), "packages/core/core");
+    write_python_project(tmp.path(), "packages/internal", "internal");
+    make_dir(tmp.path(), "packages/internal/internal");
+
+    let info = discover(tmp.path());
+
+    assert!(info.roots.contains(&tmp.path().to_path_buf()));
+    assert!(info.roots.contains(&tmp.path().join("packages/core")));
+    assert!(!info.roots.contains(&tmp.path().join("packages/internal")));
+    assert!(info.packages.contains_key("core"));
+    assert!(!info.packages.contains_key("internal"));
+}
+
+#[test]
+fn python_import_name_normalizes_project_name() {
+    let tmp = TempDir::new().unwrap();
+    write_python_project(tmp.path(), ".", "My--Package.Name");
+    make_dir(tmp.path(), "src/my_package_name");
+
+    assert_eq!(
+        read_python_import_name(tmp.path()),
+        Some("my_package_name".into())
+    );
+}
+
+#[test]
+fn python_import_name_detects_src_layout() {
+    let tmp = TempDir::new().unwrap();
+    write_python_project(tmp.path(), ".", "my-package");
+    make_dir(tmp.path(), "src/my_package");
+
+    assert_eq!(
+        read_python_import_name(tmp.path()),
+        Some("my_package".into())
+    );
+}
+
+#[test]
+fn python_import_name_detects_flat_layout() {
+    let tmp = TempDir::new().unwrap();
+    write_python_project(tmp.path(), ".", "my-package");
+    make_dir(tmp.path(), "my_package");
+
+    assert_eq!(
+        read_python_import_name(tmp.path()),
+        Some("my_package".into())
+    );
 }
 
 #[test]
