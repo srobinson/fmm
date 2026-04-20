@@ -73,7 +73,7 @@ pub(in crate::mcp) fn tool_list_exports(
             let lines = loc.lines.as_ref().map(|l| [l.start, l.end]);
             matches.push((dotted_name.clone(), loc.file.clone(), lines));
         }
-        matches.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+        matches.sort_by_key(|a| a.0.to_lowercase());
         let total = matches.len();
         let page: Vec<(String, String, Option<[usize; 2]>)> =
             matches.into_iter().skip(offset).take(limit).collect();

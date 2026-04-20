@@ -147,32 +147,30 @@ impl ScalaParser {
                         ));
                     }
                 }
-                "function_definition" => {
-                    if !Self::is_private_or_protected(&child, source_bytes) {
-                        if Self::has_implicit(&child, source_bytes) {
-                            implicit_count += 1;
-                        }
-                        if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
-                            exports.push(ExportEntry::new(
-                                name,
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            ));
-                        }
+                "function_definition" if !Self::is_private_or_protected(&child, source_bytes) => {
+                    if Self::has_implicit(&child, source_bytes) {
+                        implicit_count += 1;
+                    }
+                    if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
+                        exports.push(ExportEntry::new(
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        ));
                     }
                 }
-                "val_definition" | "var_definition" => {
-                    if !Self::is_private_or_protected(&child, source_bytes) {
-                        if Self::has_implicit(&child, source_bytes) {
-                            implicit_count += 1;
-                        }
-                        if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
-                            exports.push(ExportEntry::new(
-                                name,
-                                child.start_position().row + 1,
-                                child.end_position().row + 1,
-                            ));
-                        }
+                "val_definition" | "var_definition"
+                    if !Self::is_private_or_protected(&child, source_bytes) =>
+                {
+                    if Self::has_implicit(&child, source_bytes) {
+                        implicit_count += 1;
+                    }
+                    if let Some(name) = extract_child_text(&child, source_bytes, "identifier") {
+                        exports.push(ExportEntry::new(
+                            name,
+                            child.start_position().row + 1,
+                            child.end_position().row + 1,
+                        ));
                     }
                 }
                 _ => {}

@@ -111,7 +111,7 @@ pub fn format_bare_search(result: &BareSearchResult, colored: bool) -> String {
 /// Results are sorted by LOC descending (largest files first).
 pub fn format_filter_search(results: &[FileSearchResult], colored: bool) -> String {
     let mut sorted: Vec<&FileSearchResult> = results.iter().collect();
-    sorted.sort_by(|a, b| b.loc.cmp(&a.loc));
+    sorted.sort_by_key(|r| std::cmp::Reverse(r.loc));
     let mut out = Vec::new();
     for r in sorted {
         let file_line = if colored {

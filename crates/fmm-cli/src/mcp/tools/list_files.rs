@@ -73,15 +73,11 @@ pub(in crate::mcp) fn tool_list_files(
             }
             // Apply source/test filter
             match filter {
-                "tests" => {
-                    if !config.is_test_file(path) {
-                        return false;
-                    }
+                "tests" if !config.is_test_file(path) => {
+                    return false;
                 }
-                "source" => {
-                    if config.is_test_file(path) {
-                        return false;
-                    }
+                "source" if config.is_test_file(path) => {
+                    return false;
                 }
                 _ => {} // "all": no filter
             }
@@ -129,21 +125,21 @@ pub(in crate::mcp) fn tool_list_files(
             if desc {
                 entries.sort_by(|(_, a, _, _, _), (_, b, _, _, _)| b.cmp(a));
             } else {
-                entries.sort_by(|(_, a, _, _, _), (_, b, _, _, _)| a.cmp(b));
+                entries.sort_by_key(|(_, a, _, _, _)| *a);
             }
         }
         "exports" => {
             if desc {
                 entries.sort_by(|(_, _, a, _, _), (_, _, b, _, _)| b.cmp(a));
             } else {
-                entries.sort_by(|(_, _, a, _, _), (_, _, b, _, _)| a.cmp(b));
+                entries.sort_by_key(|(_, _, a, _, _)| *a);
             }
         }
         "downstream" => {
             if desc {
                 entries.sort_by(|(_, _, _, a, _), (_, _, _, b, _)| b.cmp(a));
             } else {
-                entries.sort_by(|(_, _, _, a, _), (_, _, _, b, _)| a.cmp(b));
+                entries.sort_by_key(|(_, _, _, a, _)| *a);
             }
         }
         "modified" => {
@@ -152,7 +148,7 @@ pub(in crate::mcp) fn tool_list_files(
             if desc {
                 entries.sort_by(|(_, _, _, _, a), (_, _, _, _, b)| b.cmp(a));
             } else {
-                entries.sort_by(|(_, _, _, _, a), (_, _, _, _, b)| a.cmp(b));
+                entries.sort_by_key(|(_, _, _, _, a)| *a);
             }
         }
         _ => {

@@ -251,7 +251,7 @@ pub fn compute_rollup_buckets(
             if desc {
                 bucket_vec.sort_by(|(_, _, a), (_, _, b)| b.cmp(a));
             } else {
-                bucket_vec.sort_by(|(_, _, a), (_, _, b)| a.cmp(b));
+                bucket_vec.sort_by_key(|(_, _, a)| *a);
             }
         }
     }

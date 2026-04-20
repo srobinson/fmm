@@ -287,12 +287,11 @@ impl RustParser {
                     }
                 }
             }
-            "self" => {
+            "self"
                 // `use module::{self}` -> namespace import of the module
-                if !prefix.is_empty() {
+                if !prefix.is_empty() => {
                     namespace.push(prefix.to_string());
                 }
-            }
             _ => {}
         }
     }

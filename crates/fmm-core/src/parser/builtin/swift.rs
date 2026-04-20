@@ -111,9 +111,9 @@ impl SwiftParser {
                     let keyword = Self::get_class_keyword(&child);
 
                     match keyword {
-                        Some("extension") => {
+                        Some("extension")
                             // Public extensions: export their methods
-                            if is_public {
+                            if is_public => {
                                 Self::extract_extension_members(
                                     &child,
                                     source_bytes,
@@ -121,7 +121,6 @@ impl SwiftParser {
                                     &mut exports,
                                 );
                             }
-                        }
                         Some("class") | Some("struct") | Some("enum") => {
                             if is_public
                                 && let Some(name) =
@@ -244,10 +243,8 @@ impl SwiftParser {
                 "protocol_declaration" => {
                     protocol_count += 1;
                 }
-                "class_declaration" => {
-                    if Self::get_class_keyword(&child) == Some("extension") {
-                        extension_count += 1;
-                    }
+                "class_declaration" if Self::get_class_keyword(&child) == Some("extension") => {
+                    extension_count += 1;
                 }
                 _ => {}
             }

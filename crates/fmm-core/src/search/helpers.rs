@@ -94,7 +94,7 @@ pub fn find_export_matches(manifest: &Manifest, name: &str) -> Vec<ExportHit> {
         })
         .map(|(export_name, loc)| (export_name.as_str(), loc))
         .collect();
-    fuzzy.sort_by(|(a, _), (b, _)| a.to_lowercase().cmp(&b.to_lowercase()));
+    fuzzy.sort_by_key(|(a, _)| a.to_lowercase());
 
     for (n, loc) in fuzzy {
         hits.push(export_hit_from_location(n, loc));

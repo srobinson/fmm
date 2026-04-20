@@ -128,28 +128,28 @@ pub fn ls(
             if desc {
                 entries.sort_by(|(_, a, _, _, _), (_, b, _, _, _)| b.cmp(a));
             } else {
-                entries.sort_by(|(_, a, _, _, _), (_, b, _, _, _)| a.cmp(b));
+                entries.sort_by_key(|(_, a, _, _, _)| *a);
             }
         }
         "exports" => {
             if desc {
                 entries.sort_by(|(_, _, a, _, _), (_, _, b, _, _)| b.cmp(a));
             } else {
-                entries.sort_by(|(_, _, a, _, _), (_, _, b, _, _)| a.cmp(b));
+                entries.sort_by_key(|(_, _, a, _, _)| *a);
             }
         }
         "downstream" => {
             if desc {
                 entries.sort_by(|(_, _, _, a, _), (_, _, _, b, _)| b.cmp(a));
             } else {
-                entries.sort_by(|(_, _, _, a, _), (_, _, _, b, _)| a.cmp(b));
+                entries.sort_by_key(|(_, _, _, a, _)| *a);
             }
         }
         "modified" => {
             if desc {
                 entries.sort_by(|(_, _, _, _, a), (_, _, _, _, b)| b.cmp(a));
             } else {
-                entries.sort_by(|(_, _, _, _, a), (_, _, _, _, b)| a.cmp(b));
+                entries.sort_by_key(|(_, _, _, _, a)| *a);
             }
         }
         _ => {

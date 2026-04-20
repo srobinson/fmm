@@ -73,7 +73,7 @@ pub fn exports(
             matches.push((dotted_name.clone(), loc.file.clone(), lines));
         }
 
-        matches.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+        matches.sort_by_key(|a| a.0.to_lowercase());
         let total = matches.len();
 
         // Apply pagination.
