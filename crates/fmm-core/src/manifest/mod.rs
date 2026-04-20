@@ -2,8 +2,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::LazyLock;
 
 use crate::parser::Metadata;
+use crate::resolver::workspace::{WorkspaceEcosystem, WorkspaceInfo};
 
 pub mod call_site_finder;
 pub mod private_members;
@@ -187,6 +189,14 @@ pub struct Manifest {
     /// Not persisted — rebuilt on each load.
     #[serde(skip)]
     pub workspace_roots: Vec<PathBuf>,
+    /// Workspace packages partitioned by resolver ecosystem.
+    /// Not persisted — rebuilt on each load.
+    #[serde(skip)]
+    pub workspace_packages_by_ecosystem: HashMap<WorkspaceEcosystem, HashMap<String, PathBuf>>,
+    /// Workspace roots partitioned by resolver ecosystem.
+    /// Not persisted — rebuilt on each load.
+    #[serde(skip)]
+    pub workspace_roots_by_ecosystem: HashMap<WorkspaceEcosystem, Vec<PathBuf>>,
 }
 
 impl Manifest {
@@ -203,6 +213,38 @@ impl Manifest {
             function_index: HashMap::new(),
             workspace_packages: HashMap::new(),
             workspace_roots: Vec::new(),
+            workspace_packages_by_ecosystem: HashMap::new(),
+            workspace_roots_by_ecosystem: HashMap::new(),
+        }
+    }
+
+    pub fn set_workspace_info(&mut self, info: WorkspaceInfo) {
+        self.workspace_packages = info.packages;
+        self.workspace_roots = info.roots;
+        self.workspace_packages_by_ecosystem = info.packages_by_ecosystem;
+        self.workspace_roots_by_ecosystem = info.roots_by_ecosystem;
+    }
+
+    pub fn workspace_packages_for(
+        &self,
+        ecosystem: WorkspaceEcosystem,
+    ) -> &HashMap<String, PathBuf> {
+        if let Some(packages) = self.workspace_packages_by_ecosystem.get(&ecosystem) {
+            packages
+        } else if self.workspace_packages_by_ecosystem.is_empty() {
+            &self.workspace_packages
+        } else {
+            empty_workspace_packages()
+        }
+    }
+
+    pub fn workspace_roots_for(&self, ecosystem: WorkspaceEcosystem) -> &[PathBuf] {
+        if let Some(roots) = self.workspace_roots_by_ecosystem.get(&ecosystem) {
+            roots
+        } else if self.workspace_roots_by_ecosystem.is_empty() {
+            &self.workspace_roots
+        } else {
+            &[]
         }
     }
 
@@ -480,6 +522,11 @@ impl Manifest {
         out.sort_by(|a, b| a.name.cmp(&b.name));
         out
     }
+}
+
+fn empty_workspace_packages() -> &'static HashMap<String, PathBuf> {
+    static EMPTY: LazyLock<HashMap<String, PathBuf>> = LazyLock::new(HashMap::new);
+    &EMPTY
 }
 
 impl Default for Manifest {

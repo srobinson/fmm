@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use super::ImportResolver;
-use super::workspace::{WorkspaceDiscoverer, WorkspaceInfo};
+use super::workspace::{WorkspaceDiscoverer, WorkspaceEcosystem, WorkspaceInfo};
 
 const DENO_CONFIG_FILES: [&str; 2] = ["deno.json", "deno.jsonc"];
 const DENO_SOURCE_EXTENSIONS: [&str; 7] = ["ts", "tsx", "js", "jsx", "mjs", "cjs", "json"];
@@ -55,6 +55,10 @@ struct DenoSourceRoot {
 }
 
 impl WorkspaceDiscoverer for DenoWorkspaceDiscoverer {
+    fn ecosystem(&self) -> WorkspaceEcosystem {
+        WorkspaceEcosystem::Deno
+    }
+
     fn detect(&self, repo_root: &Path) -> bool {
         deno_config_path(repo_root).is_some()
     }
@@ -81,7 +85,7 @@ impl WorkspaceDiscoverer for DenoWorkspaceDiscoverer {
             }
         }
 
-        WorkspaceInfo { packages, roots }
+        WorkspaceInfo::new(packages, roots)
     }
 }
 

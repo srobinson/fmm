@@ -250,10 +250,7 @@ fn discover_with_merges_dedups_and_sorts_roots() {
         fn discover(&self, _r: &Path) -> WorkspaceInfo {
             let mut packages = HashMap::new();
             packages.insert(self.pkg_name.clone(), self.extra_root.clone());
-            WorkspaceInfo {
-                packages,
-                roots: vec![self.extra_root.clone()],
-            }
+            WorkspaceInfo::new(packages, vec![self.extra_root.clone()])
         }
     }
 

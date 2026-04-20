@@ -7,16 +7,21 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 pub use super::deno::DenoWorkspaceDiscoverer;
+#[path = "workspace_go.rs"]
+mod workspace_go;
 #[path = "workspace_python.rs"]
 mod workspace_python;
+pub use workspace_go::GoWorkspaceDiscoverer;
+pub(crate) use workspace_go::read_go_module_path;
 pub use workspace_python::PythonWorkspaceDiscoverer;
 #[cfg(test)]
 use workspace_python::read_python_import_name;
 
 /// Result of workspace discovery.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct WorkspaceInfo {
     /// Maps canonical package name → absolute directory path.
     /// e.g. `"shared"` → `/repo/packages/shared`
@@ -26,12 +31,75 @@ pub struct WorkspaceInfo {
     /// Includes directories even if they have no package.json name.
     /// Used by the directory prefix heuristic (Layer 3).
     pub roots: Vec<PathBuf>,
+    pub packages_by_ecosystem: HashMap<WorkspaceEcosystem, HashMap<String, PathBuf>>,
+    pub roots_by_ecosystem: HashMap<WorkspaceEcosystem, Vec<PathBuf>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum WorkspaceEcosystem {
+    Js,
+    Rust,
+    Go,
+    Python,
+    Deno,
+}
+
+impl WorkspaceInfo {
+    pub fn new(packages: HashMap<String, PathBuf>, roots: Vec<PathBuf>) -> Self {
+        Self {
+            packages,
+            roots,
+            ..Self::default()
+        }
+    }
+
+    pub fn packages_for(&self, ecosystem: WorkspaceEcosystem) -> &HashMap<String, PathBuf> {
+        if let Some(packages) = self.packages_by_ecosystem.get(&ecosystem) {
+            packages
+        } else if self.packages_by_ecosystem.is_empty() {
+            &self.packages
+        } else {
+            empty_packages()
+        }
+    }
+
+    pub fn roots_for(&self, ecosystem: WorkspaceEcosystem) -> &[PathBuf] {
+        if let Some(roots) = self.roots_by_ecosystem.get(&ecosystem) {
+            roots
+        } else if self.roots_by_ecosystem.is_empty() {
+            &self.roots
+        } else {
+            &[]
+        }
+    }
+
+    fn merge_ecosystem(&mut self, ecosystem: WorkspaceEcosystem, info: WorkspaceInfo) {
+        let packages = info.packages;
+        let roots = info.roots;
+
+        merge_packages(&mut self.packages, packages.clone());
+        self.roots.extend(roots.clone());
+        self.roots.sort();
+        self.roots.dedup();
+
+        let scoped_packages = self.packages_by_ecosystem.entry(ecosystem).or_default();
+        merge_packages(scoped_packages, packages);
+
+        let scoped_roots = self.roots_by_ecosystem.entry(ecosystem).or_default();
+        scoped_roots.extend(roots);
+        scoped_roots.sort();
+        scoped_roots.dedup();
+    }
 }
 
 /// Pluggable workspace detector. One implementor per resolver family
 /// (JS/TS, Cargo, Go, uv, Deno, ...). Multiple discoverers run side by side
 /// in [`discover`]; results merge into a single [`WorkspaceInfo`].
 pub trait WorkspaceDiscoverer: Send + Sync {
+    fn ecosystem(&self) -> WorkspaceEcosystem {
+        WorkspaceEcosystem::Js
+    }
+
     /// Cheap signal: is this ecosystem plausibly active at `repo_root`?
     /// `discover()` may still return an empty `WorkspaceInfo`.
     fn detect(&self, repo_root: &Path) -> bool;
@@ -60,11 +128,11 @@ pub struct JsWorkspaceDiscoverer;
 /// manifest, expands member globs, and maps Rust crate names to package roots.
 pub struct CargoWorkspaceDiscoverer;
 
-/// Go workspace discoverer. Reads root `go.work` `use` directives or falls
-/// back to a single root `go.mod`.
-pub struct GoWorkspaceDiscoverer;
-
 impl WorkspaceDiscoverer for JsWorkspaceDiscoverer {
+    fn ecosystem(&self) -> WorkspaceEcosystem {
+        WorkspaceEcosystem::Js
+    }
+
     fn detect(&self, repo_root: &Path) -> bool {
         // Primary manifests: package.json (npm/yarn/bun/pnpm) or
         // pnpm-workspace.yaml (pnpm workspaces can declare members without a
@@ -114,7 +182,7 @@ impl WorkspaceDiscoverer for JsWorkspaceDiscoverer {
             }
         }
 
-        WorkspaceInfo { packages, roots }
+        WorkspaceInfo::new(packages, roots)
     }
 }
 
@@ -196,6 +264,10 @@ impl JsWorkspaceDiscoverer {
 }
 
 impl WorkspaceDiscoverer for CargoWorkspaceDiscoverer {
+    fn ecosystem(&self) -> WorkspaceEcosystem {
+        WorkspaceEcosystem::Rust
+    }
+
     fn detect(&self, repo_root: &Path) -> bool {
         let Some(manifest) = read_cargo_manifest(repo_root) else {
             return false;
@@ -256,22 +328,7 @@ impl WorkspaceDiscoverer for CargoWorkspaceDiscoverer {
             }
         }
 
-        WorkspaceInfo { packages, roots }
-    }
-}
-
-impl WorkspaceDiscoverer for GoWorkspaceDiscoverer {
-    fn detect(&self, repo_root: &Path) -> bool {
-        repo_root.join("go.work").exists() || repo_root.join("go.mod").exists()
-    }
-
-    fn discover(&self, repo_root: &Path) -> WorkspaceInfo {
-        let go_work = repo_root.join("go.work");
-        if go_work.exists() {
-            return discover_go_work(repo_root, &go_work);
-        }
-
-        discover_single_go_module(repo_root)
+        WorkspaceInfo::new(packages, roots)
     }
 }
 
@@ -333,202 +390,6 @@ fn crate_name_from_cargo_manifest(manifest: &toml::Value) -> Option<String> {
     )
 }
 
-fn discover_go_work(repo_root: &Path, go_work: &Path) -> WorkspaceInfo {
-    let mut roots = Vec::new();
-    let mut packages = HashMap::new();
-
-    for member_path in parse_go_work_use_paths(go_work) {
-        let root = resolve_go_work_member_path(repo_root, &member_path);
-        if let Some(module_path) = read_go_module_path(&root) {
-            packages.insert(module_path, root.clone());
-            roots.push(root);
-        }
-    }
-
-    roots.sort();
-    roots.dedup();
-
-    WorkspaceInfo { packages, roots }
-}
-
-fn discover_single_go_module(repo_root: &Path) -> WorkspaceInfo {
-    let Some(module_path) = read_go_module_path(repo_root) else {
-        return WorkspaceInfo::default();
-    };
-
-    let root = repo_root.to_path_buf();
-    let mut packages = HashMap::new();
-    packages.insert(module_path, root.clone());
-
-    WorkspaceInfo {
-        packages,
-        roots: vec![root],
-    }
-}
-
-fn parse_go_work_use_paths(path: &Path) -> Vec<String> {
-    let Ok(content) = std::fs::read_to_string(path) else {
-        return Vec::new();
-    };
-
-    let mut in_use_block = false;
-    let mut results = Vec::new();
-
-    for line in content.lines() {
-        let trimmed = strip_go_line_comment(line).trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        if in_use_block {
-            if trimmed.starts_with(')') {
-                in_use_block = false;
-                continue;
-            }
-            if let Some(path) = first_go_token(trimmed.trim_end_matches(')').trim()) {
-                results.push(path);
-            }
-            if trimmed.ends_with(')') {
-                in_use_block = false;
-            }
-            continue;
-        }
-
-        let Some(rest) = go_directive_value(trimmed, "use") else {
-            continue;
-        };
-        if rest.starts_with('(') {
-            in_use_block = true;
-            let inline = rest.trim_start_matches('(').trim();
-            if !inline.is_empty()
-                && !inline.starts_with(')')
-                && let Some(path) = first_go_token(inline.trim_end_matches(')').trim())
-            {
-                results.push(path);
-            }
-            if rest.ends_with(')') {
-                in_use_block = false;
-            }
-        } else if let Some(path) = first_go_token(rest) {
-            results.push(path);
-        }
-    }
-
-    results
-}
-
-pub(super) fn read_go_module_path(dir: &Path) -> Option<String> {
-    let content = std::fs::read_to_string(dir.join("go.mod")).ok()?;
-    for line in content.lines() {
-        let trimmed = strip_go_line_comment(line).trim();
-        let Some(rest) = go_directive_value(trimmed, "module") else {
-            continue;
-        };
-        if let Some(module_path) = first_go_token(rest) {
-            return Some(module_path);
-        }
-    }
-    None
-}
-
-fn resolve_go_work_member_path(repo_root: &Path, member_path: &str) -> PathBuf {
-    let path = Path::new(member_path);
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        repo_root.join(path)
-    }
-}
-
-fn go_directive_value<'a>(line: &'a str, directive: &str) -> Option<&'a str> {
-    let rest = line.strip_prefix(directive)?;
-    let has_boundary = matches!(rest.chars().next(), Some(c) if c.is_whitespace() || c == '(');
-    if !has_boundary {
-        return None;
-    }
-    Some(rest.trim())
-}
-
-fn first_go_token(value: &str) -> Option<String> {
-    let value = value.trim_start();
-    let first = value.chars().next()?;
-
-    let token = match first {
-        '"' => parse_double_quoted_go_token(value)?,
-        '`' => parse_raw_go_token(value)?,
-        _ => value.split_whitespace().next()?.to_string(),
-    };
-
-    if token.is_empty() { None } else { Some(token) }
-}
-
-fn parse_double_quoted_go_token(value: &str) -> Option<String> {
-    let mut escaped = false;
-    for (idx, ch) in value.char_indices().skip(1) {
-        if escaped {
-            escaped = false;
-            continue;
-        }
-        if ch == '\\' {
-            escaped = true;
-            continue;
-        }
-        if ch == '"' {
-            let literal = &value[..=idx];
-            if let Ok(decoded) = serde_json::from_str(literal) {
-                return Some(decoded);
-            }
-            return Some(value[1..idx].to_string());
-        }
-    }
-    None
-}
-
-fn parse_raw_go_token(value: &str) -> Option<String> {
-    for (idx, ch) in value.char_indices().skip(1) {
-        if ch == '`' {
-            return Some(value[1..idx].to_string());
-        }
-    }
-    None
-}
-
-fn strip_go_line_comment(line: &str) -> &str {
-    let mut in_double_quote = false;
-    let mut in_raw_quote = false;
-    let mut escaped = false;
-
-    for (idx, ch) in line.char_indices() {
-        if in_raw_quote {
-            if ch == '`' {
-                in_raw_quote = false;
-            }
-            continue;
-        }
-        if in_double_quote {
-            if escaped {
-                escaped = false;
-                continue;
-            }
-            match ch {
-                '\\' => escaped = true,
-                '"' => in_double_quote = false,
-                _ => {}
-            }
-            continue;
-        }
-
-        match ch {
-            '"' => in_double_quote = true,
-            '`' => in_raw_quote = true,
-            '/' if line[idx..].starts_with("//") => return &line[..idx],
-            _ => {}
-        }
-    }
-
-    line
-}
-
 /// Read the `name` field from `package.json` at `dir`. Returns `None` when
 /// the file is missing, malformed, or has no string `name` field.
 pub fn read_package_name(dir: &Path) -> Option<String> {
@@ -562,13 +423,21 @@ pub fn discover_with(
     for d in discoverers {
         if d.detect(repo_root) {
             let info = d.discover(repo_root);
-            merged.packages.extend(info.packages);
-            merged.roots.extend(info.roots);
+            merged.merge_ecosystem(d.ecosystem(), info);
         }
     }
-    merged.roots.sort();
-    merged.roots.dedup();
     merged
+}
+
+fn merge_packages(target: &mut HashMap<String, PathBuf>, packages: HashMap<String, PathBuf>) {
+    for (name, dir) in packages {
+        target.entry(name).or_insert(dir);
+    }
+}
+
+fn empty_packages() -> &'static HashMap<String, PathBuf> {
+    static EMPTY: LazyLock<HashMap<String, PathBuf>> = LazyLock::new(HashMap::new);
+    &EMPTY
 }
 
 fn partition_exclusions(patterns: Vec<String>) -> (Vec<String>, Vec<String>) {
@@ -624,3 +493,7 @@ mod workspace_tests;
 #[cfg(test)]
 #[path = "workspace_deno_tests.rs"]
 mod workspace_deno_tests;
+
+#[cfg(test)]
+#[path = "workspace_review_tests.rs"]
+mod workspace_review_tests;

@@ -9,3 +9,4 @@ mod python_dotted_imports;
 mod python_relative_imports;
 mod reverse_index;
 mod transitive_graph;
+mod workspace_partitions;

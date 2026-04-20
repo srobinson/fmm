@@ -321,12 +321,11 @@ fn load_workspace_packages(conn: &Connection, root: &Path, manifest: &mut Manife
         manifest.workspace_packages.insert(name, path);
     }
 
-    // If no workspace packages stored (e.g. not a monorepo), still discover
-    // roots so downstream resolution works on first generate.
-    if manifest.workspace_packages.is_empty() {
-        let info = fmm_core::resolver::workspace::discover(root);
-        manifest.workspace_packages = info.packages;
-        manifest.workspace_roots = info.roots;
+    // Discover on load to recover ecosystem partitions. Older stores only
+    // persisted a global package table, which cannot represent name collisions.
+    let info = fmm_core::resolver::workspace::discover(root);
+    if !info.packages.is_empty() || !info.roots.is_empty() {
+        manifest.set_workspace_info(info);
     }
 
     Ok(())

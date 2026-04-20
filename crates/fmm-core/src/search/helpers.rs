@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use crate::manifest::{ExportLocation, FileEntry, Manifest};
-use crate::resolver::RustImportResolver;
+use crate::resolver::{RustImportResolver, workspace::WorkspaceEcosystem};
 
 use super::{ExportHit, ExportHitCompact, FileSearchResult};
 
@@ -75,7 +75,10 @@ pub(super) fn workspace_specifier_names_for_source(
     rust_resolver: Option<&RustImportResolver>,
     source_file: &str,
 ) -> Vec<String> {
-    let mut names: Vec<String> = manifest.workspace_packages.keys().cloned().collect();
+    let mut names: Vec<String> = workspace_ecosystems_for_source(source_file)
+        .iter()
+        .flat_map(|ecosystem| manifest.workspace_packages_for(*ecosystem).keys().cloned())
+        .collect();
     if source_file.ends_with(".rs")
         && let Some(resolver) = rust_resolver
     {
@@ -86,12 +89,28 @@ pub(super) fn workspace_specifier_names_for_source(
     names
 }
 
+fn workspace_ecosystems_for_source(source_file: &str) -> &'static [WorkspaceEcosystem] {
+    let extension = Path::new(source_file)
+        .extension()
+        .and_then(|ext| ext.to_str());
+    match extension {
+        Some("rs") => &[WorkspaceEcosystem::Rust],
+        Some("go") => &[WorkspaceEcosystem::Go],
+        Some("py") => &[WorkspaceEcosystem::Python],
+        Some("ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs") => {
+            &[WorkspaceEcosystem::Js, WorkspaceEcosystem::Deno]
+        }
+        _ => &[],
+    }
+}
+
 pub(super) fn rust_workspace_resolver(
     manifest: &Manifest,
     source_file: &str,
 ) -> Option<RustImportResolver> {
-    (source_file.ends_with(".rs") && !manifest.workspace_packages.is_empty())
-        .then(|| RustImportResolver::new(&manifest.workspace_packages))
+    let packages = manifest.workspace_packages_for(WorkspaceEcosystem::Rust);
+    (source_file.ends_with(".rs") && !packages.is_empty())
+        .then(|| RustImportResolver::new(packages))
 }
 
 fn workspace_package_matches_specifier(package: &str, specifier: &str) -> bool {

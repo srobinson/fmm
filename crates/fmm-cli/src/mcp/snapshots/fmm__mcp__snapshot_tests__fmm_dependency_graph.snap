@@ -7,5 +7,3 @@ file: src/app.ts
 local_deps: [src/config.ts, src/utils.ts]
 external: [react]
 imports: [react]
-# ℹ Cross-package imports are excluded from the downstream count.
-#   To find all files that import this path, use: fmm_search(imports="<path>")

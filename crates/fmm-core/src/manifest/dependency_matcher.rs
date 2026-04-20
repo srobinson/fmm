@@ -6,7 +6,7 @@ use rayon::prelude::*;
 
 use crate::resolver::{
     CrossPackageResolver, DenoImportResolver, GoImportResolver, ImportResolver, RustImportResolver,
-    resolve_by_directory_prefix,
+    resolve_by_directory_prefix, workspace::WorkspaceEcosystem,
 };
 
 use super::{FileEntry, Manifest};
@@ -36,7 +36,7 @@ fn is_go_source_file(path: &Path) -> bool {
 fn is_cargo_workspace_source(path: &Path, manifest: &Manifest) -> bool {
     is_rust_source_file(path)
         && manifest
-            .workspace_packages
+            .workspace_packages_for(WorkspaceEcosystem::Rust)
             .values()
             .any(|dir| path.starts_with(dir) && dir.join("Cargo.toml").exists())
 }
@@ -410,16 +410,19 @@ pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<Str
 }
 
 fn collect_workspace_edges(manifest: &Manifest) -> Vec<(String, String)> {
-    let js_resolver: std::sync::Arc<dyn ImportResolver> =
-        std::sync::Arc::new(CrossPackageResolver::new(&manifest.workspace_packages));
+    let js_resolver: std::sync::Arc<dyn ImportResolver> = std::sync::Arc::new(
+        CrossPackageResolver::new(manifest.workspace_packages_for(WorkspaceEcosystem::Js)),
+    );
     let deno_resolver = std::sync::Arc::new(DenoImportResolver::new(
         &manifest.workspace_packages,
         &manifest.workspace_roots,
     ));
-    let rust_resolver: std::sync::Arc<dyn ImportResolver> =
-        std::sync::Arc::new(RustImportResolver::new(&manifest.workspace_packages));
-    let go_resolver: std::sync::Arc<dyn ImportResolver> =
-        std::sync::Arc::new(GoImportResolver::new(&manifest.workspace_packages));
+    let rust_resolver: std::sync::Arc<dyn ImportResolver> = std::sync::Arc::new(
+        RustImportResolver::new(manifest.workspace_packages_for(WorkspaceEcosystem::Rust)),
+    );
+    let go_resolver: std::sync::Arc<dyn ImportResolver> = std::sync::Arc::new(
+        GoImportResolver::new(manifest.workspace_packages_for(WorkspaceEcosystem::Go)),
+    );
 
     // Build canonical -> original key map. On macOS, /var/... symlinks resolve to
     // /private/var/..., so resolver output can differ from manifest keys.
@@ -453,7 +456,7 @@ fn collect_workspace_edges(manifest: &Manifest) -> Vec<(String, String)> {
                         file_path,
                         entry,
                         importer,
-                        manifest,
+                        manifest.workspace_roots_for(WorkspaceEcosystem::Js),
                         js_resolver.as_ref(),
                         &original_keys,
                         &canonical_to_original,
@@ -510,7 +513,7 @@ fn js_workspace_edges(
     file_path: &str,
     entry: &FileEntry,
     importer: &Path,
-    manifest: &Manifest,
+    workspace_roots: &[std::path::PathBuf],
     resolver: &dyn ImportResolver,
     original_keys: &HashSet<String>,
     canonical_to_original: &HashMap<String, String>,
@@ -519,10 +522,6 @@ fn js_workspace_edges(
         .imports
         .iter()
         .filter_map(|import_str| {
-            if import_str.contains('.') && !import_str.contains('/') {
-                return None;
-            }
-
             if let Some(resolved) = resolver.resolve(importer, import_str)
                 && let Some(target_key) =
                     resolved_to_manifest_key(&resolved, original_keys, canonical_to_original)
@@ -530,11 +529,12 @@ fn js_workspace_edges(
                 return Some((target_key, file_path.to_string()));
             }
 
-            resolve_by_directory_prefix(import_str, &manifest.workspace_roots, original_keys)
-                .and_then(|path| {
+            resolve_by_directory_prefix(import_str, workspace_roots, original_keys).and_then(
+                |path| {
                     resolved_to_manifest_key(&path, original_keys, canonical_to_original)
                         .map(|target_key| (target_key, file_path.to_string()))
-                })
+                },
+            )
         })
         .collect()
 }
@@ -640,6 +640,10 @@ mod go_tests;
 #[cfg(test)]
 #[path = "dependency_matcher_deno_tests.rs"]
 mod deno_tests;
+
+#[cfg(test)]
+#[path = "dependency_matcher_review_tests.rs"]
+mod review_tests;
 
 #[cfg(test)]
 #[path = "dependency_matcher_tests.rs"]

@@ -1,13 +1,17 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::{WorkspaceDiscoverer, WorkspaceInfo, debug_log, is_excluded};
+use super::{WorkspaceDiscoverer, WorkspaceEcosystem, WorkspaceInfo, debug_log, is_excluded};
 
 /// Python workspace discoverer. Reads root `pyproject.toml`
 /// `[tool.uv.workspace]` members and maps distribution names to import names.
 pub struct PythonWorkspaceDiscoverer;
 
 impl WorkspaceDiscoverer for PythonWorkspaceDiscoverer {
+    fn ecosystem(&self) -> WorkspaceEcosystem {
+        WorkspaceEcosystem::Python
+    }
+
     fn detect(&self, repo_root: &Path) -> bool {
         read_pyproject_manifest(repo_root).is_some_and(|manifest| has_uv_workspace(&manifest))
     }
@@ -61,7 +65,7 @@ impl WorkspaceDiscoverer for PythonWorkspaceDiscoverer {
             }
         }
 
-        WorkspaceInfo { packages, roots }
+        WorkspaceInfo::new(packages, roots)
     }
 }
 

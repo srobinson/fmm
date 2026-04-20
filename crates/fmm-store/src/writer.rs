@@ -296,8 +296,7 @@ pub fn rebuild_and_write_reverse_deps(conn: &mut Connection, root: &Path) -> Res
 
     let mut manifest = fmm_core::manifest::Manifest::new();
     manifest.files = abs_files_map;
-    manifest.workspace_packages = workspace_info.packages;
-    manifest.workspace_roots = workspace_info.roots;
+    manifest.set_workspace_info(workspace_info);
     manifest.rebuild_reverse_deps();
 
     // Strip root prefix back to relative for consistent DB storage.
