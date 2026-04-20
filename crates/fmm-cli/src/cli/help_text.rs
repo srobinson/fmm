@@ -50,26 +50,26 @@ pub const LONG_HELP: &str = cstr!(
   <bold>clean</bold>         Clear the fmm index database
 
 <bold><underline>Core Workflow</underline></bold>
-  <dim>$</dim> <bold>fmm ls --sort-by downstream --limit 20</bold>       <dim># Start with high blast-radius files</dim>
-  <dim>$</dim> <bold>fmm outline src/injector.ts --include-private</bold> <dim># Inspect structure before reading source</dim>
-  <dim>$</dim> <bold>fmm lookup Injector</bold>                          <dim># Find the definition and file profile</dim>
-  <dim>$</dim> <bold>fmm read Injector.loadInstance --line-numbers</bold> <dim># Read one method with exact lines</dim>
-  <dim>$</dim> <bold>fmm deps src/injector.ts --depth 2 --filter source</bold> <dim># Production impact radius</dim>
+  <dim>$</dim> <bold>fmm ls crates/fmm-core/src --sort-by downstream --limit 20</bold> <dim># Start with high blast-radius files</dim>
+  <dim>$</dim> <bold>fmm outline crates/fmm-core/src/parser/mod.rs --include-private</bold> <dim># Inspect structure before reading source</dim>
+  <dim>$</dim> <bold>fmm lookup ParserRegistry</bold>                  <dim># Find the definition and file profile</dim>
+  <dim>$</dim> <bold>fmm read ParserRegistry.get_parser --line-numbers</bold> <dim># Read one method with exact lines</dim>
+  <dim>$</dim> <bold>fmm deps crates/fmm-core/src/parser/mod.rs --depth 2 --filter source</bold> <dim># Production impact radius</dim>
 
 <bold><underline>Discovery</underline></bold>
-  <dim>$</dim> <bold>fmm exports Module</bold>                           <dim># Fuzzy export search</dim>
-  <dim>$</dim> <bold>fmm exports '^handle' --dir packages/core/</bold>    <dim># Regex search scoped to a directory</dim>
-  <dim>$</dim> <bold>fmm exports --file src/app.ts</bold>                 <dim># Exports from one file</dim>
-  <dim>$</dim> <bold>fmm search store</bold>                              <dim># Smart search across indexed metadata</dim>
-  <dim>$</dim> <bold>fmm search --imports react --min-loc 100</bold>      <dim># Files importing react with size filter</dim>
-  <dim>$</dim> <bold>fmm search auth --limit 5</bold>                     <dim># Cap fuzzy export results</dim>
+  <dim>$</dim> <bold>fmm exports ParserRegistry</bold>                    <dim># Fuzzy export search</dim>
+  <dim>$</dim> <bold>fmm exports '^Config' --dir crates/fmm-core/src</bold> <dim># Regex search scoped to a directory</dim>
+  <dim>$</dim> <bold>fmm exports --file crates/fmm-cli/src/cli/mod.rs</bold> <dim># Exports from one file</dim>
+  <dim>$</dim> <bold>fmm search parser</bold>                             <dim># Smart search across indexed metadata</dim>
+  <dim>$</dim> <bold>fmm search --imports anyhow --min-loc 100</bold>     <dim># Files importing anyhow with size filter</dim>
+  <dim>$</dim> <bold>fmm search parser --limit 5</bold>                   <dim># Cap fuzzy export results</dim>
 
 <bold><underline>Impact and Output</underline></bold>
-  <dim>$</dim> <bold>fmm glossary Config</bold>                           <dim># Files importing the defining module</dim>
-  <dim>$</dim> <bold>fmm glossary Injector.loadInstance --precision call-site</bold> <dim># Confirm direct callers</dim>
+  <dim>$</dim> <bold>fmm glossary ParserRegistry</bold>                   <dim># Files importing the defining module</dim>
+  <dim>$</dim> <bold>fmm glossary ParserRegistry.get_parser --precision call-site</bold> <dim># Confirm direct callers</dim>
   <dim>$</dim> <bold>fmm glossary Config --mode tests --no-truncate</bold> <dim># Test coverage impact without output cap</dim>
-  <dim>$</dim> <bold>fmm read LargeClass --no-truncate</bold>             <dim># Bypass the 10KB source cap</dim>
-  <dim>$</dim> <bold>fmm lookup Injector --json | jq .file</bold>         <dim># Machine-readable output</dim>
+  <dim>$</dim> <bold>fmm read Commands --no-truncate</bold>               <dim># Bypass the 10KB source cap</dim>
+  <dim>$</dim> <bold>fmm lookup Cli --json | jq .file</bold>              <dim># Machine-readable output</dim>
 
 <bold><underline>Project Workflows</underline></bold>
   <dim>$</dim> <bold>fmm init</bold>                                      <dim># One-command setup</dim>

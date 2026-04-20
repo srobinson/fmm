@@ -116,20 +116,35 @@ fn top_level_long_help_documents_navigation_workflows() {
 
     for expected in [
         "Frontmatter Matters: Structural intelligence for codebases",
-        "fmm ls --sort-by downstream --limit 20",
-        "fmm outline src/injector.ts --include-private",
-        "fmm read Injector.loadInstance --line-numbers",
-        "fmm deps src/injector.ts --depth 2 --filter source",
-        "fmm exports --file src/app.ts",
-        "fmm search --imports react --min-loc 100",
-        "fmm glossary Injector.loadInstance --precision call-site",
+        "fmm ls crates/fmm-core/src --sort-by downstream --limit 20",
+        "fmm outline crates/fmm-core/src/parser/mod.rs --include-private",
+        "fmm read ParserRegistry.get_parser --line-numbers",
+        "fmm deps crates/fmm-core/src/parser/mod.rs --depth 2 --filter source",
+        "fmm exports --file crates/fmm-cli/src/cli/mod.rs",
+        "fmm search --imports anyhow --min-loc 100",
+        "fmm glossary ParserRegistry.get_parser --precision call-site",
         "fmm glossary Config --mode tests --no-truncate",
+        "fmm read Commands --no-truncate",
+        "fmm lookup Cli --json | jq .file",
         "fmm mcp",
         "fmm clean",
     ] {
         assert!(
             help.contains(expected),
             "top-level long help should include {expected:?}; got:\n{help}"
+        );
+    }
+
+    for stale in [
+        "src/injector.ts",
+        "Injector.loadInstance",
+        "src/app.ts",
+        "--imports react",
+        "LargeClass",
+    ] {
+        assert!(
+            !help.contains(stale),
+            "top-level long help should use examples from this repo, but still includes {stale:?}; got:\n{help}"
         );
     }
 }

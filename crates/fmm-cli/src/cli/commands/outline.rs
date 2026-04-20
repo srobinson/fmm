@@ -22,6 +22,10 @@ struct OutlineReExportJson {
 #[derive(serde::Serialize)]
 struct OutlineJson {
     file: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    imports: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    dependencies: Vec<String>,
     exports: Vec<OutlineExportJson>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     reexports: Vec<OutlineReExportJson>,
@@ -85,6 +89,8 @@ pub fn outline(file: &str, include_private: bool, json_output: bool) -> Result<(
             .collect();
         let json = OutlineJson {
             file: file.to_string(),
+            imports: entry.imports.clone(),
+            dependencies: entry.dependencies.clone(),
             exports,
             reexports: reexport_json,
             loc: entry.loc,
@@ -138,6 +144,8 @@ mod tests {
     fn outline_json_mixed_local_and_reexports() {
         let json = OutlineJson {
             file: "pkg/__init__.py".to_string(),
+            imports: vec![],
+            dependencies: vec![],
             exports: vec![OutlineExportJson {
                 name: "main".to_string(),
                 lines: Some([83, 90]),
@@ -171,6 +179,8 @@ mod tests {
         // surface re-exports.
         let json = OutlineJson {
             file: "src/mod.ts".to_string(),
+            imports: vec![],
+            dependencies: vec![],
             exports: vec![OutlineExportJson {
                 name: "foo".to_string(),
                 lines: Some([1, 10]),
@@ -194,6 +204,8 @@ mod tests {
         // partitioning via `reexports_in_file`.)
         let json = OutlineJson {
             file: "pkg/__init__.py".to_string(),
+            imports: vec![],
+            dependencies: vec![],
             exports: vec![OutlineExportJson {
                 name: "baz".to_string(),
                 lines: Some([2, 2]),
