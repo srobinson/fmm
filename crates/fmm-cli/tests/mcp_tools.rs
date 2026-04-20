@@ -8,6 +8,8 @@
 mod dependency_graph;
 #[path = "mcp_tools/file_outline.rs"]
 mod file_outline;
+#[path = "mcp_tools/glossary.rs"]
+mod glossary;
 #[path = "mcp_tools/go_resolution.rs"]
 mod go_resolution;
 #[path = "mcp_tools/list_exports.rs"]

@@ -168,6 +168,16 @@ fn glossary_default_limit_and_hard_cap_match_mcp() {
 }
 
 #[test]
+fn glossary_dotted_no_match_uses_standard_empty_output() {
+    let tmp = setup_precision_project();
+    let output = run_fmm(tmp.path(), &["glossary", "Missing.symbol"]);
+    let text = stdout(&output);
+
+    assert!(text.contains("(no matching exports)"), "got:\n{text}");
+    assert_ne!(text.trim(), "---");
+}
+
+#[test]
 fn glossary_no_truncate_bypasses_cli_response_cap() {
     let tmp = setup_large_glossary_project();
 

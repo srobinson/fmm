@@ -85,9 +85,10 @@ pub(crate) fn compute_glossary(
                 }
             }
 
-            if entries
-                .iter()
-                .all(|e| e.sources.iter().all(|s| s.used_by.is_empty()))
+            if !entries.is_empty()
+                && entries
+                    .iter()
+                    .all(|e| e.sources.iter().all(|s| s.used_by.is_empty()))
             {
                 contextual_message = Some(format_empty_call_site_message(
                     manifest,
