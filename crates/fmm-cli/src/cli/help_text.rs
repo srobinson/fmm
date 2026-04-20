@@ -1,7 +1,7 @@
 use color_print::cstr;
 
 pub const LONG_ABOUT: &str = "\
-Frontmatter Matters — 80-90% fewer file reads for LLM agents";
+Frontmatter Matters: Structural intelligence for codebases";
 
 // Short help (-h): commands + hint to use --help
 pub const SHORT_HELP: &str = cstr!(
@@ -31,14 +31,14 @@ https://github.com/srobinson/fmm"#
 // Full help (--help): commands + MCP tools + workflows + languages
 pub const LONG_HELP: &str = cstr!(
     r#"<bold><underline>Navigation Commands</underline></bold>
-  <bold>lookup</bold> SYMBOL       Find where a symbol is defined — O(1)
-  <bold>read</bold> SYMBOL         Extract exact source for a symbol or ClassName.method
-  <bold>deps</bold> FILE           Dependency graph: local_deps, external, downstream
-  <bold>outline</bold> FILE        File table-of-contents with line ranges
-  <bold>ls</bold> [DIR]           List indexed files under a directory
-  <bold>exports</bold> [PATTERN]  Search exports by pattern (substring or regex, auto-detected)
-  <bold>search</bold>             Smart search — exports, files, imports (just works)
-  <bold>glossary</bold>           Symbol-level impact analysis — who uses this export?
+  <bold>ls</bold> [DIR]           Indexed files with sorting, grouping, filters, and pagination
+  <bold>outline</bold> FILE        File table of contents with exports and method ranges
+  <bold>lookup</bold> SYMBOL       O(1) definition lookup with file metadata
+  <bold>exports</bold> [PATTERN]  Export discovery by substring, regex, file, or directory
+  <bold>read</bold> SYMBOL         Exact source for Symbol or ClassName.method
+  <bold>deps</bold> FILE           Imports, downstream dependents, and transitive blast radius
+  <bold>search</bold> [TERM]       Smart search across exports, files, imports, and LOC filters
+  <bold>glossary</bold> PATTERN    Impact analysis: definitions, importers, and call sites
 
 <bold><underline>Project Commands</underline></bold>
   <bold>init</bold>          Set up config, Claude skill, and MCP server
@@ -49,30 +49,42 @@ pub const LONG_HELP: &str = cstr!(
   <bold>status</bold>        Show config and workspace stats
   <bold>clean</bold>         Clear the fmm index database
 
-<bold><underline>Navigation Examples</underline></bold>
-  <dim>$</dim> <bold>fmm lookup Injector</bold>                         <dim># File + line range + deps</dim>
-  <dim>$</dim> <bold>fmm read Injector</bold>                           <dim># Full class source</dim>
-  <dim>$</dim> <bold>fmm read Injector.loadInstance</bold>              <dim># Single method source</dim>
-  <dim>$</dim> <bold>fmm read Injector --no-truncate</bold>            <dim># Bypass 10KB cap</dim>
-  <dim>$</dim> <bold>fmm deps src/injector.ts</bold>                    <dim># Direct dependency graph</dim>
-  <dim>$</dim> <bold>fmm deps src/injector.ts --depth 2</bold>         <dim># Transitive (2 hops)</dim>
-  <dim>$</dim> <bold>fmm outline src/injector.ts</bold>                 <dim># Exports with line ranges</dim>
-  <dim>$</dim> <bold>fmm ls src/</bold>                                 <dim># Files in src/</dim>
-  <dim>$</dim> <bold>fmm ls --sort-by downstream</bold>                  <dim># Most-imported files first (pre-refactoring)</dim>
-  <dim>$</dim> <bold>fmm exports Module</bold>                          <dim># All exports matching "Module"</dim>
-  <dim>$</dim> <bold>fmm exports Module --dir packages/core/</bold>     <dim># Scoped to directory</dim>
-  <dim>$</dim> <bold>fmm lookup Injector --json | jq .file</bold>      <dim># Machine-readable output</dim>
+<bold><underline>Core Workflow</underline></bold>
+  <dim>$</dim> <bold>fmm ls --sort-by downstream --limit 20</bold>       <dim># Start with high blast-radius files</dim>
+  <dim>$</dim> <bold>fmm outline src/injector.ts --include-private</bold> <dim># Inspect structure before reading source</dim>
+  <dim>$</dim> <bold>fmm lookup Injector</bold>                          <dim># Find the definition and file profile</dim>
+  <dim>$</dim> <bold>fmm read Injector.loadInstance --line-numbers</bold> <dim># Read one method with exact lines</dim>
+  <dim>$</dim> <bold>fmm deps src/injector.ts --depth 2 --filter source</bold> <dim># Production impact radius</dim>
+
+<bold><underline>Discovery</underline></bold>
+  <dim>$</dim> <bold>fmm exports Module</bold>                           <dim># Fuzzy export search</dim>
+  <dim>$</dim> <bold>fmm exports '^handle' --dir packages/core/</bold>    <dim># Regex search scoped to a directory</dim>
+  <dim>$</dim> <bold>fmm exports --file src/app.ts</bold>                 <dim># Exports from one file</dim>
+  <dim>$</dim> <bold>fmm search store</bold>                              <dim># Smart search across indexed metadata</dim>
+  <dim>$</dim> <bold>fmm search --imports react --min-loc 100</bold>      <dim># Files importing react with size filter</dim>
+  <dim>$</dim> <bold>fmm search auth --limit 5</bold>                     <dim># Cap fuzzy export results</dim>
+
+<bold><underline>Impact and Output</underline></bold>
+  <dim>$</dim> <bold>fmm glossary Config</bold>                           <dim># Files importing the defining module</dim>
+  <dim>$</dim> <bold>fmm glossary Injector.loadInstance --precision call-site</bold> <dim># Confirm direct callers</dim>
+  <dim>$</dim> <bold>fmm glossary Config --mode tests --no-truncate</bold> <dim># Test coverage impact without output cap</dim>
+  <dim>$</dim> <bold>fmm read LargeClass --no-truncate</bold>             <dim># Bypass the 10KB source cap</dim>
+  <dim>$</dim> <bold>fmm lookup Injector --json | jq .file</bold>         <dim># Machine-readable output</dim>
 
 <bold><underline>Project Workflows</underline></bold>
-  <dim>$</dim> <bold>fmm init</bold>                              <dim># One-command setup</dim>
-  <dim>$</dim> <bold>fmm generate && fmm validate</bold>          <dim># CI pipeline</dim>
-  <dim>$</dim> <bold>fmm search store</bold>                      <dim># Smart search across everything</dim>
-  <dim>$</dim> <bold>fmm glossary config</bold>                   <dim># Who uses Config, loadConfig, AppConfig?</dim>
+  <dim>$</dim> <bold>fmm init</bold>                                      <dim># One-command setup</dim>
+  <dim>$</dim> <bold>fmm generate && fmm validate</bold>                  <dim># CI-friendly index refresh</dim>
+  <dim>$</dim> <bold>fmm status</bold>                                    <dim># Config, languages, and index counts</dim>
+  <dim>$</dim> <bold>fmm watch</bold>                                     <dim># Keep the index fresh during development</dim>
+  <dim>$</dim> <bold>fmm mcp</bold>                                       <dim># Start the MCP server over stdio</dim>
+  <dim>$</dim> <bold>fmm clean</bold>                                     <dim># Clear the local index database</dim>
+
+Use <bold>fmm <<command>> --help</bold> for every flag and command-specific examples.
 
 <bold><underline>Languages</underline></bold>
   TypeScript · JavaScript · Python · Rust
 
-88-97% token reduction measured on real codebases.
+Built to replace broad file reads with indexed, structural navigation.
 https://github.com/srobinson/fmm"#
 );
 

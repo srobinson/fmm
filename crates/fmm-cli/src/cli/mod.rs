@@ -291,7 +291,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm search auth --limit 5</bold>           <dim># Cap fuzzy export matches</dim>
 
   <dim># Combined filters (AND logic):</dim>
-  <dim>$</dim> <bold>fmm search --imports react --loc ">>200"</bold>  <dim># Large React files</dim>
+  <dim>$</dim> <bold>fmm search --imports react --loc ">200"</bold>  <dim># Large React files</dim>
 
   <dim># Structured output:</dim>
   <dim>$</dim> <bold>fmm search store --json</bold>             <dim># JSON for scripting/piping</dim>
