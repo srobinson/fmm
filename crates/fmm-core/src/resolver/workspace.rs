@@ -410,7 +410,7 @@ fn parse_go_work_use_paths(path: &Path) -> Vec<String> {
     results
 }
 
-fn read_go_module_path(dir: &Path) -> Option<String> {
+pub(super) fn read_go_module_path(dir: &Path) -> Option<String> {
     let content = std::fs::read_to_string(dir.join("go.mod")).ok()?;
     for line in content.lines() {
         let trimmed = strip_go_line_comment(line).trim();

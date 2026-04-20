@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use super::ImportResolver;
+use super::workspace::read_go_module_path;
 
 /// Go workspace import resolver.
 ///
@@ -43,10 +44,6 @@ impl GoImportResolver {
     }
 
     pub fn resolve(&self, _importer: &Path, specifier: &str) -> Option<PathBuf> {
-        if is_go_standard_library_import(specifier) {
-            return None;
-        }
-
         let module = self
             .modules
             .iter()
@@ -69,36 +66,11 @@ impl ImportResolver for GoImportResolver {
     }
 }
 
-fn is_go_standard_library_import(specifier: &str) -> bool {
-    specifier
-        .split('/')
-        .next()
-        .is_none_or(|first| !first.contains('.'))
-}
-
 fn module_path_matches(module_path: &str, specifier: &str) -> bool {
     specifier == module_path
         || specifier
             .strip_prefix(module_path)
             .is_some_and(|rest| rest.starts_with('/'))
-}
-
-fn read_go_module_path(root: &Path) -> Option<String> {
-    let content = std::fs::read_to_string(root.join("go.mod")).ok()?;
-    for line in content.lines() {
-        let trimmed = line.split("//").next().unwrap_or("").trim();
-        let Some(rest) = trimmed.strip_prefix("module") else {
-            continue;
-        };
-        if !rest.chars().next().is_some_and(char::is_whitespace) {
-            continue;
-        }
-        let module_path = rest.split_whitespace().next()?;
-        if !module_path.is_empty() {
-            return Some(module_path.to_string());
-        }
-    }
-    None
 }
 
 #[cfg(test)]
@@ -223,5 +195,52 @@ mod tests {
             Some(tmp.path().join("services/app/internal/handler"))
         );
         assert_eq!(resolver.resolve(&importer, "api/internal/handler"), None);
+    }
+
+    #[test]
+    fn dotless_workspace_module_resolves_before_stdlib_classification() {
+        let tmp = TempDir::new().unwrap();
+        write_file(
+            tmp.path(),
+            "services/shared/go.mod",
+            "module acme/shared\n\ngo 1.23.0\n",
+        );
+        write_file(
+            tmp.path(),
+            "services/shared/config/config.go",
+            "package config\n",
+        );
+        let mut packages = HashMap::new();
+        packages.insert(
+            "acme/shared".to_string(),
+            tmp.path().join("services/shared"),
+        );
+        let resolver = GoImportResolver::new(&packages);
+        let importer = tmp.path().join("services/api/handler/handler.go");
+
+        assert_eq!(
+            resolver.resolve(&importer, "acme/shared/config"),
+            Some(tmp.path().join("services/shared/config"))
+        );
+    }
+
+    #[test]
+    fn quoted_go_mod_module_path_resolves() {
+        let tmp = TempDir::new().unwrap();
+        write_file(
+            tmp.path(),
+            "services/quoted/go.mod",
+            "module \"github.com/acme/quoted\"\n\ngo 1.23.0\n",
+        );
+        write_file(tmp.path(), "services/quoted/api/api.go", "package api\n");
+        let mut packages = HashMap::new();
+        packages.insert("quoted".to_string(), tmp.path().join("services/quoted"));
+        let resolver = GoImportResolver::new(&packages);
+        let importer = tmp.path().join("services/client/client.go");
+
+        assert_eq!(
+            resolver.resolve(&importer, "github.com/acme/quoted/api"),
+            Some(tmp.path().join("services/quoted/api"))
+        );
     }
 }

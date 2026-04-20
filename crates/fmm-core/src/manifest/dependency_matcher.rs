@@ -597,5 +597,9 @@ fn is_go_package_file(file_path: &str, package_dir: &Path) -> bool {
 }
 
 #[cfg(test)]
+#[path = "dependency_matcher_go_tests.rs"]
+mod go_tests;
+
+#[cfg(test)]
 #[path = "dependency_matcher_tests.rs"]
 mod tests;
