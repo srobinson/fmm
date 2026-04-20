@@ -4,9 +4,17 @@ use std::sync::OnceLock;
 
 use rayon::prelude::*;
 
-use crate::resolver::{CrossPackageResolver, resolve_by_directory_prefix};
+use crate::resolver::{CrossPackageResolver, ImportResolver, resolve_by_directory_prefix};
 
 use super::Manifest;
+
+const JS_TS_SOURCE_EXTENSIONS: &[&str] = &["ts", "tsx", "js", "jsx", "mjs", "cjs"];
+
+fn is_js_ts_source_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| JS_TS_SOURCE_EXTENSIONS.contains(&ext))
+}
 
 /// Return a reference to the lazily-initialised set of source-file extensions
 /// from the builtin `ParserRegistry`.
@@ -330,11 +338,14 @@ pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<Str
         }
     }
 
-    // Pass 2b: JS/TS cross-package bare specifiers via three-layer resolver.
+    // Pass 2b: language-dispatched cross-package bare specifiers.
+    // JS/TS uses the three-layer resolver. Other languages skip here until
+    // their ecosystem-specific resolvers plug into ImportResolver.
     // Runs in parallel via Rayon; CrossPackageResolver is Send+Sync via Arc<Resolver>.
     // Skipped if no workspace config was found (workspace_packages and workspace_roots both empty).
     if !manifest.workspace_packages.is_empty() || !manifest.workspace_roots.is_empty() {
-        let resolver = CrossPackageResolver::new(&manifest.workspace_packages);
+        let resolver: std::sync::Arc<dyn ImportResolver> =
+            std::sync::Arc::new(CrossPackageResolver::new(&manifest.workspace_packages));
 
         // Build canonical → original key map. On macOS, /var/... symlinks resolve to
         // /private/var/..., so the resolver (symlinks=true) returns canonical paths while
@@ -360,10 +371,14 @@ pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<Str
             .files
             .par_iter()
             .flat_map(|(file_path, entry)| {
-                let resolver = resolver.clone();
+                let importer = Path::new(file_path.as_str());
+                if !is_js_ts_source_file(importer) {
+                    return Vec::new();
+                }
+
+                let resolver = std::sync::Arc::clone(&resolver);
                 let canonical_to_original = std::sync::Arc::clone(&canonical_to_original);
                 let original_keys = std::sync::Arc::clone(&original_keys);
-                let importer = Path::new(file_path.as_str());
 
                 entry
                     .imports
@@ -437,6 +452,60 @@ mod tests {
 
     fn exts() -> &'static HashSet<String> {
         builtin_source_extensions()
+    }
+
+    #[test]
+    fn build_reverse_deps_dispatches_cross_package_resolution_by_source_extension() {
+        use std::fs;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let shared_dir = tmp.path().join("packages/shared");
+        let target = shared_dir.join("util.ts");
+        let ts_importer = tmp.path().join("packages/app/index.ts");
+        let rs_importer = tmp.path().join("crates/app/src/lib.rs");
+
+        for path in [&target, &ts_importer, &rs_importer] {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, "").unwrap();
+        }
+
+        let target_key = target.to_string_lossy().into_owned();
+        let ts_importer_key = ts_importer.to_string_lossy().into_owned();
+        let rs_importer_key = rs_importer.to_string_lossy().into_owned();
+
+        let mut manifest = Manifest::new();
+        manifest.workspace_roots.push(shared_dir);
+        manifest
+            .files
+            .insert(target_key.clone(), crate::manifest::FileEntry::default());
+        manifest.files.insert(
+            ts_importer_key.clone(),
+            crate::manifest::FileEntry {
+                imports: vec!["shared/util".to_string()],
+                ..Default::default()
+            },
+        );
+        manifest.files.insert(
+            rs_importer_key.clone(),
+            crate::manifest::FileEntry {
+                imports: vec!["shared/util".to_string()],
+                ..Default::default()
+            },
+        );
+
+        let reverse_deps = build_reverse_deps(&manifest);
+        let importers = reverse_deps.get(&target_key).cloned().unwrap_or_default();
+
+        assert!(
+            importers.contains(&ts_importer_key),
+            "TS importer should resolve through the JS/TS cross-package path, got: {:?}",
+            importers
+        );
+        assert!(
+            !importers.contains(&rs_importer_key),
+            "Rust importer should wait for RustImportResolver, got: {:?}",
+            importers
+        );
     }
 
     #[test]

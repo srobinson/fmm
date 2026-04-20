@@ -13,6 +13,13 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+/// Resolve an import specifier from a source file into an indexed file path.
+///
+/// Implementors own one language ecosystem's resolution semantics.
+pub trait ImportResolver: Send + Sync {
+    fn resolve(&self, importer: &Path, specifier: &str) -> Option<PathBuf>;
+}
+
 /// Three-layer cross-package import resolver.
 ///
 /// Layer 1 (tsconfig paths + baseUrl) and Layer 2 (workspace package aliases)
@@ -86,6 +93,12 @@ impl CrossPackageResolver {
                 None
             }
         }
+    }
+}
+
+impl ImportResolver for CrossPackageResolver {
+    fn resolve(&self, importer: &Path, specifier: &str) -> Option<PathBuf> {
+        CrossPackageResolver::resolve(self, importer, specifier)
     }
 }
 
