@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/srobinson/fmm/compare/v0.2.3...v0.2.4) (2026-04-20)
+
+
+### Bug Fixes
+
+* cross-ecosystem dependency resolution ([#126](https://github.com/srobinson/fmm/issues/126)) ([a8f30dc](https://github.com/srobinson/fmm/commit/a8f30dc683f850206db1e99b5563f8a047dab909))
+
 ## [0.2.3](https://github.com/srobinson/fmm/compare/v0.2.2...v0.2.3) (2026-04-15)
 
 
