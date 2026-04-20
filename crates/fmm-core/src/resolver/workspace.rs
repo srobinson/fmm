@@ -20,13 +20,56 @@ pub struct WorkspaceInfo {
     pub roots: Vec<PathBuf>,
 }
 
+/// Pluggable per-language workspace detector.
+///
+/// One implementor per ecosystem (JS/TS, Cargo, Go, uv, …). Multiple discoverers
+/// run side-by-side in [`discover`]; results merge into a single [`WorkspaceInfo`].
+pub trait WorkspaceDiscoverer: Send + Sync {
+    /// Return `true` if this discoverer's manifest file exists at `repo_root`.
+    /// Cheap existence check; the full parse happens in [`discover`].
+    fn detect(&self, repo_root: &Path) -> bool;
+
+    /// Discover workspace members and return their names + directories.
+    fn discover(&self, repo_root: &Path) -> WorkspaceInfo;
+}
+
+/// JS/TS workspace discoverer. Reads `pnpm-workspace.yaml` (preferred) or
+/// `package.json` `workspaces` field. pnpm wins when both are present, matching
+/// historical behavior.
+pub struct JsWorkspaceDiscoverer;
+
+impl WorkspaceDiscoverer for JsWorkspaceDiscoverer {
+    fn detect(&self, repo_root: &Path) -> bool {
+        repo_root.join("pnpm-workspace.yaml").exists() || repo_root.join("package.json").exists()
+    }
+
+    fn discover(&self, repo_root: &Path) -> WorkspaceInfo {
+        discover_js_workspace(repo_root)
+    }
+}
+
 /// Discover workspace packages from the repo root.
 ///
-/// Detection order:
-/// 1. `pnpm-workspace.yaml` — pnpm workspaces
-/// 2. `package.json` `workspaces` field — npm/yarn/bun workspaces
-/// 3. Neither present → returns empty `WorkspaceInfo` (graceful no-op)
+/// Runs every registered [`WorkspaceDiscoverer`] whose `detect()` returns true
+/// and merges their results. Returns empty `WorkspaceInfo` when no discoverer
+/// matches.
 pub fn discover(repo_root: &Path) -> WorkspaceInfo {
+    let discoverers: Vec<Box<dyn WorkspaceDiscoverer>> = vec![Box::new(JsWorkspaceDiscoverer)];
+
+    let mut merged = WorkspaceInfo::default();
+    for d in &discoverers {
+        if d.detect(repo_root) {
+            let info = d.discover(repo_root);
+            merged.packages.extend(info.packages);
+            merged.roots.extend(info.roots);
+        }
+    }
+    merged.roots.sort();
+    merged.roots.dedup();
+    merged
+}
+
+fn discover_js_workspace(repo_root: &Path) -> WorkspaceInfo {
     let glob_patterns = detect_workspace_globs(repo_root);
     if glob_patterns.is_empty() {
         return WorkspaceInfo::default();
@@ -46,7 +89,6 @@ pub fn discover(repo_root: &Path) -> WorkspaceInfo {
                     if !entry.is_dir() {
                         continue;
                     }
-                    // Check exclusion patterns
                     if is_excluded(&entry, repo_root, &exclude_patterns) {
                         continue;
                     }
@@ -62,7 +104,6 @@ pub fn discover(repo_root: &Path) -> WorkspaceInfo {
         }
     }
 
-    // Stable sort for deterministic output
     roots.sort();
 
     let mut packages = HashMap::new();
@@ -243,6 +284,100 @@ mod tests {
         let info = discover(tmp.path());
         assert!(info.packages.is_empty());
         assert!(info.roots.is_empty());
+    }
+
+    #[test]
+    fn js_discoverer_detects_pnpm_workspace_yaml() {
+        let tmp = TempDir::new().unwrap();
+        write_file(tmp.path(), "pnpm-workspace.yaml", "packages:\n  - 'a/*'\n");
+        assert!(JsWorkspaceDiscoverer.detect(tmp.path()));
+    }
+
+    #[test]
+    fn js_discoverer_detects_package_json() {
+        let tmp = TempDir::new().unwrap();
+        write_file(tmp.path(), "package.json", r#"{"name":"root"}"#);
+        assert!(JsWorkspaceDiscoverer.detect(tmp.path()));
+    }
+
+    #[test]
+    fn js_discoverer_does_not_detect_when_neither_present() {
+        let tmp = TempDir::new().unwrap();
+        assert!(!JsWorkspaceDiscoverer.detect(tmp.path()));
+    }
+
+    #[test]
+    fn discover_merges_dedups_and_sorts_roots() {
+        // Stand-in second discoverer that returns a fixed set of roots and packages.
+        // Demonstrates the merge contract: extend, sort, dedup.
+        struct FakeDiscoverer {
+            extra_root: PathBuf,
+            pkg_name: String,
+        }
+        impl WorkspaceDiscoverer for FakeDiscoverer {
+            fn detect(&self, _r: &Path) -> bool {
+                true
+            }
+            fn discover(&self, _r: &Path) -> WorkspaceInfo {
+                let mut packages = HashMap::new();
+                packages.insert(self.pkg_name.clone(), self.extra_root.clone());
+                WorkspaceInfo {
+                    packages,
+                    roots: vec![self.extra_root.clone()],
+                }
+            }
+        }
+
+        let tmp = TempDir::new().unwrap();
+        write_file(
+            tmp.path(),
+            "package.json",
+            r#"{"workspaces":["packages/*"]}"#,
+        );
+        make_dir(tmp.path(), "packages/alpha");
+        write_file(
+            tmp.path(),
+            "packages/alpha/package.json",
+            r#"{"name":"alpha"}"#,
+        );
+
+        let alpha_root = tmp.path().join("packages/alpha");
+        let extra_root = tmp.path().join("crates/foo");
+        make_dir(tmp.path(), "crates/foo");
+
+        // Manually exercise the merge code path with two discoverers, including
+        // one that overlaps a root the JS discoverer also returns. The dedup
+        // step must collapse the overlap.
+        let discoverers: Vec<Box<dyn WorkspaceDiscoverer>> = vec![
+            Box::new(JsWorkspaceDiscoverer),
+            Box::new(FakeDiscoverer {
+                extra_root: extra_root.clone(),
+                pkg_name: "foo".into(),
+            }),
+            Box::new(FakeDiscoverer {
+                extra_root: alpha_root.clone(),
+                pkg_name: "alpha-twin".into(),
+            }),
+        ];
+        let mut merged = WorkspaceInfo::default();
+        for d in &discoverers {
+            if d.detect(tmp.path()) {
+                let info = d.discover(tmp.path());
+                merged.packages.extend(info.packages);
+                merged.roots.extend(info.roots);
+            }
+        }
+        merged.roots.sort();
+        merged.roots.dedup();
+
+        assert_eq!(merged.roots, {
+            let mut v = vec![alpha_root.clone(), extra_root.clone()];
+            v.sort();
+            v
+        });
+        assert_eq!(merged.packages.get("alpha").unwrap(), &alpha_root);
+        assert_eq!(merged.packages.get("foo").unwrap(), &extra_root);
+        assert_eq!(merged.packages.get("alpha-twin").unwrap(), &alpha_root);
     }
 
     #[test]
