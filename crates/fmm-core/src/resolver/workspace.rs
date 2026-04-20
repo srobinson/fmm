@@ -1,9 +1,9 @@
 //! Workspace manifest discovery for monorepo cross-package import resolution.
 //!
-//! Pluggable per-language. The shipped [`JsWorkspaceDiscoverer`] covers the
-//! five mainstream JS package managers (npm, yarn, pnpm, bun, deno). Future
-//! discoverers (Cargo, Go, uv) plug in via the [`WorkspaceDiscoverer`] trait
-//! and merge into the same [`WorkspaceInfo`].
+//! Pluggable per ecosystem. The shipped [`JsWorkspaceDiscoverer`] covers the
+//! four mainstream JS package managers (npm, yarn, pnpm, bun). Future
+//! discoverers (Cargo, Go, uv, Deno) plug in via the [`WorkspaceDiscoverer`]
+//! trait and merge into the same [`WorkspaceInfo`].
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -21,60 +21,49 @@ pub struct WorkspaceInfo {
     pub roots: Vec<PathBuf>,
 }
 
-/// Pluggable per-language workspace detector.
-///
-/// One implementor per ecosystem (JS/TS, Cargo, Go, uv, …). Multiple discoverers
-/// run side-by-side in [`discover`]; results merge into a single [`WorkspaceInfo`].
+/// Pluggable workspace detector. One implementor per resolver family
+/// (JS/TS, Cargo, Go, uv, Deno, ...). Multiple discoverers run side by side
+/// in [`discover`]; results merge into a single [`WorkspaceInfo`].
 pub trait WorkspaceDiscoverer: Send + Sync {
-    /// Return `true` if this ecosystem looks active at `repo_root`. Cheap signal
-    /// only — `discover()` may still return empty `WorkspaceInfo` if the
-    /// manifest is malformed or carries no workspace declaration.
+    /// Cheap signal: is this ecosystem plausibly active at `repo_root`?
+    /// `discover()` may still return an empty `WorkspaceInfo`.
     fn detect(&self, repo_root: &Path) -> bool;
 
     /// Discover workspace members and return their names + directories.
     fn discover(&self, repo_root: &Path) -> WorkspaceInfo;
 }
 
-/// JS/TS workspace discoverer. Covers all five mainstream JS package managers:
+/// JS/TS workspace discoverer. Covers all four mainstream JS package managers:
 ///
-/// | PM   | Manifest                       | Field                                  | Lock file           |
-/// |------|--------------------------------|----------------------------------------|---------------------|
-/// | pnpm | `pnpm-workspace.yaml`          | top-level `packages:` list (globs)     | `pnpm-lock.yaml`    |
-/// | npm  | `package.json`                 | `workspaces` array (globs)             | `package-lock.json` |
-/// | yarn | `package.json`                 | `workspaces` array OR `{packages:[…]}` | `yarn.lock`         |
-/// | bun  | `package.json`                 | `workspaces` array (globs)             | `bun.lockb`         |
-/// | deno | `deno.json` or `deno.jsonc`    | `workspace` array (literal paths)      | `deno.lock`         |
+/// | PM   | Manifest              | Field                                  |
+/// |------|-----------------------|----------------------------------------|
+/// | pnpm | `pnpm-workspace.yaml` | top-level `packages:` list (globs)     |
+/// | npm  | `package.json`        | `workspaces` array (globs)             |
+/// | yarn | `package.json`        | `workspaces` array OR `{packages:[…]}` |
+/// | bun  | `package.json`        | `workspaces` array (globs)             |
 ///
 /// `pnpm-workspace.yaml` wins over `package.json` `workspaces` when both
-/// declare members, matching historical behavior. deno members merge in
-/// additively (a polyglot deno + npm repo discovers both sets).
+/// declare members, matching historical behavior.
 ///
-/// `detect()` is permissive: any workspace manifest *or* lock file marks the
-/// repo as JS. `discover()` parses the manifests strictly and returns empty
-/// when nothing is declared.
+/// Deno is a separate ecosystem (URL imports, JSR, import maps) and ships
+/// its own discoverer + resolver.
 pub struct JsWorkspaceDiscoverer;
-
-const JS_LOCK_FILES: &[&str] = &[
-    "pnpm-lock.yaml",
-    "package-lock.json",
-    "yarn.lock",
-    "bun.lockb",
-    "deno.lock",
-];
 
 impl WorkspaceDiscoverer for JsWorkspaceDiscoverer {
     fn detect(&self, repo_root: &Path) -> bool {
-        Self::has_pnpm_manifest(repo_root)
-            || Self::has_npm_workspaces(repo_root)
-            || Self::has_deno_workspace(repo_root)
-            || Self::has_js_lock_file(repo_root)
+        // Primary manifests: package.json (npm/yarn/bun/pnpm) or
+        // pnpm-workspace.yaml (pnpm workspaces can declare members without a
+        // root package.json). node_modules covers the post-install case where
+        // a repo has installed deps but the manifests have been moved or hidden
+        // from indexing. Lockfiles are ceremony; they do not add information.
+        repo_root.join("package.json").exists()
+            || repo_root.join("pnpm-workspace.yaml").exists()
+            || repo_root.join("node_modules").exists()
     }
 
     fn discover(&self, repo_root: &Path) -> WorkspaceInfo {
         let mut roots = Vec::new();
 
-        // pnpm + npm/yarn/bun: glob-expanded patterns from one manifest.
-        // pnpm wins when both files exist (historical precedence).
         let glob_patterns = Self::detect_workspace_globs(repo_root);
         if !glob_patterns.is_empty() {
             let (includes, excludes) = partition_exclusions(glob_patterns);
@@ -100,25 +89,12 @@ impl WorkspaceDiscoverer for JsWorkspaceDiscoverer {
             }
         }
 
-        // deno: literal paths, additive (orthogonal to pnpm/npm precedence).
-        for rel in Self::parse_deno_workspace(repo_root) {
-            let abs = repo_root.join(&rel);
-            if abs.is_dir() {
-                roots.push(abs);
-            } else {
-                debug_log(&format!(
-                    "workspace: deno workspace member '{}' is not a directory",
-                    rel
-                ));
-            }
-        }
-
         roots.sort();
         roots.dedup();
 
         let mut packages = HashMap::new();
         for root in &roots {
-            if let Some(name) = Self::read_member_name(root) {
+            if let Some(name) = read_package_name(root) {
                 packages.insert(name, root.to_path_buf());
             }
         }
@@ -128,49 +104,6 @@ impl WorkspaceDiscoverer for JsWorkspaceDiscoverer {
 }
 
 impl JsWorkspaceDiscoverer {
-    fn has_pnpm_manifest(repo_root: &Path) -> bool {
-        repo_root.join("pnpm-workspace.yaml").exists()
-    }
-
-    /// True when `package.json` exists *and* declares a non-null `workspaces`
-    /// field (array or object form). A bare package.json with only deps is
-    /// not a workspace root.
-    fn has_npm_workspaces(repo_root: &Path) -> bool {
-        let pkg_json = repo_root.join("package.json");
-        let Ok(content) = std::fs::read_to_string(&pkg_json) else {
-            return false;
-        };
-        let Ok(value): Result<serde_json::Value, _> = serde_json::from_str(&content) else {
-            return false;
-        };
-        !value["workspaces"].is_null()
-    }
-
-    /// True when `deno.json` or `deno.jsonc` exists *and* declares a non-null
-    /// `workspace` field.
-    fn has_deno_workspace(repo_root: &Path) -> bool {
-        for name in ["deno.json", "deno.jsonc"] {
-            let path = repo_root.join(name);
-            let Ok(content) = std::fs::read_to_string(&path) else {
-                continue;
-            };
-            let stripped = strip_jsonc(&content);
-            let Ok(value): Result<serde_json::Value, _> = serde_json::from_str(&stripped) else {
-                continue;
-            };
-            if !value["workspace"].is_null() {
-                return true;
-            }
-        }
-        false
-    }
-
-    fn has_js_lock_file(repo_root: &Path) -> bool {
-        JS_LOCK_FILES
-            .iter()
-            .any(|name| repo_root.join(name).exists())
-    }
-
     /// pnpm > npm/yarn/bun. Returns the first non-empty glob list found.
     fn detect_workspace_globs(repo_root: &Path) -> Vec<String> {
         let pnpm_yaml = repo_root.join("pnpm-workspace.yaml");
@@ -245,52 +178,33 @@ impl JsWorkspaceDiscoverer {
             Vec::new()
         }
     }
+}
 
-    /// Parse `deno.json` (or `deno.jsonc`) `workspace` field → list of paths.
-    /// deno members are literal directory paths, not globs.
-    fn parse_deno_workspace(repo_root: &Path) -> Vec<String> {
-        for name in ["deno.json", "deno.jsonc"] {
-            let path = repo_root.join(name);
-            let Ok(content) = std::fs::read_to_string(&path) else {
-                continue;
-            };
-            let stripped = strip_jsonc(&content);
-            let Ok(value): Result<serde_json::Value, _> = serde_json::from_str(&stripped) else {
-                continue;
-            };
-            let ws = &value["workspace"];
-            if ws.is_array() {
-                return extract_json_string_list(ws);
-            }
-        }
-        Vec::new()
-    }
-
-    /// Read the canonical package name for a workspace member directory.
-    /// Tries `package.json` `name` first (npm/yarn/pnpm/bun), then
-    /// `deno.json` / `deno.jsonc` `name` (deno).
-    fn read_member_name(dir: &Path) -> Option<String> {
-        if let Some(name) = read_json_string_field(&dir.join("package.json"), "name", false) {
-            return Some(name);
-        }
-        for fname in ["deno.json", "deno.jsonc"] {
-            if let Some(name) = read_json_string_field(&dir.join(fname), "name", true) {
-                return Some(name);
-            }
-        }
-        None
-    }
+/// Read the `name` field from `package.json` at `dir`. Returns `None` when
+/// the file is missing, malformed, or has no string `name` field.
+pub fn read_package_name(dir: &Path) -> Option<String> {
+    let content = std::fs::read_to_string(dir.join("package.json")).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&content).ok()?;
+    value["name"].as_str().map(String::from)
 }
 
 /// Top-level orchestrator: run every registered [`WorkspaceDiscoverer`] whose
-/// `detect()` matches and merge results. Roots are sorted + deduped; package
-/// names are last-writer-wins on collision (rare but possible across
-/// ecosystems).
+/// `detect()` matches and merge results. Roots are sorted and deduped;
+/// package names follow last writer wins on collision (rare but possible
+/// across ecosystems).
 pub fn discover(repo_root: &Path) -> WorkspaceInfo {
     let discoverers: Vec<Box<dyn WorkspaceDiscoverer>> = vec![Box::new(JsWorkspaceDiscoverer)];
+    discover_with(repo_root, &discoverers)
+}
 
+/// Same as [`discover`] but the discoverer list is supplied by the caller.
+/// Enables tests to exercise the merge path against fake discoverers.
+pub fn discover_with(
+    repo_root: &Path,
+    discoverers: &[Box<dyn WorkspaceDiscoverer>],
+) -> WorkspaceInfo {
     let mut merged = WorkspaceInfo::default();
-    for d in &discoverers {
+    for d in discoverers {
         if d.detect(repo_root) {
             let info = d.discover(repo_root);
             merged.packages.extend(info.packages);
@@ -342,75 +256,6 @@ fn extract_json_string_list(value: &serde_json::Value) -> Vec<String> {
     }
 }
 
-fn read_json_string_field(path: &Path, field: &str, jsonc: bool) -> Option<String> {
-    let content = std::fs::read_to_string(path).ok()?;
-    let parsed = if jsonc {
-        serde_json::from_str::<serde_json::Value>(&strip_jsonc(&content)).ok()?
-    } else {
-        serde_json::from_str::<serde_json::Value>(&content).ok()?
-    };
-    parsed[field].as_str().map(|s| s.to_string())
-}
-
-/// Strip `//` line comments and `/* … */` block comments from a JSONC source,
-/// preserving string literal content (including escaped quotes). Trailing
-/// commas are not handled — deno.jsonc files in the wild do not use them, and
-/// serde_json is strict.
-fn strip_jsonc(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    let mut chars = input.chars().peekable();
-    let mut in_string = false;
-    let mut escape = false;
-
-    while let Some(c) = chars.next() {
-        if in_string {
-            out.push(c);
-            if escape {
-                escape = false;
-            } else if c == '\\' {
-                escape = true;
-            } else if c == '"' {
-                in_string = false;
-            }
-            continue;
-        }
-        if c == '"' {
-            in_string = true;
-            out.push(c);
-            continue;
-        }
-        if c == '/' {
-            match chars.peek() {
-                Some('/') => {
-                    chars.next();
-                    for nc in chars.by_ref() {
-                        if nc == '\n' {
-                            out.push('\n');
-                            break;
-                        }
-                    }
-                    continue;
-                }
-                Some('*') => {
-                    chars.next();
-                    let mut prev_star = false;
-                    for nc in chars.by_ref() {
-                        if prev_star && nc == '/' {
-                            break;
-                        }
-                        prev_star = nc == '*';
-                    }
-                    continue;
-                }
-                _ => {}
-            }
-        }
-        out.push(c);
-    }
-
-    out
-}
-
 fn debug_log(msg: &str) {
     let _ = msg;
     #[cfg(debug_assertions)]
@@ -446,72 +291,45 @@ mod tests {
     }
 
     #[test]
-    fn js_discoverer_detects_pnpm_workspace_yaml() {
+    fn js_discoverer_detects_package_json() {
+        let tmp = TempDir::new().unwrap();
+        write_file(tmp.path(), "package.json", r#"{"name":"root"}"#);
+        assert!(JsWorkspaceDiscoverer.detect(tmp.path()));
+    }
+
+    #[test]
+    fn js_discoverer_detects_node_modules() {
+        let tmp = TempDir::new().unwrap();
+        make_dir(tmp.path(), "node_modules");
+        assert!(JsWorkspaceDiscoverer.detect(tmp.path()));
+    }
+
+    #[test]
+    fn js_discoverer_detects_pnpm_workspace_without_root_package_json() {
+        // pnpm allows a workspace root with only pnpm-workspace.yaml
+        // (no root package.json).
         let tmp = TempDir::new().unwrap();
         write_file(tmp.path(), "pnpm-workspace.yaml", "packages:\n  - 'a/*'\n");
         assert!(JsWorkspaceDiscoverer.detect(tmp.path()));
     }
 
     #[test]
-    fn js_discoverer_detects_package_json_with_workspaces() {
+    fn js_discoverer_does_not_detect_empty_dir() {
         let tmp = TempDir::new().unwrap();
-        write_file(
-            tmp.path(),
-            "package.json",
-            r#"{"name":"root","workspaces":["packages/*"]}"#,
-        );
-        assert!(JsWorkspaceDiscoverer.detect(tmp.path()));
+        assert!(!JsWorkspaceDiscoverer.detect(tmp.path()));
     }
 
     #[test]
-    fn js_discoverer_does_not_detect_bare_package_json_without_workspaces() {
-        // package.json present but no workspaces field AND no lock file → not a
-        // workspace root and not a JS project we can speak about.
+    fn bare_package_json_detects_but_discovers_empty() {
+        // Bare package.json (no workspaces field) trips detect() because the
+        // gate is a cheap perf check. discover() then returns an empty
+        // WorkspaceInfo, which is the correct semantic answer.
         let tmp = TempDir::new().unwrap();
         write_file(tmp.path(), "package.json", r#"{"name":"root"}"#);
-        assert!(!JsWorkspaceDiscoverer.detect(tmp.path()));
-    }
-
-    #[test]
-    fn js_discoverer_detects_lock_files_individually() {
-        // Each lock file alone is a sufficient JS-ecosystem signal.
-        for lock in JS_LOCK_FILES {
-            let tmp = TempDir::new().unwrap();
-            write_file(tmp.path(), lock, "");
-            assert!(
-                JsWorkspaceDiscoverer.detect(tmp.path()),
-                "expected detect() = true for {}",
-                lock
-            );
-        }
-    }
-
-    #[test]
-    fn js_discoverer_detects_deno_json_workspace() {
-        let tmp = TempDir::new().unwrap();
-        write_file(
-            tmp.path(),
-            "deno.json",
-            r#"{"workspace":["./add","./subtract"]}"#,
-        );
         assert!(JsWorkspaceDiscoverer.detect(tmp.path()));
-    }
-
-    #[test]
-    fn js_discoverer_detects_deno_jsonc_workspace_with_comments() {
-        let tmp = TempDir::new().unwrap();
-        write_file(
-            tmp.path(),
-            "deno.jsonc",
-            "// top comment\n{\n  /* block */\n  \"workspace\": [\"./a\"]\n}\n",
-        );
-        assert!(JsWorkspaceDiscoverer.detect(tmp.path()));
-    }
-
-    #[test]
-    fn js_discoverer_does_not_detect_when_nothing_present() {
-        let tmp = TempDir::new().unwrap();
-        assert!(!JsWorkspaceDiscoverer.detect(tmp.path()));
+        let info = JsWorkspaceDiscoverer.discover(tmp.path());
+        assert!(info.roots.is_empty());
+        assert!(info.packages.is_empty());
     }
 
     #[test]
@@ -549,7 +367,6 @@ mod tests {
 
     #[test]
     fn yarn_berry_object_form_workspaces() {
-        // yarn berry: { workspaces: { packages: [...], nohoist: [...] } }
         let tmp = TempDir::new().unwrap();
         write_file(
             tmp.path(),
@@ -566,11 +383,8 @@ mod tests {
 
     #[test]
     fn bun_workspaces_use_npm_format() {
-        // bun shares npm's `workspaces` array. Lock file is bun.lockb. Both
-        // should be enough — together or alone — to drive the same discovery.
         let tmp = TempDir::new().unwrap();
         write_file(tmp.path(), "package.json", r#"{"workspaces":["apps/*"]}"#);
-        write_file(tmp.path(), "bun.lockb", "");
         make_dir(tmp.path(), "apps/web");
         write_file(tmp.path(), "apps/web/package.json", r#"{"name":"web"}"#);
 
@@ -600,82 +414,6 @@ mod tests {
         let info = discover(tmp.path());
         assert!(info.packages.contains_key("lib"));
         assert!(!info.packages.contains_key("web"));
-    }
-
-    #[test]
-    fn deno_workspace_paths_are_literal() {
-        let tmp = TempDir::new().unwrap();
-        write_file(
-            tmp.path(),
-            "deno.json",
-            r#"{"workspace":["./add","./subtract"]}"#,
-        );
-        make_dir(tmp.path(), "add");
-        write_file(tmp.path(), "add/deno.json", r#"{"name":"@scope/add"}"#);
-        make_dir(tmp.path(), "subtract");
-        write_file(
-            tmp.path(),
-            "subtract/deno.json",
-            r#"{"name":"@scope/subtract"}"#,
-        );
-
-        let info = discover(tmp.path());
-        assert_eq!(info.roots.len(), 2);
-        assert_eq!(
-            info.packages.get("@scope/add").unwrap(),
-            &tmp.path().join("add")
-        );
-        assert_eq!(
-            info.packages.get("@scope/subtract").unwrap(),
-            &tmp.path().join("subtract")
-        );
-    }
-
-    #[test]
-    fn deno_jsonc_workspace_with_comments_parses() {
-        let tmp = TempDir::new().unwrap();
-        write_file(
-            tmp.path(),
-            "deno.jsonc",
-            r#"{
-  // workspace members
-  "workspace": [
-    "./mod-a", /* first */
-    "./mod-b"  // second
-  ]
-}
-"#,
-        );
-        make_dir(tmp.path(), "mod-a");
-        write_file(tmp.path(), "mod-a/deno.json", r#"{"name":"mod-a"}"#);
-        make_dir(tmp.path(), "mod-b");
-        write_file(tmp.path(), "mod-b/deno.json", r#"{"name":"mod-b"}"#);
-
-        let info = discover(tmp.path());
-        assert_eq!(info.roots.len(), 2);
-        assert!(info.packages.contains_key("mod-a"));
-        assert!(info.packages.contains_key("mod-b"));
-    }
-
-    #[test]
-    fn deno_and_npm_workspaces_merge_additively() {
-        // Polyglot deno + npm repo: both sets of members surface.
-        let tmp = TempDir::new().unwrap();
-        write_file(
-            tmp.path(),
-            "package.json",
-            r#"{"workspaces":["js-pkgs/*"]}"#,
-        );
-        write_file(tmp.path(), "deno.json", r#"{"workspace":["./deno-mod"]}"#);
-        make_dir(tmp.path(), "js-pkgs/web");
-        write_file(tmp.path(), "js-pkgs/web/package.json", r#"{"name":"web"}"#);
-        make_dir(tmp.path(), "deno-mod");
-        write_file(tmp.path(), "deno-mod/deno.json", r#"{"name":"deno-mod"}"#);
-
-        let info = discover(tmp.path());
-        assert_eq!(info.roots.len(), 2);
-        assert!(info.packages.contains_key("web"));
-        assert!(info.packages.contains_key("deno-mod"));
     }
 
     #[test]
@@ -747,7 +485,7 @@ mod tests {
     }
 
     #[test]
-    fn discover_merges_dedups_and_sorts_roots() {
+    fn discover_with_merges_dedups_and_sorts_roots() {
         struct FakeDiscoverer {
             extra_root: PathBuf,
             pkg_name: String,
@@ -794,16 +532,7 @@ mod tests {
                 pkg_name: "alpha-twin".into(),
             }),
         ];
-        let mut merged = WorkspaceInfo::default();
-        for d in &discoverers {
-            if d.detect(tmp.path()) {
-                let info = d.discover(tmp.path());
-                merged.packages.extend(info.packages);
-                merged.roots.extend(info.roots);
-            }
-        }
-        merged.roots.sort();
-        merged.roots.dedup();
+        let merged = discover_with(tmp.path(), &discoverers);
 
         assert_eq!(merged.roots, {
             let mut v = vec![alpha_root.clone(), extra_root.clone()];
@@ -816,20 +545,15 @@ mod tests {
     }
 
     #[test]
-    fn strip_jsonc_preserves_string_with_slash_slash() {
-        // String literals must not be touched by the comment stripper.
-        let input = r#"{"path":"a//b","note":"/* not a comment */"}"#;
-        let stripped = strip_jsonc(input);
-        let v: serde_json::Value = serde_json::from_str(&stripped).unwrap();
-        assert_eq!(v["path"].as_str().unwrap(), "a//b");
-        assert_eq!(v["note"].as_str().unwrap(), "/* not a comment */");
+    fn read_package_name_returns_name_field() {
+        let tmp = TempDir::new().unwrap();
+        write_file(tmp.path(), "package.json", r#"{"name":"hello"}"#);
+        assert_eq!(read_package_name(tmp.path()), Some("hello".into()));
     }
 
     #[test]
-    fn strip_jsonc_handles_escaped_quote_in_string() {
-        let input = r#"{"q":"he said \"hi\" // not comment"}"#;
-        let stripped = strip_jsonc(input);
-        let v: serde_json::Value = serde_json::from_str(&stripped).unwrap();
-        assert_eq!(v["q"].as_str().unwrap(), r#"he said "hi" // not comment"#);
+    fn read_package_name_missing_file_returns_none() {
+        let tmp = TempDir::new().unwrap();
+        assert!(read_package_name(tmp.path()).is_none());
     }
 }
