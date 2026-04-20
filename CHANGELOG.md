@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/srobinson/fmm/compare/v0.2.4...v0.2.5) (2026-04-20)
+
+
+### Features
+
+* Align CLI and MCP output parity ([#129](https://github.com/srobinson/fmm/issues/129)) ([756c15b](https://github.com/srobinson/fmm/commit/756c15b4ceea8b9a9e9848b6e201e8b31d9fe05e))
+
 ## [0.2.4](https://github.com/srobinson/fmm/compare/v0.2.3...v0.2.4) (2026-04-20)
 
 

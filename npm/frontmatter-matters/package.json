@@ -1,6 +1,6 @@
 {
   "name": "frontmatter-matters",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Auto-generate code metadata sidecars for LLM-optimized navigation. No AST dumps, no embeddings — just structured YAML.",
   "license": "MIT",
   "repository": {
