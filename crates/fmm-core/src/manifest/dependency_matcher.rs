@@ -5,13 +5,15 @@ use std::sync::OnceLock;
 use rayon::prelude::*;
 
 use crate::resolver::{
-    CrossPackageResolver, ImportResolver, RustImportResolver, resolve_by_directory_prefix,
+    CrossPackageResolver, GoImportResolver, ImportResolver, RustImportResolver,
+    resolve_by_directory_prefix,
 };
 
 use super::{FileEntry, Manifest};
 
 const JS_TS_SOURCE_EXTENSIONS: &[&str] = &["ts", "tsx", "js", "jsx", "mjs", "cjs"];
 const RUST_SOURCE_EXTENSIONS: &[&str] = &["rs"];
+const GO_SOURCE_EXTENSIONS: &[&str] = &["go"];
 
 fn is_js_ts_source_file(path: &Path) -> bool {
     path.extension()
@@ -23,6 +25,12 @@ fn is_rust_source_file(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
         .is_some_and(|ext| RUST_SOURCE_EXTENSIONS.contains(&ext))
+}
+
+fn is_go_source_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| GO_SOURCE_EXTENSIONS.contains(&ext))
 }
 
 fn is_cargo_workspace_source(path: &Path, manifest: &Manifest) -> bool {
@@ -335,7 +343,8 @@ fn resolved_to_manifest_key(
 ///   `dep_matches` / `python_dep_matches`
 /// - `entry.imports` (Python dotted style): resolved via `dotted_dep_matches`
 /// - workspace imports: resolved by language dispatch. JS/TS uses
-///   `CrossPackageResolver`; Rust uses `RustImportResolver`.
+///   `CrossPackageResolver`; Rust uses `RustImportResolver`; Go uses
+///   `GoImportResolver`.
 pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<String>> {
     let mut rev: HashMap<String, Vec<String>> = HashMap::new();
     let exts = builtin_source_extensions();
@@ -383,7 +392,8 @@ pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<Str
 
     // Pass 2b: language-dispatched workspace specifiers.
     // JS/TS uses the three-layer resolver. Rust uses Cargo module semantics
-    // for cross-crate and crate-local paths.
+    // for cross-crate and crate-local paths. Go uses longest-prefix module
+    // matching and maps package directories to indexed .go files.
     // Runs in parallel via Rayon; resolvers are Send+Sync through Arc.
     // Skipped if no workspace config was found (workspace_packages and workspace_roots both empty).
     if has_workspace {
@@ -404,6 +414,8 @@ fn collect_workspace_edges(manifest: &Manifest) -> Vec<(String, String)> {
         std::sync::Arc::new(CrossPackageResolver::new(&manifest.workspace_packages));
     let rust_resolver: std::sync::Arc<dyn ImportResolver> =
         std::sync::Arc::new(RustImportResolver::new(&manifest.workspace_packages));
+    let go_resolver: std::sync::Arc<dyn ImportResolver> =
+        std::sync::Arc::new(GoImportResolver::new(&manifest.workspace_packages));
 
     // Build canonical -> original key map. On macOS, /var/... symlinks resolve to
     // /private/var/..., so resolver output can differ from manifest keys.
@@ -438,6 +450,15 @@ fn collect_workspace_edges(manifest: &Manifest) -> Vec<(String, String)> {
                     entry,
                     importer,
                     rust_resolver.as_ref(),
+                    &original_keys,
+                    &canonical_to_original,
+                )
+            } else if is_go_source_file(importer) {
+                go_workspace_edges(
+                    file_path,
+                    entry,
+                    importer,
+                    go_resolver.as_ref(),
                     &original_keys,
                     &canonical_to_original,
                 )
@@ -517,6 +538,62 @@ fn rust_import_specifiers(entry: &FileEntry) -> Vec<String> {
     specifiers.sort();
     specifiers.dedup();
     specifiers
+}
+
+fn go_workspace_edges(
+    file_path: &str,
+    entry: &FileEntry,
+    importer: &Path,
+    resolver: &dyn ImportResolver,
+    original_keys: &HashSet<String>,
+    canonical_to_original: &HashMap<String, String>,
+) -> Vec<(String, String)> {
+    entry
+        .imports
+        .iter()
+        .filter_map(|import_str| resolver.resolve(importer, import_str))
+        .flat_map(|package_dir| {
+            go_package_manifest_keys(&package_dir, original_keys, canonical_to_original)
+                .into_iter()
+                .map(|target_key| (target_key, file_path.to_string()))
+        })
+        .collect()
+}
+
+fn go_package_manifest_keys(
+    package_dir: &Path,
+    original_keys: &HashSet<String>,
+    canonical_to_original: &HashMap<String, String>,
+) -> Vec<String> {
+    let mut keys: Vec<String> = original_keys
+        .iter()
+        .filter(|key| is_go_package_file(key, package_dir))
+        .cloned()
+        .collect();
+
+    if keys.is_empty()
+        && let Ok(canonical_package_dir) = std::fs::canonicalize(package_dir)
+    {
+        keys = canonical_to_original
+            .iter()
+            .filter(|(canonical, _)| is_go_package_file(canonical, &canonical_package_dir))
+            .map(|(_, original)| original.clone())
+            .collect();
+    }
+
+    keys.sort();
+    keys.dedup();
+    keys
+}
+
+fn is_go_package_file(file_path: &str, package_dir: &Path) -> bool {
+    let path = Path::new(file_path);
+    path.parent() == Some(package_dir)
+        && path.extension().and_then(|ext| ext.to_str()) == Some("go")
+        && path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| !name.ends_with("_test.go"))
 }
 
 #[cfg(test)]

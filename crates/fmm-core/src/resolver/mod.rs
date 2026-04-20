@@ -13,7 +13,9 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+pub mod go;
 pub mod rust;
+pub use go::GoImportResolver;
 pub use rust::RustImportResolver;
 
 /// Resolve an import specifier from a source file into an indexed file path.
