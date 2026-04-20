@@ -55,6 +55,20 @@ fn setup_large_class_project() -> TempDir {
     tmp
 }
 
+fn setup_unicode_truncation_project() -> TempDir {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    let prefix = "export function unicodeBlob(): string {\n  return \"";
+    let marker = "\u{00e9}";
+    let filler = "a".repeat(10_240 - prefix.len() - 1);
+    let source = format!("{prefix}{filler}{marker}\";\n}}\n");
+
+    write_file(root, "src/unicode.ts", &source);
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
+    tmp
+}
+
 fn parse_json(output: &Output) -> Value {
     assert!(
         output.status.success(),
@@ -176,6 +190,25 @@ fn read_large_bare_class_no_truncate_returns_source() {
 
     assert!(!stdout.contains("would exceed"), "got: {stdout}");
     assert!(stdout.contains("return input"), "got: {stdout}");
+}
+
+#[test]
+fn read_truncates_unicode_source_at_char_boundary() {
+    let tmp = setup_unicode_truncation_project();
+    let output = run_fmm(tmp.path(), &["read", "unicodeBlob"]);
+
+    assert!(
+        output.status.success(),
+        "fmm read failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("symbol: unicodeBlob"), "got: {stdout}");
+    assert!(
+        stdout.contains("truncated, use --no-truncate"),
+        "got: {stdout}"
+    );
 }
 
 #[test]

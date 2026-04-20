@@ -66,7 +66,8 @@ fn truncate_cli_source(content: &mut ReadSymbolContent, no_truncate: bool) {
 
     const TRUNCATE_CAP: usize = 10_240;
     if !no_truncate && source.len() > TRUNCATE_CAP {
-        source.truncate(TRUNCATE_CAP);
+        let safe_limit = source.floor_char_boundary(TRUNCATE_CAP);
+        source.truncate(safe_limit);
         if let Some(pos) = source.rfind('\n') {
             source.truncate(pos);
         }
