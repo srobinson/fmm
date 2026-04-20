@@ -18,6 +18,7 @@ pub struct DenoWorkspaceDiscoverer;
 pub struct DenoImportResolver {
     configs: Vec<DenoConfig>,
     packages: Vec<DenoPackage>,
+    source_roots: Vec<DenoSourceRoot>,
 }
 
 #[derive(Debug, Clone)]
@@ -45,6 +46,12 @@ struct DenoPackage {
     name: String,
     root: PathBuf,
     exports: Option<Value>,
+}
+
+#[derive(Debug, Clone)]
+struct DenoSourceRoot {
+    root: PathBuf,
+    is_deno: bool,
 }
 
 impl WorkspaceDiscoverer for DenoWorkspaceDiscoverer {
@@ -80,21 +87,31 @@ impl WorkspaceDiscoverer for DenoWorkspaceDiscoverer {
 
 impl DenoImportResolver {
     pub fn new(workspace_packages: &HashMap<String, PathBuf>, workspace_roots: &[PathBuf]) -> Self {
-        let mut roots: Vec<PathBuf> = workspace_roots
-            .iter()
-            .filter(|root| deno_config_path(root).is_some())
-            .cloned()
-            .collect();
-        roots.extend(
-            workspace_packages
-                .values()
-                .filter(|root| deno_config_path(root).is_some())
-                .cloned(),
-        );
-        roots.sort();
-        roots.dedup();
+        let mut all_roots: Vec<PathBuf> = workspace_roots.to_vec();
+        all_roots.extend(workspace_packages.values().cloned());
+        all_roots.sort();
+        all_roots.dedup();
 
-        let mut configs: Vec<DenoConfig> = roots
+        let mut source_roots: Vec<DenoSourceRoot> = all_roots
+            .iter()
+            .map(|root| DenoSourceRoot {
+                root: root.clone(),
+                is_deno: deno_config_path(root).is_some(),
+            })
+            .collect();
+        source_roots.sort_by(|a, b| {
+            path_depth(&b.root)
+                .cmp(&path_depth(&a.root))
+                .then_with(|| a.root.cmp(&b.root))
+        });
+
+        let deno_roots: Vec<PathBuf> = source_roots
+            .iter()
+            .filter(|root| root.is_deno)
+            .map(|root| root.root.clone())
+            .collect();
+
+        let mut configs: Vec<DenoConfig> = deno_roots
             .iter()
             .filter_map(|root| read_deno_config(root))
             .collect();
@@ -104,7 +121,7 @@ impl DenoImportResolver {
                 .then_with(|| a.root.cmp(&b.root))
         });
 
-        let mut packages: Vec<DenoPackage> = roots
+        let mut packages: Vec<DenoPackage> = deno_roots
             .iter()
             .filter_map(|root| {
                 let value = read_deno_config_value(root)?;
@@ -124,13 +141,18 @@ impl DenoImportResolver {
         });
         packages.dedup_by(|a, b| a.name == b.name && a.root == b.root);
 
-        Self { configs, packages }
+        Self {
+            configs,
+            packages,
+            source_roots,
+        }
     }
 
     pub fn is_deno_source(&self, importer: &Path) -> bool {
-        self.configs
+        self.source_roots
             .iter()
-            .any(|config| importer.starts_with(&config.root))
+            .find(|source_root| importer.starts_with(&source_root.root))
+            .is_some_and(|source_root| source_root.is_deno)
     }
 
     pub fn resolve(&self, importer: &Path, specifier: &str) -> Option<PathBuf> {
@@ -517,159 +539,5 @@ fn strip_trailing_json_commas(input: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use tempfile::TempDir;
-
-    fn write_file(base: &Path, rel: &str, content: &str) -> PathBuf {
-        let path = base.join(rel);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(&path, content).unwrap();
-        path
-    }
-
-    fn packages(tmp: &TempDir) -> HashMap<String, PathBuf> {
-        HashMap::from([
-            ("app".to_string(), tmp.path().join("app")),
-            ("shared".to_string(), tmp.path().join("shared")),
-        ])
-    }
-
-    fn roots(tmp: &TempDir) -> Vec<PathBuf> {
-        vec![
-            tmp.path().to_path_buf(),
-            tmp.path().join("app"),
-            tmp.path().join("shared"),
-        ]
-    }
-
-    fn write_workspace(tmp: &TempDir) {
-        write_file(
-            tmp.path(),
-            "deno.json",
-            r#"{"workspace":["./app","./shared"],"imports":{"@/":"./app/src/"}}"#,
-        );
-        write_file(tmp.path(), "app/deno.json", r#"{"name":"app"}"#);
-        write_file(
-            tmp.path(),
-            "shared/deno.json",
-            r#"{"name":"shared","exports":"./mod.ts"}"#,
-        );
-        write_file(tmp.path(), "app/src/main.ts", "");
-        write_file(tmp.path(), "app/src/util.ts", "");
-        write_file(tmp.path(), "shared/mod.ts", "");
-    }
-
-    #[test]
-    fn jsonc_parser_accepts_comments_trailing_commas_and_urls() {
-        let value = parse_jsonc(
-            r#"
-            {
-              // comment
-              "imports": {
-                "std": "https://deno.land/std/mod.ts",
-              },
-            }
-            "#,
-        )
-        .unwrap();
-
-        assert_eq!(
-            value["imports"]["std"].as_str(),
-            Some("https://deno.land/std/mod.ts")
-        );
-    }
-
-    #[test]
-    fn relative_import_resolves_inside_deno_root() {
-        let tmp = TempDir::new().unwrap();
-        write_workspace(&tmp);
-        let resolver = DenoImportResolver::new(&packages(&tmp), &roots(&tmp));
-        let importer = tmp.path().join("app/src/main.ts");
-
-        assert_eq!(
-            resolver.resolve(&importer, "./util.ts"),
-            Some(tmp.path().join("app/src/util.ts"))
-        );
-    }
-
-    #[test]
-    fn workspace_package_name_resolves_to_export() {
-        let tmp = TempDir::new().unwrap();
-        write_workspace(&tmp);
-        let resolver = DenoImportResolver::new(&packages(&tmp), &roots(&tmp));
-        let importer = tmp.path().join("app/src/main.ts");
-
-        assert_eq!(
-            resolver.resolve(&importer, "shared"),
-            Some(tmp.path().join("shared/mod.ts"))
-        );
-    }
-
-    #[test]
-    fn import_map_prefix_resolves_local_target() {
-        let tmp = TempDir::new().unwrap();
-        write_workspace(&tmp);
-        let resolver = DenoImportResolver::new(&packages(&tmp), &roots(&tmp));
-        let importer = tmp.path().join("app/src/main.ts");
-
-        assert_eq!(
-            resolver.resolve(&importer, "@/util.ts"),
-            Some(tmp.path().join("app/src/util.ts"))
-        );
-    }
-
-    #[test]
-    fn scope_import_overrides_top_level_import() {
-        let tmp = TempDir::new().unwrap();
-        write_file(
-            tmp.path(),
-            "deno.json",
-            r#"{
-              "workspace":["./app","./shared","./patched"],
-              "imports":{"shared":"./shared/mod.ts"},
-              "scopes":{"./app/":{"shared":"./patched/mod.ts"}}
-            }"#,
-        );
-        write_file(tmp.path(), "app/deno.json", r#"{"name":"app"}"#);
-        write_file(tmp.path(), "shared/deno.json", r#"{"name":"shared"}"#);
-        write_file(tmp.path(), "patched/deno.json", r#"{"name":"patched"}"#);
-        write_file(tmp.path(), "app/main.ts", "");
-        write_file(tmp.path(), "shared/mod.ts", "");
-        write_file(tmp.path(), "patched/mod.ts", "");
-
-        let packages = HashMap::from([
-            ("app".to_string(), tmp.path().join("app")),
-            ("shared".to_string(), tmp.path().join("shared")),
-            ("patched".to_string(), tmp.path().join("patched")),
-        ]);
-        let roots = vec![
-            tmp.path().to_path_buf(),
-            tmp.path().join("app"),
-            tmp.path().join("shared"),
-            tmp.path().join("patched"),
-        ];
-        let resolver = DenoImportResolver::new(&packages, &roots);
-
-        assert_eq!(
-            resolver.resolve(&tmp.path().join("app/main.ts"), "shared"),
-            Some(tmp.path().join("patched/mod.ts"))
-        );
-    }
-
-    #[test]
-    fn url_jsr_and_npm_imports_stay_unresolved() {
-        let tmp = TempDir::new().unwrap();
-        write_workspace(&tmp);
-        let resolver = DenoImportResolver::new(&packages(&tmp), &roots(&tmp));
-        let importer = tmp.path().join("app/src/main.ts");
-
-        assert_eq!(
-            resolver.resolve(&importer, "https://deno.land/std/assert/mod.ts"),
-            None
-        );
-        assert_eq!(resolver.resolve(&importer, "jsr:@std/assert"), None);
-        assert_eq!(resolver.resolve(&importer, "npm:chalk"), None);
-    }
-}
+#[path = "deno_tests.rs"]
+mod tests;
