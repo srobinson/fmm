@@ -129,9 +129,11 @@ fn run_command(command: Commands) -> anyhow::Result<()> {
             pattern,
             mode,
             limit,
+            precision,
+            no_truncate,
             json,
         } => {
-            cli::glossary(pattern, &mode, limit, json)?;
+            cli::glossary(pattern, &mode, limit, &precision, no_truncate, json)?;
         }
         Commands::Lookup { symbol, json } => {
             cli::lookup(&symbol, json)?;

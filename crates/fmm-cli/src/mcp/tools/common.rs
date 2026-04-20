@@ -109,7 +109,7 @@ pub(in crate::mcp) fn validate_not_directory(
 ///
 /// These specifiers are compared against keys in `FileEntry::named_imports` and
 /// `FileEntry::namespace_imports`, which store paths as written in the import statement.
-pub(in crate::mcp) fn compute_import_specifiers(
+pub(crate) fn compute_import_specifiers(
     candidate_path: &str,
     source_file: &str,
     workspace_roots: &[std::path::PathBuf],

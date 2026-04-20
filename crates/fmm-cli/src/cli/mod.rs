@@ -360,8 +360,10 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm glossary run_dispatch</bold>              <dim># Exact symbol lookup (source mode)</dim>
   <dim>$</dim> <bold>fmm glossary config</bold>                    <dim># All Config, loadConfig, AppConfig, ...</dim>
   <dim>$</dim> <bold>fmm glossary run_dispatch --mode tests</bold> <dim># What tests cover this symbol?</dim>
+  <dim>$</dim> <bold>fmm glossary scheduleUpdate --precision call-site</bold> <dim># Confirm direct callers</dim>
   <dim>$</dim> <bold>fmm glossary config --mode all</bold>         <dim># Source + tests combined</dim>
   <dim>$</dim> <bold>fmm glossary config --limit 20</bold>         <dim># Limit results</dim>
+  <dim>$</dim> <bold>fmm glossary config --no-truncate</bold>      <dim># Bypass 10KB cap</dim>
   <dim>$</dim> <bold>fmm glossary config --json</bold>             <dim># JSON output for scripting</dim>"#),
     )]
     Glossary {
@@ -376,6 +378,14 @@ pub enum Commands {
         /// Maximum number of entries returned (default: 10)
         #[arg(long)]
         limit: Option<usize>,
+
+        /// Precision level: named (default, fast) or call-site (tree-sitter verification)
+        #[arg(long, value_name = "PRECISION", default_value = "named", value_parser = ["named", "call-site"])]
+        precision: String,
+
+        /// Return full output, bypassing the 10KB truncation cap
+        #[arg(long = "no-truncate")]
+        no_truncate: bool,
 
         /// Output as JSON
         #[arg(short = 'j', long = "json")]
