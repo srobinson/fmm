@@ -476,6 +476,33 @@ fn go_work_parenthesized_use_block_discovers_modules() {
 }
 
 #[test]
+fn go_work_quoted_use_path_with_spaces_discovers_module() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "go.work", "go 1.23.0\nuse \"./module a\"\n");
+    write_go_module(tmp.path(), "module a", "github.com/acme/module-a");
+
+    let info = discover(tmp.path());
+
+    assert_eq!(info.roots, vec![tmp.path().join("module a")]);
+    assert_eq!(
+        info.packages.get("github.com/acme/module-a").unwrap(),
+        &tmp.path().join("module a")
+    );
+}
+
+#[test]
+fn go_work_quoted_path_preserves_comment_like_text() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "go.work", "go 1.23.0\nuse \"./module//a\"\n");
+    write_go_module(tmp.path(), "module/a", "github.com/acme/module-a");
+
+    let info = discover(tmp.path());
+
+    assert_eq!(info.roots, vec![tmp.path().join("module//a")]);
+    assert!(info.packages.contains_key("github.com/acme/module-a"));
+}
+
+#[test]
 fn go_module_path_read_from_go_mod() {
     let tmp = TempDir::new().unwrap();
     write_file(

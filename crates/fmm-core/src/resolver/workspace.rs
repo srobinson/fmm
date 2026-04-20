@@ -443,22 +443,83 @@ fn go_directive_value<'a>(line: &'a str, directive: &str) -> Option<&'a str> {
 }
 
 fn first_go_token(value: &str) -> Option<String> {
-    let token = value
-        .split_whitespace()
-        .next()?
-        .trim_matches('"')
-        .trim_matches('`');
-    if token.is_empty() {
-        None
-    } else {
-        Some(token.to_string())
+    let value = value.trim_start();
+    let first = value.chars().next()?;
+
+    let token = match first {
+        '"' => parse_double_quoted_go_token(value)?,
+        '`' => parse_raw_go_token(value)?,
+        _ => value.split_whitespace().next()?.to_string(),
+    };
+
+    if token.is_empty() { None } else { Some(token) }
+}
+
+fn parse_double_quoted_go_token(value: &str) -> Option<String> {
+    let mut escaped = false;
+    for (idx, ch) in value.char_indices().skip(1) {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            let literal = &value[..=idx];
+            if let Ok(decoded) = serde_json::from_str(literal) {
+                return Some(decoded);
+            }
+            return Some(value[1..idx].to_string());
+        }
     }
+    None
+}
+
+fn parse_raw_go_token(value: &str) -> Option<String> {
+    for (idx, ch) in value.char_indices().skip(1) {
+        if ch == '`' {
+            return Some(value[1..idx].to_string());
+        }
+    }
+    None
 }
 
 fn strip_go_line_comment(line: &str) -> &str {
-    line.split_once("//")
-        .map(|(before, _comment)| before)
-        .unwrap_or(line)
+    let mut in_double_quote = false;
+    let mut in_raw_quote = false;
+    let mut escaped = false;
+
+    for (idx, ch) in line.char_indices() {
+        if in_raw_quote {
+            if ch == '`' {
+                in_raw_quote = false;
+            }
+            continue;
+        }
+        if in_double_quote {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            match ch {
+                '\\' => escaped = true,
+                '"' => in_double_quote = false,
+                _ => {}
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => in_double_quote = true,
+            '`' => in_raw_quote = true,
+            '/' if line[idx..].starts_with("//") => return &line[..idx],
+            _ => {}
+        }
+    }
+
+    line
 }
 
 /// Read the `name` field from `package.json` at `dir`. Returns `None` when
