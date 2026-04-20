@@ -66,6 +66,111 @@ fn depends_on_with_extension_equals_without() {
 }
 
 #[test]
+fn depends_on_uses_reverse_index_for_rust_cross_crate_edges() {
+    use crate::manifest::{FileEntry, Manifest};
+    use std::collections::HashMap;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    fn write_file(base: &Path, rel: &str, content: &str) -> PathBuf {
+        let path = base.join(rel);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, content).unwrap();
+        path
+    }
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_file(
+        tmp.path(),
+        "Cargo.toml",
+        r#"
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.dependencies]
+fmm-core = { path = "crates/fmm-core" }
+"#,
+    );
+    write_file(
+        tmp.path(),
+        "crates/fmm-core/Cargo.toml",
+        r#"
+[package]
+name = "fmm-core"
+version = "0.1.0"
+edition = "2024"
+"#,
+    );
+    let target = write_file(
+        tmp.path(),
+        "crates/fmm-core/src/store.rs",
+        "pub trait FmmStore {}",
+    );
+    write_file(tmp.path(), "crates/fmm-core/src/lib.rs", "pub mod store;");
+    write_file(
+        tmp.path(),
+        "crates/fmm-cli/Cargo.toml",
+        r#"
+[package]
+name = "fmm"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+fmm-core.workspace = true
+"#,
+    );
+    let importer = write_file(
+        tmp.path(),
+        "crates/fmm-cli/src/main.rs",
+        "use fmm_core::store::FmmStore;",
+    );
+
+    let target_key = target.to_string_lossy().into_owned();
+    let importer_key = importer.to_string_lossy().into_owned();
+    let mut manifest = Manifest::new();
+    manifest
+        .workspace_packages
+        .insert("fmm_core".into(), tmp.path().join("crates/fmm-core"));
+    manifest
+        .workspace_packages
+        .insert("fmm".into(), tmp.path().join("crates/fmm-cli"));
+    manifest
+        .files
+        .insert(target_key.clone(), FileEntry::default());
+    manifest.files.insert(
+        importer_key.clone(),
+        FileEntry {
+            named_imports: HashMap::from([(
+                "fmm_core::store".to_string(),
+                vec!["FmmStore".to_string()],
+            )]),
+            ..Default::default()
+        },
+    );
+    manifest.rebuild_reverse_deps();
+
+    let results = filter_search(
+        &manifest,
+        &SearchFilters {
+            export: None,
+            imports: None,
+            depends_on: Some(target_key),
+            min_loc: None,
+            max_loc: None,
+        },
+    );
+    let files: Vec<&str> = results.iter().map(|r| r.file.as_str()).collect();
+
+    assert!(
+        files.contains(&importer_key.as_str()),
+        "Rust reverse edge should be searchable through depends_on; got: {:?}",
+        files
+    );
+}
+
+#[test]
 fn imports_filter_local_path_checks_dependencies() {
     let manifest = manifest_with(vec![
         ("src/db/client.ts", vec![]),

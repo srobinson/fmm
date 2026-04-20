@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
 use crate::manifest::{
     Manifest, builtin_source_extensions, dep_matches, dotted_dep_matches, python_dep_matches,
@@ -72,20 +72,25 @@ pub fn filter_search(manifest: &Manifest, filters: &SearchFilters) -> Vec<FileSe
         });
     }
 
-    // depends_on filter: same resolution logic as dependency_graph downstream computation.
-    // Relative paths (./ ../), extension variants (.ts/.js), Python dot-imports and
-    // Go/Rust module paths all resolve via dep_targets_file; substring fallback handles
-    // bare fragment queries (e.g. "config" matches "../config").
+    // depends_on filter: use the prebuilt reverse dependency graph so language
+    // resolver edges, including Rust cross-crate paths, participate in search.
+    // Fall back to per-file dependency scanning for ad hoc manifests that have
+    // not rebuilt reverse_deps.
     if let Some(ref dep_path) = filters.depends_on {
         let exts = builtin_source_extensions();
         let dep_stem = strip_source_ext(dep_path, exts);
+        let targets = dependency_query_targets(manifest, dep_path, exts);
+        let reverse_matches = transitive_dependents(manifest, &targets);
         file_set.retain(|(file_path, entry)| {
-            entry.dependencies.iter().any(|d| {
-                dep_targets_file(d, dep_path, file_path, manifest, exts) || d.contains(dep_stem)
-            }) || entry
-                .imports
-                .iter()
-                .any(|i| dotted_dep_matches(i, dep_path))
+            reverse_matches.contains(file_path.as_str())
+                || (reverse_matches.is_empty()
+                    && (entry.dependencies.iter().any(|d| {
+                        dep_targets_file(d, dep_path, file_path, manifest, exts)
+                            || d.contains(dep_stem)
+                    }) || entry
+                        .imports
+                        .iter()
+                        .any(|i| dotted_dep_matches(i, dep_path))))
         });
     }
 
@@ -101,6 +106,47 @@ pub fn filter_search(manifest: &Manifest, filters: &SearchFilters) -> Vec<FileSe
         .collect();
     results.sort_by(|a, b| a.file.cmp(&b.file));
     results
+}
+
+fn dependency_query_targets(
+    manifest: &Manifest,
+    dep_path: &str,
+    known_extensions: &HashSet<String>,
+) -> HashSet<String> {
+    let dep_stem = strip_source_ext(dep_path, known_extensions);
+    manifest
+        .files
+        .keys()
+        .filter(|path| {
+            let path_stem = strip_source_ext(path, known_extensions);
+            path.as_str() == dep_path
+                || path_stem == dep_stem
+                || path_stem.ends_with(&format!("/{dep_stem}"))
+        })
+        .cloned()
+        .collect()
+}
+
+fn transitive_dependents(manifest: &Manifest, targets: &HashSet<String>) -> HashSet<String> {
+    let mut seen = HashSet::new();
+    let mut queue = VecDeque::new();
+
+    for target in targets {
+        if let Some(direct) = manifest.reverse_deps.get(target) {
+            queue.extend(direct.iter().cloned());
+        }
+    }
+
+    while let Some(file) = queue.pop_front() {
+        if !seen.insert(file.clone()) {
+            continue;
+        }
+        if let Some(next) = manifest.reverse_deps.get(&file) {
+            queue.extend(next.iter().filter(|path| !seen.contains(*path)).cloned());
+        }
+    }
+
+    seen
 }
 
 /// Check whether a dependency string `dep` (from file `source`) resolves to `target` in `manifest`.

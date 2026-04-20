@@ -13,6 +13,9 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+pub mod rust;
+pub use rust::RustImportResolver;
+
 /// Resolve an import specifier from a source file into an indexed file path.
 ///
 /// Implementors own one language ecosystem's resolution semantics.
