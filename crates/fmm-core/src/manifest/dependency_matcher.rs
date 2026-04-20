@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 use rayon::prelude::*;
 
 use crate::resolver::{
-    CrossPackageResolver, GoImportResolver, ImportResolver, RustImportResolver,
+    CrossPackageResolver, DenoImportResolver, GoImportResolver, ImportResolver, RustImportResolver,
     resolve_by_directory_prefix,
 };
 
@@ -412,6 +412,10 @@ pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<Str
 fn collect_workspace_edges(manifest: &Manifest) -> Vec<(String, String)> {
     let js_resolver: std::sync::Arc<dyn ImportResolver> =
         std::sync::Arc::new(CrossPackageResolver::new(&manifest.workspace_packages));
+    let deno_resolver = std::sync::Arc::new(DenoImportResolver::new(
+        &manifest.workspace_packages,
+        &manifest.workspace_roots,
+    ));
     let rust_resolver: std::sync::Arc<dyn ImportResolver> =
         std::sync::Arc::new(RustImportResolver::new(&manifest.workspace_packages));
     let go_resolver: std::sync::Arc<dyn ImportResolver> =
@@ -435,15 +439,26 @@ fn collect_workspace_edges(manifest: &Manifest) -> Vec<(String, String)> {
         .flat_map(|(file_path, entry)| {
             let importer = Path::new(file_path.as_str());
             if is_js_ts_source_file(importer) {
-                js_workspace_edges(
-                    file_path,
-                    entry,
-                    importer,
-                    manifest,
-                    js_resolver.as_ref(),
-                    &original_keys,
-                    &canonical_to_original,
-                )
+                if deno_resolver.is_deno_source(importer) {
+                    deno_workspace_edges(
+                        file_path,
+                        entry,
+                        importer,
+                        deno_resolver.as_ref(),
+                        &original_keys,
+                        &canonical_to_original,
+                    )
+                } else {
+                    js_workspace_edges(
+                        file_path,
+                        entry,
+                        importer,
+                        manifest,
+                        js_resolver.as_ref(),
+                        &original_keys,
+                        &canonical_to_original,
+                    )
+                }
             } else if is_rust_source_file(importer) {
                 rust_workspace_edges(
                     file_path,
@@ -465,6 +480,28 @@ fn collect_workspace_edges(manifest: &Manifest) -> Vec<(String, String)> {
             } else {
                 Vec::new()
             }
+        })
+        .collect()
+}
+
+fn deno_workspace_edges(
+    file_path: &str,
+    entry: &FileEntry,
+    importer: &Path,
+    resolver: &DenoImportResolver,
+    original_keys: &HashSet<String>,
+    canonical_to_original: &HashMap<String, String>,
+) -> Vec<(String, String)> {
+    entry
+        .imports
+        .iter()
+        .filter_map(|import_str| {
+            resolver
+                .resolve(importer, import_str)
+                .and_then(|resolved| {
+                    resolved_to_manifest_key(&resolved, original_keys, canonical_to_original)
+                })
+                .map(|target_key| (target_key, file_path.to_string()))
         })
         .collect()
 }

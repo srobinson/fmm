@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+pub use super::deno::DenoWorkspaceDiscoverer;
 #[path = "workspace_python.rs"]
 mod workspace_python;
 pub use workspace_python::PythonWorkspaceDiscoverer;
@@ -545,6 +546,7 @@ pub fn discover(repo_root: &Path) -> WorkspaceInfo {
         Box::new(CargoWorkspaceDiscoverer),
         Box::new(GoWorkspaceDiscoverer),
         Box::new(PythonWorkspaceDiscoverer),
+        Box::new(DenoWorkspaceDiscoverer),
         Box::new(JsWorkspaceDiscoverer),
     ];
     discover_with(repo_root, &discoverers)
@@ -618,3 +620,7 @@ fn debug_log(msg: &str) {
 #[cfg(test)]
 #[path = "workspace_tests.rs"]
 mod workspace_tests;
+
+#[cfg(test)]
+#[path = "workspace_deno_tests.rs"]
+mod workspace_deno_tests;

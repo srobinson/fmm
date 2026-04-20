@@ -6,6 +6,7 @@
 //! - Layer 2: Workspace package name aliases (injected into oxc-resolver)
 //! - Layer 3: Directory prefix heuristic (React/moduleDirectories pattern)
 
+pub mod deno;
 pub mod workspace;
 
 use oxc_resolver::{AliasValue, ResolveOptions, Resolver, TsconfigDiscovery};
@@ -16,6 +17,7 @@ use std::sync::Arc;
 pub mod go;
 pub mod rust;
 mod rust_path;
+pub use deno::DenoImportResolver;
 pub use go::GoImportResolver;
 pub use rust::RustImportResolver;
 
