@@ -2,6 +2,8 @@ use std::collections::{BTreeSet, HashSet, VecDeque};
 
 use crate::manifest::{FileEntry, Manifest, builtin_source_extensions, try_resolve_local_dep};
 
+use super::helpers::{direct_upstream_from_reverse_deps, reverse_deps_resolve_specifier};
+
 /// Transitive dependency traversal with BFS and cycle detection.
 ///
 /// Returns `(upstream, external, downstream)`:
@@ -30,12 +32,13 @@ pub fn dependency_graph_transitive(
 
     let exts = builtin_source_extensions();
     let mut queue_up: VecDeque<(String, i32)> = VecDeque::new();
+    let reverse_upstream = direct_upstream_from_reverse_deps(manifest, file);
     for dep in &entry.dependencies {
         if let Some(resolved) = try_resolve_local_dep(dep, file, manifest, exts) {
             if !visited_up.contains(&resolved) {
                 queue_up.push_back((resolved, 1));
             }
-        } else {
+        } else if !reverse_deps_resolve_specifier(manifest, &reverse_upstream, dep) {
             external_set.insert(dep.clone());
         }
     }
@@ -48,7 +51,14 @@ pub fn dependency_graph_transitive(
             }
             continue;
         }
-        external_set.insert(imp.clone());
+        if !reverse_deps_resolve_specifier(manifest, &reverse_upstream, imp) {
+            external_set.insert(imp.clone());
+        }
+    }
+    for resolved in reverse_upstream {
+        if !visited_up.contains(&resolved) {
+            queue_up.push_back((resolved, 1));
+        }
     }
 
     while let Some((current, d)) = queue_up.pop_front() {
@@ -61,12 +71,14 @@ pub fn dependency_graph_transitive(
         if (depth == -1 || d < depth)
             && let Some(e) = manifest.files.get(&current)
         {
+            let current_reverse_upstream = direct_upstream_from_reverse_deps(manifest, &current);
             for dep in &e.dependencies {
                 if let Some(resolved) = try_resolve_local_dep(dep, &current, manifest, exts) {
                     if !visited_up.contains(&resolved) {
                         queue_up.push_back((resolved, d + 1));
                     }
-                } else {
+                } else if !reverse_deps_resolve_specifier(manifest, &current_reverse_upstream, dep)
+                {
                     external_set.insert(dep.clone());
                 }
             }
@@ -79,7 +91,14 @@ pub fn dependency_graph_transitive(
                     }
                     continue;
                 }
-                external_set.insert(imp.clone());
+                if !reverse_deps_resolve_specifier(manifest, &current_reverse_upstream, imp) {
+                    external_set.insert(imp.clone());
+                }
+            }
+            for resolved in current_reverse_upstream {
+                if !visited_up.contains(&resolved) {
+                    queue_up.push_back((resolved, d + 1));
+                }
             }
         }
     }

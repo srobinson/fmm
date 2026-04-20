@@ -40,6 +40,68 @@ pub(super) fn file_entry_to_result(path: &str, entry: &FileEntry) -> FileSearchR
     }
 }
 
+pub(super) fn direct_upstream_from_reverse_deps(manifest: &Manifest, file: &str) -> Vec<String> {
+    let mut upstream: Vec<String> = manifest
+        .reverse_deps
+        .iter()
+        .filter(|(target, sources)| {
+            target.as_str() != file && sources.iter().any(|source| source == file)
+        })
+        .map(|(target, _)| target.clone())
+        .collect();
+    upstream.sort();
+    upstream.dedup();
+    upstream
+}
+
+pub(super) fn reverse_deps_resolve_specifier(
+    manifest: &Manifest,
+    direct_upstream: &[String],
+    specifier: &str,
+) -> bool {
+    !direct_upstream.is_empty()
+        && manifest.workspace_packages.keys().any(|package| {
+            workspace_package_matches_specifier(package, specifier)
+                && direct_upstream
+                    .iter()
+                    .any(|target| target_matches_workspace_specifier(target, package, specifier))
+        })
+}
+
+fn workspace_package_matches_specifier(package: &str, specifier: &str) -> bool {
+    specifier == package
+        || specifier.strip_prefix(package).is_some_and(|rest| {
+            rest.starts_with('/') || rest.starts_with('.') || rest.starts_with("::")
+        })
+}
+
+fn target_matches_workspace_specifier(target: &str, package: &str, specifier: &str) -> bool {
+    let Some(rest) = specifier.strip_prefix(package) else {
+        return false;
+    };
+    if rest.is_empty() {
+        return true;
+    }
+
+    let Some(path) = rest
+        .strip_prefix('/')
+        .or_else(|| rest.strip_prefix('.'))
+        .or_else(|| rest.strip_prefix("::"))
+    else {
+        return false;
+    };
+    let first_segment = path
+        .split(['/', '.', ':'])
+        .find(|segment| !segment.is_empty())
+        .unwrap_or("");
+    if first_segment.is_empty() {
+        return true;
+    }
+
+    let normalized_path = path.replace("::", "/").replace('.', "/");
+    target.contains(&normalized_path) || target.contains(first_segment)
+}
+
 /// Score an export name against a lower-cased search term.
 /// Higher score = more relevant. Drives sorting in bare_search fuzzy results.
 pub(super) fn export_match_score(name: &str, term_lower: &str) -> u32 {
