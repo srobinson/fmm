@@ -182,7 +182,7 @@ If the output looks wrong, go back to Step 3 and adjust your extraction logic.
 
 ### Step 8 — Add a fixture validation test
 
-Open `tests/fixture_validation.rs` and add a `validate_haskell_fixture()` test following the pattern of existing tests in that file. At minimum, assert:
+Open `crates/fmm-core/tests/fixture_validation/` and add a `validate_haskell_fixture()` test in the closest language module, or create `haskell.rs` and register it from `crates/fmm-core/tests/fixture_validation.rs`. At minimum, assert:
 
 - The expected exports appear in the right order
 - At least one known import is present
@@ -192,9 +192,8 @@ Open `tests/fixture_validation.rs` and add a `validate_haskell_fixture()` test f
 ```rust
 #[test]
 fn validate_haskell_fixture() {
-    let source = include_str!("../fixtures/sample.hs");
-    let mut parser = HaskellParser::new().unwrap();
-    let result = parser.parse(source).unwrap();
+    let source = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures/sample.hs"));
+    let result = parse_fixture(HaskellParser::new().unwrap(), source);
 
     assert!(result.metadata.export_names().contains(&"greet".to_string()));
     assert!(!result.metadata.export_names().contains(&"formatPort".to_string()));
@@ -221,7 +220,7 @@ just test
 [ ] 5. Parser registered in ParserRegistry::register_builtin() in src/parser/mod.rs
 [ ] 6. fixtures/sample.<ext> created with 50-150 LOC of real code
 [ ] 7. cargo run -- generate fixtures/ && cargo run -- outline fixtures/sample.<ext> shows correct exports
-[ ] 8. validate_<lang>_fixture() test added to tests/fixture_validation.rs; just test passes
+[ ] 8. validate_<lang>_fixture() test added under crates/fmm-core/tests/fixture_validation/; just test passes
 ```
 
 ---
