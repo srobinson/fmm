@@ -149,6 +149,41 @@ fn search_term_and_mcp_loc_filters_intersect() {
 }
 
 #[test]
+fn search_export_dir_filter_applies_to_json_results() {
+    let tmp = setup_search_project();
+    let json_output = run_fmm(
+        tmp.path(),
+        &[
+            "search", "--export", "create", "--dir", "src/auth", "--json",
+        ],
+    );
+    let json = parse_json(&json_output);
+    let results = json.as_array().unwrap();
+    let names: HashSet<&str> = results
+        .iter()
+        .map(|entry| entry["name"].as_str().unwrap())
+        .collect();
+
+    assert!(names.contains("createSession"), "got: {json:#}");
+    assert!(!names.contains("createPool"), "got: {json:#}");
+    assert!(
+        results
+            .iter()
+            .all(|entry| entry["file"].as_str().unwrap().starts_with("src/auth/")),
+        "got: {json:#}"
+    );
+
+    let text_output = run_fmm(
+        tmp.path(),
+        &["search", "--export", "create", "--dir", "src/auth"],
+    );
+    assert!(text_output.status.success());
+    let stdout = String::from_utf8_lossy(&text_output.stdout);
+    assert!(stdout.contains("createSession"), "got: {stdout}");
+    assert!(!stdout.contains("createPool"), "got: {stdout}");
+}
+
+#[test]
 fn search_loc_conflicts_with_min_loc() {
     let tmp = TempDir::new().unwrap();
     let output = run_fmm(tmp.path(), &["search", "--loc", ">10", "--min-loc", "5"]);

@@ -264,11 +264,7 @@ fn flag_search(manifest: &Manifest, options: SearchOptions) -> Result<()> {
         && options.min_loc.is_none()
         && options.max_loc.is_none()
     {
-        let dir = options.directory.as_deref();
-        let matches: Vec<_> = fmm_core::search::find_export_matches(manifest, export_name)
-            .into_iter()
-            .filter(|h| dir.is_none_or(|d| h.file.starts_with(d)))
-            .collect();
+        let matches = scoped_export_matches(manifest, export_name, options.directory.as_deref());
         if matches.is_empty() {
             println!("{} No matching exports", "!".yellow());
             println!(
@@ -311,7 +307,8 @@ fn flag_search(manifest: &Manifest, options: SearchOptions) -> Result<()> {
             && filters.min_loc.is_none()
             && filters.max_loc.is_none()
         {
-            let matches = fmm_core::search::find_export_matches(manifest, export_name);
+            let matches =
+                scoped_export_matches(manifest, export_name, options.directory.as_deref());
             let export_json: Vec<ExportMatchJson> = matches
                 .iter()
                 .map(|h| ExportMatchJson {
@@ -363,6 +360,17 @@ fn flag_search(manifest: &Manifest, options: SearchOptions) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn scoped_export_matches(
+    manifest: &Manifest,
+    export_name: &str,
+    directory: Option<&str>,
+) -> Vec<fmm_core::search::ExportHit> {
+    fmm_core::search::find_export_matches(manifest, export_name)
+        .into_iter()
+        .filter(|h| directory.is_none_or(|d| h.file.starts_with(d)))
+        .collect()
 }
 
 fn validate_loc_flags(
