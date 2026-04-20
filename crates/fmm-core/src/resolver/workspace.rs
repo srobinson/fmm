@@ -1,14 +1,27 @@
 //! Workspace manifest discovery for monorepo cross-package import resolution.
 //!
-//! Reads pnpm-workspace.yaml or package.json workspaces globs and produces:
-//! - `workspace_packages`: package name → absolute directory (for oxc-resolver alias layer)
-//! - `workspace_roots`: all workspace package directories (for directory prefix heuristic)
+//! Pluggable per ecosystem. The shipped discoverers cover JS/TS package
+//! managers, Cargo workspaces, Go modules, and uv Python workspaces. Future
+//! discoverers plug in via the [`WorkspaceDiscoverer`] trait and merge into the
+//! same [`WorkspaceInfo`].
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
+
+pub use super::deno::DenoWorkspaceDiscoverer;
+#[path = "workspace_go.rs"]
+mod workspace_go;
+#[path = "workspace_python.rs"]
+mod workspace_python;
+pub use workspace_go::GoWorkspaceDiscoverer;
+pub(crate) use workspace_go::read_go_module_path;
+pub use workspace_python::PythonWorkspaceDiscoverer;
+#[cfg(test)]
+use workspace_python::read_python_import_name;
 
 /// Result of workspace discovery.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct WorkspaceInfo {
     /// Maps canonical package name → absolute directory path.
     /// e.g. `"shared"` → `/repo/packages/shared`
@@ -18,156 +31,415 @@ pub struct WorkspaceInfo {
     /// Includes directories even if they have no package.json name.
     /// Used by the directory prefix heuristic (Layer 3).
     pub roots: Vec<PathBuf>,
+    pub packages_by_ecosystem: HashMap<WorkspaceEcosystem, HashMap<String, PathBuf>>,
+    pub roots_by_ecosystem: HashMap<WorkspaceEcosystem, Vec<PathBuf>>,
 }
 
-/// Discover workspace packages from the repo root.
-///
-/// Detection order:
-/// 1. `pnpm-workspace.yaml` — pnpm workspaces
-/// 2. `package.json` `workspaces` field — npm/yarn/bun workspaces
-/// 3. Neither present → returns empty `WorkspaceInfo` (graceful no-op)
-pub fn discover(repo_root: &Path) -> WorkspaceInfo {
-    let glob_patterns = detect_workspace_globs(repo_root);
-    if glob_patterns.is_empty() {
-        return WorkspaceInfo::default();
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum WorkspaceEcosystem {
+    Js,
+    Rust,
+    Go,
+    Python,
+    Deno,
+}
+
+impl WorkspaceInfo {
+    pub fn new(packages: HashMap<String, PathBuf>, roots: Vec<PathBuf>) -> Self {
+        Self {
+            packages,
+            roots,
+            ..Self::default()
+        }
     }
 
-    let (include_patterns, exclude_patterns) = partition_exclusions(glob_patterns);
+    pub fn packages_for(&self, ecosystem: WorkspaceEcosystem) -> &HashMap<String, PathBuf> {
+        if let Some(packages) = self.packages_by_ecosystem.get(&ecosystem) {
+            packages
+        } else if self.packages_by_ecosystem.is_empty() {
+            &self.packages
+        } else {
+            empty_packages()
+        }
+    }
 
-    let mut roots = Vec::new();
+    pub fn roots_for(&self, ecosystem: WorkspaceEcosystem) -> &[PathBuf] {
+        if let Some(roots) = self.roots_by_ecosystem.get(&ecosystem) {
+            roots
+        } else if self.roots_by_ecosystem.is_empty() {
+            &self.roots
+        } else {
+            &[]
+        }
+    }
 
-    for pattern in &include_patterns {
-        let abs_pattern = repo_root.join(pattern);
-        let pattern_str = abs_pattern.to_string_lossy();
+    fn merge_ecosystem(&mut self, ecosystem: WorkspaceEcosystem, info: WorkspaceInfo) {
+        let packages = info.packages;
+        let roots = info.roots;
 
-        match glob::glob(&pattern_str) {
-            Ok(entries) => {
-                for entry in entries.filter_map(Result::ok) {
-                    if !entry.is_dir() {
-                        continue;
+        merge_packages(&mut self.packages, packages.clone());
+        self.roots.extend(roots.clone());
+        self.roots.sort();
+        self.roots.dedup();
+
+        let scoped_packages = self.packages_by_ecosystem.entry(ecosystem).or_default();
+        merge_packages(scoped_packages, packages);
+
+        let scoped_roots = self.roots_by_ecosystem.entry(ecosystem).or_default();
+        scoped_roots.extend(roots);
+        scoped_roots.sort();
+        scoped_roots.dedup();
+    }
+}
+
+/// Pluggable workspace detector. One implementor per resolver family
+/// (JS/TS, Cargo, Go, uv, Deno, ...). Multiple discoverers run side by side
+/// in [`discover`]; results merge into a single [`WorkspaceInfo`].
+pub trait WorkspaceDiscoverer: Send + Sync {
+    fn ecosystem(&self) -> WorkspaceEcosystem {
+        WorkspaceEcosystem::Js
+    }
+
+    /// Cheap signal: is this ecosystem plausibly active at `repo_root`?
+    /// `discover()` may still return an empty `WorkspaceInfo`.
+    fn detect(&self, repo_root: &Path) -> bool;
+
+    /// Discover workspace members and return their names + directories.
+    fn discover(&self, repo_root: &Path) -> WorkspaceInfo;
+}
+
+/// JS/TS workspace discoverer. Covers all four mainstream JS package managers:
+///
+/// | PM   | Manifest              | Field                                  |
+/// |------|-----------------------|----------------------------------------|
+/// | pnpm | `pnpm-workspace.yaml` | top-level `packages:` list (globs)     |
+/// | npm  | `package.json`        | `workspaces` array (globs)             |
+/// | yarn | `package.json`        | `workspaces` array OR `{packages:[…]}` |
+/// | bun  | `package.json`        | `workspaces` array (globs)             |
+///
+/// `pnpm-workspace.yaml` wins over `package.json` `workspaces` when both
+/// declare members, matching historical behavior.
+///
+/// Deno is a separate ecosystem (URL imports, JSR, import maps) and ships
+/// its own discoverer + resolver.
+pub struct JsWorkspaceDiscoverer;
+
+/// Cargo workspace discoverer. Reads a root `Cargo.toml` `[workspace]`
+/// manifest, expands member globs, and maps Rust crate names to package roots.
+pub struct CargoWorkspaceDiscoverer;
+
+impl WorkspaceDiscoverer for JsWorkspaceDiscoverer {
+    fn ecosystem(&self) -> WorkspaceEcosystem {
+        WorkspaceEcosystem::Js
+    }
+
+    fn detect(&self, repo_root: &Path) -> bool {
+        // Primary manifests: package.json (npm/yarn/bun/pnpm) or
+        // pnpm-workspace.yaml (pnpm workspaces can declare members without a
+        // root package.json). node_modules covers the post-install case where
+        // a repo has installed deps but the manifests have been moved or hidden
+        // from indexing. Lockfiles are ceremony; they do not add information.
+        repo_root.join("package.json").exists()
+            || repo_root.join("pnpm-workspace.yaml").exists()
+            || repo_root.join("node_modules").exists()
+    }
+
+    fn discover(&self, repo_root: &Path) -> WorkspaceInfo {
+        let mut roots = Vec::new();
+
+        let glob_patterns = Self::detect_workspace_globs(repo_root);
+        if !glob_patterns.is_empty() {
+            let (includes, excludes) = partition_exclusions(glob_patterns);
+            for pattern in &includes {
+                let abs_pattern = repo_root.join(pattern);
+                let pattern_str = abs_pattern.to_string_lossy();
+                match glob::glob(&pattern_str) {
+                    Ok(entries) => {
+                        for entry in entries.filter_map(Result::ok) {
+                            if !entry.is_dir() {
+                                continue;
+                            }
+                            if is_excluded(&entry, repo_root, &excludes) {
+                                continue;
+                            }
+                            roots.push(entry);
+                        }
                     }
-                    // Check exclusion patterns
-                    if is_excluded(&entry, repo_root, &exclude_patterns) {
-                        continue;
+                    Err(e) => {
+                        debug_log(&format!("workspace: bad glob pattern '{}': {}", pattern, e));
                     }
-                    roots.push(entry);
                 }
             }
-            Err(e) => {
-                tracing_debug_or_eprintln(&format!(
-                    "workspace: bad glob pattern '{}': {}",
-                    pattern, e
-                ));
+        }
+
+        roots.sort();
+        roots.dedup();
+
+        let mut packages = HashMap::new();
+        for root in &roots {
+            if let Some(name) = read_package_name(root) {
+                packages.insert(name, root.to_path_buf());
             }
         }
+
+        WorkspaceInfo::new(packages, roots)
     }
-
-    // Stable sort for deterministic output
-    roots.sort();
-
-    let mut packages = HashMap::new();
-    for root in &roots {
-        if let Some(name) = read_package_name(root) {
-            packages.insert(name, root.to_path_buf());
-        }
-    }
-
-    WorkspaceInfo { packages, roots }
 }
 
-/// Detect workspace glob patterns from the repo root.
-/// Returns an empty vec if no workspace config is found.
-fn detect_workspace_globs(repo_root: &Path) -> Vec<String> {
-    // pnpm takes precedence when both files exist
-    let pnpm_yaml = repo_root.join("pnpm-workspace.yaml");
-    if pnpm_yaml.exists() {
-        return parse_pnpm_workspace(&pnpm_yaml);
-    }
-
-    let pkg_json = repo_root.join("package.json");
-    if pkg_json.exists() {
-        return parse_npm_workspaces(&pkg_json);
-    }
-
-    Vec::new()
-}
-
-/// Parse pnpm-workspace.yaml → list of glob strings.
-///
-/// Uses a lightweight line-based parser instead of a full YAML library.
-/// Expected format:
-/// ```yaml
-/// packages:
-///   - 'packages/*'
-///   - "apps/*"
-///   - plain-glob/*
-/// ```
-fn parse_pnpm_workspace(path: &Path) -> Vec<String> {
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
-    };
-
-    let mut in_packages = false;
-    let mut results = Vec::new();
-
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed == "packages:" || trimmed.starts_with("packages:") {
-            in_packages = true;
-            continue;
+impl JsWorkspaceDiscoverer {
+    /// pnpm > npm/yarn/bun. Returns the first non-empty glob list found.
+    fn detect_workspace_globs(repo_root: &Path) -> Vec<String> {
+        let pnpm_yaml = repo_root.join("pnpm-workspace.yaml");
+        if pnpm_yaml.exists() {
+            return Self::parse_pnpm_workspace(&pnpm_yaml);
         }
-        if in_packages {
-            if trimmed.starts_with('-') {
-                let raw = trimmed.trim_start_matches('-').trim();
-                let unquoted = raw.trim_matches('\'').trim_matches('"').to_string();
-                if !unquoted.is_empty() {
-                    results.push(unquoted);
-                }
-            } else if !trimmed.is_empty() && !trimmed.starts_with('#') {
-                in_packages = false;
-            }
+
+        let pkg_json = repo_root.join("package.json");
+        if pkg_json.exists() {
+            return Self::parse_npm_workspaces(&pkg_json);
         }
-    }
 
-    results
-}
-
-/// Parse package.json `workspaces` field → list of glob strings.
-fn parse_npm_workspaces(path: &Path) -> Vec<String> {
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
-    };
-
-    let value: serde_json::Value = match serde_json::from_str(&content) {
-        Ok(v) => v,
-        Err(_) => return Vec::new(),
-    };
-
-    let workspaces = &value["workspaces"];
-
-    // npm/yarn format: { "workspaces": ["packages/*"] }
-    // yarn berry format: { "workspaces": { "packages": ["packages/*"] } }
-    if workspaces.is_array() {
-        extract_json_string_list(workspaces)
-    } else if let Some(pkgs) = workspaces.get("packages") {
-        extract_json_string_list(pkgs)
-    } else {
         Vec::new()
     }
+
+    /// Parse `pnpm-workspace.yaml` → list of glob strings.
+    ///
+    /// Lightweight line-based parser to avoid pulling in a YAML dep.
+    /// ```yaml
+    /// packages:
+    ///   - 'packages/*'
+    ///   - "apps/*"
+    ///   - plain-glob/*
+    /// ```
+    fn parse_pnpm_workspace(path: &Path) -> Vec<String> {
+        let Ok(content) = std::fs::read_to_string(path) else {
+            return Vec::new();
+        };
+
+        let mut in_packages = false;
+        let mut results = Vec::new();
+
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed == "packages:" || trimmed.starts_with("packages:") {
+                in_packages = true;
+                continue;
+            }
+            if in_packages {
+                if trimmed.starts_with('-') {
+                    let raw = trimmed.trim_start_matches('-').trim();
+                    let unquoted = raw.trim_matches('\'').trim_matches('"').to_string();
+                    if !unquoted.is_empty() {
+                        results.push(unquoted);
+                    }
+                } else if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                    in_packages = false;
+                }
+            }
+        }
+
+        results
+    }
+
+    /// Parse `package.json` `workspaces` field. Covers npm, yarn (classic),
+    /// yarn berry's object form `{ packages: [...], nohoist: [...] }`, and
+    /// bun (which uses the npm format).
+    fn parse_npm_workspaces(path: &Path) -> Vec<String> {
+        let Ok(content) = std::fs::read_to_string(path) else {
+            return Vec::new();
+        };
+        let Ok(value): Result<serde_json::Value, _> = serde_json::from_str(&content) else {
+            return Vec::new();
+        };
+
+        let workspaces = &value["workspaces"];
+        if workspaces.is_array() {
+            extract_json_string_list(workspaces)
+        } else if let Some(pkgs) = workspaces.get("packages") {
+            extract_json_string_list(pkgs)
+        } else {
+            Vec::new()
+        }
+    }
 }
 
-/// Read the `name` field from a package.json in the given directory.
+impl WorkspaceDiscoverer for CargoWorkspaceDiscoverer {
+    fn ecosystem(&self) -> WorkspaceEcosystem {
+        WorkspaceEcosystem::Rust
+    }
+
+    fn detect(&self, repo_root: &Path) -> bool {
+        let Some(manifest) = read_cargo_manifest(repo_root) else {
+            return false;
+        };
+        manifest
+            .get("workspace")
+            .and_then(|v| v.as_table())
+            .is_some()
+    }
+
+    fn discover(&self, repo_root: &Path) -> WorkspaceInfo {
+        let Some(manifest) = read_cargo_manifest(repo_root) else {
+            return WorkspaceInfo::default();
+        };
+        if manifest
+            .get("workspace")
+            .and_then(|v| v.as_table())
+            .is_none()
+        {
+            return WorkspaceInfo::default();
+        }
+
+        let excludes = cargo_workspace_excludes(repo_root, &manifest);
+        let mut roots = Vec::new();
+        if crate_name_from_cargo_manifest(&manifest).is_some()
+            && !is_cargo_excluded(repo_root, &excludes)
+        {
+            roots.push(repo_root.to_path_buf());
+        }
+
+        for pattern in cargo_workspace_members(&manifest) {
+            let abs_pattern = repo_root.join(&pattern);
+            let pattern_str = abs_pattern.to_string_lossy();
+            match glob::glob(&pattern_str) {
+                Ok(entries) => {
+                    for entry in entries.filter_map(Result::ok) {
+                        if !entry.is_dir() || is_cargo_excluded(&entry, &excludes) {
+                            continue;
+                        }
+                        if read_cargo_crate_name(&entry).is_some() {
+                            roots.push(entry);
+                        }
+                    }
+                }
+                Err(e) => {
+                    debug_log(&format!("cargo workspace: bad glob '{}': {}", pattern, e));
+                }
+            }
+        }
+
+        roots.sort();
+        roots.dedup();
+
+        let mut packages = HashMap::new();
+        for root in &roots {
+            if let Some(name) = read_cargo_crate_name(root) {
+                packages.insert(name, root.to_path_buf());
+            }
+        }
+
+        WorkspaceInfo::new(packages, roots)
+    }
+}
+
+fn read_cargo_manifest(dir: &Path) -> Option<toml::Value> {
+    let content = std::fs::read_to_string(dir.join("Cargo.toml")).ok()?;
+    toml::from_str(&content).ok()
+}
+
+fn cargo_workspace_members(manifest: &toml::Value) -> Vec<String> {
+    cargo_workspace_string_list(manifest, "members")
+}
+
+fn cargo_workspace_excludes(repo_root: &Path, manifest: &toml::Value) -> Vec<PathBuf> {
+    cargo_workspace_string_list(manifest, "exclude")
+        .into_iter()
+        .map(|p| repo_root.join(p))
+        .collect()
+}
+
+fn cargo_workspace_string_list(manifest: &toml::Value, key: &str) -> Vec<String> {
+    manifest
+        .get("workspace")
+        .and_then(|workspace| workspace.get(key))
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn is_cargo_excluded(path: &Path, exclude_paths: &[PathBuf]) -> bool {
+    exclude_paths.iter().any(|excluded| excluded == path)
+}
+
+fn read_cargo_crate_name(dir: &Path) -> Option<String> {
+    let manifest = read_cargo_manifest(dir)?;
+    crate_name_from_cargo_manifest(&manifest)
+}
+
+fn crate_name_from_cargo_manifest(manifest: &toml::Value) -> Option<String> {
+    let package_name = manifest
+        .get("package")
+        .and_then(|package| package.get("name"))
+        .and_then(|name| name.as_str())?;
+
+    let lib_name = manifest
+        .get("lib")
+        .and_then(|lib| lib.get("name"))
+        .and_then(|name| name.as_str());
+
+    Some(
+        lib_name
+            .unwrap_or(package_name)
+            .replace('-', "_")
+            .to_string(),
+    )
+}
+
+/// Read the `name` field from `package.json` at `dir`. Returns `None` when
+/// the file is missing, malformed, or has no string `name` field.
 pub fn read_package_name(dir: &Path) -> Option<String> {
-    let pkg_json = dir.join("package.json");
-    let content = std::fs::read_to_string(pkg_json).ok()?;
+    let content = std::fs::read_to_string(dir.join("package.json")).ok()?;
     let value: serde_json::Value = serde_json::from_str(&content).ok()?;
-    value["name"].as_str().map(|s| s.to_string())
+    value["name"].as_str().map(String::from)
 }
 
-/// Partition glob patterns into (includes, excludes).
-/// Exclusion patterns start with `!`.
+/// Top-level orchestrator: run every registered [`WorkspaceDiscoverer`] whose
+/// `detect()` matches and merge results. Roots are sorted and deduped;
+/// package names follow last writer wins on collision (rare but possible
+/// across ecosystems).
+pub fn discover(repo_root: &Path) -> WorkspaceInfo {
+    let discoverers: Vec<Box<dyn WorkspaceDiscoverer>> = vec![
+        Box::new(CargoWorkspaceDiscoverer),
+        Box::new(GoWorkspaceDiscoverer),
+        Box::new(PythonWorkspaceDiscoverer),
+        Box::new(DenoWorkspaceDiscoverer),
+        Box::new(JsWorkspaceDiscoverer),
+    ];
+    discover_with(repo_root, &discoverers)
+}
+
+/// Same as [`discover`] but the discoverer list is supplied by the caller.
+/// Enables tests to exercise the merge path against fake discoverers.
+pub fn discover_with(
+    repo_root: &Path,
+    discoverers: &[Box<dyn WorkspaceDiscoverer>],
+) -> WorkspaceInfo {
+    let mut merged = WorkspaceInfo::default();
+    for d in discoverers {
+        if d.detect(repo_root) {
+            let info = d.discover(repo_root);
+            merged.merge_ecosystem(d.ecosystem(), info);
+        }
+    }
+    merged
+}
+
+fn merge_packages(target: &mut HashMap<String, PathBuf>, packages: HashMap<String, PathBuf>) {
+    for (name, dir) in packages {
+        target.entry(name).or_insert(dir);
+    }
+}
+
+fn empty_packages() -> &'static HashMap<String, PathBuf> {
+    static EMPTY: LazyLock<HashMap<String, PathBuf>> = LazyLock::new(HashMap::new);
+    &EMPTY
+}
+
 fn partition_exclusions(patterns: Vec<String>) -> (Vec<String>, Vec<String>) {
     let mut includes = Vec::new();
     let mut excludes = Vec::new();
@@ -181,7 +453,6 @@ fn partition_exclusions(patterns: Vec<String>) -> (Vec<String>, Vec<String>) {
     (includes, excludes)
 }
 
-/// Check whether `path` matches any exclusion pattern relative to `repo_root`.
 fn is_excluded(path: &Path, repo_root: &Path, exclude_patterns: &[String]) -> bool {
     if exclude_patterns.is_empty() {
         return false;
@@ -209,165 +480,20 @@ fn extract_json_string_list(value: &serde_json::Value) -> Vec<String> {
     }
 }
 
-fn tracing_debug_or_eprintln(msg: &str) {
-    // Use eprintln at debug level — avoids pulling in tracing just for this module.
-    // In production builds this is silent; only visible with RUST_LOG=debug.
-    let _ = msg; // suppress unused warning in release; callers can check RUST_LOG
+fn debug_log(msg: &str) {
+    let _ = msg;
     #[cfg(debug_assertions)]
     eprintln!("[fmm debug] {}", msg);
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use tempfile::TempDir;
+#[path = "workspace_tests.rs"]
+mod workspace_tests;
 
-    fn make_dir(base: &Path, rel: &str) -> PathBuf {
-        let p = base.join(rel);
-        fs::create_dir_all(&p).unwrap();
-        p
-    }
+#[cfg(test)]
+#[path = "workspace_deno_tests.rs"]
+mod workspace_deno_tests;
 
-    fn write_file(base: &Path, rel: &str, content: &str) {
-        let p = base.join(rel);
-        if let Some(parent) = p.parent() {
-            fs::create_dir_all(parent).unwrap();
-        }
-        fs::write(p, content).unwrap();
-    }
-
-    #[test]
-    fn no_workspace_config_returns_empty() {
-        let tmp = TempDir::new().unwrap();
-        let info = discover(tmp.path());
-        assert!(info.packages.is_empty());
-        assert!(info.roots.is_empty());
-    }
-
-    #[test]
-    fn npm_workspaces_single_glob() {
-        let tmp = TempDir::new().unwrap();
-        write_file(
-            tmp.path(),
-            "package.json",
-            r#"{"workspaces": ["packages/*"]}"#,
-        );
-        make_dir(tmp.path(), "packages/alpha");
-        write_file(
-            tmp.path(),
-            "packages/alpha/package.json",
-            r#"{"name": "alpha"}"#,
-        );
-        make_dir(tmp.path(), "packages/beta");
-        write_file(
-            tmp.path(),
-            "packages/beta/package.json",
-            r#"{"name": "@scope/beta"}"#,
-        );
-
-        let info = discover(tmp.path());
-        assert_eq!(info.roots.len(), 2);
-        assert_eq!(
-            info.packages.get("alpha").unwrap(),
-            &tmp.path().join("packages/alpha")
-        );
-        assert_eq!(
-            info.packages.get("@scope/beta").unwrap(),
-            &tmp.path().join("packages/beta")
-        );
-    }
-
-    #[test]
-    fn pnpm_workspace_takes_precedence() {
-        let tmp = TempDir::new().unwrap();
-        // Both files present — pnpm should win
-        write_file(tmp.path(), "package.json", r#"{"workspaces": ["apps/*"]}"#);
-        write_file(
-            tmp.path(),
-            "pnpm-workspace.yaml",
-            "packages:\n  - 'packages/*'\n",
-        );
-        make_dir(tmp.path(), "packages/lib");
-        write_file(
-            tmp.path(),
-            "packages/lib/package.json",
-            r#"{"name": "lib"}"#,
-        );
-        make_dir(tmp.path(), "apps/web");
-        write_file(tmp.path(), "apps/web/package.json", r#"{"name": "web"}"#);
-
-        let info = discover(tmp.path());
-        // Only packages/* was expanded (pnpm config)
-        assert!(info.packages.contains_key("lib"));
-        assert!(!info.packages.contains_key("web"));
-    }
-
-    #[test]
-    fn directory_without_package_json_included_in_roots_not_packages() {
-        let tmp = TempDir::new().unwrap();
-        write_file(
-            tmp.path(),
-            "package.json",
-            r#"{"workspaces": ["packages/*"]}"#,
-        );
-        make_dir(tmp.path(), "packages/unnamed"); // no package.json
-
-        let info = discover(tmp.path());
-        assert_eq!(info.roots.len(), 1);
-        assert!(info.packages.is_empty()); // no name → not in packages map
-    }
-
-    #[test]
-    fn multiple_workspace_glob_patterns() {
-        let tmp = TempDir::new().unwrap();
-        write_file(
-            tmp.path(),
-            "package.json",
-            r#"{"workspaces": ["packages/*", "apps/*"]}"#,
-        );
-        make_dir(tmp.path(), "packages/lib");
-        write_file(
-            tmp.path(),
-            "packages/lib/package.json",
-            r#"{"name": "lib"}"#,
-        );
-        make_dir(tmp.path(), "apps/frontend");
-        write_file(
-            tmp.path(),
-            "apps/frontend/package.json",
-            r#"{"name": "frontend"}"#,
-        );
-
-        let info = discover(tmp.path());
-        assert_eq!(info.roots.len(), 2);
-        assert!(info.packages.contains_key("lib"));
-        assert!(info.packages.contains_key("frontend"));
-    }
-
-    #[test]
-    fn exclusion_patterns_respected() {
-        let tmp = TempDir::new().unwrap();
-        write_file(
-            tmp.path(),
-            "pnpm-workspace.yaml",
-            "packages:\n  - 'packages/*'\n  - '!packages/test-utils'\n",
-        );
-        make_dir(tmp.path(), "packages/core");
-        write_file(
-            tmp.path(),
-            "packages/core/package.json",
-            r#"{"name": "core"}"#,
-        );
-        make_dir(tmp.path(), "packages/test-utils");
-        write_file(
-            tmp.path(),
-            "packages/test-utils/package.json",
-            r#"{"name": "test-utils"}"#,
-        );
-
-        let info = discover(tmp.path());
-        assert!(info.packages.contains_key("core"));
-        assert!(!info.packages.contains_key("test-utils"));
-    }
-}
+#[cfg(test)]
+#[path = "workspace_review_tests.rs"]
+mod workspace_review_tests;

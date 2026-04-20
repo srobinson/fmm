@@ -4,9 +4,42 @@ use std::sync::OnceLock;
 
 use rayon::prelude::*;
 
-use crate::resolver::{CrossPackageResolver, resolve_by_directory_prefix};
+use crate::resolver::{
+    CrossPackageResolver, DenoImportResolver, GoImportResolver, ImportResolver, RustImportResolver,
+    resolve_by_directory_prefix, workspace::WorkspaceEcosystem,
+};
 
-use super::Manifest;
+use super::{FileEntry, Manifest};
+
+const JS_TS_SOURCE_EXTENSIONS: &[&str] = &["ts", "tsx", "js", "jsx", "mjs", "cjs"];
+const RUST_SOURCE_EXTENSIONS: &[&str] = &["rs"];
+const GO_SOURCE_EXTENSIONS: &[&str] = &["go"];
+
+fn is_js_ts_source_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| JS_TS_SOURCE_EXTENSIONS.contains(&ext))
+}
+
+fn is_rust_source_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| RUST_SOURCE_EXTENSIONS.contains(&ext))
+}
+
+fn is_go_source_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| GO_SOURCE_EXTENSIONS.contains(&ext))
+}
+
+fn is_cargo_workspace_source(path: &Path, manifest: &Manifest) -> bool {
+    is_rust_source_file(path)
+        && manifest
+            .workspace_packages_for(WorkspaceEcosystem::Rust)
+            .values()
+            .any(|dir| path.starts_with(dir) && dir.join("Cargo.toml").exists())
+}
 
 /// Return a reference to the lazily-initialised set of source-file extensions
 /// from the builtin `ParserRegistry`.
@@ -74,7 +107,7 @@ pub fn dep_matches(
     let resolved = parts.join("/");
 
     // Strip extension from the target file path (always has a real extension like .ts/.js).
-    // For the resolved dep, only strip if the suffix is a known source-file extension —
+    // For the resolved dep, only strip if the suffix is a known source-file extension,
     // NestJS-style compound names like `runtime.exception` use `.exception` as part of the
     // filename, not as an extension, and stripping it would produce a wrong stem.
     let resolved_stem = strip_source_ext(&resolved, known_extensions);
@@ -135,7 +168,7 @@ fn resolve_python_relative_path(dep: &str, source_file: &str) -> Option<String> 
     }
 
     if module_name.is_empty() {
-        // `from . import X` — no module name, can't pinpoint a file
+        // `from . import X`, no module name, can't pinpoint a file
         return None;
     }
 
@@ -170,7 +203,7 @@ pub fn python_dep_matches(dep: &str, target_file: &str, dependent_file: &str) ->
 /// both root-relative paths (`agno/models/message.py`) and src-layout paths
 /// (`src/agno/models/message.py`).
 pub fn dotted_dep_matches(dep: &str, target_file: &str) -> bool {
-    // Only handle dotted absolute imports — exclude relative (`.X`), paths (`/`), Rust (`::`)
+    // Only handle dotted absolute imports. Exclude relative (`.X`), paths (`/`), Rust (`::`).
     if dep.starts_with('.') || dep.contains('/') || dep.contains("::") || !dep.contains('.') {
         return false;
     }
@@ -221,7 +254,7 @@ pub(crate) fn try_resolve_local_dep(
         {
             return Some(found.clone());
         }
-        // Fallback: directory-style JS/TS imports — `./module` should match `module/index.ts`
+        // Fallback: directory-style JS/TS imports. `./module` should match `module/index.ts`
         // when no direct file `module.ts` exists. Direct match takes priority above.
         let dep_dir = source_file.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
         let mut parts: Vec<&str> = if dep_dir.is_empty() {
@@ -284,6 +317,22 @@ pub(crate) fn try_resolve_local_dep(
     None
 }
 
+fn resolved_to_manifest_key(
+    resolved: &Path,
+    original_keys: &HashSet<String>,
+    canonical_to_original: &HashMap<String, String>,
+) -> Option<String> {
+    let resolved_str = resolved.to_str()?;
+    if original_keys.contains(resolved_str) {
+        return Some(resolved_str.to_string());
+    }
+
+    std::fs::canonicalize(resolved)
+        .ok()
+        .and_then(|canonical| canonical.to_str().map(str::to_string))
+        .and_then(|canonical| canonical_to_original.get(&canonical).cloned())
+}
+
 /// Build the reverse dependency index from a fully-loaded manifest.
 ///
 /// Maps each file to the set of files that directly import it. Built once at
@@ -293,17 +342,28 @@ pub(crate) fn try_resolve_local_dep(
 /// - `entry.dependencies`: relative imports resolved via `try_resolve_local_dep` /
 ///   `dep_matches` / `python_dep_matches`
 /// - `entry.imports` (Python dotted style): resolved via `dotted_dep_matches`
-/// - `entry.imports` (JS/TS cross-package bare specifiers): resolved via the
-///   three-layer `CrossPackageResolver` (tsconfig paths + workspace aliases + directory
-///   prefix heuristic)
+/// - workspace imports: resolved by language dispatch. JS/TS uses
+///   `CrossPackageResolver`; Rust uses `RustImportResolver`; Go uses
+///   `GoImportResolver`.
 pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<String>> {
     let mut rev: HashMap<String, Vec<String>> = HashMap::new();
     let exts = builtin_source_extensions();
+    let has_workspace =
+        !manifest.workspace_packages.is_empty() || !manifest.workspace_roots.is_empty();
 
     // Pass 1: relative and non-relative dependencies (unchanged behavior)
     for (source, entry) in &manifest.files {
+        let source_path = Path::new(source.as_str());
+        let rust_workspace_source =
+            has_workspace && is_cargo_workspace_source(source_path, manifest);
         for dep in &entry.dependencies {
-            if dep.starts_with("./") || dep.starts_with("../") {
+            if rust_workspace_source
+                && (dep.starts_with("./") || dep.starts_with("../") || dep.starts_with("crate::"))
+            {
+                // Rust local paths need module semantics. Generic relative
+                // matching can misread `super::foo` as a filesystem `../foo`.
+                continue;
+            } else if dep.starts_with("./") || dep.starts_with("../") {
                 // Relative: try_resolve_local_dep gives the single canonical target
                 if let Some(target) = try_resolve_local_dep(dep, source, manifest, exts) {
                     rev.entry(target).or_default().push(source.clone());
@@ -330,96 +390,14 @@ pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<Str
         }
     }
 
-    // Pass 2b: JS/TS cross-package bare specifiers via three-layer resolver.
-    // Runs in parallel via Rayon; CrossPackageResolver is Send+Sync via Arc<Resolver>.
+    // Pass 2b: language-dispatched workspace specifiers.
+    // JS/TS uses the three-layer resolver. Rust uses Cargo module semantics
+    // for cross-crate and crate-local paths. Go uses longest-prefix module
+    // matching and maps package directories to indexed .go files.
+    // Runs in parallel via Rayon; resolvers are Send+Sync through Arc.
     // Skipped if no workspace config was found (workspace_packages and workspace_roots both empty).
-    if !manifest.workspace_packages.is_empty() || !manifest.workspace_roots.is_empty() {
-        let resolver = CrossPackageResolver::new(&manifest.workspace_packages);
-
-        // Build canonical → original key map. On macOS, /var/... symlinks resolve to
-        // /private/var/..., so the resolver (symlinks=true) returns canonical paths while
-        // manifest keys are the original paths from sidecar file: fields. This map lets us
-        // match resolver output back to the correct original manifest key.
-        let canonical_to_original: std::sync::Arc<HashMap<String, String>> = std::sync::Arc::new(
-            manifest
-                .files
-                .keys()
-                .filter_map(|k| {
-                    let canonical = std::fs::canonicalize(k).ok()?;
-                    Some((canonical.to_str()?.to_string(), k.clone()))
-                })
-                .collect(),
-        );
-
-        // Also keep the original keys set for Layer 3 (which constructs paths from
-        // workspace_roots — also non-canonical — so we can do direct lookup there).
-        let original_keys: std::sync::Arc<HashSet<String>> =
-            std::sync::Arc::new(manifest.files.keys().cloned().collect());
-
-        let cross_package_edges: Vec<(String, String)> = manifest
-            .files
-            .par_iter()
-            .flat_map(|(file_path, entry)| {
-                let resolver = resolver.clone();
-                let canonical_to_original = std::sync::Arc::clone(&canonical_to_original);
-                let original_keys = std::sync::Arc::clone(&original_keys);
-                let importer = Path::new(file_path.as_str());
-
-                entry
-                    .imports
-                    .iter()
-                    .filter_map(|import_str| {
-                        // Skip Python-style dotted imports — already handled in pass 2a
-                        if import_str.contains('.') && !import_str.contains('/') {
-                            return None;
-                        }
-
-                        // Layer 3 produces paths via workspace_roots (non-canonical), so
-                        // it uses original_keys for its manifest guard.
-                        let layer3_result = || {
-                            resolve_by_directory_prefix(
-                                import_str,
-                                &manifest.workspace_roots,
-                                &original_keys,
-                            )
-                        };
-
-                        // Layer 1 + 2: oxc-resolver with tsconfig paths and workspace aliases
-                        if let Some(resolved) = resolver.resolve(importer, import_str) {
-                            // Resolver may return canonical path (symlinks=true) — map back
-                            // to the original manifest key via canonical_to_original.
-                            let original_key = resolved.to_str().and_then(|s| {
-                                if original_keys.contains(s) {
-                                    Some(s.to_string())
-                                } else {
-                                    // Try canonical lookup
-                                    std::fs::canonicalize(&resolved)
-                                        .ok()
-                                        .and_then(|c| c.to_str().map(|s| s.to_string()))
-                                        .and_then(|c| canonical_to_original.get(&c).cloned())
-                                }
-                            });
-                            if let Some(target_key) = original_key {
-                                return Some((target_key, file_path.clone()));
-                            }
-                        }
-
-                        // Layer 3 fallback: directory prefix heuristic
-                        layer3_result().and_then(|path| {
-                            let path_str = path.to_str()?.to_string();
-                            if original_keys.contains(&path_str) {
-                                Some((path_str, file_path.clone()))
-                            } else {
-                                None
-                            }
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-
-        // Merge cross-package edges into reverse index
-        for (target, importer) in cross_package_edges {
+    if has_workspace {
+        for (target, importer) in collect_workspace_edges(manifest) {
             rev.entry(target).or_default().push(importer);
         }
     }
@@ -431,186 +409,242 @@ pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<Str
     rev
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+fn collect_workspace_edges(manifest: &Manifest) -> Vec<(String, String)> {
+    let js_resolver: std::sync::Arc<dyn ImportResolver> = std::sync::Arc::new(
+        CrossPackageResolver::new(manifest.workspace_packages_for(WorkspaceEcosystem::Js)),
+    );
+    let deno_resolver = std::sync::Arc::new(DenoImportResolver::new(
+        &manifest.workspace_packages,
+        &manifest.workspace_roots,
+    ));
+    let rust_resolver: std::sync::Arc<dyn ImportResolver> = std::sync::Arc::new(
+        RustImportResolver::new(manifest.workspace_packages_for(WorkspaceEcosystem::Rust)),
+    );
+    let go_resolver: std::sync::Arc<dyn ImportResolver> = std::sync::Arc::new(
+        GoImportResolver::new(manifest.workspace_packages_for(WorkspaceEcosystem::Go)),
+    );
 
-    fn exts() -> &'static HashSet<String> {
-        builtin_source_extensions()
-    }
+    // Build canonical -> original key map. On macOS, /var/... symlinks resolve to
+    // /private/var/..., so resolver output can differ from manifest keys.
+    let canonical_to_original: HashMap<String, String> = manifest
+        .files
+        .keys()
+        .filter_map(|k| {
+            let canonical = std::fs::canonicalize(k).ok()?;
+            Some((canonical.to_str()?.to_string(), k.clone()))
+        })
+        .collect();
+    let original_keys: HashSet<String> = manifest.files.keys().cloned().collect();
 
-    #[test]
-    fn dep_matches_relative_path() {
-        // dep "./types" from "src/index.ts" resolves to "src/types"
-        assert!(dep_matches(
-            "./types",
-            "src/types.ts",
-            "src/index.ts",
-            exts()
-        ));
-        assert!(dep_matches(
-            "./config",
-            "src/config.ts",
-            "src/index.ts",
-            exts()
-        ));
-        assert!(!dep_matches(
-            "./types",
-            "src/other.ts",
-            "src/index.ts",
-            exts()
-        ));
-    }
-
-    #[test]
-    fn dep_matches_compound_filename_with_dot() {
-        // NestJS convention: files named `foo.exception.ts`, `foo.service.ts` etc.
-        // The dep stored without extension is `../errors/runtime.exception` — the `.exception`
-        // part is the filename segment, not a file extension, and must not be stripped.
-        assert!(dep_matches(
-            "../errors/exceptions/runtime.exception",
-            "packages/core/errors/exceptions/runtime.exception.ts",
-            "packages/core/injector/injector.ts",
-            exts(),
-        ));
-        assert!(dep_matches(
-            "../errors/exceptions/undefined-dependency.exception",
-            "packages/core/errors/exceptions/undefined-dependency.exception.ts",
-            "packages/core/injector/injector.ts",
-            exts(),
-        ));
-        // Regular dep with an actual .js extension should still resolve to .ts
-        assert!(dep_matches(
-            "../utils/crypto.utils.js",
-            "pkg/src/utils/crypto.utils.ts",
-            "pkg/src/services/auth.service.ts",
-            exts(),
-        ));
-    }
-
-    #[test]
-    fn dep_matches_nested_path() {
-        // dep "./utils/helpers" from "src/index.ts" resolves to "src/utils/helpers"
-        assert!(dep_matches(
-            "./utils/helpers",
-            "src/utils/helpers.ts",
-            "src/index.ts",
-            exts(),
-        ));
-        assert!(!dep_matches(
-            "./utils/helpers",
-            "src/utils/other.ts",
-            "src/index.ts",
-            exts(),
-        ));
-    }
-
-    #[test]
-    fn dep_matches_parent_relative() {
-        // dep "../utils/crypto.utils.js" from "pkg/src/services/auth.service.ts"
-        // resolves to "pkg/src/utils/crypto.utils"
-        assert!(dep_matches(
-            "../utils/crypto.utils.js",
-            "pkg/src/utils/crypto.utils.ts",
-            "pkg/src/services/auth.service.ts",
-            exts(),
-        ));
-        assert!(!dep_matches(
-            "../utils/crypto.utils.js",
-            "pkg/src/services/other.ts",
-            "pkg/src/services/auth.service.ts",
-            exts(),
-        ));
-    }
-
-    #[test]
-    fn dep_matches_deep_parent_relative() {
-        // dep "../../../utils/crypto.utils.js" from "pkg/src/tests/unit/auth/test.ts"
-        // resolves to "pkg/src/utils/crypto.utils" (going up 3 dirs from tests/unit/auth)
-        assert!(dep_matches(
-            "../../../utils/crypto.utils.js",
-            "pkg/src/utils/crypto.utils.ts",
-            "pkg/src/tests/unit/auth/test.ts",
-            exts(),
-        ));
-    }
-
-    #[test]
-    fn dep_matches_without_prefix() {
-        assert!(dep_matches("types", "src/types.ts", "src/index.ts", exts()));
-    }
-
-    #[test]
-    fn dep_matches_python_package() {
-        // `./utils` should resolve to `utils/__init__.py` (Python package)
-        assert!(dep_matches(
-            "./utils",
-            "src/utils/__init__.py",
-            "src/service.py",
-            exts(),
-        ));
-        // `../models` should resolve to `models/__init__.py` one level up
-        assert!(dep_matches(
-            "../models",
-            "models/__init__.py",
-            "src/service.py",
-            exts(),
-        ));
-        // Should still match plain module file
-        assert!(dep_matches(
-            "./utils",
-            "src/utils.py",
-            "src/service.py",
-            exts()
-        ));
-        // No false positive: different package
-        assert!(!dep_matches(
-            "./utils",
-            "src/auth/__init__.py",
-            "src/service.py",
-            exts(),
-        ));
-    }
-
-    #[test]
-    fn dep_matches_crate_path() {
-        // Rust crate:: paths resolve via suffix matching
-        assert!(dep_matches(
-            "crate::config",
-            "src/config.rs",
-            "src/main.rs",
-            exts()
-        ));
-        assert!(dep_matches(
-            "crate::parser::builtin",
-            "src/parser/builtin.rs",
-            "src/main.rs",
-            exts(),
-        ));
-        // No false positives
-        assert!(!dep_matches(
-            "crate::config",
-            "src/other.rs",
-            "src/main.rs",
-            exts()
-        ));
-    }
-
-    #[test]
-    fn dep_matches_go_module_path() {
-        // Go domain-qualified module paths resolve via suffix matching
-        assert!(dep_matches(
-            "github.com/user/project/internal/handler",
-            "internal/handler/handler.go",
-            "cmd/main.go",
-            exts(),
-        ));
-        // Stdlib short paths don't match unrelated files
-        assert!(!dep_matches(
-            "fmt",
-            "internal/format/format.go",
-            "cmd/main.go",
-            exts(),
-        ));
-    }
+    manifest
+        .files
+        .par_iter()
+        .flat_map(|(file_path, entry)| {
+            let importer = Path::new(file_path.as_str());
+            if is_js_ts_source_file(importer) {
+                if deno_resolver.is_deno_source(importer) {
+                    deno_workspace_edges(
+                        file_path,
+                        entry,
+                        importer,
+                        deno_resolver.as_ref(),
+                        &original_keys,
+                        &canonical_to_original,
+                    )
+                } else {
+                    js_workspace_edges(
+                        file_path,
+                        entry,
+                        importer,
+                        manifest.workspace_roots_for(WorkspaceEcosystem::Js),
+                        js_resolver.as_ref(),
+                        &original_keys,
+                        &canonical_to_original,
+                    )
+                }
+            } else if is_rust_source_file(importer) {
+                rust_workspace_edges(
+                    file_path,
+                    entry,
+                    importer,
+                    rust_resolver.as_ref(),
+                    &original_keys,
+                    &canonical_to_original,
+                )
+            } else if is_go_source_file(importer) {
+                go_workspace_edges(
+                    file_path,
+                    entry,
+                    importer,
+                    go_resolver.as_ref(),
+                    &original_keys,
+                    &canonical_to_original,
+                )
+            } else {
+                Vec::new()
+            }
+        })
+        .collect()
 }
+
+fn deno_workspace_edges(
+    file_path: &str,
+    entry: &FileEntry,
+    importer: &Path,
+    resolver: &DenoImportResolver,
+    original_keys: &HashSet<String>,
+    canonical_to_original: &HashMap<String, String>,
+) -> Vec<(String, String)> {
+    entry
+        .imports
+        .iter()
+        .filter_map(|import_str| {
+            resolver
+                .resolve(importer, import_str)
+                .and_then(|resolved| {
+                    resolved_to_manifest_key(&resolved, original_keys, canonical_to_original)
+                })
+                .map(|target_key| (target_key, file_path.to_string()))
+        })
+        .collect()
+}
+
+fn js_workspace_edges(
+    file_path: &str,
+    entry: &FileEntry,
+    importer: &Path,
+    workspace_roots: &[std::path::PathBuf],
+    resolver: &dyn ImportResolver,
+    original_keys: &HashSet<String>,
+    canonical_to_original: &HashMap<String, String>,
+) -> Vec<(String, String)> {
+    entry
+        .imports
+        .iter()
+        .filter_map(|import_str| {
+            if let Some(resolved) = resolver.resolve(importer, import_str)
+                && let Some(target_key) =
+                    resolved_to_manifest_key(&resolved, original_keys, canonical_to_original)
+            {
+                return Some((target_key, file_path.to_string()));
+            }
+
+            resolve_by_directory_prefix(import_str, workspace_roots, original_keys).and_then(
+                |path| {
+                    resolved_to_manifest_key(&path, original_keys, canonical_to_original)
+                        .map(|target_key| (target_key, file_path.to_string()))
+                },
+            )
+        })
+        .collect()
+}
+
+fn rust_workspace_edges(
+    file_path: &str,
+    entry: &FileEntry,
+    importer: &Path,
+    resolver: &dyn ImportResolver,
+    original_keys: &HashSet<String>,
+    canonical_to_original: &HashMap<String, String>,
+) -> Vec<(String, String)> {
+    rust_import_specifiers(entry)
+        .into_iter()
+        .filter_map(|specifier| {
+            resolver
+                .resolve(importer, &specifier)
+                .and_then(|resolved| {
+                    resolved_to_manifest_key(&resolved, original_keys, canonical_to_original)
+                })
+                .map(|target_key| (target_key, file_path.to_string()))
+        })
+        .collect()
+}
+
+fn rust_import_specifiers(entry: &FileEntry) -> Vec<String> {
+    let mut specifiers: Vec<String> = entry
+        .dependencies
+        .iter()
+        .filter(|dep| !dep.starts_with("./") && !dep.starts_with("../"))
+        .cloned()
+        .collect();
+    for (path, names) in &entry.named_imports {
+        specifiers.push(path.clone());
+        specifiers.extend(names.iter().map(|name| format!("{path}::{name}")));
+    }
+    specifiers.extend(entry.namespace_imports.clone());
+    specifiers.sort();
+    specifiers.dedup();
+    specifiers
+}
+
+fn go_workspace_edges(
+    file_path: &str,
+    entry: &FileEntry,
+    importer: &Path,
+    resolver: &dyn ImportResolver,
+    original_keys: &HashSet<String>,
+    canonical_to_original: &HashMap<String, String>,
+) -> Vec<(String, String)> {
+    entry
+        .imports
+        .iter()
+        .filter_map(|import_str| resolver.resolve(importer, import_str))
+        .flat_map(|package_dir| {
+            go_package_manifest_keys(&package_dir, original_keys, canonical_to_original)
+                .into_iter()
+                .map(|target_key| (target_key, file_path.to_string()))
+        })
+        .collect()
+}
+
+fn go_package_manifest_keys(
+    package_dir: &Path,
+    original_keys: &HashSet<String>,
+    canonical_to_original: &HashMap<String, String>,
+) -> Vec<String> {
+    let mut keys: Vec<String> = original_keys
+        .iter()
+        .filter(|key| is_go_package_file(key, package_dir))
+        .cloned()
+        .collect();
+
+    if keys.is_empty()
+        && let Ok(canonical_package_dir) = std::fs::canonicalize(package_dir)
+    {
+        keys = canonical_to_original
+            .iter()
+            .filter(|(canonical, _)| is_go_package_file(canonical, &canonical_package_dir))
+            .map(|(_, original)| original.clone())
+            .collect();
+    }
+
+    keys.sort();
+    keys.dedup();
+    keys
+}
+
+fn is_go_package_file(file_path: &str, package_dir: &Path) -> bool {
+    let path = Path::new(file_path);
+    path.parent() == Some(package_dir)
+        && path.extension().and_then(|ext| ext.to_str()) == Some("go")
+        && path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| !name.ends_with("_test.go"))
+}
+
+#[cfg(test)]
+#[path = "dependency_matcher_go_tests.rs"]
+mod go_tests;
+
+#[cfg(test)]
+#[path = "dependency_matcher_deno_tests.rs"]
+mod deno_tests;
+
+#[cfg(test)]
+#[path = "dependency_matcher_review_tests.rs"]
+mod review_tests;
+
+#[cfg(test)]
+#[path = "dependency_matcher_tests.rs"]
+mod tests;

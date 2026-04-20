@@ -1,5 +1,10 @@
 use crate::manifest::{FileEntry, Manifest, builtin_source_extensions, try_resolve_local_dep};
 
+use super::helpers::{
+    direct_upstream_from_reverse_deps, reverse_deps_resolve_specifier, rust_workspace_resolver,
+    workspace_specifier_names_for_source,
+};
+
 /// Compute upstream and downstream dependencies for a file.
 ///
 /// Upstream is split into `local` (resolved to files in the manifest) and
@@ -13,13 +18,22 @@ pub fn dependency_graph<'a>(
     let mut local: Vec<String> = Vec::new();
     let mut external: Vec<String> = Vec::new();
     let exts = builtin_source_extensions();
+    let reverse_upstream = direct_upstream_from_reverse_deps(manifest, file);
+    let rust_resolver = rust_workspace_resolver(manifest, file);
+    let workspace_specifier_names =
+        workspace_specifier_names_for_source(manifest, rust_resolver.as_ref(), file);
 
     for dep in &entry.dependencies {
         if let Some(resolved) = try_resolve_local_dep(dep, file, manifest, exts) {
             if !local.contains(&resolved) {
                 local.push(resolved);
             }
-        } else if !external.contains(dep) {
+        } else if !reverse_deps_resolve_specifier(
+            &workspace_specifier_names,
+            &reverse_upstream,
+            dep,
+        ) && !external.contains(dep)
+        {
             external.push(dep.clone());
         }
     }
@@ -38,8 +52,15 @@ pub fn dependency_graph<'a>(
             }
             continue;
         }
-        if !external.contains(imp) {
+        if !reverse_deps_resolve_specifier(&workspace_specifier_names, &reverse_upstream, imp)
+            && !external.contains(imp)
+        {
             external.push(imp.clone());
+        }
+    }
+    for resolved in reverse_upstream {
+        if !local.contains(&resolved) {
+            local.push(resolved);
         }
     }
     local.sort();

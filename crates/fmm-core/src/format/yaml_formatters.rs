@@ -321,16 +321,6 @@ pub fn format_dependency_graph(
 
     push_inline_list(&mut lines, "imports", &entry.imports);
 
-    // ALP-859: when external imports are present, disclose that they are excluded from
-    // the downstream count so the analyst knows to use fmm_search for full reach.
-    if !external.is_empty() {
-        lines.push("# ℹ Cross-package imports are excluded from the downstream count.".to_string());
-        lines.push(
-            "#   To find all files that import this path, use: fmm_search(imports=\"<path>\")"
-                .to_string(),
-        );
-    }
-
     lines.join("\n")
 }
 

@@ -6,12 +6,27 @@
 //! - Layer 2: Workspace package name aliases (injected into oxc-resolver)
 //! - Layer 3: Directory prefix heuristic (React/moduleDirectories pattern)
 
+pub mod deno;
 pub mod workspace;
 
 use oxc_resolver::{AliasValue, ResolveOptions, Resolver, TsconfigDiscovery};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+pub mod go;
+pub mod rust;
+mod rust_path;
+pub use deno::DenoImportResolver;
+pub use go::GoImportResolver;
+pub use rust::RustImportResolver;
+
+/// Resolve an import specifier from a source file into an indexed file path.
+///
+/// Implementors own one language ecosystem's resolution semantics.
+pub trait ImportResolver: Send + Sync {
+    fn resolve(&self, importer: &Path, specifier: &str) -> Option<PathBuf>;
+}
 
 /// Three-layer cross-package import resolver.
 ///
@@ -86,6 +101,12 @@ impl CrossPackageResolver {
                 None
             }
         }
+    }
+}
+
+impl ImportResolver for CrossPackageResolver {
+    fn resolve(&self, importer: &Path, specifier: &str) -> Option<PathBuf> {
+        CrossPackageResolver::resolve(self, importer, specifier)
     }
 }
 
