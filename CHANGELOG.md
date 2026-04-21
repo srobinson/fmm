@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.6](https://github.com/srobinson/fmm/compare/v0.2.5...v0.2.6) (2026-04-21)
+
+
+### Bug Fixes
+
+* read symbol method addressability ([#131](https://github.com/srobinson/fmm/issues/131)) ([2ddf312](https://github.com/srobinson/fmm/commit/2ddf3127d26a7e22e91ca7e483ce91ca15d04707))
+
 ## [0.2.5](https://github.com/srobinson/fmm/compare/v0.2.4...v0.2.5) (2026-04-20)
 
 
