@@ -4,7 +4,7 @@ use crate::mcp::args::FileOutlineArgs;
 use fmm_core::manifest::Manifest;
 use serde_json::Value;
 
-use super::common::validate_not_directory;
+use super::common::{missing_file_diagnostic, validate_not_directory};
 
 pub(in crate::mcp) fn tool_file_outline(
     manifest: &Manifest,
@@ -16,12 +16,10 @@ pub(in crate::mcp) fn tool_file_outline(
 
     validate_not_directory(&args.file, root)?;
 
-    let entry = manifest.files.get(&args.file).ok_or_else(|| {
-        format!(
-            "File '{}' not found in manifest. Run 'fmm generate' to index the file.",
-            args.file
-        )
-    })?;
+    let entry = manifest
+        .files
+        .get(&args.file)
+        .ok_or_else(|| missing_file_diagnostic(root, &args.file))?;
 
     let include_private = args.include_private.unwrap_or(false);
     let private_by_class = if include_private {

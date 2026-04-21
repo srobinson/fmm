@@ -94,7 +94,7 @@ fn exports_file_missing_file_returns_clear_error() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("File 'src/missing.ts' not found in manifest"),
+        stderr.contains("File not found in workspace: src/missing.ts"),
         "got: {stderr}"
     );
 }

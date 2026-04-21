@@ -81,13 +81,13 @@ serde_json::from_str(r##"{
     },
     {
       "name": "fmm_read_symbol",
-      "description": "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Use `path/to/file:helperFunction` notation to read a non-exported top-level function via on-demand tree-sitter parse. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.",
+      "description": "Read the source code for a specific exported symbol or uniquely named non-exported top-level function. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Use `path/to/file:helperFunction` notation to disambiguate duplicate exports or duplicate non-exported top-level functions. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
-            "description": "Exact export name to read (function, class, struct, type, trait), or ClassName.method for a specific public or private method, or path/to/file:helperFn to read a non-exported top-level function by on-demand parse"
+            "description": "Exact symbol name to read (function, class, struct, type, trait), ClassName.method for a specific public or private method, or path/to/file:helperFn to disambiguate duplicate exports or non-exported top-level functions"
           },
           "truncate": {
             "type": "boolean",
@@ -162,7 +162,7 @@ serde_json::from_str(r##"{
     },
     {
       "name": "fmm_list_files",
-      "description": "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC, export count, and downstream dependent count. Default sort: LOC descending (largest files first). sort_by options: loc (default), name, exports, downstream (blast-radius sort), modified (most recently changed first). Default limit: 200. Use offset to page through large directories.",
+      "description": "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC, export count, and downstream dependent count. Default sort: LOC descending (largest files first). sort_by options: loc (default), name/path, exports, downstream (blast-radius sort), modified (most recently changed first). Default limit: 200. Use offset to page through large directories.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -184,9 +184,10 @@ serde_json::from_str(r##"{
           },
           "sort_by": {
             "type": "string",
-            "description": "Sort field. 'loc' (default): lines of code descending. 'name': alphabetical. 'exports': export count descending. 'downstream': direct dependent count descending (blast-radius sort — highest-risk files first). 'modified': most recently changed files first (date shown in output). 'loc', 'exports', 'downstream', and 'modified' default to descending order.",
+            "description": "Sort field. 'loc' (default): lines of code descending. 'name' or 'path': alphabetical file path. 'exports': export count descending. 'downstream': direct dependent count descending (blast-radius sort, highest-risk files first). 'modified': most recently changed files first (date shown in output). 'loc', 'exports', 'downstream', and 'modified' default to descending order.",
             "enum": [
               "name",
+              "path",
               "loc",
               "exports",
               "downstream",

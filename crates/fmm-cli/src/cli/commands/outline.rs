@@ -2,7 +2,7 @@ use anyhow::Result;
 use colored::Colorize;
 use fmm_core::manifest::OutlineReExport;
 
-use super::{load_manifest, warn_no_sidecars};
+use super::{load_manifest, missing_file_diagnostic, warn_no_sidecars};
 
 #[derive(serde::Serialize)]
 struct OutlineExportJson {
@@ -48,12 +48,10 @@ pub fn outline(file: &str, include_private: bool, json_output: bool) -> Result<(
         );
     }
 
-    let entry = manifest.files.get(file).ok_or_else(|| {
-        anyhow::anyhow!(
-            "File '{}' not found in manifest. Run 'fmm generate' to index it.",
-            file
-        )
-    })?;
+    let entry = manifest
+        .files
+        .get(file)
+        .ok_or_else(|| anyhow::anyhow!(missing_file_diagnostic(&root, file)))?;
 
     let reexports = manifest.reexports_in_file(file);
     let reexport_names: std::collections::HashSet<&str> =

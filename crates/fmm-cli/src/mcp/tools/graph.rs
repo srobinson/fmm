@@ -4,7 +4,7 @@ use crate::mcp::args::DependencyGraphArgs;
 use fmm_core::manifest::Manifest;
 use serde_json::Value;
 
-use super::common::validate_not_directory;
+use super::common::{missing_file_diagnostic, validate_not_directory};
 
 pub(in crate::mcp) fn tool_dependency_graph(
     manifest: &Manifest,
@@ -16,12 +16,10 @@ pub(in crate::mcp) fn tool_dependency_graph(
 
     validate_not_directory(&args.file, root)?;
 
-    let entry = manifest.files.get(&args.file).ok_or_else(|| {
-        format!(
-            "File '{}' not found in manifest. Run 'fmm generate' to index the file.",
-            args.file
-        )
-    })?;
+    let entry = manifest
+        .files
+        .get(&args.file)
+        .ok_or_else(|| missing_file_diagnostic(root, &args.file))?;
 
     let depth = args.depth.unwrap_or(1);
     let filter = args.filter.as_deref().unwrap_or("all");

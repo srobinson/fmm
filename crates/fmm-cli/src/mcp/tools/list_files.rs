@@ -35,13 +35,14 @@ pub(in crate::mcp) fn tool_list_files(
 
     if !matches!(
         sort_by,
-        "name" | "loc" | "exports" | "downstream" | "modified"
+        "name" | "path" | "loc" | "exports" | "downstream" | "modified"
     ) {
         return Err(format!(
-            "Invalid sort_by '{}'. Valid values: name, loc, exports, downstream, modified.",
+            "Invalid sort_by '{}'. Valid values: name, path, loc, exports, downstream, modified.",
             sort_by
         ));
     }
+    let sort_by = if sort_by == "path" { "name" } else { sort_by };
     if let Some(o) = order
         && !matches!(o, "asc" | "desc")
     {

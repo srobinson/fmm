@@ -39,7 +39,8 @@ fn dependency_graph_not_found() {
         "fmm_dependency_graph",
         json!({"file": "src/nonexistent.ts"}),
     );
-    assert!(text.contains("not found"));
+    assert!(text.contains("File not found in workspace: src/nonexistent.ts"));
+    assert!(!text.contains("Run 'fmm generate'"), "got: {text}");
 }
 
 #[test]

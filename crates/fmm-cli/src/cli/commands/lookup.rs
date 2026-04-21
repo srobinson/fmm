@@ -1,7 +1,7 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use colored::Colorize;
 
-use super::{load_manifest, warn_no_sidecars};
+use super::{load_manifest, missing_file_diagnostic, warn_no_sidecars};
 
 #[derive(serde::Serialize)]
 struct LookupExportJson {
@@ -24,7 +24,7 @@ struct LookupJson {
 }
 
 pub fn lookup(symbol: &str, json_output: bool) -> Result<()> {
-    let (_, manifest) = load_manifest()?;
+    let (root, manifest) = load_manifest()?;
 
     if manifest.files.is_empty() {
         warn_no_sidecars();
@@ -48,7 +48,7 @@ pub fn lookup(symbol: &str, json_output: bool) -> Result<()> {
     let entry = manifest
         .files
         .get(&file)
-        .with_context(|| format!("File '{}' not found in manifest", file))?;
+        .ok_or_else(|| anyhow::anyhow!(missing_file_diagnostic(&root, &file)))?;
 
     // Check export_all for additional definitions (collision detection).
     let collision_note = if let Some(all) = manifest.export_all.get(symbol) {

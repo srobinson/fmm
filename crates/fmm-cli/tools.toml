@@ -73,7 +73,7 @@ fmm_search(depends_on: "src/auth.ts")           →  full blast radius (transiti
 
 First tool to reach for in an unknown codebase. Default sort is `loc` (heaviest files first).
 
-**Sort modes:** `loc` (default, heaviest files), `downstream` (most-imported — best before a refactor to see blast radius), `exports` (most exported symbols), `name` (alphabetical), `modified` (recently changed).
+**Sort modes:** `loc` (default, heaviest files), `downstream` (most-imported — best before a refactor to see blast radius), `exports` (most exported symbols), `name`/`path` (alphabetical file path), `modified` (recently changed).
 
 **Pre-refactoring:** use `sort_by: "downstream"` to find the files other files depend on most. Those are the highest-risk targets for changes.
 
@@ -274,15 +274,15 @@ cli_flag        = "--filter"
 
 [tools.fmm_read_symbol]
 cli_name        = "read"
-mcp_description = "Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Use `path/to/file:helperFunction` notation to read a non-exported top-level function via on-demand tree-sitter parse. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line."
-cli_about       = "Read the source code of an exported symbol, a specific method, or a non-exported function.\n\nUse plain name for a top-level export, ClassName.method notation for a specific public/private method, or path/to/file:helperFn notation to read a non-exported top-level function. Truncates at 10KB by default; use --no-truncate for full source."
+mcp_description = "Read the source code for a specific exported symbol or uniquely named non-exported top-level function. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Use `path/to/file:helperFunction` notation to disambiguate duplicate exports or duplicate non-exported top-level functions. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line."
+cli_about       = "Read the source code of an exported symbol, a specific method, or a non-exported function.\n\nUse plain name for a unique top-level symbol, ClassName.method notation for a specific public/private method, or path/to/file:helperFn notation to disambiguate duplicate symbols. Truncates at 10KB by default; use --no-truncate for full source."
 
 [[tools.fmm_read_symbol.params]]
 name            = "name"
 type            = "string"
 required        = true
-mcp_description = "Exact export name to read (function, class, struct, type, trait), or ClassName.method for a specific public or private method, or path/to/file:helperFn to read a non-exported top-level function by on-demand parse"
-cli_help        = "Symbol name, ClassName.method for a specific method, or path/to/file:fn for a non-exported function"
+mcp_description = "Exact symbol name to read (function, class, struct, type, trait), ClassName.method for a specific public or private method, or path/to/file:helperFn to disambiguate duplicate exports or non-exported top-level functions"
+cli_help        = "Symbol name, ClassName.method for a specific method, or path/to/file:fn to disambiguate duplicates"
 cli_flag        = "name"
 
 [[tools.fmm_read_symbol.params]]
@@ -375,8 +375,8 @@ cli_flag        = "--limit"
 
 [tools.fmm_list_files]
 cli_name        = "ls"
-mcp_description = "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC, export count, and downstream dependent count. Default sort: LOC descending (largest files first). sort_by options: loc (default), name, exports, downstream (blast-radius sort), modified (most recently changed first). Default limit: 200. Use offset to page through large directories."
-cli_about       = "List all files indexed by fmm under a directory prefix.\n\nShows file paths with LOC and export count.\n\nSort modes (--sort-by):\n- loc (default): heaviest files first\n- name: alphabetical\n- exports: most exported symbols first\n- downstream: most depended-upon files first (best for pre-refactoring blast radius)\n- modified: most recently changed first\n\nUse --group-by=subdir to collapse into directory buckets.\nUse --filter=source to exclude test files; --filter=tests for test files only."
+mcp_description = "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC, export count, and downstream dependent count. Default sort: LOC descending (largest files first). sort_by options: loc (default), name/path, exports, downstream (blast-radius sort), modified (most recently changed first). Default limit: 200. Use offset to page through large directories."
+cli_about       = "List all files indexed by fmm under a directory prefix.\n\nShows file paths with LOC and export count.\n\nSort modes (--sort-by):\n- loc (default): heaviest files first\n- name/path: alphabetical file path\n- exports: most exported symbols first\n- downstream: most depended-upon files first (best for pre-refactoring blast radius)\n- modified: most recently changed first\n\nUse --group-by=subdir to collapse into directory buckets.\nUse --filter=source to exclude test files; --filter=tests for test files only."
 
 [[tools.fmm_list_files.params]]
 name            = "directory"
@@ -409,9 +409,9 @@ cli_flag        = "--offset"
 [[tools.fmm_list_files.params]]
 name            = "sort_by"
 type            = "string"
-enum            = ["name", "loc", "exports", "downstream", "modified"]
-mcp_description = "Sort field. 'loc' (default): lines of code descending. 'name': alphabetical. 'exports': export count descending. 'downstream': direct dependent count descending (blast-radius sort — highest-risk files first). 'modified': most recently changed files first (date shown in output). 'loc', 'exports', 'downstream', and 'modified' default to descending order."
-cli_help        = "Sort field: loc (default), name, exports, downstream, modified"
+enum            = ["name", "path", "loc", "exports", "downstream", "modified"]
+mcp_description = "Sort field. 'loc' (default): lines of code descending. 'name' or 'path': alphabetical file path. 'exports': export count descending. 'downstream': direct dependent count descending (blast-radius sort, highest-risk files first). 'modified': most recently changed files first (date shown in output). 'loc', 'exports', 'downstream', and 'modified' default to descending order."
+cli_help        = "Sort field: loc (default), name/path, exports, downstream, modified"
 cli_flag        = "--sort-by"
 
 [[tools.fmm_list_files.params]]

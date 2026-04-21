@@ -1,7 +1,7 @@
 use anyhow::Result;
 use colored::Colorize;
 
-use super::{load_manifest, warn_no_sidecars};
+use super::{load_manifest, missing_file_diagnostic, warn_no_sidecars};
 
 #[derive(serde::Serialize)]
 struct DepsJson {
@@ -41,12 +41,10 @@ pub fn deps(file: &str, depth: i32, filter: &str, json_output: bool) -> Result<(
         );
     }
 
-    let entry = manifest.files.get(file).ok_or_else(|| {
-        anyhow::anyhow!(
-            "File '{}' not found in manifest. Run 'fmm generate' to index it.",
-            file
-        )
-    })?;
+    let entry = manifest
+        .files
+        .get(file)
+        .ok_or_else(|| anyhow::anyhow!(missing_file_diagnostic(&root, file)))?;
 
     if json_output {
         if depth == 1 {
