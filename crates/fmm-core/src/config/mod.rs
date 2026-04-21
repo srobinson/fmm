@@ -257,8 +257,58 @@ fn default_languages() -> BTreeSet<String> {
 mod tests {
     use super::*;
     use crate::parser::ParserRegistry;
+    use std::ffi::OsString;
     use std::fs;
+    use std::path::Path;
+    use std::sync::{Mutex, MutexGuard};
     use tempfile::TempDir;
+
+    const FMM_ENV_KEYS: [&str; 3] = ["FMM_MAX_LINES", "FMM_LANGUAGES", "FMM_EXCLUDE"];
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvGuard {
+        _lock: MutexGuard<'static, ()>,
+        saved: Vec<(&'static str, Option<OsString>)>,
+    }
+
+    impl EnvGuard {
+        fn new() -> Self {
+            let lock = ENV_LOCK
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let saved = FMM_ENV_KEYS
+                .iter()
+                .map(|key| (*key, std::env::var_os(key)))
+                .collect();
+
+            for key in FMM_ENV_KEYS {
+                // SAFETY: config tests hold ENV_LOCK while mutating process env.
+                unsafe { std::env::remove_var(key) };
+            }
+
+            Self { _lock: lock, saved }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for key in FMM_ENV_KEYS {
+                // SAFETY: config tests hold ENV_LOCK while mutating process env.
+                unsafe { std::env::remove_var(key) };
+            }
+            for (key, value) in &self.saved {
+                if let Some(value) = value {
+                    // SAFETY: config tests hold ENV_LOCK while mutating process env.
+                    unsafe { std::env::set_var(key, value) };
+                }
+            }
+        }
+    }
+
+    fn load_clean_from_dir(dir: &Path) -> Config {
+        let _env = EnvGuard::new();
+        Config::load_from_dir(dir).unwrap()
+    }
 
     /// Guard: the hardcoded `default_languages()` fallback must stay in sync with
     /// the extensions reported by all registered builtin parsers.
@@ -301,7 +351,7 @@ mod tests {
     #[test]
     fn returns_default_when_no_config_file() {
         let tmp = TempDir::new().unwrap();
-        let config = Config::load_from_dir(tmp.path()).unwrap();
+        let config = load_clean_from_dir(tmp.path());
         assert_eq!(config.languages.len(), 29);
     }
 
@@ -315,7 +365,7 @@ mod tests {
         .unwrap();
 
         // .fmmrc.json is no longer loaded; should return defaults
-        let config = Config::load_from_dir(tmp.path()).unwrap();
+        let config = load_clean_from_dir(tmp.path());
         assert_eq!(config.languages.len(), 29);
     }
 
@@ -324,7 +374,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join(".fmmrc.toml"), "languages = []\n").unwrap();
 
-        let config = Config::load_from_dir(tmp.path()).unwrap();
+        let config = load_clean_from_dir(tmp.path());
         // validate() rejects empty languages; falls back to defaults
         assert_eq!(config.languages.len(), 29);
     }
@@ -338,7 +388,7 @@ mod tests {
         )
         .unwrap();
 
-        let config = Config::load_from_dir(tmp.path()).unwrap();
+        let config = load_clean_from_dir(tmp.path());
         assert_eq!(config.languages.len(), 2);
         assert!(config.languages.contains("xyz"));
     }
@@ -406,7 +456,7 @@ mod tests {
     fn loads_max_lines_from_toml() {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join(".fmmrc.toml"), "max_lines = 50000\n").unwrap();
-        let config = Config::load_from_dir(tmp.path()).unwrap();
+        let config = load_clean_from_dir(tmp.path());
         assert_eq!(config.max_lines, 50_000);
     }
 
@@ -418,7 +468,7 @@ mod tests {
             r#"exclude = ["vendor/**", "benchmarks/fixtures/**"]"#,
         )
         .unwrap();
-        let config = Config::load_from_dir(tmp.path()).unwrap();
+        let config = load_clean_from_dir(tmp.path());
         assert_eq!(config.exclude.len(), 2);
         assert_eq!(config.exclude[0], "vendor/**");
         assert_eq!(config.exclude[1], "benchmarks/fixtures/**");
@@ -432,7 +482,7 @@ mod tests {
         let toml = r#"languages = ["rs", "py"]"#;
         fs::write(tmp.path().join(".fmmrc.toml"), toml).unwrap();
 
-        let config = Config::load_from_dir(tmp.path()).unwrap();
+        let config = load_clean_from_dir(tmp.path());
         assert_eq!(config.languages.len(), 2);
         assert!(config.languages.contains("rs"));
         assert!(config.languages.contains("py"));
@@ -446,7 +496,7 @@ mod tests {
             "languages = [\"rs\"]\nbogus_key = true\n",
         )
         .unwrap();
-        let config = Config::load_from_dir(tmp.path()).unwrap();
+        let config = load_clean_from_dir(tmp.path());
         // deny_unknown_fields causes parse failure; warn-and-fallback returns defaults
         assert_eq!(config.languages.len(), 29);
     }
@@ -455,7 +505,7 @@ mod tests {
     fn malformed_toml_falls_back_to_defaults() {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join(".fmmrc.toml"), "not = toml = at = all %%%").unwrap();
-        let config = Config::load_from_dir(tmp.path()).unwrap();
+        let config = load_clean_from_dir(tmp.path());
         // Malformed TOML warns and returns defaults (fail-open)
         assert_eq!(config.languages.len(), 29);
     }
@@ -465,7 +515,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join(".fmmrc.toml"), "").unwrap();
 
-        let config = Config::load_from_dir(tmp.path()).unwrap();
+        let config = load_clean_from_dir(tmp.path());
         assert_eq!(config.languages.len(), 29);
     }
 
@@ -479,21 +529,22 @@ filename_suffixes = [".myspec.ts"]
 "#;
         fs::write(tmp.path().join(".fmmrc.toml"), toml).unwrap();
 
-        let config = Config::load_from_dir(tmp.path()).unwrap();
+        let config = load_clean_from_dir(tmp.path());
         assert!(config.is_test_file("src/custom_tests/foo.ts"));
         assert!(config.is_test_file("src/bar.myspec.ts"));
         assert!(!config.is_test_file("src/auth.spec.ts"));
         assert!(!config.is_test_file("src/test/foo.ts"));
     }
 
-    // Env var override tests
-    // nextest runs each test in its own process, so env vars are isolated.
+    // Env var override tests mutate process-global state. They must hold
+    // ENV_LOCK so the standard cargo test runner is as reliable as nextest.
 
     #[test]
     fn env_fmm_max_lines_overrides_toml() {
+        let _env = EnvGuard::new();
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join(".fmmrc.toml"), "max_lines = 5000\n").unwrap();
-        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        // SAFETY: EnvGuard serializes config tests and restores process env.
         unsafe { std::env::set_var("FMM_MAX_LINES", "999") };
         let config = Config::load_from_dir(tmp.path()).unwrap();
         assert_eq!(config.max_lines, 999);
@@ -501,8 +552,9 @@ filename_suffixes = [".myspec.ts"]
 
     #[test]
     fn env_fmm_max_lines_overrides_default() {
+        let _env = EnvGuard::new();
         let tmp = TempDir::new().unwrap();
-        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        // SAFETY: EnvGuard serializes config tests and restores process env.
         unsafe { std::env::set_var("FMM_MAX_LINES", "42") };
         let config = Config::load_from_dir(tmp.path()).unwrap();
         assert_eq!(config.max_lines, 42);
@@ -510,9 +562,10 @@ filename_suffixes = [".myspec.ts"]
 
     #[test]
     fn env_fmm_max_lines_invalid_keeps_current() {
+        let _env = EnvGuard::new();
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join(".fmmrc.toml"), "max_lines = 5000\n").unwrap();
-        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        // SAFETY: EnvGuard serializes config tests and restores process env.
         unsafe { std::env::set_var("FMM_MAX_LINES", "not_a_number") };
         let config = Config::load_from_dir(tmp.path()).unwrap();
         // Invalid env var is warned and ignored; TOML value preserved
@@ -521,13 +574,14 @@ filename_suffixes = [".myspec.ts"]
 
     #[test]
     fn env_fmm_languages_overrides_toml() {
+        let _env = EnvGuard::new();
         let tmp = TempDir::new().unwrap();
         fs::write(
             tmp.path().join(".fmmrc.toml"),
             r#"languages = ["rs", "py"]"#,
         )
         .unwrap();
-        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        // SAFETY: EnvGuard serializes config tests and restores process env.
         unsafe { std::env::set_var("FMM_LANGUAGES", "go, java, kt") };
         let config = Config::load_from_dir(tmp.path()).unwrap();
         assert_eq!(config.languages.len(), 3);
@@ -538,8 +592,9 @@ filename_suffixes = [".myspec.ts"]
 
     #[test]
     fn env_fmm_languages_trims_whitespace() {
+        let _env = EnvGuard::new();
         let tmp = TempDir::new().unwrap();
-        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        // SAFETY: EnvGuard serializes config tests and restores process env.
         unsafe { std::env::set_var("FMM_LANGUAGES", "  rs , py  ") };
         let config = Config::load_from_dir(tmp.path()).unwrap();
         assert_eq!(config.languages.len(), 2);
@@ -549,9 +604,10 @@ filename_suffixes = [".myspec.ts"]
 
     #[test]
     fn env_fmm_exclude_overrides_toml() {
+        let _env = EnvGuard::new();
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join(".fmmrc.toml"), r#"exclude = ["vendor/**"]"#).unwrap();
-        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        // SAFETY: EnvGuard serializes config tests and restores process env.
         unsafe { std::env::set_var("FMM_EXCLUDE", "dist/**, build/**") };
         let config = Config::load_from_dir(tmp.path()).unwrap();
         assert_eq!(config.exclude.len(), 2);
@@ -561,9 +617,10 @@ filename_suffixes = [".myspec.ts"]
 
     #[test]
     fn env_vars_applied_without_toml_file() {
+        let _env = EnvGuard::new();
         let tmp = TempDir::new().unwrap();
         // No .fmmrc.toml exists
-        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        // SAFETY: EnvGuard serializes config tests and restores process env.
         unsafe {
             std::env::set_var("FMM_MAX_LINES", "777");
             std::env::set_var("FMM_LANGUAGES", "zig,lua");
@@ -582,7 +639,7 @@ filename_suffixes = [".myspec.ts"]
         let tmp = TempDir::new().unwrap();
         // Only max_lines set; languages, exclude, test_patterns use defaults
         fs::write(tmp.path().join(".fmmrc.toml"), "max_lines = 42\n").unwrap();
-        let config = Config::load_from_dir(tmp.path()).unwrap();
+        let config = load_clean_from_dir(tmp.path());
         assert_eq!(config.max_lines, 42);
         assert_eq!(config.languages.len(), 29); // default
         assert!(config.exclude.is_empty()); // default
@@ -591,6 +648,7 @@ filename_suffixes = [".myspec.ts"]
 
     #[test]
     fn three_layer_precedence() {
+        let _env = EnvGuard::new();
         let tmp = TempDir::new().unwrap();
         // File sets max_lines=5000 and languages=["rs","py"]
         fs::write(
@@ -599,7 +657,7 @@ filename_suffixes = [".myspec.ts"]
         )
         .unwrap();
         // Env overrides max_lines and exclude; languages from file survives
-        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        // SAFETY: EnvGuard serializes config tests and restores process env.
         unsafe {
             std::env::set_var("FMM_MAX_LINES", "123");
             std::env::set_var("FMM_EXCLUDE", "dist/**");
@@ -618,8 +676,9 @@ filename_suffixes = [".myspec.ts"]
 
     #[test]
     fn env_fmm_languages_empty_string_falls_back_to_defaults() {
+        let _env = EnvGuard::new();
         let tmp = TempDir::new().unwrap();
-        // SAFETY: nextest runs each test in its own process; no concurrent mutation.
+        // SAFETY: EnvGuard serializes config tests and restores process env.
         unsafe { std::env::set_var("FMM_LANGUAGES", "") };
         let config = Config::load_from_dir(tmp.path()).unwrap();
         // Empty strings filtered out, leaving empty set; validate() rejects it
@@ -630,7 +689,7 @@ filename_suffixes = [".myspec.ts"]
     fn max_lines_zero_is_valid() {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join(".fmmrc.toml"), "max_lines = 0\n").unwrap();
-        let config = Config::load_from_dir(tmp.path()).unwrap();
+        let config = load_clean_from_dir(tmp.path());
         // 0 means "no limit" per field docs; validate() accepts it
         assert_eq!(config.max_lines, 0);
     }
