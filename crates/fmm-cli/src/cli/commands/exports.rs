@@ -2,7 +2,7 @@ use anyhow::Result;
 use colored::Colorize;
 use fmm_core::manifest::{FileEntry, Manifest};
 
-use super::{load_manifest, warn_no_sidecars};
+use super::{load_manifest, missing_file_diagnostic, warn_no_sidecars};
 
 type ExportMatch = (String, String, Option<[usize; 2]>);
 type ExportMatcher = Box<dyn Fn(&str) -> bool>;
@@ -27,7 +27,7 @@ pub fn exports(
         validate_file_args(pattern, directory)?;
     }
 
-    let (_, manifest) = load_manifest()?;
+    let (root, manifest) = load_manifest()?;
 
     if manifest.files.is_empty() {
         warn_no_sidecars();
@@ -35,7 +35,7 @@ pub fn exports(
     }
 
     if let Some(file_path) = file {
-        print_file_exports(&manifest, file_path, json_output)?;
+        print_file_exports(&root, &manifest, file_path, json_output)?;
     } else if let Some(pat) = pattern {
         print_pattern_exports(&manifest, pat, directory, limit, offset, json_output)?;
     } else {
@@ -55,11 +55,16 @@ fn validate_file_args(pattern: Option<&str>, directory: Option<&str>) -> Result<
     Ok(())
 }
 
-fn print_file_exports(manifest: &Manifest, file_path: &str, json_output: bool) -> Result<()> {
+fn print_file_exports(
+    root: &std::path::Path,
+    manifest: &Manifest,
+    file_path: &str,
+    json_output: bool,
+) -> Result<()> {
     let entry = manifest
         .files
         .get(file_path)
-        .ok_or_else(|| anyhow::anyhow!("File '{}' not found in manifest", file_path))?;
+        .ok_or_else(|| anyhow::anyhow!(missing_file_diagnostic(root, file_path)))?;
 
     if json_output {
         let json = FileExportsJson {

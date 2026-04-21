@@ -184,6 +184,10 @@ fn list_files_sorting_orders_match_contract() {
             json!({"sort_by": "name", "order": "desc"}),
             vec!["src/gamma.ts", "src/beta.ts", "src/alpha.ts"],
         ),
+        (
+            json!({"sort_by": "path"}),
+            vec!["src/alpha.ts", "src/beta.ts", "src/gamma.ts"],
+        ),
     ] {
         assert_order(args, &expected);
     }

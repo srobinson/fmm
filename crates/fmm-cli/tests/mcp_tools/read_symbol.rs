@@ -1,5 +1,6 @@
 use crate::support::{
-    call_tool_expect_error, call_tool_text, setup_large_class_server, setup_mcp_server,
+    call_tool_expect_error, call_tool_text, setup_collision_server, setup_large_class_server,
+    setup_mcp_server,
 };
 use fmm_core::store::FmmStore;
 use serde_json::json;
@@ -28,6 +29,29 @@ fn read_symbol_not_found() {
     assert!(
         !text.contains("Use fmm exports or fmm search"),
         "MCP guidance should not name CLI commands; got: {text}"
+    );
+}
+
+#[test]
+fn read_symbol_duplicate_export_requires_file_qualified_name() {
+    let (_tmp, server) = setup_collision_server();
+    let text = call_tool_expect_error(
+        &server,
+        "fmm_read_symbol",
+        json!({"name": "DispatchConfig"}),
+    );
+
+    assert!(
+        text.contains("Symbol 'DispatchConfig' is ambiguous: 2 indexed exports use this name"),
+        "got: {text}"
+    );
+    assert!(
+        text.contains("fmm_read_symbol(name: \"packages/native/dispatch.ts:DispatchConfig\")"),
+        "got: {text}"
+    );
+    assert!(
+        text.contains("fmm_read_symbol(name: \"packages/renderer/dispatch.ts:DispatchConfig\")"),
+        "got: {text}"
     );
 }
 

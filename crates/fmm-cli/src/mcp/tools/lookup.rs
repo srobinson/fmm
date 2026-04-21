@@ -4,9 +4,11 @@ use crate::mcp::args::LookupExportArgs;
 use fmm_core::manifest::Manifest;
 use serde_json::Value;
 
+use super::common::missing_file_diagnostic;
+
 pub(in crate::mcp) fn tool_lookup_export(
     manifest: &Manifest,
-    _root: &std::path::Path,
+    root: &std::path::Path,
     args: &Value,
 ) -> Result<String, String> {
     let args: LookupExportArgs =
@@ -27,7 +29,7 @@ pub(in crate::mcp) fn tool_lookup_export(
     let entry = manifest
         .files
         .get(&file)
-        .ok_or_else(|| format!("File '{}' not found in manifest", file))?;
+        .ok_or_else(|| missing_file_diagnostic(root, &file))?;
 
     // Check export_all for additional definitions (collision detection).
     let collision_note = if let Some(all) = manifest.export_all.get(&args.name) {

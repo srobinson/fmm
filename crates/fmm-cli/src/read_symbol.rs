@@ -1,4 +1,4 @@
-use fmm_core::manifest::{ExportLines, Manifest};
+use fmm_core::manifest::{ExportLines, ExportLocation, Manifest};
 use std::path::Path;
 
 #[derive(Debug, Clone)]
@@ -19,6 +19,12 @@ pub(crate) enum ReadSymbolContent {
 pub(crate) struct ReadMethodHint {
     pub(crate) name: String,
     pub(crate) lines: ExportLines,
+}
+
+#[derive(Debug, Clone)]
+struct SymbolLocation {
+    file: String,
+    lines: Option<ExportLines>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -89,6 +95,37 @@ impl ReadSymbolGuidance {
                 name
             ),
         }
+    }
+
+    fn ambiguous_export(self, name: &str, locations: &[SymbolLocation]) -> String {
+        let hint = self.file_qualified_hints(locations, name);
+        format!(
+            "Symbol '{}' is ambiguous: {} indexed exports use this name. Use file-qualified read syntax:\n{}",
+            name,
+            locations.len(),
+            hint
+        )
+    }
+
+    fn ambiguous_top_level_function(self, name: &str, locations: &[SymbolLocation]) -> String {
+        let hint = self.file_qualified_hints(locations, name);
+        format!(
+            "Symbol '{}' is ambiguous: {} non-exported top-level declarations use this name. Use file-qualified read syntax:\n{}",
+            name,
+            locations.len(),
+            hint
+        )
+    }
+
+    fn file_qualified_hints(self, locations: &[SymbolLocation], name: &str) -> String {
+        locations
+            .iter()
+            .map(|location| match self {
+                Self::Cli => format!("  fmm read {}:{}", location.file, name),
+                Self::Mcp => format!("  fmm_read_symbol(name: \"{}:{}\")", location.file, name),
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 
@@ -191,7 +228,7 @@ fn resolve_symbol_location(
     } else if name.contains('.') {
         resolve_dotted_notation(manifest, root, name, guidance)
     } else {
-        resolve_export(manifest, name, guidance)
+        resolve_bare_symbol(manifest, root, name, guidance)
     }
 }
 
@@ -280,6 +317,116 @@ fn find_export_in_file(manifest: &Manifest, file: &str, symbol: &str) -> Option<
     let entry = manifest.files.get(file)?;
     let index = entry.exports.iter().position(|export| export == symbol)?;
     entry.export_lines.as_ref()?.get(index).cloned()
+}
+
+fn resolve_bare_symbol(
+    manifest: &Manifest,
+    root: &Path,
+    name: &str,
+    guidance: ReadSymbolGuidance,
+) -> Result<(String, Option<ExportLines>), String> {
+    let export_locations = concrete_export_locations(manifest, name);
+    match export_locations.len() {
+        0 => {}
+        1 => {
+            let location = export_locations.into_iter().next().expect("length checked");
+            return Ok((location.file, location.lines));
+        }
+        _ => return Err(guidance.ambiguous_export(name, &export_locations)),
+    }
+
+    if manifest.export_locations.contains_key(name) {
+        return resolve_export(manifest, name, guidance);
+    }
+
+    let top_level_locations = non_exported_top_level_locations(manifest, root, name);
+    match top_level_locations.len() {
+        0 => Err(guidance.missing_export(name)),
+        1 => {
+            let location = top_level_locations
+                .into_iter()
+                .next()
+                .expect("length checked");
+            Ok((location.file, location.lines))
+        }
+        _ => Err(guidance.ambiguous_top_level_function(name, &top_level_locations)),
+    }
+}
+
+fn concrete_export_locations(manifest: &Manifest, name: &str) -> Vec<SymbolLocation> {
+    let Some(locations) = manifest.export_all.get(name) else {
+        return Vec::new();
+    };
+
+    let mut concrete: Vec<SymbolLocation> = locations
+        .iter()
+        .filter(|location| !is_reexport_location(manifest, name, &location.file))
+        .map(symbol_location_from_export)
+        .collect();
+
+    if concrete.is_empty() {
+        concrete = locations.iter().map(symbol_location_from_export).collect();
+    }
+
+    sort_and_dedup_locations(concrete)
+}
+
+fn symbol_location_from_export(location: &ExportLocation) -> SymbolLocation {
+    SymbolLocation {
+        file: location.file.clone(),
+        lines: location.lines.clone(),
+    }
+}
+
+fn is_reexport_location(manifest: &Manifest, name: &str, file: &str) -> bool {
+    if crate::mcp::tools::is_reexport_file(file) {
+        return true;
+    }
+
+    manifest
+        .files
+        .get(file)
+        .map(|entry| {
+            entry
+                .named_imports
+                .values()
+                .any(|names| names.iter().any(|candidate| candidate == name))
+        })
+        .unwrap_or(false)
+}
+
+fn non_exported_top_level_locations(
+    manifest: &Manifest,
+    root: &Path,
+    name: &str,
+) -> Vec<SymbolLocation> {
+    let mut matches = Vec::new();
+    for (file, entry) in &manifest.files {
+        let export_names: Vec<&str> = entry.exports.iter().map(|export| export.as_str()).collect();
+        let top_level_fns = fmm_core::manifest::private_members::extract_top_level_functions(
+            root,
+            file,
+            &export_names,
+        );
+        for function in top_level_fns {
+            if function.name == name {
+                matches.push(SymbolLocation {
+                    file: file.clone(),
+                    lines: Some(ExportLines {
+                        start: function.start,
+                        end: function.end,
+                    }),
+                });
+            }
+        }
+    }
+    sort_and_dedup_locations(matches)
+}
+
+fn sort_and_dedup_locations(mut locations: Vec<SymbolLocation>) -> Vec<SymbolLocation> {
+    locations.sort_by(|a, b| a.file.cmp(&b.file));
+    locations.dedup_by(|a, b| a.file == b.file);
+    locations
 }
 
 fn resolve_dotted_notation(

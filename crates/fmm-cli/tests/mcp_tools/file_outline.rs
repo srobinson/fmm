@@ -1,4 +1,4 @@
-use crate::support::{call_tool_expect_error, call_tool_text, setup_mcp_server};
+use crate::support::{call_tool_expect_error, call_tool_text, setup_mcp_server, write_file};
 use serde_json::json;
 
 #[test]
@@ -26,7 +26,21 @@ fn file_outline_not_found() {
         "fmm_file_outline",
         json!({"file": "src/nonexistent.ts"}),
     );
-    assert!(text.contains("not found"));
+    assert!(text.contains("File not found in workspace: src/nonexistent.ts"));
+    assert!(!text.contains("Run 'fmm generate'"), "got: {text}");
+}
+
+#[test]
+fn file_outline_exists_but_missing_from_index() {
+    let (tmp, server) = setup_mcp_server();
+    write_file(
+        tmp.path(),
+        "src/new.ts",
+        "export function createNew() {\n  return {};\n}\n",
+    );
+    let text = call_tool_expect_error(&server, "fmm_file_outline", json!({"file": "src/new.ts"}));
+    assert!(text.contains("File exists but is missing from the fmm index: src/new.ts"));
+    assert!(text.contains("Run 'fmm generate'."), "got: {text}");
 }
 
 #[test]

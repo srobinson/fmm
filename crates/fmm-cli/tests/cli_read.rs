@@ -27,6 +27,35 @@ fn setup_read_project() -> TempDir {
         "src/service.ts",
         "export class SecretService {\n  private computeSecret(seed: string): string {\n    return seed.toUpperCase();\n  }\n\n  public run(seed: string): string {\n    return this.computeSecret(seed);\n  }\n}\n\nexport function createSecretService(): SecretService {\n  return new SecretService();\n}\n",
     );
+    write_file(
+        root,
+        "src/internal.ts",
+        "function normalizeSeed(seed: string): string {\n  return seed.trim();\n}\n",
+    );
+
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
+    tmp
+}
+
+fn setup_duplicate_symbol_project() -> TempDir {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    write_file(
+        root,
+        "src/capabilities.rs",
+        "pub fn dispatch() -> &'static str {\n    \"capabilities\"\n}\n\nfn helper() -> &'static str {\n    dispatch()\n}\n",
+    );
+    write_file(
+        root,
+        "src/cli.rs",
+        "pub fn dispatch() -> &'static str {\n    \"cli\"\n}\n\nfn helper() -> &'static str {\n    dispatch()\n}\n",
+    );
+    write_file(
+        root,
+        "src/lib.rs",
+        "pub mod capabilities;\npub mod cli;\n\npub use cli::dispatch;\n",
+    );
 
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
     tmp
@@ -168,6 +197,101 @@ fn read_public_symbol_still_works_with_line_numbers() {
     assert!(
         stdout.contains("12    return new SecretService()"),
         "got: {stdout}"
+    );
+}
+
+#[test]
+fn read_unique_non_exported_top_level_symbol_by_bare_name() {
+    let tmp = setup_read_project();
+    let output = run_fmm(tmp.path(), &["read", "normalizeSeed", "--line-numbers"]);
+
+    assert!(
+        output.status.success(),
+        "fmm read failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("symbol: normalizeSeed"), "got: {stdout}");
+    assert!(stdout.contains("file: src/internal.ts"), "got: {stdout}");
+    assert!(
+        stdout.contains("1  function normalizeSeed"),
+        "got: {stdout}"
+    );
+    assert!(stdout.contains("2    return seed.trim()"), "got: {stdout}");
+}
+
+#[test]
+fn read_duplicate_export_requires_file_qualified_symbol() {
+    let tmp = setup_duplicate_symbol_project();
+    let output = run_fmm(tmp.path(), &["read", "dispatch"]);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        stderr.contains("Symbol 'dispatch' is ambiguous: 2 indexed exports use this name"),
+        "got: {stderr}"
+    );
+    assert!(
+        stderr.contains("fmm read src/capabilities.rs:dispatch"),
+        "got: {stderr}"
+    );
+    assert!(
+        stderr.contains("fmm read src/cli.rs:dispatch"),
+        "got: {stderr}"
+    );
+    assert!(
+        !stderr.contains("fmm read src/lib.rs:dispatch"),
+        "reexports should not appear when concrete definitions exist; got: {stderr}"
+    );
+}
+
+#[test]
+fn read_file_qualified_export_disambiguates_duplicate() {
+    let tmp = setup_duplicate_symbol_project();
+    let output = run_fmm(
+        tmp.path(),
+        &["read", "src/capabilities.rs:dispatch", "--line-numbers"],
+    );
+
+    assert!(
+        output.status.success(),
+        "fmm read failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(
+        stdout.contains("symbol: 'src/capabilities.rs:dispatch'"),
+        "got: {stdout}"
+    );
+    assert!(stdout.contains("1  pub fn dispatch"), "got: {stdout}");
+    assert!(stdout.contains("\"capabilities\""), "got: {stdout}");
+    assert!(!stdout.contains("\"cli\""), "got: {stdout}");
+}
+
+#[test]
+fn read_duplicate_non_exported_top_level_symbol_requires_file_qualified_symbol() {
+    let tmp = setup_duplicate_symbol_project();
+    let output = run_fmm(tmp.path(), &["read", "helper"]);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        stderr.contains(
+            "Symbol 'helper' is ambiguous: 2 non-exported top-level declarations use this name"
+        ),
+        "got: {stderr}"
+    );
+    assert!(
+        stderr.contains("fmm read src/capabilities.rs:helper"),
+        "got: {stderr}"
+    );
+    assert!(
+        stderr.contains("fmm read src/cli.rs:helper"),
+        "got: {stderr}"
     );
 }
 

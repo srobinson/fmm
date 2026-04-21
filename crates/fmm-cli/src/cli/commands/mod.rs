@@ -25,6 +25,14 @@ fn load_manifest() -> Result<(std::path::PathBuf, Manifest)> {
     Ok((root, manifest))
 }
 
+fn missing_file_diagnostic(root: &std::path::Path, file: &str) -> String {
+    if root.join(file).exists() {
+        format!("File exists but is missing from the fmm index: {file}. Run 'fmm generate'.")
+    } else {
+        format!("File not found in workspace: {file}")
+    }
+}
+
 fn warn_no_sidecars() {
     println!(
         "{} No fmm index found. Run {} first.",

@@ -101,7 +101,7 @@ fmm_search(depends_on: "src/auth.ts")           →  full blast radius (transiti
 
 First tool to reach for in an unknown codebase. Default sort is `loc` (heaviest files first).
 
-**Sort modes:** `loc` (default, heaviest files), `downstream` (most-imported — best before a refactor to see blast radius), `exports` (most exported symbols), `name` (alphabetical), `modified` (recently changed).
+**Sort modes:** `loc` (default, heaviest files), `downstream` (most-imported — best before a refactor to see blast radius), `exports` (most exported symbols), `name`/`path` (alphabetical file path), `modified` (recently changed).
 
 **Pre-refactoring:** use `sort_by: "downstream"` to find the files other files depend on most. Those are the highest-risk targets for changes.
 
@@ -254,11 +254,11 @@ Get a file's dependency graph: upstream dependencies (what it imports) and downs
 
 ### `fmm_read_symbol`
 
-Read the source code for a specific exported symbol. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: "Injector.loadInstance")`. Use `path/to/file:helperFunction` notation to read a non-exported top-level function via on-demand tree-sitter parse. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.
+Read the source code for a specific exported symbol or uniquely named non-exported top-level function. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: "Injector.loadInstance")`. Use `path/to/file:helperFunction` notation to disambiguate duplicate exports or duplicate non-exported top-level functions. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | string | yes | Exact export name to read (function, class, struct, type, trait), or ClassName.method for a specific public or privat... |
+| `name` | string | yes | Exact symbol name to read (function, class, struct, type, trait), ClassName.method for a specific public or private m... |
 | `truncate` | boolean | no | Whether to apply the 10KB response cap (default: true). Set to false to return the full source for large symbols that... |
 | `line_numbers` | boolean | no | When true, prepend absolute line numbers (right-aligned) to each source line. Useful when referencing specific lines ... |
 
@@ -287,7 +287,7 @@ Universal codebase search. Use 'term' for smart search across codebase-defined e
 
 ### `fmm_list_files`
 
-List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC, export count, and downstream dependent count. Default sort: LOC descending (largest files first). sort_by options: loc (default), name, exports, downstream (blast-radius sort), modified (most recently changed first). Default limit: 200. Use offset to page through large directories.
+List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC, export count, and downstream dependent count. Default sort: LOC descending (largest files first). sort_by options: loc (default), name/path, exports, downstream (blast-radius sort), modified (most recently changed first). Default limit: 200. Use offset to page through large directories.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -295,7 +295,7 @@ List all indexed files under a directory prefix. The first tool to reach for whe
 | `pattern` | string | no | Glob pattern to filter by filename within the directory (e.g. '*.py', '*.rs', 'test_*'). Supports * wildcard. |
 | `limit` | integer | no | Maximum number of files to return (default: 200). Increase for broader listings. |
 | `offset` | integer | no | Number of files to skip before returning results (default: 0). Use for pagination: offset=200 returns files 201–400. |
-| `sort_by` | enum: name \| loc \| exports \| downstream \| modified | no | Sort field. 'loc' (default): lines of code descending. 'name': alphabetical. 'exports': export count descending. 'dow... |
+| `sort_by` | enum: name \| path \| loc \| exports \| downstream \| modified | no | Sort field. 'loc' (default): lines of code descending. 'name' or 'path': alphabetical file path. 'exports': export co... |
 | `order` | enum: asc \| desc | no | Sort order. Defaults: 'name' → asc, 'loc'/'exports'/'downstream' → desc. Explicit 'asc'/'desc' overrides the defa... |
 | `group_by` | enum: subdir | no | Collapse files into directory buckets. 'subdir': group by immediate subdirectory, showing file count and total LOC pe... |
 | `filter` | enum: all \| source \| tests | no | File type filter. 'all' (default): no filtering. 'source': exclude test files. 'tests': return only test files. Detec... |

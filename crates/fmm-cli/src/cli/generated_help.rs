@@ -29,9 +29,9 @@ pub const DEPS_DEPTH_HELP: &str = "Traversal depth (1 = direct deps only, -1 = f
 pub const DEPS_FILTER_HELP: &str = "Filter upstream/downstream by file type: all (default), source (exclude tests), tests (only tests)";
 
 #[rustfmt::skip]
-pub const READ_ABOUT: &str = "Read the source code of an exported symbol, a specific method, or a non-exported function.\n\nUse plain name for a top-level export, ClassName.method notation for a specific public/private method, or path/to/file:helperFn notation to read a non-exported top-level function. Truncates at 10KB by default; use --no-truncate for full source.";
+pub const READ_ABOUT: &str = "Read the source code of an exported symbol, a specific method, or a non-exported function.\n\nUse plain name for a unique top-level symbol, ClassName.method notation for a specific public/private method, or path/to/file:helperFn notation to disambiguate duplicate symbols. Truncates at 10KB by default; use --no-truncate for full source.";
 #[rustfmt::skip]
-pub const READ_NAME_HELP: &str = "Symbol name, ClassName.method for a specific method, or path/to/file:fn for a non-exported function";
+pub const READ_NAME_HELP: &str = "Symbol name, ClassName.method for a specific method, or path/to/file:fn to disambiguate duplicates";
 #[rustfmt::skip]
 pub const READ_TRUNCATE_HELP: &str = "Return full source, bypassing the 10KB truncation cap";
 #[rustfmt::skip]
@@ -62,7 +62,7 @@ pub const SEARCH_MAX_LOC_HELP: &str = "Maximum lines of code";
 pub const SEARCH_LIMIT_HELP: &str = "Maximum number of fuzzy export results (default: 50)";
 
 #[rustfmt::skip]
-pub const LS_ABOUT: &str = "List all files indexed by fmm under a directory prefix.\n\nShows file paths with LOC and export count.\n\nSort modes (--sort-by):\n- loc (default): heaviest files first\n- name: alphabetical\n- exports: most exported symbols first\n- downstream: most depended-upon files first (best for pre-refactoring blast radius)\n- modified: most recently changed first\n\nUse --group-by=subdir to collapse into directory buckets.\nUse --filter=source to exclude test files; --filter=tests for test files only.";
+pub const LS_ABOUT: &str = "List all files indexed by fmm under a directory prefix.\n\nShows file paths with LOC and export count.\n\nSort modes (--sort-by):\n- loc (default): heaviest files first\n- name/path: alphabetical file path\n- exports: most exported symbols first\n- downstream: most depended-upon files first (best for pre-refactoring blast radius)\n- modified: most recently changed first\n\nUse --group-by=subdir to collapse into directory buckets.\nUse --filter=source to exclude test files; --filter=tests for test files only.";
 #[rustfmt::skip]
 pub const LS_DIRECTORY_HELP: &str = "Directory prefix to filter (e.g. src/, packages/core/)";
 #[rustfmt::skip]
@@ -72,7 +72,7 @@ pub const LS_LIMIT_HELP: &str = "Maximum number of files to return (default: 200
 #[rustfmt::skip]
 pub const LS_OFFSET_HELP: &str = "Number of files to skip (default: 0) — use for pagination";
 #[rustfmt::skip]
-pub const LS_SORT_BY_HELP: &str = "Sort field: loc (default), name, exports, downstream, modified";
+pub const LS_SORT_BY_HELP: &str = "Sort field: loc (default), name/path, exports, downstream, modified";
 #[rustfmt::skip]
 pub const LS_ORDER_HELP: &str = "Sort order: asc or desc (default depends on sort-by)";
 #[rustfmt::skip]

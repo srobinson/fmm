@@ -97,6 +97,14 @@ pub(in crate::mcp) fn validate_not_directory(
     Ok(())
 }
 
+pub(in crate::mcp) fn missing_file_diagnostic(root: &std::path::Path, file: &str) -> String {
+    if root.join(file).exists() {
+        format!("File exists but is missing from the fmm index: {file}. Run 'fmm generate'.")
+    } else {
+        format!("File not found in workspace: {file}")
+    }
+}
+
 /// Compute the possible import path specifiers that a file at `candidate_path` would use
 /// when importing from `source_file`. Both paths are manifest-relative (e.g.
 /// `packages/react-reconciler/src/ReactFiberHooks.js`).

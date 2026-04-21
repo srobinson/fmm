@@ -424,7 +424,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm read Cli --json</bold>                     <dim># JSON output</dim>"#),
     )]
     Read {
-        /// Symbol name (or ClassName.method for a specific public/private method)
+        /// Symbol name, ClassName.method, or path/to/file:symbol to disambiguate
         #[arg(value_name = "SYMBOL")]
         symbol: String,
 
@@ -505,6 +505,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm ls --sort-by loc</bold>                   <dim># Heaviest files first</dim>
   <dim>$</dim> <bold>fmm ls --sort-by exports</bold>               <dim># Most exports first</dim>
   <dim>$</dim> <bold>fmm ls --sort-by name</bold>                  <dim># Alphabetical</dim>
+  <dim>$</dim> <bold>fmm ls --sort-by path</bold>                  <dim># Alias for alphabetical path order</dim>
   <dim>$</dim> <bold>fmm ls --sort-by modified</bold>              <dim># Most recently changed first</dim>
   <dim>$</dim> <bold>fmm ls --group-by subdir</bold>               <dim># Directory rollup (file count + LOC)</dim>
   <dim>$</dim> <bold>fmm ls --filter source</bold>                 <dim># Source files only (no tests)</dim>
@@ -521,8 +522,8 @@ pub enum Commands {
         #[arg(long)]
         pattern: Option<String>,
 
-        /// Sort field: loc (default), name, exports, downstream, modified
-        #[arg(long = "sort-by", default_value = "loc", value_parser = ["name", "loc", "exports", "downstream", "modified"])]
+        /// Sort field: loc (default), name/path, exports, downstream, modified
+        #[arg(long = "sort-by", default_value = "loc", value_parser = ["name", "path", "loc", "exports", "downstream", "modified"])]
         sort_by: String,
 
         /// Sort order: asc or desc (default depends on sort-by)

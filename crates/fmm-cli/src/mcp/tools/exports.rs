@@ -4,9 +4,11 @@ use crate::mcp::args::ListExportsArgs;
 use fmm_core::manifest::Manifest;
 use serde_json::Value;
 
+use super::common::missing_file_diagnostic;
+
 pub(in crate::mcp) fn tool_list_exports(
     manifest: &Manifest,
-    _root: &std::path::Path,
+    root: &std::path::Path,
     args: &Value,
 ) -> Result<String, String> {
     const DEFAULT_LIMIT: usize = 200;
@@ -22,7 +24,7 @@ pub(in crate::mcp) fn tool_list_exports(
         let entry = manifest
             .files
             .get(file_path)
-            .ok_or_else(|| format!("File '{}' not found in manifest", file_path))?;
+            .ok_or_else(|| missing_file_diagnostic(root, file_path))?;
         Ok(fmm_core::format::format_list_exports_file(file_path, entry))
     } else if let Some(ref pat) = args.pattern {
         // Auto-detect regex: if the pattern contains any metacharacter, compile
