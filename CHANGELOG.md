@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.7](https://github.com/srobinson/fmm/compare/v0.2.6...v0.2.7) (2026-04-21)
+
+
+### Bug Fixes
+
+* fmm navigation UX diagnostics ([#133](https://github.com/srobinson/fmm/issues/133)) ([51d87c6](https://github.com/srobinson/fmm/commit/51d87c69d75b0bbff56bded068fbee857b3f06d5))
+
 ## [0.2.6](https://github.com/srobinson/fmm/compare/v0.2.5...v0.2.6) (2026-04-21)
 
 
