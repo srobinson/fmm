@@ -4,7 +4,7 @@ use crate::manifest::Manifest;
 
 use super::path::strip_source_ext;
 
-pub fn match_path_dependency(
+pub(super) fn match_path_dependency(
     dep: &str,
     target_file: &str,
     dependent_file: &str,
@@ -99,7 +99,7 @@ fn resolve_python_relative_path(dep: &str, source_file: &str) -> Option<String> 
     Some(parts.join("/"))
 }
 
-pub fn match_python_relative_dependency(
+pub(super) fn match_python_relative_dependency(
     dep: &str,
     target_file: &str,
     dependent_file: &str,
@@ -118,7 +118,7 @@ pub fn match_python_relative_dependency(
     }
 }
 
-pub fn match_python_dotted_dependency(dep: &str, target_file: &str) -> bool {
+pub(super) fn match_python_dotted_dependency(dep: &str, target_file: &str) -> bool {
     if dep.starts_with('.') || dep.contains('/') || dep.contains("::") || !dep.contains('.') {
         return false;
     }
@@ -138,7 +138,7 @@ pub fn match_python_dotted_dependency(dep: &str, target_file: &str) -> bool {
 ///
 /// `known_extensions` is the set of recognised source file extensions without
 /// the leading dot, typically from `ParserRegistry::source_extensions()`.
-pub fn try_resolve_local_dep(
+pub(crate) fn try_resolve_local_dep(
     dep: &str,
     source_file: &str,
     manifest: &Manifest,

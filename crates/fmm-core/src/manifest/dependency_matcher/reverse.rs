@@ -20,7 +20,7 @@ use super::{dep_matches, dotted_dep_matches, python_dep_matches};
 /// - workspace imports: resolved by language dispatch. JS/TS uses
 ///   `CrossPackageResolver`; Rust uses `RustImportResolver`; Go uses
 ///   `GoImportResolver`.
-pub fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<String>> {
+pub(crate) fn build_reverse_deps(manifest: &Manifest) -> HashMap<String, Vec<String>> {
     let mut rev: HashMap<String, Vec<String>> = HashMap::new();
     let exts = builtin_source_extensions();
     let has_workspace =

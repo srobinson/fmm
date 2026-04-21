@@ -7,7 +7,7 @@ mod workspace;
 
 pub(crate) use local::try_resolve_local_dep;
 pub(crate) use path::{builtin_source_extensions, strip_source_ext};
-pub(crate) use reverse::build_reverse_deps;
+pub(super) use reverse::build_reverse_deps;
 
 #[cfg(test)]
 use super::Manifest;

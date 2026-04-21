@@ -12,7 +12,7 @@ use crate::resolver::{
 
 use super::path::{is_go_source_file, is_js_ts_source_file, is_rust_source_file};
 
-pub fn collect_workspace_edges(manifest: &Manifest) -> Vec<(String, String)> {
+pub(super) fn collect_workspace_edges(manifest: &Manifest) -> Vec<(String, String)> {
     let js_resolver: Arc<dyn ImportResolver> = Arc::new(CrossPackageResolver::new(
         manifest.workspace_packages_for(WorkspaceEcosystem::Js),
     ));

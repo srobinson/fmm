@@ -327,20 +327,38 @@ fn rs_top_level_private_fn_extracted() {
 }
 
 #[test]
-fn rs_top_level_pub_crate_excluded() {
+fn rs_top_level_restricted_visibility_extracted() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let src = "pub(crate) fn semi_public() {}\nfn private() {}\n";
+    let src = concat!(
+        "pub fn exported() {}\n",
+        "pub(crate) fn crate_visible() {}\n",
+        "pub(super) fn parent_visible() {}\n",
+        "pub(in crate::manifest) fn scoped_visible() {}\n",
+        "fn private() {}\n",
+    );
     std::fs::write(tmp.path().join("lib.rs"), src).unwrap();
 
-    let result = extract_top_level_functions(tmp.path(), "lib.rs", &[]);
+    let result = extract_top_level_functions(tmp.path(), "lib.rs", &["exported"]);
     let names: Vec<&str> = result.iter().map(|f| f.name.as_str()).collect();
+    assert!(
+        names.contains(&"crate_visible"),
+        "pub(crate) should be extracted: {names:?}"
+    );
+    assert!(
+        names.contains(&"parent_visible"),
+        "pub(super) should be extracted: {names:?}"
+    );
+    assert!(
+        names.contains(&"scoped_visible"),
+        "pub(in path) should be extracted: {names:?}"
+    );
     assert!(
         names.contains(&"private"),
         "private should be extracted: {names:?}"
     );
     assert!(
-        !names.contains(&"semi_public"),
-        "pub(crate) should not be extracted: {names:?}"
+        !names.contains(&"exported"),
+        "plain pub should be excluded: {names:?}"
     );
 }
 
@@ -368,6 +386,47 @@ impl Parser {
     assert!(
         !names.contains(&"parse"),
         "pub parse should not appear: {names:?}"
+    );
+    assert!(members.iter().all(|m| m.is_method));
+}
+
+#[test]
+fn rs_impl_restricted_visibility_methods_extracted() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let src = r#"
+pub struct Parser {}
+
+impl Parser {
+    pub fn parse(&self) {}
+    pub(crate) fn crate_visible(&self) {}
+    pub(super) fn parent_visible(&self) {}
+    pub(in crate::manifest) fn scoped_visible(&self) {}
+    fn helper(&self) {}
+}
+"#;
+    std::fs::write(tmp.path().join("lib.rs"), src).unwrap();
+
+    let result = extract_private_members(tmp.path(), "lib.rs", &["Parser"]);
+    let members = result
+        .get("Parser")
+        .expect("Parser should have non-exported members");
+    let names: Vec<&str> = members.iter().map(|m| m.name.as_str()).collect();
+    assert!(
+        names.contains(&"crate_visible"),
+        "pub(crate) method should be extracted: {names:?}"
+    );
+    assert!(
+        names.contains(&"parent_visible"),
+        "pub(super) method should be extracted: {names:?}"
+    );
+    assert!(
+        names.contains(&"scoped_visible"),
+        "pub(in path) method should be extracted: {names:?}"
+    );
+    assert!(names.contains(&"helper"), "helper missing: {names:?}");
+    assert!(
+        !names.contains(&"parse"),
+        "plain pub method should be excluded: {names:?}"
     );
     assert!(members.iter().all(|m| m.is_method));
 }
@@ -420,6 +479,32 @@ fn rs_find_top_level_function_range() {
     let (start, end) = range.unwrap();
     assert_eq!(start, 1, "should start on line 1");
     assert_eq!(end, 3, "should end on line 3");
+}
+
+#[test]
+fn rs_find_restricted_top_level_function_range() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let src = "pub(crate) fn helper() {\n    // body\n}\n";
+    std::fs::write(tmp.path().join("lib.rs"), src).unwrap();
+
+    let range = find_top_level_function_range(tmp.path(), "lib.rs", "helper");
+    assert!(range.is_some(), "should find pub(crate) helper range");
+    let (start, end) = range.unwrap();
+    assert_eq!(start, 1, "should start on line 1");
+    assert_eq!(end, 3, "should end on line 3");
+}
+
+#[test]
+fn rs_find_restricted_private_method_range() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let src = "pub struct Svc {}\nimpl Svc {\n    pub(crate) fn internal(&self) {\n        // body\n    }\n}\n";
+    std::fs::write(tmp.path().join("lib.rs"), src).unwrap();
+
+    let range = find_private_method_range(tmp.path(), "lib.rs", "Svc", "internal");
+    assert!(range.is_some(), "should find pub(crate) method range");
+    let (start, end) = range.unwrap();
+    assert_eq!(start, 3, "should start on line 3");
+    assert_eq!(end, 5, "should end on line 5");
 }
 
 #[test]
