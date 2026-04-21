@@ -187,7 +187,7 @@ fn resolve_symbol_location(
     guidance: ReadSymbolGuidance,
 ) -> Result<(String, Option<ExportLines>), String> {
     if let Some(colon_pos) = name.find(':') {
-        resolve_colon_notation(root, name, colon_pos, guidance)
+        resolve_colon_notation(manifest, root, name, colon_pos, guidance)
     } else if name.contains('.') {
         resolve_dotted_notation(manifest, root, name, guidance)
     } else {
@@ -196,6 +196,7 @@ fn resolve_symbol_location(
 }
 
 fn resolve_colon_notation(
+    manifest: &Manifest,
     root: &Path,
     name: &str,
     colon_pos: usize,
@@ -204,23 +205,81 @@ fn resolve_colon_notation(
     let file_part = &name[..colon_pos];
     let symbol_part = &name[colon_pos + 1..];
 
-    if (file_part.contains('/') || file_part.contains('.')) && !symbol_part.is_empty() {
-        let (start, end) = fmm_core::manifest::private_members::find_top_level_function_range(
+    if !(file_part.contains('/') || file_part.contains('.')) || symbol_part.is_empty() {
+        return Err(format!(
+            "Ambiguous name '{}'. For file:symbol notation, the file path must contain '/' or '.' (e.g. 'src/helpers.ts:myFn').",
+            name
+        ));
+    }
+
+    if symbol_part.contains('.') {
+        return resolve_file_qualified_method(
+            manifest,
             root,
             file_part,
             symbol_part,
-        )
-        .ok_or_else(|| guidance.missing_top_level_function(symbol_part, file_part))?;
-        Ok((
-            file_part.to_string(),
-            Some(fmm_core::manifest::ExportLines { start, end }),
-        ))
-    } else {
-        Err(format!(
-            "Ambiguous name '{}'. For file:symbol notation, the file path must contain '/' or '.' (e.g. 'src/helpers.ts:myFn').",
-            name
-        ))
+            name,
+            guidance,
+        );
     }
+
+    if let Some(lines) = find_export_in_file(manifest, file_part, symbol_part) {
+        return Ok((file_part.to_string(), Some(lines)));
+    }
+
+    let (start, end) = fmm_core::manifest::private_members::find_top_level_function_range(
+        root,
+        file_part,
+        symbol_part,
+    )
+    .ok_or_else(|| guidance.missing_top_level_function(symbol_part, file_part))?;
+
+    Ok((
+        file_part.to_string(),
+        Some(fmm_core::manifest::ExportLines { start, end }),
+    ))
+}
+
+fn resolve_file_qualified_method(
+    manifest: &Manifest,
+    root: &Path,
+    file_part: &str,
+    symbol_part: &str,
+    name: &str,
+    guidance: ReadSymbolGuidance,
+) -> Result<(String, Option<ExportLines>), String> {
+    if let Some(lines) = manifest
+        .files
+        .get(file_part)
+        .and_then(|entry| entry.methods.as_ref())
+        .and_then(|methods| methods.get(symbol_part))
+        .cloned()
+    {
+        return Ok((file_part.to_string(), Some(lines)));
+    }
+
+    let dot = symbol_part.rfind('.').expect("symbol part contains dot");
+    let class_name = &symbol_part[..dot];
+    let method_name = &symbol_part[dot + 1..];
+
+    let (start, end) = fmm_core::manifest::private_members::find_private_method_range(
+        root,
+        file_part,
+        class_name,
+        method_name,
+    )
+    .ok_or_else(|| guidance.missing_method(name, method_name, class_name, file_part))?;
+
+    Ok((
+        file_part.to_string(),
+        Some(fmm_core::manifest::ExportLines { start, end }),
+    ))
+}
+
+fn find_export_in_file(manifest: &Manifest, file: &str, symbol: &str) -> Option<ExportLines> {
+    let entry = manifest.files.get(file)?;
+    let index = entry.exports.iter().position(|export| export == symbol)?;
+    entry.export_lines.as_ref()?.get(index).cloned()
 }
 
 fn resolve_dotted_notation(
@@ -237,24 +296,29 @@ fn resolve_dotted_notation(
     let class_name = &name[..dot];
     let method_name = &name[dot + 1..];
 
-    let class_file = manifest
-        .export_locations
-        .get(class_name)
-        .map(|loc| loc.file.clone())
-        .ok_or_else(|| guidance.unknown_class(name, class_name))?;
+    let class_files = class_export_files(manifest, class_name);
+    if class_files.is_empty() {
+        return Err(guidance.unknown_class(name, class_name));
+    }
 
-    let (start, end) = fmm_core::manifest::private_members::find_private_method_range(
-        root,
-        &class_file,
-        class_name,
-        method_name,
-    )
-    .ok_or_else(|| guidance.missing_method(name, method_name, class_name, &class_file))?;
+    for class_file in &class_files {
+        if let Some((start, end)) = fmm_core::manifest::private_members::find_private_method_range(
+            root,
+            class_file,
+            class_name,
+            method_name,
+        ) {
+            return Ok((
+                class_file.clone(),
+                Some(fmm_core::manifest::ExportLines { start, end }),
+            ));
+        }
+    }
 
-    Ok((
-        class_file,
-        Some(fmm_core::manifest::ExportLines { start, end }),
-    ))
+    let class_file = class_files
+        .first()
+        .expect("class_files is not empty after guard");
+    Err(guidance.missing_method(name, method_name, class_name, class_file))
 }
 
 fn resolve_export(
@@ -275,6 +339,21 @@ fn resolve_export(
     } else {
         Ok((location.file.clone(), location.lines.clone()))
     }
+}
+
+fn class_export_files(manifest: &Manifest, class_name: &str) -> Vec<String> {
+    let mut files = Vec::new();
+    if let Some(location) = manifest.export_locations.get(class_name) {
+        files.push(location.file.clone());
+    }
+    if let Some(locations) = manifest.export_all.get(class_name) {
+        for location in locations {
+            if !files.contains(&location.file) {
+                files.push(location.file.clone());
+            }
+        }
+    }
+    files
 }
 
 fn class_method_hints(
