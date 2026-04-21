@@ -138,7 +138,7 @@ fn read_missing_export_suggests_cli_commands() {
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert!(
-        stderr.contains("Export 'NoSuchSymbol' not found"),
+        stderr.contains("Symbol 'NoSuchSymbol' not found"),
         "got: {stderr}"
     );
     assert!(

@@ -87,11 +87,11 @@ impl ReadSymbolGuidance {
     fn missing_export(self, name: &str) -> String {
         match self {
             Self::Cli => format!(
-                "Export '{}' not found. Use fmm exports or fmm search to discover available symbols.",
+                "Symbol '{}' not found. Use fmm exports or fmm search to discover available symbols.",
                 name
             ),
             Self::Mcp => format!(
-                "Export '{}' not found. Use fmm_list_exports or fmm_search to discover available symbols.",
+                "Symbol '{}' not found. Use fmm_list_exports or fmm_search to discover available symbols.",
                 name
             ),
         }
