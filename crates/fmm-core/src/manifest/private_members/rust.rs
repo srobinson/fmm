@@ -32,11 +32,11 @@ impl PrivateMemberExtractor for RsPrivateMemberExtractor {
 // Rust top-level function extraction
 // ---------------------------------------------------------------------------
 
-/// Extract non-pub top-level functions from a Rust source file.
+/// Extract non-exported top-level functions from a Rust source file.
 ///
-/// A function is considered non-exported (private) when it has no
-/// `visibility_modifier` child node. Functions named in `exports` are
-/// excluded to avoid duplicating symbols already shown in the main outline.
+/// Bare private functions and restricted-visibility functions such as
+/// `pub(crate)` are addressable here. Plain `pub` functions are excluded
+/// because they are already tracked as exports.
 fn extract_rs_top_level(source: &[u8], exports: &[&str]) -> Option<Vec<TopLevelFunction>> {
     let lang: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
     let mut parser = tree_sitter::Parser::new();
@@ -53,7 +53,7 @@ fn extract_rs_top_level(source: &[u8], exports: &[&str]) -> Option<Vec<TopLevelF
         };
 
         if child.kind() == "function_item"
-            && !has_visibility(child)
+            && !has_public_visibility(child, source)
             && let Some(name) = fn_name(child, source)
             && !exports.contains(&name.as_str())
         {
@@ -73,12 +73,12 @@ fn extract_rs_top_level(source: &[u8], exports: &[&str]) -> Option<Vec<TopLevelF
 // Rust private member extraction (impl blocks)
 // ---------------------------------------------------------------------------
 
-/// Extract non-pub methods from `impl` blocks whose type name matches
+/// Extract non-exported methods from `impl` blocks whose type name matches
 /// one of `class_names`.
 ///
 /// In Rust, "class" maps to the type in an `impl TypeName { ... }` block.
-/// Private methods are `fn` items inside the impl body that lack a
-/// `visibility_modifier` child.
+/// Bare private methods and restricted-visibility methods are addressable
+/// here. Plain `pub` methods are excluded because they are public exports.
 fn extract_rs_private(
     source: &[u8],
     class_names: &[&str],
@@ -128,7 +128,7 @@ fn extract_rs_private(
     Some(result)
 }
 
-/// Collect non-pub function_item nodes from an impl body (declaration_list).
+/// Collect non-exported function_item nodes from an impl body.
 fn collect_private_methods(body: tree_sitter::Node, source: &[u8]) -> Vec<PrivateMember> {
     let mut members = Vec::new();
 
@@ -139,7 +139,7 @@ fn collect_private_methods(body: tree_sitter::Node, source: &[u8]) -> Vec<Privat
         };
 
         if child.kind() == "function_item"
-            && !has_visibility(child)
+            && !has_public_visibility(child, source)
             && let Some(name) = fn_name(child, source)
         {
             members.push(PrivateMember {
@@ -175,11 +175,16 @@ fn impl_type_name(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
     }
 }
 
-/// Check if a node has a `visibility_modifier` child (pub, pub(crate), etc.).
-fn has_visibility(node: tree_sitter::Node) -> bool {
+/// Check if a node has a plain public `pub` visibility modifier.
+fn has_public_visibility(node: tree_sitter::Node, source: &[u8]) -> bool {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if child.kind() == "visibility_modifier" {
+        if child.kind() == "visibility_modifier"
+            && child
+                .utf8_text(source)
+                .ok()
+                .is_some_and(|text| text.trim() == "pub")
+        {
             return true;
         }
     }

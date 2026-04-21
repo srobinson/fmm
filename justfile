@@ -20,7 +20,17 @@ install: release
 
 install-local:
     cargo build --release -p fmm
-    install -m 755 target/release/fmm "{{FMM_LOCAL_BIN}}"
+    @set -eu; \
+    src="$(pwd)/target/release/fmm"; \
+    dest="{{FMM_LOCAL_BIN}}"; \
+    case "$dest" in /*) ;; *) dest="$(pwd)/$dest";; esac; \
+    if [ "$src" = "$dest" ]; then \
+        echo "Built $src"; \
+    else \
+        mkdir -p "$(dirname "$dest")"; \
+        install -m 755 "$src" "$dest"; \
+        echo "Installed $dest"; \
+    fi
 
 test:
     cargo nextest run --workspace

@@ -32,6 +32,25 @@ fn setup_read_project() -> TempDir {
     tmp
 }
 
+fn setup_scopepath_collision_project() -> TempDir {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    write_file(
+        root,
+        "crates/cm-core/src/types.rs",
+        "pub struct ScopePath(String);\n\nimpl ScopePath {\n    pub fn parse(input: &str) -> Result<Self, String> {\n        let path = Self(input.to_string());\n        path.validate()?;\n        Ok(path)\n    }\n\n    fn validate(&self) -> Result<(), String> {\n        if self.0.is_empty() {\n            return Err(\"empty\".to_string());\n        }\n        Ok(())\n    }\n}\n",
+    );
+    write_file(
+        root,
+        "crates/cm-web/frontend/src/api/generated/ScopePath.ts",
+        "export type ScopePath = string;\n",
+    );
+
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
+    tmp
+}
+
 fn setup_large_class_project() -> TempDir {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();
@@ -194,6 +213,80 @@ fn read_public_method_still_uses_method_index() {
     );
     assert!(stdout.contains("public run"), "got: {stdout}");
     assert!(!stdout.contains("private computeSecret"), "got: {stdout}");
+}
+
+#[test]
+fn read_file_qualified_public_method_uses_requested_file() {
+    let tmp = setup_read_project();
+    let output = run_fmm(tmp.path(), &["read", "src/service.ts:SecretService.run"]);
+
+    assert!(
+        output.status.success(),
+        "fmm read failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(
+        stdout.contains("symbol: 'src/service.ts:SecretService.run'"),
+        "got: {stdout}"
+    );
+    assert!(stdout.contains("public run"), "got: {stdout}");
+    assert!(!stdout.contains("private computeSecret"), "got: {stdout}");
+}
+
+#[test]
+fn read_file_qualified_private_rust_method_uses_requested_file() {
+    let tmp = setup_scopepath_collision_project();
+    let output = run_fmm(
+        tmp.path(),
+        &[
+            "read",
+            "crates/cm-core/src/types.rs:ScopePath.validate",
+            "--line-numbers",
+        ],
+    );
+
+    assert!(
+        output.status.success(),
+        "fmm read failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(
+        stdout.contains("symbol: 'crates/cm-core/src/types.rs:ScopePath.validate'"),
+        "got: {stdout}"
+    );
+    assert!(stdout.contains("10      fn validate"), "got: {stdout}");
+    assert!(!stdout.contains("pub fn parse"), "got: {stdout}");
+}
+
+#[test]
+fn read_private_method_searches_duplicate_class_exports() {
+    let tmp = setup_scopepath_collision_project();
+    let output = run_fmm(
+        tmp.path(),
+        &["read", "ScopePath.validate", "--line-numbers"],
+    );
+
+    assert!(
+        output.status.success(),
+        "fmm read failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(
+        stdout.contains("symbol: ScopePath.validate"),
+        "got: {stdout}"
+    );
+    assert!(
+        stdout.contains("file: crates/cm-core/src/types.rs"),
+        "got: {stdout}"
+    );
+    assert!(stdout.contains("10      fn validate"), "got: {stdout}");
+    assert!(!stdout.contains("export type ScopePath"), "got: {stdout}");
 }
 
 #[test]
