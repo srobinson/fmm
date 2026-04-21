@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.8](https://github.com/srobinson/fmm/compare/v0.2.7...v0.2.8) (2026-04-21)
+
+
+### Bug Fixes
+
+* Clarify fmm read missing symbol wording ([#135](https://github.com/srobinson/fmm/issues/135)) ([1eaf23f](https://github.com/srobinson/fmm/commit/1eaf23f48e7403e513f81340d65d9d4b31425916))
+
 ## [0.2.7](https://github.com/srobinson/fmm/compare/v0.2.6...v0.2.7) (2026-04-21)
 
 
