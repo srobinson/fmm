@@ -39,7 +39,7 @@ pub use watch::watch;
     before_help = SHORT_HELP,
     before_long_help = LONG_HELP,
     help_template = HELP_TEMPLATE,
-    version,
+    version = crate::VERSION,
     disable_help_subcommand = true,
     subcommand_required = false,
 )]
