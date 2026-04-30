@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::identity::EdgeKind;
 use crate::parser::Metadata;
 
 use super::ExportLines;
@@ -18,6 +19,10 @@ pub struct FileEntry {
     pub methods: Option<HashMap<String, ExportLines>>,
     pub imports: Vec<String>,
     pub dependencies: Vec<String>,
+    /// Internal dependency edge classification keyed by dependency specifier.
+    /// Public output remains path based through `dependencies`.
+    #[serde(skip)]
+    pub dependency_kinds: HashMap<String, EdgeKind>,
     pub loc: usize,
     /// Last-modified date from the sidecar `modified:` field (YYYY-MM-DD). None if absent.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -93,6 +98,7 @@ impl From<Metadata> for FileEntry {
             },
             imports: metadata.imports,
             dependencies: metadata.dependencies,
+            dependency_kinds: metadata.dependency_kinds,
             loc: metadata.loc,
             modified: None,
             function_names: Vec::new(),

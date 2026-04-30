@@ -3,6 +3,8 @@ use std::collections::{HashMap, HashSet};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::QueryCursor;
 
+use crate::identity::EdgeKind;
+
 use super::TypeScriptParser;
 use super::tsconfig::resolve_alias;
 
@@ -45,9 +47,10 @@ impl TypeScriptParser {
         source: &str,
         root_node: tree_sitter::Node,
         aliases: &HashMap<String, Vec<String>>,
-    ) -> Vec<String> {
+    ) -> (Vec<String>, HashMap<String, EdgeKind>) {
         let source_bytes = source.as_bytes();
         let mut seen = HashSet::new();
+        let mut kinds = HashMap::new();
 
         // Regular import statements
         let mut cursor = QueryCursor::new();
@@ -56,12 +59,13 @@ impl TypeScriptParser {
             for capture in m.captures {
                 if let Ok(text) = capture.node.utf8_text(source_bytes) {
                     let cleaned = text.trim_matches('\'').trim_matches('"').to_string();
+                    let kind = import_statement_kind(capture.node);
                     if cleaned.starts_with('.') || cleaned.starts_with('/') {
-                        seen.insert(cleaned);
+                        insert_dependency(&mut seen, &mut kinds, cleaned, kind);
                     } else if !aliases.is_empty() {
                         // ALP-794: path alias — resolve to physical path and treat as local dep.
                         if let Some(resolved) = resolve_alias(&cleaned, aliases) {
-                            seen.insert(resolved);
+                            insert_dependency(&mut seen, &mut kinds, resolved, kind);
                         }
                     }
                 }
@@ -75,12 +79,13 @@ impl TypeScriptParser {
             for capture in m.captures {
                 if let Ok(text) = capture.node.utf8_text(source_bytes) {
                     let cleaned = text.trim_matches('\'').trim_matches('"').to_string();
+                    let kind = export_statement_kind(capture.node);
                     if cleaned.starts_with('.') || cleaned.starts_with('/') {
-                        seen.insert(cleaned);
+                        insert_dependency(&mut seen, &mut kinds, cleaned, kind);
                     } else if !aliases.is_empty()
                         && let Some(resolved) = resolve_alias(&cleaned, aliases)
                     {
-                        seen.insert(resolved);
+                        insert_dependency(&mut seen, &mut kinds, resolved, kind);
                     }
                 }
             }
@@ -88,7 +93,7 @@ impl TypeScriptParser {
 
         let mut dependencies: Vec<String> = seen.into_iter().collect();
         dependencies.sort();
-        dependencies
+        (dependencies, kinds)
     }
 
     /// ALP-881: extract named imports per source module and namespace import paths.
@@ -207,5 +212,138 @@ impl TypeScriptParser {
         namespace.sort();
 
         (named, namespace)
+    }
+}
+
+fn insert_dependency(
+    seen: &mut HashSet<String>,
+    kinds: &mut HashMap<String, EdgeKind>,
+    dependency: String,
+    kind: EdgeKind,
+) {
+    seen.insert(dependency.clone());
+    kinds
+        .entry(dependency)
+        .and_modify(|existing| {
+            if kind == EdgeKind::Runtime {
+                *existing = EdgeKind::Runtime;
+            }
+        })
+        .or_insert(kind);
+}
+
+/// Classify an `import_statement` source by walking the AST. The string form
+/// is intentionally not consulted because identifier prefixes like
+/// `typescriptCompiler` would alias the `type` keyword.
+fn import_statement_kind(source_node: tree_sitter::Node) -> EdgeKind {
+    let Some(statement) = ancestor_kind(source_node, "import_statement") else {
+        return EdgeKind::Runtime;
+    };
+    classify_type_import_or_export(
+        statement,
+        "import_clause",
+        &["identifier", "namespace_import"],
+        "named_imports",
+        "import_specifier",
+    )
+}
+
+/// Classify an `export_statement` re-export source. Mirrors the import
+/// classifier so `export type { X } from './y'` and `export { type X } from './y'`
+/// are preserved as type-only edges.
+fn export_statement_kind(source_node: tree_sitter::Node) -> EdgeKind {
+    let Some(statement) = ancestor_kind(source_node, "export_statement") else {
+        return EdgeKind::Runtime;
+    };
+    classify_type_import_or_export(
+        statement,
+        "export_clause",
+        &[],
+        "export_clause",
+        "export_specifier",
+    )
+}
+
+/// Shared classifier for `import_statement` and `export_statement` re-exports.
+///
+/// A statement is type-only when either:
+/// - the statement has a direct `type` keyword child (e.g. `import type ...`,
+///   `export type ...`), or
+/// - the only binding is a named clause and every specifier within that
+///   clause has its own `type` keyword child.
+///
+/// Any default identifier or namespace binding sibling of the named clause
+/// forces a runtime classification because those bindings are runtime values.
+fn classify_type_import_or_export(
+    statement: tree_sitter::Node,
+    clause_kind: &str,
+    runtime_sibling_kinds: &[&str],
+    named_clause_kind: &str,
+    specifier_kind: &str,
+) -> EdgeKind {
+    let mut cursor = statement.walk();
+    let mut clause: Option<tree_sitter::Node> = None;
+    for child in statement.children(&mut cursor) {
+        match child.kind() {
+            "type" => return EdgeKind::TypeOnly,
+            kind if kind == clause_kind => clause = Some(child),
+            _ => {}
+        }
+    }
+
+    let Some(clause) = clause else {
+        // Side-effect import (`import './foo'`) or wildcard re-export (`export * from`)
+        // has no named clause; it always produces a runtime edge.
+        return EdgeKind::Runtime;
+    };
+
+    let mut cursor = clause.walk();
+    let mut named: Option<tree_sitter::Node> = None;
+    for child in clause.children(&mut cursor) {
+        let kind = child.kind();
+        if runtime_sibling_kinds.contains(&kind) {
+            return EdgeKind::Runtime;
+        }
+        if kind == named_clause_kind {
+            named = Some(child);
+        }
+    }
+
+    // For exports the clause itself is the named clause; for imports the
+    // named_imports node is a child of import_clause.
+    let named = named.unwrap_or(clause);
+
+    let mut cursor = named.walk();
+    let mut any_specifier = false;
+    for child in named.children(&mut cursor) {
+        if child.kind() != specifier_kind {
+            continue;
+        }
+        any_specifier = true;
+        let mut spec_cursor = child.walk();
+        let has_type = child
+            .children(&mut spec_cursor)
+            .any(|grandchild| grandchild.kind() == "type");
+        if !has_type {
+            return EdgeKind::Runtime;
+        }
+    }
+
+    if any_specifier {
+        EdgeKind::TypeOnly
+    } else {
+        EdgeKind::Runtime
+    }
+}
+
+fn ancestor_kind<'tree>(
+    mut node: tree_sitter::Node<'tree>,
+    kind: &str,
+) -> Option<tree_sitter::Node<'tree>> {
+    loop {
+        if node.kind() == kind {
+            return Some(node);
+        }
+        node = node.parent()?;
     }
 }

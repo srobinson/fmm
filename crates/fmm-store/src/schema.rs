@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 
-pub const SCHEMA_VERSION: u32 = 4;
+pub const SCHEMA_VERSION: u32 = 5;
 
 pub fn ensure_schema(conn: &Connection) -> Result<()> {
     let version = read_schema_version(conn)?;
@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS files (
     modified          TEXT,
     imports           TEXT,
     dependencies      TEXT,
+    dependency_kinds  TEXT,
     named_imports     TEXT,
     namespace_imports TEXT,
     function_names    TEXT,

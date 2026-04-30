@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 pub(super) fn load_files(conn: &Connection, manifest: &mut Manifest) -> Result<()> {
     let mut stmt = conn.prepare(
-        "SELECT path, loc, modified, imports, dependencies,
+        "SELECT path, loc, modified, imports, dependencies, dependency_kinds,
                 named_imports, namespace_imports, function_names
          FROM files",
     )?;
@@ -20,17 +20,22 @@ pub(super) fn load_files(conn: &Connection, manifest: &mut Manifest) -> Result<(
             row.get::<_, Option<String>>(5)?,
             row.get::<_, Option<String>>(6)?,
             row.get::<_, Option<String>>(7)?,
+            row.get::<_, Option<String>>(8)?,
         ))
     })?;
 
     for row in rows {
-        let (path, loc, modified, imports_j, deps_j, ni_j, ns_j, fn_j) = row?;
+        let (path, loc, modified, imports_j, deps_j, dep_kinds_j, ni_j, ns_j, fn_j) = row?;
 
         let imports: Vec<String> = imports_j
             .as_deref()
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_default();
         let dependencies: Vec<String> = deps_j
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
+        let dependency_kinds = dep_kinds_j
             .as_deref()
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_default();
@@ -55,6 +60,7 @@ pub(super) fn load_files(conn: &Connection, manifest: &mut Manifest) -> Result<(
                 methods: None,
                 imports,
                 dependencies,
+                dependency_kinds,
                 loc: loc as usize,
                 modified,
                 function_names,

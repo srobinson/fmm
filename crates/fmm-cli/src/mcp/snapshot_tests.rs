@@ -103,6 +103,11 @@ fn make_row(
         mtime: Some("2026-03-18T00:00:00+00:00".to_string()),
         imports_json: serde_json::to_string(&imports).unwrap(),
         deps_json: serde_json::to_string(&deps).unwrap(),
+        dependency_kinds_json: serde_json::to_string(&HashMap::<
+            String,
+            fmm_core::identity::EdgeKind,
+        >::new())
+        .unwrap(),
         named_imports_json: serde_json::to_string(&named_imports).unwrap(),
         namespace_imports_json: serde_json::to_string(&namespace_imports).unwrap(),
         function_names_json: serde_json::to_string(&function_names).unwrap(),

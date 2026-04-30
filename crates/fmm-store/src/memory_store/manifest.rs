@@ -17,6 +17,7 @@ pub(super) fn build_manifest(state: &InnerState) -> Manifest {
                 methods: None,
                 imports: sf.imports.clone(),
                 dependencies: sf.dependencies.clone(),
+                dependency_kinds: sf.dependency_kinds.clone(),
                 loc: sf.loc as usize,
                 modified: sf.mtime.clone(),
                 function_names: sf.function_names.clone(),

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use fmm_core::identity::Fingerprint;
+use fmm_core::identity::{EdgeKind, Fingerprint};
 use fmm_core::types::PreserializedRow;
 
 use super::MemoryStoreError;
@@ -12,6 +12,7 @@ pub(super) struct StoredFile {
     pub(super) mtime: Option<String>,
     pub(super) imports: Vec<String>,
     pub(super) dependencies: Vec<String>,
+    pub(super) dependency_kinds: HashMap<String, EdgeKind>,
     pub(super) named_imports: HashMap<String, Vec<String>>,
     pub(super) namespace_imports: Vec<String>,
     pub(super) function_names: Vec<String>,
@@ -56,6 +57,9 @@ impl InnerState {
             .map_err(|e| MemoryStoreError::new(format!("imports: {e}")))?;
         let dependencies: Vec<String> = serde_json::from_str(&row.deps_json)
             .map_err(|e| MemoryStoreError::new(format!("deps: {e}")))?;
+        let dependency_kinds: HashMap<String, EdgeKind> =
+            serde_json::from_str(&row.dependency_kinds_json)
+                .map_err(|e| MemoryStoreError::new(format!("dependency_kinds: {e}")))?;
         let named_imports: HashMap<String, Vec<String>> =
             serde_json::from_str(&row.named_imports_json)
                 .map_err(|e| MemoryStoreError::new(format!("named_imports: {e}")))?;
@@ -90,6 +94,7 @@ impl InnerState {
             mtime: row.mtime.clone(),
             imports,
             dependencies,
+            dependency_kinds,
             named_imports,
             namespace_imports,
             function_names,

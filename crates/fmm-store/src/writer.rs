@@ -122,16 +122,16 @@ pub fn upsert_preserialized_with_file_id(
     {
         let sql = if plain_insert {
             "INSERT INTO files
-                 (path, loc, modified, imports, dependencies, named_imports,
+                 (path, loc, modified, imports, dependencies, dependency_kinds, named_imports,
                   namespace_imports, function_names, indexed_at, source_mtime,
                   source_size, content_hash, parser_cache_version)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)"
         } else {
             "INSERT OR REPLACE INTO files
-                 (path, loc, modified, imports, dependencies, named_imports,
+                 (path, loc, modified, imports, dependencies, dependency_kinds, named_imports,
                   namespace_imports, function_names, indexed_at, source_mtime,
                   source_size, content_hash, parser_cache_version)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)"
         };
         let source_size = row
             .fingerprint
@@ -144,6 +144,7 @@ pub fn upsert_preserialized_with_file_id(
                 row.mtime,
                 row.imports_json,
                 row.deps_json,
+                row.dependency_kinds_json,
                 row.named_imports_json,
                 row.namespace_imports_json,
                 row.function_names_json,
@@ -234,9 +235,9 @@ pub fn upsert_file_data(
 
     tx.execute(
         "INSERT OR REPLACE INTO files
-             (path, loc, modified, imports, dependencies, named_imports,
+             (path, loc, modified, imports, dependencies, dependency_kinds, named_imports,
               namespace_imports, function_names, indexed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             rel_path,
             meta.loc as i64,
@@ -244,6 +245,8 @@ pub fn upsert_file_data(
             serde_json::to_string(&meta.imports).context("Failed to serialize imports")?,
             serde_json::to_string(&meta.dependencies)
                 .context("Failed to serialize dependencies")?,
+            serde_json::to_string(&meta.dependency_kinds)
+                .context("Failed to serialize dependency_kinds")?,
             serde_json::to_string(&meta.named_imports)
                 .context("Failed to serialize named_imports")?,
             serde_json::to_string(&meta.namespace_imports)
@@ -398,7 +401,7 @@ fn file_id_from_i64(value: i64) -> Result<FileId> {
 /// Only the fields needed for reverse-dependency computation are populated.
 pub fn load_files_map(conn: &Connection) -> Result<HashMap<String, FileEntry>> {
     let mut stmt = conn.prepare(
-        "SELECT path, loc, modified, imports, dependencies,
+        "SELECT path, loc, modified, imports, dependencies, dependency_kinds,
                 named_imports, namespace_imports, function_names
          FROM files",
     )?;
@@ -413,18 +416,23 @@ pub fn load_files_map(conn: &Connection) -> Result<HashMap<String, FileEntry>> {
             row.get::<_, Option<String>>(5)?,
             row.get::<_, Option<String>>(6)?,
             row.get::<_, Option<String>>(7)?,
+            row.get::<_, Option<String>>(8)?,
         ))
     })?;
 
     let mut map = HashMap::new();
     for row in rows {
-        let (path, loc, modified, imports_j, deps_j, ni_j, ns_j, fn_j) = row?;
+        let (path, loc, modified, imports_j, deps_j, dep_kinds_j, ni_j, ns_j, fn_j) = row?;
 
         let imports: Vec<String> = imports_j
             .as_deref()
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_default();
         let dependencies: Vec<String> = deps_j
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
+        let dependency_kinds = dep_kinds_j
             .as_deref()
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_default();
@@ -449,6 +457,7 @@ pub fn load_files_map(conn: &Connection) -> Result<HashMap<String, FileEntry>> {
                 methods: None,
                 imports,
                 dependencies,
+                dependency_kinds,
                 loc: loc as usize,
                 modified,
                 function_names,

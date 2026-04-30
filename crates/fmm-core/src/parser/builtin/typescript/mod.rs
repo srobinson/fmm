@@ -259,7 +259,8 @@ impl TypeScriptParser {
 
         let (mut exports, function_names) = self.extract_exports(source, root_node);
         let imports = self.extract_imports(source, root_node, aliases);
-        let dependencies = self.extract_dependencies(source, root_node, aliases);
+        let (dependencies, dependency_kinds) =
+            self.extract_dependencies(source, root_node, aliases);
         let (named_imports, namespace_imports) = self.extract_named_imports(source, root_node);
         let loc = source.lines().count();
 
@@ -315,6 +316,7 @@ impl TypeScriptParser {
                 exports,
                 imports,
                 dependencies,
+                dependency_kinds,
                 loc,
                 named_imports,
                 namespace_imports,

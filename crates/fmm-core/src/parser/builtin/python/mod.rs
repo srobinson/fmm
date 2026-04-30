@@ -589,6 +589,7 @@ impl Parser for PythonParser {
                 exports,
                 imports,
                 dependencies,
+                dependency_kinds: Default::default(),
                 loc,
                 named_imports,
                 namespace_imports,

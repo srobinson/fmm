@@ -35,6 +35,7 @@ pub fn load_manifest_from_db(conn: &Connection, root: &Path) -> Result<Manifest>
 mod tests {
     use super::*;
     use crate::{connection::open_or_create, writer};
+    use fmm_core::identity::EdgeKind;
     use fmm_core::parser::{ExportEntry, Metadata, ParseResult};
     use std::collections::HashMap;
     use tempfile::TempDir;
@@ -194,6 +195,42 @@ mod tests {
         let loc = manifest.method_index.get("Server.run").unwrap();
         assert_eq!(loc.file, "src/server.ts");
         assert_eq!(loc.lines.as_ref().unwrap().start, 5);
+    }
+
+    #[test]
+    fn dependency_kinds_survive_store_round_trip() {
+        let dir = TempDir::new().unwrap();
+        let mut conn = open_or_create(dir.path()).unwrap();
+
+        let result = ParseResult {
+            metadata: Metadata {
+                dependencies: vec!["./types".into(), "./runtime".into()],
+                dependency_kinds: HashMap::from([
+                    ("./types".into(), EdgeKind::TypeOnly),
+                    ("./runtime".into(), EdgeKind::Runtime),
+                ]),
+                loc: 3,
+                ..Default::default()
+            },
+            custom_fields: None,
+        };
+
+        let row = fmm_core::types::serialize_file_data("src/consumer.ts", &result, None).unwrap();
+        let tx = conn.transaction().unwrap();
+        writer::upsert_preserialized(&tx, &row, false).unwrap();
+        tx.commit().unwrap();
+
+        let manifest = load_manifest_from_db(&conn, dir.path()).unwrap();
+        let entry = manifest.files.get("src/consumer.ts").unwrap();
+
+        assert_eq!(
+            entry.dependency_kinds.get("./types"),
+            Some(&EdgeKind::TypeOnly)
+        );
+        assert_eq!(
+            entry.dependency_kinds.get("./runtime"),
+            Some(&EdgeKind::Runtime)
+        );
     }
 
     #[test]

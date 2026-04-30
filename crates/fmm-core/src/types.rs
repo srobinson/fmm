@@ -21,6 +21,7 @@ pub struct PreserializedRow {
     pub mtime: Option<String>,
     pub imports_json: String,
     pub deps_json: String,
+    pub dependency_kinds_json: String,
     pub named_imports_json: String,
     pub namespace_imports_json: String,
     pub function_names_json: String,
@@ -118,6 +119,8 @@ fn serialize_file_data_inner(
         mtime: mtime.map(String::from),
         imports_json: serde_json::to_string(&meta.imports).context("serialize imports")?,
         deps_json: serde_json::to_string(&meta.dependencies).context("serialize dependencies")?,
+        dependency_kinds_json: serde_json::to_string(&meta.dependency_kinds)
+            .context("serialize dependency_kinds")?,
         named_imports_json: serde_json::to_string(&meta.named_imports)
             .context("serialize named_imports")?,
         namespace_imports_json: serde_json::to_string(&meta.namespace_imports)
