@@ -27,23 +27,23 @@ pub(super) fn collect_workspace_edges(manifest: &Manifest) -> Vec<(String, Strin
         manifest.workspace_packages_for(WorkspaceEcosystem::Go),
     ));
 
+    let original_keys: HashSet<String> = manifest.files.keys().cloned().collect();
+    let manifest_roots = infer_manifest_roots(manifest);
     // Build canonical to original key map. On macOS, /var/... symlinks resolve
     // to /private/var/..., so resolver output can differ from manifest keys.
-    let canonical_to_original: HashMap<String, String> = manifest
-        .files
-        .keys()
-        .filter_map(|k| {
-            let canonical = std::fs::canonicalize(k).ok()?;
-            Some((canonical.to_str()?.to_string(), k.clone()))
-        })
-        .collect();
-    let original_keys: HashSet<String> = manifest.files.keys().cloned().collect();
+    let canonical_to_original = canonical_manifest_keys(&original_keys, &manifest_roots);
+    let key_map = WorkspaceKeyMap {
+        original_keys: &original_keys,
+        manifest_roots: &manifest_roots,
+        canonical_to_original: &canonical_to_original,
+    };
 
     manifest
         .files
         .par_iter()
         .flat_map(|(file_path, entry)| {
-            let importer = Path::new(file_path.as_str());
+            let importer_path = absolute_manifest_path(file_path, &manifest_roots);
+            let importer = importer_path.as_path();
             if is_js_ts_source_file(importer) {
                 if deno_resolver.is_deno_source(importer) {
                     deno_workspace_edges(
@@ -51,8 +51,7 @@ pub(super) fn collect_workspace_edges(manifest: &Manifest) -> Vec<(String, Strin
                         entry,
                         importer,
                         deno_resolver.as_ref(),
-                        &original_keys,
-                        &canonical_to_original,
+                        key_map,
                     )
                 } else {
                     js_workspace_edges(
@@ -61,28 +60,13 @@ pub(super) fn collect_workspace_edges(manifest: &Manifest) -> Vec<(String, Strin
                         importer,
                         manifest.workspace_roots_for(WorkspaceEcosystem::Js),
                         js_resolver.as_ref(),
-                        &original_keys,
-                        &canonical_to_original,
+                        key_map,
                     )
                 }
             } else if is_rust_source_file(importer) {
-                rust_workspace_edges(
-                    file_path,
-                    entry,
-                    importer,
-                    rust_resolver.as_ref(),
-                    &original_keys,
-                    &canonical_to_original,
-                )
+                rust_workspace_edges(file_path, entry, importer, rust_resolver.as_ref(), key_map)
             } else if is_go_source_file(importer) {
-                go_workspace_edges(
-                    file_path,
-                    entry,
-                    importer,
-                    go_resolver.as_ref(),
-                    &original_keys,
-                    &canonical_to_original,
-                )
+                go_workspace_edges(file_path, entry, importer, go_resolver.as_ref(), key_map)
             } else {
                 Vec::new()
             }
@@ -90,20 +74,135 @@ pub(super) fn collect_workspace_edges(manifest: &Manifest) -> Vec<(String, Strin
         .collect()
 }
 
-fn resolved_to_manifest_key(
-    resolved: &Path,
-    original_keys: &HashSet<String>,
-    canonical_to_original: &HashMap<String, String>,
-) -> Option<String> {
+#[derive(Clone, Copy)]
+struct WorkspaceKeyMap<'a> {
+    original_keys: &'a HashSet<String>,
+    manifest_roots: &'a [PathBuf],
+    canonical_to_original: &'a HashMap<String, String>,
+}
+
+fn resolved_to_manifest_key(resolved: &Path, key_map: WorkspaceKeyMap<'_>) -> Option<String> {
     let resolved_str = resolved.to_str()?;
-    if original_keys.contains(resolved_str) {
+    if key_map.original_keys.contains(resolved_str) {
         return Some(resolved_str.to_string());
+    }
+
+    for root in key_map.manifest_roots {
+        if let Ok(relative) = resolved.strip_prefix(root)
+            && let Some(key) = slash_path(relative)
+            && key_map.original_keys.contains(&key)
+        {
+            return Some(key);
+        }
     }
 
     std::fs::canonicalize(resolved)
         .ok()
         .and_then(|canonical| canonical.to_str().map(str::to_string))
-        .and_then(|canonical| canonical_to_original.get(&canonical).cloned())
+        .and_then(|canonical| key_map.canonical_to_original.get(&canonical).cloned())
+}
+
+fn canonical_manifest_keys(
+    original_keys: &HashSet<String>,
+    manifest_roots: &[PathBuf],
+) -> HashMap<String, String> {
+    let mut canonical_to_original = HashMap::new();
+    for key in original_keys {
+        for path in candidate_manifest_paths(key, manifest_roots) {
+            if let Ok(canonical) = std::fs::canonicalize(path)
+                && let Some(canonical) = canonical.to_str()
+            {
+                canonical_to_original.insert(canonical.to_string(), key.clone());
+            }
+        }
+    }
+    canonical_to_original
+}
+
+fn candidate_manifest_paths(key: &str, manifest_roots: &[PathBuf]) -> Vec<PathBuf> {
+    let path = PathBuf::from(key);
+    if path.is_absolute() {
+        return vec![path];
+    }
+
+    let mut paths = vec![path];
+    paths.extend(manifest_roots.iter().map(|root| root.join(key)));
+    paths
+}
+
+fn absolute_manifest_path(key: &str, manifest_roots: &[PathBuf]) -> PathBuf {
+    let path = PathBuf::from(key);
+    if path.is_absolute() {
+        return path;
+    }
+
+    manifest_roots
+        .iter()
+        .map(|root| root.join(key))
+        .find(|candidate| candidate.exists())
+        .unwrap_or(path)
+}
+
+fn infer_manifest_roots(manifest: &Manifest) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    let package_dirs = manifest
+        .workspace_packages
+        .values()
+        .chain(manifest.workspace_roots.iter());
+
+    for package_dir in package_dirs {
+        for key in manifest.files.keys() {
+            if let Some(root) = infer_root_for_key(package_dir, key) {
+                roots.push(root);
+            }
+        }
+    }
+
+    roots.sort();
+    roots.dedup();
+    roots
+}
+
+fn infer_root_for_key(package_dir: &Path, key: &str) -> Option<PathBuf> {
+    if Path::new(key).is_absolute() {
+        return None;
+    }
+
+    let package_components = normal_components(package_dir);
+    let key_components = normal_components(Path::new(key));
+    let max = package_components.len().min(key_components.len());
+
+    for len in (1..=max).rev() {
+        if package_components[package_components.len() - len..] == key_components[..len] {
+            let mut root = package_dir.to_path_buf();
+            for _ in 0..len {
+                root = root.parent()?.to_path_buf();
+            }
+            return Some(root);
+        }
+    }
+
+    None
+}
+
+fn normal_components(path: &Path) -> Vec<String> {
+    path.components()
+        .filter_map(|component| match component {
+            std::path::Component::Normal(value) => value.to_str().map(str::to_string),
+            _ => None,
+        })
+        .collect()
+}
+
+fn slash_path(path: &Path) -> Option<String> {
+    let parts = path
+        .components()
+        .map(|component| match component {
+            std::path::Component::Normal(value) => value.to_str().map(str::to_string),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(parts.join("/"))
 }
 
 fn deno_workspace_edges(
@@ -111,8 +210,7 @@ fn deno_workspace_edges(
     entry: &FileEntry,
     importer: &Path,
     resolver: &DenoImportResolver,
-    original_keys: &HashSet<String>,
-    canonical_to_original: &HashMap<String, String>,
+    key_map: WorkspaceKeyMap<'_>,
 ) -> Vec<(String, String)> {
     entry
         .imports
@@ -120,9 +218,7 @@ fn deno_workspace_edges(
         .filter_map(|import_str| {
             resolver
                 .resolve(importer, import_str)
-                .and_then(|resolved| {
-                    resolved_to_manifest_key(&resolved, original_keys, canonical_to_original)
-                })
+                .and_then(|resolved| resolved_to_manifest_key(&resolved, key_map))
                 .map(|target_key| (target_key, file_path.to_string()))
         })
         .collect()
@@ -134,26 +230,23 @@ fn js_workspace_edges(
     importer: &Path,
     workspace_roots: &[PathBuf],
     resolver: &dyn ImportResolver,
-    original_keys: &HashSet<String>,
-    canonical_to_original: &HashMap<String, String>,
+    key_map: WorkspaceKeyMap<'_>,
 ) -> Vec<(String, String)> {
     entry
         .imports
         .iter()
         .filter_map(|import_str| {
             if let Some(resolved) = resolver.resolve(importer, import_str)
-                && let Some(target_key) =
-                    resolved_to_manifest_key(&resolved, original_keys, canonical_to_original)
+                && let Some(target_key) = resolved_to_manifest_key(&resolved, key_map)
             {
                 return Some((target_key, file_path.to_string()));
             }
 
-            resolve_by_directory_prefix(import_str, workspace_roots, original_keys).and_then(
-                |path| {
-                    resolved_to_manifest_key(&path, original_keys, canonical_to_original)
+            resolve_by_directory_prefix(import_str, workspace_roots, key_map.original_keys)
+                .and_then(|path| {
+                    resolved_to_manifest_key(&path, key_map)
                         .map(|target_key| (target_key, file_path.to_string()))
-                },
-            )
+                })
         })
         .collect()
 }
@@ -163,17 +256,14 @@ fn rust_workspace_edges(
     entry: &FileEntry,
     importer: &Path,
     resolver: &dyn ImportResolver,
-    original_keys: &HashSet<String>,
-    canonical_to_original: &HashMap<String, String>,
+    key_map: WorkspaceKeyMap<'_>,
 ) -> Vec<(String, String)> {
     rust_import_specifiers(entry)
         .into_iter()
         .filter_map(|specifier| {
             resolver
                 .resolve(importer, &specifier)
-                .and_then(|resolved| {
-                    resolved_to_manifest_key(&resolved, original_keys, canonical_to_original)
-                })
+                .and_then(|resolved| resolved_to_manifest_key(&resolved, key_map))
                 .map(|target_key| (target_key, file_path.to_string()))
         })
         .collect()
@@ -201,36 +291,39 @@ fn go_workspace_edges(
     entry: &FileEntry,
     importer: &Path,
     resolver: &dyn ImportResolver,
-    original_keys: &HashSet<String>,
-    canonical_to_original: &HashMap<String, String>,
+    key_map: WorkspaceKeyMap<'_>,
 ) -> Vec<(String, String)> {
     entry
         .imports
         .iter()
         .filter_map(|import_str| resolver.resolve(importer, import_str))
         .flat_map(|package_dir| {
-            go_package_manifest_keys(&package_dir, original_keys, canonical_to_original)
+            go_package_manifest_keys(&package_dir, key_map)
                 .into_iter()
                 .map(|target_key| (target_key, file_path.to_string()))
         })
         .collect()
 }
 
-fn go_package_manifest_keys(
-    package_dir: &Path,
-    original_keys: &HashSet<String>,
-    canonical_to_original: &HashMap<String, String>,
-) -> Vec<String> {
-    let mut keys: Vec<String> = original_keys
+fn go_package_manifest_keys(package_dir: &Path, key_map: WorkspaceKeyMap<'_>) -> Vec<String> {
+    let mut keys: Vec<String> = key_map
+        .original_keys
         .iter()
-        .filter(|key| is_go_package_file(key, package_dir))
+        .filter(|key| {
+            is_go_package_file(key, package_dir)
+                || key_map
+                    .manifest_roots
+                    .iter()
+                    .any(|root| is_go_package_file(&root.join(key).to_string_lossy(), package_dir))
+        })
         .cloned()
         .collect();
 
     if keys.is_empty()
         && let Ok(canonical_package_dir) = std::fs::canonicalize(package_dir)
     {
-        keys = canonical_to_original
+        keys = key_map
+            .canonical_to_original
             .iter()
             .filter(|(canonical, _)| is_go_package_file(canonical, &canonical_package_dir))
             .map(|(_, original)| original.clone())

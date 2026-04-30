@@ -2,9 +2,12 @@
 
 use crate::mcp::args::ListFilesArgs;
 use fmm_core::manifest::Manifest;
+use fmm_core::search::DependencyGraphQuery;
 use serde_json::Value;
 
 use super::common::{build_rollup, glob_filename_matches};
+
+type ListEntry<'a> = (&'a str, usize, usize, usize, Option<&'a str>);
 
 pub(in crate::mcp) fn tool_list_files(
     manifest: &Manifest,
@@ -60,56 +63,11 @@ pub(in crate::mcp) fn tool_list_files(
         ));
     }
 
-    // Load config for test-file detection (used when filter != "all").
-    let config = fmm_core::config::Config::load_from_dir(root).unwrap_or_default();
-
-    let mut entries: Vec<(&str, usize, usize, usize, Option<&str>)> = manifest
-        .files
-        .iter()
-        .filter(|(path, _)| {
-            if let Some(d) = dir
-                && !path.starts_with(d)
-            {
-                return false;
-            }
-            // Apply source/test filter
-            match filter {
-                "tests" if !config.is_test_file(path) => {
-                    return false;
-                }
-                "source" if config.is_test_file(path) => {
-                    return false;
-                }
-                _ => {} // "all": no filter
-            }
-            if let Some(p) = pat {
-                let filename = path.rsplit('/').next().unwrap_or(path.as_str());
-                if !glob_filename_matches(p, filename) {
-                    return false;
-                }
-            }
-            true
-        })
-        .map(|(path, entry)| {
-            let downstream = manifest
-                .reverse_deps
-                .get(path.as_str())
-                .map(|v| v.len())
-                .unwrap_or(0);
-            let modified = entry.modified.as_deref();
-            (
-                path.as_str(),
-                entry.loc,
-                entry.exports.len(),
-                downstream,
-                modified,
-            )
-        })
-        .collect();
+    let mut entries = collect_entries(manifest, root, dir, pat, filter);
 
     // Rollup mode: group by immediate subdirectory.
     if group_by == Some("subdir") {
-        // Rollup only uses (path, loc, exports) — strip downstream/modified before passing
+        // Rollup only uses (path, loc, exports), so strip downstream/modified.
         let stripped: Vec<(&str, usize, usize)> =
             entries.iter().map(|(p, l, e, _, _)| (*p, *l, *e)).collect();
         return Ok(build_rollup(stripped, dir, sort_by, order));
@@ -182,4 +140,51 @@ pub(in crate::mcp) fn tool_list_files(
         offset,
         show_modified,
     ))
+}
+
+fn collect_entries<'a>(
+    manifest: &'a Manifest,
+    root: &std::path::Path,
+    dir: Option<&str>,
+    pat: Option<&str>,
+    filter: &str,
+) -> Vec<ListEntry<'a>> {
+    let config = fmm_core::config::Config::load_from_dir(root).unwrap_or_default();
+    let graph_query = DependencyGraphQuery::new(manifest).ok();
+
+    manifest
+        .files
+        .iter()
+        .filter(|(path, _)| {
+            if let Some(d) = dir
+                && !path.starts_with(d)
+            {
+                return false;
+            }
+            match filter {
+                "tests" if !config.is_test_file(path) => return false,
+                "source" if config.is_test_file(path) => return false,
+                _ => {}
+            }
+            if let Some(p) = pat {
+                let filename = path.rsplit('/').next().unwrap_or(path.as_str());
+                if !glob_filename_matches(p, filename) {
+                    return false;
+                }
+            }
+            true
+        })
+        .map(|(path, entry)| {
+            let downstream = graph_query
+                .as_ref()
+                .map_or(0, |graph| graph.downstream_count(path));
+            (
+                path.as_str(),
+                entry.loc,
+                entry.exports.len(),
+                downstream,
+                entry.modified.as_deref(),
+            )
+        })
+        .collect()
 }

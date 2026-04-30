@@ -7,6 +7,7 @@ mod bare_search;
 mod dependency_graph;
 mod dependency_graph_transitive;
 mod filter_search;
+mod graph_query;
 mod helpers;
 
 #[cfg(test)]
@@ -86,4 +87,5 @@ pub use bare_search::bare_search;
 pub use dependency_graph::dependency_graph;
 pub use dependency_graph_transitive::dependency_graph_transitive;
 pub use filter_search::filter_search;
+pub use graph_query::DependencyGraphQuery;
 pub use helpers::find_export_matches;

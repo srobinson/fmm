@@ -1,8 +1,8 @@
 use crate::manifest::{FileEntry, Manifest, builtin_source_extensions, try_resolve_local_dep};
 
+use super::DependencyGraphQuery;
 use super::helpers::{
-    direct_upstream_from_reverse_deps, reverse_deps_resolve_specifier, rust_workspace_resolver,
-    workspace_specifier_names_for_source,
+    reverse_deps_resolve_specifier, rust_workspace_resolver, workspace_specifier_names_for_source,
 };
 
 /// Compute upstream and downstream dependencies for a file.
@@ -18,7 +18,10 @@ pub fn dependency_graph<'a>(
     let mut local: Vec<String> = Vec::new();
     let mut external: Vec<String> = Vec::new();
     let exts = builtin_source_extensions();
-    let reverse_upstream = direct_upstream_from_reverse_deps(manifest, file);
+    let graph_query = DependencyGraphQuery::new(manifest).ok();
+    let reverse_upstream = graph_query
+        .as_ref()
+        .map_or_else(Vec::new, |graph| graph.direct_upstream(file));
     let rust_resolver = rust_workspace_resolver(manifest, file);
     let workspace_specifier_names =
         workspace_specifier_names_for_source(manifest, rust_resolver.as_ref(), file);
@@ -66,14 +69,9 @@ pub fn dependency_graph<'a>(
     local.sort();
     external.sort();
 
-    // O(1) lookup using the pre-built reverse dependency index (built at manifest load time).
-    // The index maps each file to the sorted list of files that directly import it.
-    let mut downstream: Vec<&String> = manifest
-        .reverse_deps
-        .get(file)
-        .map(|v| v.iter().collect())
-        .unwrap_or_default();
-    downstream.sort();
+    let downstream = graph_query
+        .as_ref()
+        .map_or_else(Vec::new, |graph| graph.direct_downstream(file));
 
     (local, external, downstream)
 }

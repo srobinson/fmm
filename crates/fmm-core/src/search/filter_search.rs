@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
 
 use crate::manifest::{
     Manifest, builtin_source_extensions, dep_matches, dotted_dep_matches, python_dep_matches,
@@ -6,7 +6,7 @@ use crate::manifest::{
 };
 
 use super::helpers::file_entry_to_result;
-use super::{FileSearchResult, SearchFilters};
+use super::{DependencyGraphQuery, FileSearchResult, SearchFilters};
 
 /// Structured filter search: export, imports, depends_on, LOC range.
 ///
@@ -72,15 +72,15 @@ pub fn filter_search(manifest: &Manifest, filters: &SearchFilters) -> Vec<FileSe
         });
     }
 
-    // depends_on filter: use the prebuilt reverse dependency graph so language
-    // resolver edges, including Rust cross-crate paths, participate in search.
-    // Fall back to per-file dependency scanning for ad hoc manifests that have
-    // not rebuilt reverse_deps.
+    // depends_on filter: use GraphIndex so language resolver edges, including
+    // Rust cross-crate paths, participate in search.
     if let Some(ref dep_path) = filters.depends_on {
         let exts = builtin_source_extensions();
         let dep_stem = strip_source_ext(dep_path, exts);
         let targets = dependency_query_targets(manifest, dep_path, exts);
-        let reverse_matches = transitive_dependents(manifest, &targets);
+        let reverse_matches = DependencyGraphQuery::new(manifest)
+            .ok()
+            .map_or_else(HashSet::new, |graph| graph.transitive_dependents(&targets));
         file_set.retain(|(file_path, entry)| {
             reverse_matches.contains(file_path.as_str())
                 || (reverse_matches.is_empty()
@@ -125,30 +125,6 @@ fn dependency_query_targets(
         })
         .cloned()
         .collect()
-}
-
-fn transitive_dependents(manifest: &Manifest, targets: &HashSet<String>) -> HashSet<String> {
-    let mut seen = targets.clone();
-    let mut dependents = HashSet::new();
-    let mut queue = VecDeque::new();
-
-    for target in targets {
-        if let Some(direct) = manifest.reverse_deps.get(target) {
-            queue.extend(direct.iter().cloned());
-        }
-    }
-
-    while let Some(file) = queue.pop_front() {
-        if !seen.insert(file.clone()) {
-            continue;
-        }
-        dependents.insert(file.clone());
-        if let Some(next) = manifest.reverse_deps.get(&file) {
-            queue.extend(next.iter().filter(|path| !seen.contains(*path)).cloned());
-        }
-    }
-
-    dependents
 }
 
 /// Check whether a dependency string `dep` (from file `source`) resolves to `target` in `manifest`.

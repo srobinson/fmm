@@ -7,8 +7,8 @@ summary: 5 files · 170 LOC · largest: src/server.ts (60 LOC)
 total: 5
 files:
   - src/server.ts         # loc: 60, exports: 1
-  - src/utils.ts          # loc: 45, exports: 3
-  - src/app.ts            # loc: 30, exports: 2
-  - src/config.ts         # loc: 20, exports: 1
+  - src/utils.ts          # loc: 45, exports: 3, ↓ 2 downstream
+  - src/app.ts            # loc: 30, exports: 2, ↓ 1 downstream
+  - src/config.ts         # loc: 20, exports: 1, ↓ 2 downstream
   - src/test/app.test.ts  # loc: 15, exports: 0
-# ↓ N = local relative-import dependents only. Cross-package importers not included.
+# ↓ N = direct dependents resolved by the dependency graph.

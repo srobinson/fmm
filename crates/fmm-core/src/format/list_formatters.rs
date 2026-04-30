@@ -181,12 +181,9 @@ pub fn format_list_files(
             ));
         }
     }
-    // ALP-860: disclose that downstream count is local-only (cross-package importers excluded).
+    // ALP-2120: downstream counts come from the dependency graph.
     if !files.is_empty() {
-        lines.push(
-            "# ↓ N = local relative-import dependents only. Cross-package importers not included."
-                .to_string(),
-        );
+        lines.push("# ↓ N = direct dependents resolved by the dependency graph.".to_string());
     }
 
     lines.join("\n")
@@ -366,6 +363,15 @@ mod tests {
         assert!(out.contains("# loc: 100"));
         assert!(out.contains("↓ 5 downstream")); // alpha has 5 downstream
         assert!(!out.contains("↓ 0")); // beta has 0 downstream — not shown
+    }
+
+    #[test]
+    fn list_files_downstream_note_does_not_exclude_workspace_importers() {
+        let files = vec![("packages/shared/foo.ts", 10usize, 1usize, 2usize, None)];
+        let out = format_list_files(None, &files, 1, 10, None, 0, false);
+
+        assert!(out.contains("# ↓ N = direct dependents resolved by the dependency graph."));
+        assert!(!out.contains("Cross-package importers not included."));
     }
 
     // Suppress unused import warning — FileEntry is needed for format_list_exports_file

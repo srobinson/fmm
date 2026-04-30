@@ -1,10 +1,11 @@
 use std::collections::{BTreeSet, HashSet, VecDeque};
 
 use crate::manifest::{FileEntry, Manifest, builtin_source_extensions, try_resolve_local_dep};
+use crate::resolver::RustImportResolver;
 
+use super::DependencyGraphQuery;
 use super::helpers::{
-    direct_upstream_from_reverse_deps, reverse_deps_resolve_specifier, rust_workspace_resolver,
-    workspace_specifier_names_for_source,
+    reverse_deps_resolve_specifier, rust_workspace_resolver, workspace_specifier_names_for_source,
 };
 
 /// Transitive dependency traversal with BFS and cycle detection.
@@ -14,10 +15,6 @@ use super::helpers::{
 ///   the hop depth at which it was first reached
 /// - `external`: unresolvable dep strings (packages, etc.), deduplicated and sorted
 /// - `downstream`: files that transitively depend on `file`, depth-annotated
-///
-/// `depth=1` gives the same results as `dependency_graph()` but with depth annotations.
-/// `depth=N` traverses N hops. `depth=-1` computes the full transitive closure.
-/// Cycle detection via `HashSet<String>`: already-visited files are never re-queued.
 #[allow(clippy::type_complexity)]
 pub fn dependency_graph_transitive(
     manifest: &Manifest,
@@ -25,144 +22,131 @@ pub fn dependency_graph_transitive(
     entry: &FileEntry,
     depth: i32,
 ) -> (Vec<(String, i32)>, Vec<String>, Vec<(String, i32)>) {
-    // -------------------------------------------------------------------------
-    // Upstream BFS
-    // -------------------------------------------------------------------------
-    let mut upstream: Vec<(String, i32)> = Vec::new();
-    let mut visited_up: HashSet<String> = HashSet::new();
-    visited_up.insert(file.to_string());
-    let mut external_set: BTreeSet<String> = BTreeSet::new();
+    let graph_query = DependencyGraphQuery::new(manifest).ok();
+    let (upstream, external) =
+        transitive_upstream(manifest, graph_query.as_ref(), file, entry, depth);
+    let downstream = graph_query
+        .as_ref()
+        .map_or_else(Vec::new, |graph| graph.transitive_downstream(file, depth));
 
+    (upstream, external, downstream)
+}
+
+fn transitive_upstream(
+    manifest: &Manifest,
+    graph_query: Option<&DependencyGraphQuery<'_>>,
+    file: &str,
+    entry: &FileEntry,
+    depth: i32,
+) -> (Vec<(String, i32)>, Vec<String>) {
     let exts = builtin_source_extensions();
-    let mut queue_up: VecDeque<(String, i32)> = VecDeque::new();
     let rust_resolver = rust_workspace_resolver(manifest, file);
-    let reverse_upstream = direct_upstream_from_reverse_deps(manifest, file);
+    let mut upstream = Vec::new();
+    let mut visited = HashSet::from([file.to_string()]);
+    let mut external_set = BTreeSet::new();
+    let mut queue = VecDeque::new();
+
+    queue_upstream_candidates(
+        UpstreamContext {
+            manifest,
+            graph_query,
+            rust_resolver: rust_resolver.as_ref(),
+            exts,
+        },
+        file,
+        entry,
+        1,
+        &visited,
+        &mut queue,
+        &mut external_set,
+    );
+
+    while let Some((current, current_depth)) = queue.pop_front() {
+        if !visited.insert(current.clone()) {
+            continue;
+        }
+        upstream.push((current.clone(), current_depth));
+
+        if (depth == -1 || current_depth < depth)
+            && let Some(current_entry) = manifest.files.get(&current)
+        {
+            queue_upstream_candidates(
+                UpstreamContext {
+                    manifest,
+                    graph_query,
+                    rust_resolver: rust_resolver.as_ref(),
+                    exts,
+                },
+                &current,
+                current_entry,
+                current_depth + 1,
+                &visited,
+                &mut queue,
+                &mut external_set,
+            );
+        }
+    }
+
+    upstream.sort_by(|a, b| a.0.cmp(&b.0));
+    (upstream, external_set.into_iter().collect())
+}
+
+struct UpstreamContext<'a> {
+    manifest: &'a Manifest,
+    graph_query: Option<&'a DependencyGraphQuery<'a>>,
+    rust_resolver: Option<&'a RustImportResolver>,
+    exts: &'a HashSet<String>,
+}
+
+fn queue_upstream_candidates(
+    context: UpstreamContext<'_>,
+    source_file: &str,
+    entry: &FileEntry,
+    next_depth: i32,
+    visited: &HashSet<String>,
+    queue: &mut VecDeque<(String, i32)>,
+    external_set: &mut BTreeSet<String>,
+) {
+    let graph_upstream = context
+        .graph_query
+        .map_or_else(Vec::new, |graph| graph.direct_upstream(source_file));
     let workspace_specifier_names =
-        workspace_specifier_names_for_source(manifest, rust_resolver.as_ref(), file);
+        workspace_specifier_names_for_source(context.manifest, context.rust_resolver, source_file);
+
     for dep in &entry.dependencies {
-        if let Some(resolved) = try_resolve_local_dep(dep, file, manifest, exts) {
-            if !visited_up.contains(&resolved) {
-                queue_up.push_back((resolved, 1));
-            }
-        } else if !reverse_deps_resolve_specifier(
-            &workspace_specifier_names,
-            &reverse_upstream,
-            dep,
-        ) {
+        if let Some(resolved) =
+            try_resolve_local_dep(dep, source_file, context.manifest, context.exts)
+        {
+            push_if_unvisited(queue, visited, resolved, next_depth);
+        } else if !reverse_deps_resolve_specifier(&workspace_specifier_names, &graph_upstream, dep)
+        {
             external_set.insert(dep.clone());
         }
     }
     for imp in &entry.imports {
         if !imp.contains('/')
-            && let Some(resolved) = try_resolve_local_dep(imp, file, manifest, exts)
+            && let Some(resolved) =
+                try_resolve_local_dep(imp, source_file, context.manifest, context.exts)
         {
-            if !visited_up.contains(&resolved) {
-                queue_up.push_back((resolved, 1));
-            }
+            push_if_unvisited(queue, visited, resolved, next_depth);
             continue;
         }
-        if !reverse_deps_resolve_specifier(&workspace_specifier_names, &reverse_upstream, imp) {
+        if !reverse_deps_resolve_specifier(&workspace_specifier_names, &graph_upstream, imp) {
             external_set.insert(imp.clone());
         }
     }
-    for resolved in reverse_upstream {
-        if !visited_up.contains(&resolved) {
-            queue_up.push_back((resolved, 1));
-        }
+    for resolved in graph_upstream {
+        push_if_unvisited(queue, visited, resolved, next_depth);
     }
+}
 
-    while let Some((current, d)) = queue_up.pop_front() {
-        if visited_up.contains(&current) {
-            continue;
-        }
-        visited_up.insert(current.clone());
-        upstream.push((current.clone(), d));
-
-        if (depth == -1 || d < depth)
-            && let Some(e) = manifest.files.get(&current)
-        {
-            let current_reverse_upstream = direct_upstream_from_reverse_deps(manifest, &current);
-            let current_workspace_specifier_names =
-                workspace_specifier_names_for_source(manifest, rust_resolver.as_ref(), &current);
-            for dep in &e.dependencies {
-                if let Some(resolved) = try_resolve_local_dep(dep, &current, manifest, exts) {
-                    if !visited_up.contains(&resolved) {
-                        queue_up.push_back((resolved, d + 1));
-                    }
-                } else if !reverse_deps_resolve_specifier(
-                    &current_workspace_specifier_names,
-                    &current_reverse_upstream,
-                    dep,
-                ) {
-                    external_set.insert(dep.clone());
-                }
-            }
-            for imp in &e.imports {
-                if !imp.contains('/')
-                    && let Some(resolved) = try_resolve_local_dep(imp, &current, manifest, exts)
-                {
-                    if !visited_up.contains(&resolved) {
-                        queue_up.push_back((resolved, d + 1));
-                    }
-                    continue;
-                }
-                if !reverse_deps_resolve_specifier(
-                    &current_workspace_specifier_names,
-                    &current_reverse_upstream,
-                    imp,
-                ) {
-                    external_set.insert(imp.clone());
-                }
-            }
-            for resolved in current_reverse_upstream {
-                if !visited_up.contains(&resolved) {
-                    queue_up.push_back((resolved, d + 1));
-                }
-            }
-        }
+fn push_if_unvisited(
+    queue: &mut VecDeque<(String, i32)>,
+    visited: &HashSet<String>,
+    path: String,
+    depth: i32,
+) {
+    if !visited.contains(&path) {
+        queue.push_back((path, depth));
     }
-
-    upstream.sort_by(|a, b| a.0.cmp(&b.0));
-    let external: Vec<String> = external_set.into_iter().collect();
-
-    // -------------------------------------------------------------------------
-    // Downstream BFS
-    // -------------------------------------------------------------------------
-    let mut downstream: Vec<(String, i32)> = Vec::new();
-    let mut visited_down: HashSet<String> = HashSet::new();
-    visited_down.insert(file.to_string());
-
-    let mut queue_down: VecDeque<(String, i32)> = VecDeque::new();
-
-    // Seed with files that directly depend on the start file (O(1) reverse index lookup)
-    if let Some(direct) = manifest.reverse_deps.get(file) {
-        for path in direct {
-            if !visited_down.contains(path.as_str()) {
-                queue_down.push_back((path.clone(), 1));
-            }
-        }
-    }
-
-    while let Some((current, d)) = queue_down.pop_front() {
-        if visited_down.contains(&current) {
-            continue;
-        }
-        visited_down.insert(current.clone());
-        downstream.push((current.clone(), d));
-
-        if depth == -1 || d < depth {
-            // Expand next hop using reverse index (O(1) per hop instead of O(N))
-            if let Some(dependents) = manifest.reverse_deps.get(&current) {
-                for path in dependents {
-                    if !visited_down.contains(path.as_str()) {
-                        queue_down.push_back((path.clone(), d + 1));
-                    }
-                }
-            }
-        }
-    }
-
-    downstream.sort_by(|a, b| a.0.cmp(&b.0));
-
-    (upstream, external, downstream)
 }
