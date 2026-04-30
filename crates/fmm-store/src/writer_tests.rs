@@ -258,7 +258,7 @@ fn load_files_map_roundtrip() {
         tx.commit().unwrap();
     }
 
-    let map = load_files_map(&conn).unwrap();
+    let map = crate::reader::load_files_map(&conn).unwrap();
     let entry = map.get("src/component.tsx").unwrap();
     assert_eq!(entry.imports, vec!["react"]);
     assert_eq!(entry.dependencies, vec!["./helpers"]);

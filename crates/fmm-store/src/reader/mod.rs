@@ -12,6 +12,8 @@ use std::path::Path;
 
 use fmm_core::manifest::Manifest;
 
+pub(crate) use files::load_files_map;
+
 /// Build a complete `Manifest` by reading all tables from the open connection.
 ///
 /// Applies the same TS > JS export collision logic so all consumers see

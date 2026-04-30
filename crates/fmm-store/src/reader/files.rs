@@ -4,6 +4,15 @@ use rusqlite::Connection;
 use std::collections::HashMap;
 
 pub(super) fn load_files(conn: &Connection, manifest: &mut Manifest) -> Result<()> {
+    manifest.files.extend(load_files_map(conn)?);
+    Ok(())
+}
+
+/// Load every `files` row into a path keyed `FileEntry` map.
+///
+/// Only the columns persisted on the `files` table are populated. Exports,
+/// methods, and identity edges are loaded by their dedicated readers.
+pub(crate) fn load_files_map(conn: &Connection) -> Result<HashMap<String, FileEntry>> {
     let mut stmt = conn.prepare(
         "SELECT path, loc, modified, imports, dependencies, dependency_kinds,
                 named_imports, namespace_imports, function_names
@@ -24,6 +33,7 @@ pub(super) fn load_files(conn: &Connection, manifest: &mut Manifest) -> Result<(
         ))
     })?;
 
+    let mut map = HashMap::new();
     for row in rows {
         let (path, loc, modified, imports_j, deps_j, dep_kinds_j, ni_j, ns_j, fn_j) = row?;
 
@@ -52,7 +62,7 @@ pub(super) fn load_files(conn: &Connection, manifest: &mut Manifest) -> Result<(
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_default();
 
-        manifest.files.insert(
+        map.insert(
             path,
             FileEntry {
                 exports: Vec::new(),
@@ -71,5 +81,5 @@ pub(super) fn load_files(conn: &Connection, manifest: &mut Manifest) -> Result<(
         );
     }
 
-    Ok(())
+    Ok(map)
 }
