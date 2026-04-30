@@ -113,8 +113,7 @@ impl GraphIndex {
         raw_edges.sort_by_key(|edge| (edge.source, edge.target));
         raw_edges.dedup_by_key(|edge| (edge.source, edge.target));
 
-        let mut downstream_edges = raw_edges.clone();
-        downstream_edges.sort_by_key(|edge| (edge.source, edge.target));
+        let downstream_edges = raw_edges.clone();
         set_ranges(&mut nodes, &downstream_edges, Direction::Downstream)?;
 
         let mut upstream_edges = raw_edges;
