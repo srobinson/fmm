@@ -266,9 +266,31 @@ fn normal_component_text(component: Component<'_>) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{FileId, FileIdentityMap};
+    use super::{FileId, FileIdentityMap, IdentityError, RelativePath};
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn from_slash_path_rejects_non_normal_inputs() {
+        let cases = [
+            "",
+            "/abs/path",
+            "src\\a.ts",
+            ".",
+            "..",
+            "./src/a.ts",
+            "../src/a.ts",
+            "src/../a.ts",
+        ];
+
+        for path in cases {
+            let result = RelativePath::from_slash_path(path);
+            assert!(
+                matches!(result, Err(IdentityError::NonNormalComponent)),
+                "expected NonNormalComponent for {path:?}, got {result:?}"
+            );
+        }
+    }
 
     #[test]
     fn file_ids_are_assigned_from_sorted_normalized_absolute_paths() {
