@@ -66,6 +66,31 @@ fn batch_write_is_atomic() {
 }
 
 #[test]
+fn load_manifest_assigns_sorted_file_ids() {
+    let store = InMemoryStore::new();
+
+    let result = make_parse_result(vec![]);
+    let row_z = serialize_file_data("src/z.ts", &result, None).unwrap();
+    let row_a = serialize_file_data("src/a.ts", &result, None).unwrap();
+
+    store.write_indexed_files(&[row_z, row_a], true).unwrap();
+
+    let manifest = store.load_manifest().unwrap();
+    assert_eq!(
+        manifest.file_id("src/a.ts"),
+        Some(fmm_core::identity::FileId(0))
+    );
+    assert_eq!(
+        manifest.file_id("src/z.ts"),
+        Some(fmm_core::identity::FileId(1))
+    );
+    assert_eq!(
+        manifest.path_for_file_id(fmm_core::identity::FileId(1)),
+        Some("src/z.ts")
+    );
+}
+
+#[test]
 fn full_reindex_clears_old_data() {
     let store = InMemoryStore::new();
 

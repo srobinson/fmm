@@ -45,6 +45,10 @@ pub(super) fn build_manifest(state: &InnerState) -> Manifest {
     }
 
     manifest
+        .rebuild_file_identity()
+        .expect("stored file paths must be normalized relative paths");
+
+    manifest
 }
 
 fn populate_exports(manifest: &mut Manifest, file_path: &str, sf: &super::state::StoredFile) {

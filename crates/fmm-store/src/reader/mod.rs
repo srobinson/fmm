@@ -23,6 +23,7 @@ pub fn load_manifest_from_db(conn: &Connection, root: &Path) -> Result<Manifest>
     exports::load_methods(conn, &mut manifest)?;
     reverse_deps::load_reverse_deps(conn, &mut manifest)?;
     workspace::load_workspace_packages(conn, root, &mut manifest)?;
+    manifest.rebuild_file_identity()?;
 
     Ok(manifest)
 }
@@ -92,6 +93,31 @@ mod tests {
             Some("src/mod.ts")
         );
         assert_eq!(manifest.export_all.get("Alpha").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn loaded_manifest_assigns_sorted_file_ids() {
+        let dir = TempDir::new().unwrap();
+        let mut conn = open_or_create(dir.path()).unwrap();
+        let result = make_result(vec![], vec![], vec![]);
+
+        write_file(&mut conn, "src/z.ts", &result);
+        write_file(&mut conn, "src/a.ts", &result);
+
+        let manifest = load_manifest_from_db(&conn, dir.path()).unwrap();
+
+        assert_eq!(
+            manifest.file_id("src/a.ts"),
+            Some(fmm_core::identity::FileId(0))
+        );
+        assert_eq!(
+            manifest.file_id("src/z.ts"),
+            Some(fmm_core::identity::FileId(1))
+        );
+        assert_eq!(
+            manifest.path_for_file_id(fmm_core::identity::FileId(0)),
+            Some("src/a.ts")
+        );
     }
 
     #[test]

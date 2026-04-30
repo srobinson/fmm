@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt;
 use std::path::{Component, Path};
 
@@ -56,6 +57,33 @@ const _: () = assert!(std::mem::size_of::<FileId>() == 4);
 pub struct RelativePath(String);
 
 impl RelativePath {
+    /// Build a relative path from fmm's slash separated storage key form.
+    pub fn from_slash_path(path: impl AsRef<str>) -> Result<Self> {
+        let path = path.as_ref();
+        if path.is_empty() || path.contains('\\') || Path::new(path).is_absolute() {
+            return Err(IdentityError::NonNormalComponent);
+        }
+
+        let mut parts = Vec::new();
+        for component in Path::new(path).components() {
+            let Component::Normal(value) = component else {
+                return Err(IdentityError::NonNormalComponent);
+            };
+            parts.push(
+                value
+                    .to_str()
+                    .map(str::to_owned)
+                    .ok_or(IdentityError::NonUtf8)?,
+            );
+        }
+
+        if parts.is_empty() {
+            return Err(IdentityError::NonNormalComponent);
+        }
+
+        Ok(Self(parts.join("/")))
+    }
+
     /// Borrow the normalized relative path text.
     pub fn as_str(&self) -> &str {
         &self.0
@@ -94,6 +122,100 @@ pub enum EdgeKind {
     Runtime,
     /// Type-only dependency edge, for example TypeScript `import type`.
     TypeOnly,
+}
+
+/// Bidirectional mapping between fmm path keys and dense internal file ids.
+///
+/// Full indexing builds a compact map from sorted paths. Incremental watch
+/// updates append new ids and leave removed ids vacant so survivor ids remain
+/// stable until the next full indexing boundary.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FileIdentityMap {
+    path_to_id: HashMap<RelativePath, FileId>,
+    id_to_path: Vec<Option<RelativePath>>,
+}
+
+impl FileIdentityMap {
+    /// Build a deterministic dense map from absolute source paths.
+    pub fn from_absolute_paths<I, P>(root: impl AsRef<Path>, paths: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = P>,
+        P: AsRef<Path>,
+    {
+        let root = root.as_ref();
+        let paths = paths
+            .into_iter()
+            .map(|path| normalize_relative(root, path))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Self::from_relative_values(paths))
+    }
+
+    /// Build a deterministic dense map from slash separated relative paths.
+    pub fn from_relative_paths<I, P>(paths: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = P>,
+        P: AsRef<str>,
+    {
+        let paths = paths
+            .into_iter()
+            .map(RelativePath::from_slash_path)
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Self::from_relative_values(paths))
+    }
+
+    /// Return the id currently assigned to a path key.
+    pub fn id_for_path(&self, path: &str) -> Option<FileId> {
+        let path = RelativePath::from_slash_path(path).ok()?;
+        self.path_to_id.get(&path).copied()
+    }
+
+    /// Return the path key currently assigned to an id.
+    pub fn path_for_id(&self, id: FileId) -> Option<&RelativePath> {
+        self.id_to_path.get(id.0 as usize).and_then(Option::as_ref)
+    }
+
+    /// Preserve an existing path id or append a new id for a watch-created path.
+    pub fn ensure_relative_path(&mut self, path: impl AsRef<str>) -> Result<FileId> {
+        let path = RelativePath::from_slash_path(path)?;
+        if let Some(id) = self.path_to_id.get(&path) {
+            return Ok(*id);
+        }
+
+        let id = FileId(self.id_to_path.len() as u32);
+        self.id_to_path.push(Some(path.clone()));
+        self.path_to_id.insert(path, id);
+        Ok(id)
+    }
+
+    /// Remove a path while preserving all other assigned ids.
+    pub fn remove_relative_path(&mut self, path: impl AsRef<str>) -> Result<Option<FileId>> {
+        let path = RelativePath::from_slash_path(path)?;
+        let Some(id) = self.path_to_id.remove(&path) else {
+            return Ok(None);
+        };
+        if let Some(slot) = self.id_to_path.get_mut(id.0 as usize) {
+            *slot = None;
+        }
+        Ok(Some(id))
+    }
+
+    fn from_relative_values(mut paths: Vec<RelativePath>) -> Self {
+        paths.sort();
+        paths.dedup();
+
+        let mut path_to_id = HashMap::with_capacity(paths.len());
+        let mut id_to_path = Vec::with_capacity(paths.len());
+        for (index, path) in paths.into_iter().enumerate() {
+            let id = FileId(index as u32);
+            path_to_id.insert(path.clone(), id);
+            id_to_path.push(Some(path));
+        }
+
+        Self {
+            path_to_id,
+            id_to_path,
+        }
+    }
 }
 
 /// Convert an absolute path into fmm's canonical slash separated relative form.
@@ -139,5 +261,73 @@ fn normal_component_text(component: Component<'_>) -> Result<String> {
         Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
             Err(IdentityError::NonNormalComponent)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FileId, FileIdentityMap};
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn file_ids_are_assigned_from_sorted_normalized_absolute_paths() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        let src = root.join("src");
+        fs::create_dir_all(src.join("nested")).unwrap();
+        fs::write(src.join("z.ts"), "").unwrap();
+        fs::write(src.join("a.ts"), "").unwrap();
+        fs::write(src.join("nested/b.ts"), "").unwrap();
+
+        let identities = FileIdentityMap::from_absolute_paths(
+            root,
+            [
+                src.join("z.ts"),
+                src.join("nested/../nested/b.ts"),
+                src.join("a.ts"),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(identities.id_for_path("src/a.ts"), Some(FileId(0)));
+        assert_eq!(identities.id_for_path("src/nested/b.ts"), Some(FileId(1)));
+        assert_eq!(identities.id_for_path("src/z.ts"), Some(FileId(2)));
+        assert_eq!(
+            identities.path_for_id(FileId(1)).map(|path| path.as_str()),
+            Some("src/nested/b.ts")
+        );
+    }
+
+    #[test]
+    fn incremental_identity_updates_preserve_survivor_ids() {
+        let mut identities =
+            FileIdentityMap::from_relative_paths(["src/a.ts", "src/b.ts", "src/c.ts"]).unwrap();
+
+        let a_id = identities.id_for_path("src/a.ts").unwrap();
+        let b_id = identities.id_for_path("src/b.ts").unwrap();
+        let c_id = identities.id_for_path("src/c.ts").unwrap();
+
+        assert_eq!(identities.ensure_relative_path("src/b.ts").unwrap(), b_id);
+        assert_eq!(
+            identities.ensure_relative_path("src/d.ts").unwrap(),
+            FileId(3)
+        );
+        assert_eq!(
+            identities.remove_relative_path("src/b.ts").unwrap(),
+            Some(b_id)
+        );
+        assert_eq!(
+            identities.ensure_relative_path("src/e.ts").unwrap(),
+            FileId(4)
+        );
+
+        assert_eq!(identities.id_for_path("src/a.ts"), Some(a_id));
+        assert_eq!(identities.id_for_path("src/c.ts"), Some(c_id));
+        assert_eq!(identities.path_for_id(b_id), None);
+        assert_eq!(
+            identities.path_for_id(a_id).map(|path| path.as_str()),
+            Some("src/a.ts")
+        );
     }
 }

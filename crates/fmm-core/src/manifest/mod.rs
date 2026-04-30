@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
+use crate::identity::{FileId, FileIdentityMap};
 use crate::parser::Metadata;
 use crate::resolver::workspace::{WorkspaceEcosystem, WorkspaceInfo};
 
@@ -47,6 +48,10 @@ pub struct Manifest {
     pub version: String,
     pub generated: DateTime<Utc>,
     pub files: HashMap<String, FileEntry>,
+    /// Internal file identity map used by graph storage. Skipped at public
+    /// boundaries so CLI and MCP contracts remain path based.
+    #[serde(skip)]
+    file_identity: FileIdentityMap,
     /// Maps export name -> file path (backward compat)
     pub export_index: HashMap<String, String>,
     /// Maps export name -> full location (file + lines)
@@ -97,6 +102,7 @@ impl Manifest {
             version: "2.0".to_string(),
             generated: Utc::now(),
             files: HashMap::new(),
+            file_identity: FileIdentityMap::default(),
             export_index: HashMap::new(),
             export_locations: HashMap::new(),
             export_all: HashMap::new(),
@@ -146,6 +152,8 @@ impl Manifest {
 
     /// Add or update a file entry in the index
     pub fn add_file(&mut self, path: &str, metadata: Metadata) {
+        let _ = self.file_identity.ensure_relative_path(path);
+
         if let Some(old_entry) = self.files.get(path) {
             for old_export in &old_entry.exports {
                 if self.export_index.get(old_export) == Some(&path.to_string()) {
@@ -265,6 +273,8 @@ impl Manifest {
 
     pub fn remove_file(&mut self, path: &str) {
         if let Some(entry) = self.files.remove(path) {
+            let _ = self.file_identity.remove_relative_path(path);
+
             for export in &entry.exports {
                 self.export_index.remove(export);
                 self.export_locations.remove(export);
@@ -302,6 +312,24 @@ impl Manifest {
 
     pub fn get_file(&self, path: &str) -> Option<&FileEntry> {
         self.files.get(path)
+    }
+
+    pub fn rebuild_file_identity(&mut self) -> crate::identity::Result<()> {
+        self.file_identity =
+            FileIdentityMap::from_relative_paths(self.files.keys().map(String::as_str))?;
+        Ok(())
+    }
+
+    pub fn file_identity(&self) -> &FileIdentityMap {
+        &self.file_identity
+    }
+
+    pub fn file_id(&self, path: &str) -> Option<FileId> {
+        self.file_identity.id_for_path(path)
+    }
+
+    pub fn path_for_file_id(&self, id: FileId) -> Option<&str> {
+        self.file_identity.path_for_id(id).map(|path| path.as_str())
     }
 
     pub fn validate_file(&self, path: &str, current: &Metadata) -> bool {
