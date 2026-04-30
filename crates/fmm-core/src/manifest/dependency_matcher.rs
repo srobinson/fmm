@@ -7,6 +7,7 @@ mod workspace;
 
 pub(crate) use local::try_resolve_local_dep;
 pub(crate) use path::{builtin_source_extensions, strip_source_ext};
+pub(crate) use reverse::build_dependency_edges;
 pub(super) use reverse::build_reverse_deps;
 
 #[cfg(test)]
