@@ -2,11 +2,7 @@ use anyhow::Result;
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
-use std::sync::{
-    Arc,
-    atomic::{AtomicU64, Ordering},
-};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use fmm_core::store::FmmStore;
 use fmm_core::types::{PreserializedRow, serialize_file_data};
@@ -14,10 +10,12 @@ use fmm_store::SqliteStore;
 
 use crate::fs_utils;
 use fmm_core::config::Config;
-use fmm_core::extractor::ParserCache;
 use fmm_core::resolver;
 
 use super::{collect_files_multi, resolve_root_multi};
+
+mod parse;
+mod staleness;
 
 /// Show progress bars when at least this many files need processing.
 const PROGRESS_THRESHOLD: usize = 10;
@@ -67,24 +65,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
 
     if dry_run {
         // Dry run: show what would be indexed without touching the DB.
-        let dirty_files: Vec<&std::path::PathBuf> = match SqliteStore::open(&root) {
-            Ok(store) => files
-                .iter()
-                .filter(|file| {
-                    if force {
-                        return true;
-                    }
-                    let rel = file
-                        .strip_prefix(&root)
-                        .unwrap_or(file)
-                        .display()
-                        .to_string();
-                    let mtime = fs_utils::file_mtime_rfc3339(file);
-                    !store.is_file_up_to_date(&rel, mtime.as_deref())
-                })
-                .collect(),
-            _ => files.iter().collect(),
-        };
+        let dirty_files = staleness::dry_run_dirty_files(&files, &root, force);
 
         for abs_path in &dirty_files {
             let rel = abs_path.strip_prefix(&root).unwrap_or(abs_path);
@@ -113,34 +94,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     // Phase 1: bulk staleness check.
     // Load all indexed_at times in one query (avoids 39k individual SELECTs),
     // then compare in parallel with rayon (mtime syscalls are I/O-parallel).
-    let phase1_start = Instant::now();
-    let indexed_mtimes: std::collections::HashMap<String, String> = if !force {
-        store.load_indexed_mtimes()?
-    } else {
-        std::collections::HashMap::new()
-    };
-    let dirty_files: Vec<&std::path::PathBuf> = files
-        .par_iter()
-        .filter(|file| {
-            if force {
-                return true;
-            }
-            let rel = file
-                .strip_prefix(&root)
-                .unwrap_or(file)
-                .display()
-                .to_string();
-            let Some(mtime) = fs_utils::file_mtime_rfc3339(file) else {
-                return true; // unreadable mtime → treat as dirty
-            };
-            // Dirty when not in DB, or stored indexed_at < file mtime.
-            indexed_mtimes
-                .get(&rel)
-                .map(|indexed_at| indexed_at.as_str() < mtime.as_str())
-                .unwrap_or(true)
-        })
-        .collect();
-    let phase1_elapsed = phase1_start.elapsed();
+    let (dirty_files, phase1_elapsed) = staleness::stale_files(&files, &root, &store, force)?;
 
     if dirty_files.is_empty() {
         let elapsed = total_start.elapsed();
@@ -182,111 +136,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     // Phase 2 (parallel): parse all stale files.
     // map_init creates one ParserCache per rayon worker thread — parsers and
     // compiled queries are reused across files instead of constructed per-file.
-    let phase2_start = Instant::now();
-    let parse_results: Vec<(std::path::PathBuf, fmm_core::parser::ParseResult)> = if show_progress {
-        let pb = ProgressBar::new(dirty_files.len() as u64);
-        pb.set_style(
-            ProgressStyle::with_template(
-                "Parsing  {wide_bar:.cyan/blue} {pos}/{len}  {per_sec}  {msg}",
-            )
-            .expect("valid template"),
-        );
-        pb.set_message("starting...");
-        // Steady tick redraws the bar even when no completions arrive (e.g. during
-        // long-running parses of large files). Without this the display freezes.
-        pb.enable_steady_tick(Duration::from_millis(100));
-
-        // Watcher thread: switches from "ETA Xs" to "N remaining (Xs)" when the
-        // bar stalls at the tail. Large files like checker.ts (54k lines) can keep
-        // one rayon worker busy for minutes after the rest of the corpus finishes.
-        // The plain ETA formula produces "ETA 0s" in that situation — misleading.
-        let last_inc_ms = Arc::new(AtomicU64::new(
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64,
-        ));
-        let pb_w = pb.clone();
-        let last_inc_w = Arc::clone(&last_inc_ms);
-        let watcher = std::thread::spawn(move || {
-            loop {
-                std::thread::sleep(Duration::from_millis(200));
-                let pos = pb_w.position();
-                let len = pb_w.length().unwrap_or(pos);
-                if pos >= len {
-                    break;
-                }
-                let now_ms = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64;
-                let stall_secs = now_ms.saturating_sub(last_inc_w.load(Ordering::Relaxed)) / 1000;
-                if stall_secs >= 2 {
-                    // Stalled: show remaining count + elapsed wait so the user knows
-                    // we are still alive and parsing, not hung.
-                    pb_w.set_message(format!("{} remaining  ({}s)", len - pos, stall_secs));
-                } else {
-                    let eta = pb_w.eta();
-                    let secs = eta.as_secs();
-                    if secs > 1 {
-                        let msg = if secs >= 60 {
-                            format!("ETA {}m{}s", secs / 60, secs % 60)
-                        } else {
-                            format!("ETA {}s", secs)
-                        };
-                        pb_w.set_message(msg);
-                    } else {
-                        pb_w.set_message("finishing...");
-                    }
-                }
-            }
-        });
-
-        let results = dirty_files
-            .iter()
-            .par_bridge()
-            .map_init(ParserCache::new, |cache, file| {
-                let r = match cache.parse_file(file) {
-                    Ok(result) => Some(((*file).clone(), result)),
-                    Err(e) => {
-                        eprintln!("{} {}: {}", "error:".red().bold(), file.display(), e);
-                        None
-                    }
-                };
-                // Stamp completion time BEFORE inc so the watcher sees fresh
-                // state as soon as the counter changes.
-                last_inc_ms.store(
-                    SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis() as u64,
-                    Ordering::Relaxed,
-                );
-                pb.inc(1);
-                r
-            })
-            .filter_map(|x| x)
-            .collect();
-        pb.finish_and_clear();
-        let _ = watcher.join();
-        results
-    } else {
-        dirty_files
-            .iter()
-            .par_bridge()
-            .map_init(ParserCache::new, |cache, file| {
-                match cache.parse_file(file) {
-                    Ok(result) => Some(((*file).clone(), result)),
-                    Err(e) => {
-                        eprintln!("{} {}: {}", "error:".red().bold(), file.display(), e);
-                        None
-                    }
-                }
-            })
-            .filter_map(|x| x)
-            .collect()
-    };
-    let phase2_elapsed = phase2_start.elapsed();
+    let (parse_results, phase2_elapsed) = parse::parse_dirty_files(&dirty_files, show_progress);
 
     // Phase 2b (parallel): pre-serialize JSON fields for all parsed files.
     // serde_json::to_string is CPU-bound — rayon cuts this from O(N) serial to
