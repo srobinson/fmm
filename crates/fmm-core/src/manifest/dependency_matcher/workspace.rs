@@ -7,7 +7,7 @@ use rayon::prelude::*;
 use crate::manifest::{FileEntry, Manifest};
 use crate::resolver::{
     CrossPackageResolver, DenoImportResolver, GoImportResolver, ImportResolver, RustImportResolver,
-    resolve_by_directory_prefix, workspace::WorkspaceEcosystem,
+    normal_components, resolve_by_directory_prefix, workspace::WorkspaceEcosystem,
 };
 
 use super::path::{is_go_source_file, is_js_ts_source_file, is_rust_source_file};
@@ -183,15 +183,6 @@ fn infer_root_for_key(package_dir: &Path, key: &str) -> Option<PathBuf> {
     }
 
     None
-}
-
-fn normal_components(path: &Path) -> Vec<String> {
-    path.components()
-        .filter_map(|component| match component {
-            std::path::Component::Normal(value) => value.to_str().map(str::to_string),
-            _ => None,
-        })
-        .collect()
 }
 
 fn slash_path(path: &Path) -> Option<String> {
