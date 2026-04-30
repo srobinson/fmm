@@ -2,6 +2,7 @@ pub mod config;
 pub mod error;
 pub mod extractor;
 pub mod format;
+pub mod identity;
 pub mod manifest;
 pub mod parser;
 pub mod resolver;
