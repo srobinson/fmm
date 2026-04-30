@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 pub fn ensure_schema(conn: &Connection) -> Result<()> {
     let version = read_schema_version(conn)?;
@@ -88,7 +88,11 @@ CREATE TABLE IF NOT EXISTS files (
     named_imports     TEXT,
     namespace_imports TEXT,
     function_names    TEXT,
-    indexed_at        TEXT NOT NULL
+    indexed_at        TEXT NOT NULL,
+    source_mtime      TEXT,
+    source_size       INTEGER,
+    content_hash      TEXT,
+    parser_cache_version INTEGER
 );
 
 -- Export locations. Replaces export_index, export_locations, export_all.

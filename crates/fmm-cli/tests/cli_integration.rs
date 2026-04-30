@@ -101,6 +101,16 @@ fn db_file_count(base: &Path) -> i64 {
         .unwrap_or(0)
 }
 
+fn db_reverse_dep_count(base: &Path, target: &str) -> i64 {
+    let conn = rusqlite::Connection::open(base.join(".fmm.db")).unwrap();
+    conn.query_row(
+        "SELECT COUNT(*) FROM reverse_deps WHERE target_path = ?1",
+        rusqlite::params![target],
+        |row| row.get(0),
+    )
+    .unwrap_or(0)
+}
+
 #[test]
 fn generate_creates_db() {
     let tmp = setup_project();
@@ -157,6 +167,22 @@ fn generate_updates_stale_files() {
     fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
 
     assert!(db_has_export(tmp.path(), "src/auth.ts", "NEW_EXPORT"));
+}
+
+#[test]
+fn generate_prunes_deleted_files_and_reverse_deps() {
+    let tmp = setup_project();
+    let path = tmp.path().to_str().unwrap();
+
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
+    assert!(db_indexed(tmp.path(), "src/db.ts"));
+    assert_eq!(db_reverse_dep_count(tmp.path(), "src/db.ts"), 1);
+
+    fs::remove_file(tmp.path().join("src/db.ts")).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
+
+    assert!(!db_indexed(tmp.path(), "src/db.ts"));
+    assert_eq!(db_reverse_dep_count(tmp.path(), "src/db.ts"), 0);
 }
 
 #[test]

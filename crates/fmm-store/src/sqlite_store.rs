@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use chrono::Utc;
 use rusqlite::Connection;
 
+use fmm_core::identity::Fingerprint;
 use fmm_core::manifest::Manifest;
 use fmm_core::store::FmmStore;
 use fmm_core::types::PreserializedRow;
@@ -73,12 +74,6 @@ impl SqliteStore {
         &self.root
     }
 
-    /// Check whether a file's index entry is at least as fresh as its source mtime.
-    pub fn is_file_up_to_date(&self, rel_path: &str, source_mtime: Option<&str>) -> bool {
-        let conn = self.conn.borrow();
-        writer::is_file_up_to_date(&conn, rel_path, source_mtime)
-    }
-
     /// Returns the number of indexed files.
     ///
     /// # Errors
@@ -115,9 +110,18 @@ impl FmmStore for SqliteStore {
         reader::load_manifest_from_db(&conn, &self.root).map_err(StoreError::Other)
     }
 
-    fn load_indexed_mtimes(&self) -> Result<HashMap<String, String>, Self::Error> {
+    fn load_fingerprints(&self) -> Result<HashMap<String, Fingerprint>, Self::Error> {
         let conn = self.conn.borrow();
-        writer::load_indexed_mtimes(&conn).map_err(StoreError::Other)
+        writer::load_fingerprints(&conn).map_err(StoreError::Other)
+    }
+
+    fn update_file_fingerprint(
+        &self,
+        rel_path: &str,
+        fingerprint: &Fingerprint,
+    ) -> Result<bool, Self::Error> {
+        let conn = self.conn.borrow();
+        writer::update_file_fingerprint(&conn, rel_path, fingerprint).map_err(StoreError::Other)
     }
 
     fn write_indexed_files(
@@ -182,6 +186,7 @@ impl FmmStore for SqliteStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fmm_core::identity::{Fingerprint, PARSER_CACHE_VERSION};
     use fmm_core::parser::{ExportEntry, Metadata, ParseResult};
     use fmm_core::store::FmmStore;
     use fmm_core::types::serialize_file_data;
@@ -197,6 +202,15 @@ mod tests {
                 ..Default::default()
             },
             custom_fields: None,
+        }
+    }
+
+    fn fingerprint() -> Fingerprint {
+        Fingerprint {
+            source_mtime: "2026-03-01T00:00:00+00:00".to_string(),
+            source_size: 9,
+            content_hash: "fnv1a64:test".to_string(),
+            parser_cache_version: PARSER_CACHE_VERSION,
         }
     }
 
@@ -268,17 +282,18 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_store_load_indexed_mtimes() {
+    fn sqlite_store_load_fingerprints() {
         let dir = TempDir::new().unwrap();
         let store = SqliteStore::open_or_create(dir.path()).unwrap();
 
         let result = make_parse_result(vec![]);
-        let row =
+        let mut row =
             serialize_file_data("src/x.ts", &result, Some("2026-03-01T00:00:00+00:00")).unwrap();
+        row.fingerprint = Some(fingerprint());
         store.upsert_single_file(&row).unwrap();
 
-        let mtimes = store.load_indexed_mtimes().unwrap();
-        assert!(mtimes.contains_key("src/x.ts"));
+        let fingerprints = store.load_fingerprints().unwrap();
+        assert_eq!(fingerprints.get("src/x.ts"), Some(&fingerprint()));
     }
 
     #[test]

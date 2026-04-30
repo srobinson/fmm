@@ -6,6 +6,7 @@ use rusqlite::{Connection, Transaction, params};
 use std::collections::HashMap;
 use std::path::Path;
 
+use fmm_core::identity::Fingerprint;
 use fmm_core::manifest::FileEntry;
 use fmm_core::parser::ParseResult;
 
@@ -14,35 +15,78 @@ pub use fmm_core::types::{
     ExportRecord, MethodRecord, PreserializedRow, extract_function_names, serialize_file_data,
 };
 
-/// Returns `true` when the DB's `indexed_at` for `rel_path` is >= `source_mtime`,
-/// meaning the stored data is at least as fresh as the source file.
-pub fn is_file_up_to_date(conn: &Connection, rel_path: &str, source_mtime: Option<&str>) -> bool {
-    let Some(mtime) = source_mtime else {
-        return false;
-    };
-    conn.query_row(
-        "SELECT indexed_at FROM files WHERE path = ?1",
-        params![rel_path],
-        |row| row.get::<_, String>(0),
-    )
-    .ok()
-    .map(|indexed_at| indexed_at.as_str() >= mtime)
-    .unwrap_or(false)
-}
-
-/// Load all `(path, indexed_at)` pairs from the DB in one query.
+/// Load complete fingerprints from the DB in one query.
 ///
 /// Used by the bulk staleness check in `fmm generate` to avoid individual
 /// queries per file.
-pub fn load_indexed_mtimes(conn: &Connection) -> Result<HashMap<String, String>> {
-    let mut stmt = conn.prepare("SELECT path, indexed_at FROM files")?;
-    let map = stmt
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+pub fn load_fingerprints(conn: &Connection) -> Result<HashMap<String, Fingerprint>> {
+    let mut stmt = conn.prepare(
+        "SELECT path, source_mtime, source_size, content_hash, parser_cache_version FROM files",
+    )?;
+    let mut map = HashMap::new();
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, Option<i64>>(2)?,
+            row.get::<_, Option<String>>(3)?,
+            row.get::<_, Option<u32>>(4)?,
+        ))
+    })?;
+
+    for row in rows {
+        let (path, source_mtime, source_size, content_hash, parser_cache_version) = row?;
+        let Some(source_mtime) = source_mtime else {
+            continue;
+        };
+        let Some(source_size) = source_size else {
+            continue;
+        };
+        let Some(content_hash) = content_hash else {
+            continue;
+        };
+        let Some(parser_cache_version) = parser_cache_version else {
+            continue;
+        };
+        let Ok(source_size) = u64::try_from(source_size) else {
+            continue;
+        };
+        map.insert(
+            path,
+            Fingerprint {
+                source_mtime,
+                source_size,
+                content_hash,
+                parser_cache_version,
+            },
+        );
+    }
+
     Ok(map)
+}
+
+pub fn update_file_fingerprint(
+    conn: &Connection,
+    rel_path: &str,
+    fingerprint: &Fingerprint,
+) -> Result<bool> {
+    let rows = conn.execute(
+        "UPDATE files
+         SET modified = ?2,
+             source_mtime = ?2,
+             source_size = ?3,
+             content_hash = ?4,
+             parser_cache_version = ?5
+         WHERE path = ?1",
+        params![
+            rel_path,
+            fingerprint.source_mtime,
+            i64::try_from(fingerprint.source_size).unwrap_or(i64::MAX),
+            fingerprint.content_hash,
+            fingerprint.parser_cache_version,
+        ],
+    )?;
+    Ok(rows > 0)
 }
 
 /// Write a pre-serialized file row to the DB within an open transaction.
@@ -58,14 +102,20 @@ pub fn upsert_preserialized(
         let sql = if plain_insert {
             "INSERT INTO files
                  (path, loc, modified, imports, dependencies, named_imports,
-                  namespace_imports, function_names, indexed_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+                  namespace_imports, function_names, indexed_at, source_mtime,
+                  source_size, content_hash, parser_cache_version)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"
         } else {
             "INSERT OR REPLACE INTO files
                  (path, loc, modified, imports, dependencies, named_imports,
-                  namespace_imports, function_names, indexed_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+                  namespace_imports, function_names, indexed_at, source_mtime,
+                  source_size, content_hash, parser_cache_version)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"
         };
+        let source_size = row
+            .fingerprint
+            .as_ref()
+            .map(|fingerprint| i64::try_from(fingerprint.source_size).unwrap_or(i64::MAX));
         tx.prepare_cached(sql)?
             .execute(params![
                 row.rel_path,
@@ -77,6 +127,16 @@ pub fn upsert_preserialized(
                 row.namespace_imports_json,
                 row.function_names_json,
                 row.indexed_at,
+                row.fingerprint
+                    .as_ref()
+                    .map(|fingerprint| &fingerprint.source_mtime),
+                source_size,
+                row.fingerprint
+                    .as_ref()
+                    .map(|fingerprint| &fingerprint.content_hash),
+                row.fingerprint
+                    .as_ref()
+                    .map(|fingerprint| fingerprint.parser_cache_version),
             ])
             .context("Failed to upsert file row")?;
     }

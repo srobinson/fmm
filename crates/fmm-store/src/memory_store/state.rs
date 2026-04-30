@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use fmm_core::identity::Fingerprint;
 use fmm_core::types::PreserializedRow;
 
 use super::MemoryStoreError;
@@ -14,6 +15,7 @@ pub(super) struct StoredFile {
     pub(super) named_imports: HashMap<String, Vec<String>>,
     pub(super) namespace_imports: Vec<String>,
     pub(super) function_names: Vec<String>,
+    pub(super) fingerprint: Option<Fingerprint>,
     pub(super) exports: Vec<StoredExport>,
     pub(super) methods: Vec<StoredMethod>,
 }
@@ -91,6 +93,7 @@ impl InnerState {
             named_imports,
             namespace_imports,
             function_names,
+            fingerprint: row.fingerprint.clone(),
             exports,
             methods,
         };

@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use fmm_core::identity::Fingerprint;
 use fmm_core::manifest::Manifest;
 use fmm_core::store::FmmStore;
 use fmm_core::types::PreserializedRow;
@@ -73,19 +74,41 @@ impl FmmStore for InMemoryStore {
         Ok(manifest::build_manifest(&state))
     }
 
-    fn load_indexed_mtimes(&self) -> Result<HashMap<String, String>, Self::Error> {
+    fn load_fingerprints(&self) -> Result<HashMap<String, Fingerprint>, Self::Error> {
         let state = self
             .state
             .lock()
             .map_err(|e| MemoryStoreError::new(format!("lock poisoned: {e}")))?;
 
-        let mtimes = state
+        let fingerprints = state
             .files
             .iter()
-            .filter_map(|(path, sf)| sf.mtime.as_ref().map(|m| (path.clone(), m.clone())))
+            .filter_map(|(path, sf)| {
+                sf.fingerprint
+                    .as_ref()
+                    .map(|fingerprint| (path.clone(), fingerprint.clone()))
+            })
             .collect();
 
-        Ok(mtimes)
+        Ok(fingerprints)
+    }
+
+    fn update_file_fingerprint(
+        &self,
+        rel_path: &str,
+        fingerprint: &Fingerprint,
+    ) -> Result<bool, Self::Error> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|e| MemoryStoreError::new(format!("lock poisoned: {e}")))?;
+
+        let Some(file) = state.files.get_mut(rel_path) else {
+            return Ok(false);
+        };
+        file.mtime = Some(fingerprint.source_mtime.clone());
+        file.fingerprint = Some(fingerprint.clone());
+        Ok(true)
     }
 
     fn write_indexed_files(

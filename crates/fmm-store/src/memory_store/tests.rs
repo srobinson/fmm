@@ -1,4 +1,5 @@
 use super::*;
+use fmm_core::identity::{Fingerprint, PARSER_CACHE_VERSION};
 use fmm_core::parser::{ExportEntry, Metadata, ParseResult};
 use fmm_core::types::serialize_file_data;
 
@@ -12,6 +13,15 @@ fn make_parse_result(exports: Vec<ExportEntry>) -> ParseResult {
             ..Default::default()
         },
         custom_fields: None,
+    }
+}
+
+fn fingerprint() -> Fingerprint {
+    Fingerprint {
+        source_mtime: "2026-03-01T00:00:00+00:00".to_string(),
+        source_size: 9,
+        content_hash: "fnv1a64:test".to_string(),
+        parser_cache_version: PARSER_CACHE_VERSION,
     }
 }
 
@@ -101,15 +111,17 @@ fn delete_single_file() {
 }
 
 #[test]
-fn load_indexed_mtimes() {
+fn load_fingerprints() {
     let store = InMemoryStore::new();
 
     let result = make_parse_result(vec![]);
-    let row = serialize_file_data("src/x.ts", &result, Some("2026-03-01T00:00:00+00:00")).unwrap();
+    let mut row =
+        serialize_file_data("src/x.ts", &result, Some("2026-03-01T00:00:00+00:00")).unwrap();
+    row.fingerprint = Some(fingerprint());
     store.upsert_single_file(&row).unwrap();
 
-    let mtimes = store.load_indexed_mtimes().unwrap();
-    assert!(mtimes.contains_key("src/x.ts"));
+    let fingerprints = store.load_fingerprints().unwrap();
+    assert_eq!(fingerprints.get("src/x.ts"), Some(&fingerprint()));
 }
 
 #[test]

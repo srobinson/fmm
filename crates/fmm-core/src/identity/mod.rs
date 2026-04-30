@@ -2,6 +2,12 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::{Component, Path};
 
+/// Parser cache version embedded in per-file fingerprints.
+///
+/// Bump this when parser output semantics change without a source file content
+/// change.
+pub const PARSER_CACHE_VERSION: u32 = 1;
+
 /// Result type for identity primitive operations.
 pub type Result<T> = std::result::Result<T, IdentityError>;
 

@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::identity::Fingerprint;
 use crate::manifest::Manifest;
 use crate::types::PreserializedRow;
 
@@ -33,15 +34,28 @@ pub trait FmmStore {
     /// Returns an error if the store is uninitialized or corrupt.
     fn load_manifest(&self) -> Result<Manifest, Self::Error>;
 
-    /// Load the last-indexed mtime for each file path.
+    /// Load complete stored fingerprints for each file path.
     ///
-    /// Returns a map of `rel_path -> rfc3339_mtime`. Used by the incremental
-    /// indexer to detect which files need re-parsing.
+    /// Returns a map of `rel_path -> Fingerprint`. Used by the incremental
+    /// indexer to detect which files need re-parsing or fingerprint refresh.
     ///
     /// # Errors
     ///
     /// Returns an error if the store cannot be read.
-    fn load_indexed_mtimes(&self) -> Result<HashMap<String, String>, Self::Error>;
+    fn load_fingerprints(&self) -> Result<HashMap<String, Fingerprint>, Self::Error>;
+
+    /// Refresh stored fingerprint fields for a file without reparsing.
+    ///
+    /// Returns `true` when a row existed and was updated.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the store cannot be updated.
+    fn update_file_fingerprint(
+        &self,
+        rel_path: &str,
+        fingerprint: &Fingerprint,
+    ) -> Result<bool, Self::Error>;
 
     /// Write a batch of pre-serialized file rows to the store.
     ///

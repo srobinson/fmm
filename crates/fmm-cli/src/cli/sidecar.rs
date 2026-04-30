@@ -2,20 +2,21 @@ use anyhow::Result;
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use fmm_core::store::FmmStore;
-use fmm_core::types::{PreserializedRow, serialize_file_data};
+use fmm_core::types::{PreserializedRow, serialize_file_data_with_fingerprint};
 use fmm_store::SqliteStore;
 
-use crate::fs_utils;
 use fmm_core::config::Config;
+use fmm_core::identity::Fingerprint;
 use fmm_core::resolver;
 
 use super::{collect_files_multi, resolve_root_multi};
 
 mod parse;
-mod staleness;
+pub(crate) mod staleness;
 
 /// Show progress bars when at least this many files need processing.
 const PROGRESS_THRESHOLD: usize = 10;
@@ -24,134 +25,272 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     let total_start = Instant::now();
     let config = Config::load().unwrap_or_default();
 
-    // Scan phase: spinner while walking the directory tree.
-    let scan_sp = if !quiet {
-        let sp = ProgressBar::new_spinner();
-        sp.set_style(
-            ProgressStyle::with_template("{spinner:.blue} Scanning files...")
-                .expect("valid template"),
-        );
-        sp.enable_steady_tick(Duration::from_millis(80));
-        Some(sp)
-    } else {
-        None
-    };
-
+    let scan_sp = (!quiet).then(|| start_spinner("{spinner:.blue} Scanning files..."));
     let (files, skipped) = collect_files_multi(paths, &config)?;
     let root = resolve_root_multi(paths)?;
-
     if let Some(sp) = &scan_sp {
         sp.finish_and_clear();
     }
 
     if files.is_empty() {
-        println!("{} No supported source files found", "!".yellow());
-        println!(
-            "\n  {} Supported languages: {}",
-            "hint:".cyan(),
-            config
-                .languages
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        println!(
-            "  {} Did you mean to run from your project root?",
-            "hint:".cyan()
-        );
+        print_no_supported_files(&config);
         return Ok(());
     }
 
     if dry_run {
-        // Dry run: show what would be indexed without touching the DB.
-        let dirty_files = staleness::dry_run_dirty_files(&files, &root, force);
-
-        for abs_path in &dirty_files {
-            let rel = abs_path.strip_prefix(&root).unwrap_or(abs_path);
-            println!("  {} Would index: {}", "✓".green(), rel.display());
-        }
-        if !dirty_files.is_empty() {
-            println!(
-                "\n{} {} file(s) would be indexed",
-                "✓".green().bold(),
-                dirty_files.len()
-            );
-        } else {
-            println!("{} All files up to date", "✓".green());
-        }
-        println!("\n{} (dry run — nothing written)", "!".yellow());
+        print_dry_run_summary(&files, &root, force);
         return Ok(());
     }
 
-    // --- FmmStore write path ---
     let store = SqliteStore::open_or_create(&root)?;
-
-    // Store workspace packages so the read path can resolve cross-package imports.
     let workspace_info = resolver::workspace::discover(&root);
     store.upsert_workspace_packages(&workspace_info.packages)?;
 
-    // Phase 1: bulk staleness check.
-    // Load all indexed_at times in one query (avoids 39k individual SELECTs),
-    // then compare in parallel with rayon (mtime syscalls are I/O-parallel).
-    let (dirty_files, phase1_elapsed) = staleness::stale_files(&files, &root, &store, force)?;
+    // Phase 1: bulk staleness check + apply fingerprint-only refreshes.
+    let scan = staleness::stale_files(&files, &root, &store, force)?;
+    for refresh in &scan.fingerprint_refreshes {
+        store.update_file_fingerprint(&refresh.rel_path, &refresh.fingerprint)?;
+    }
+    let removed_count = delete_removed_files(&store, &scan.removed_paths)?;
 
-    if dirty_files.is_empty() {
-        let elapsed = total_start.elapsed();
-        let total = files.len() + skipped;
-        if skipped > 0 {
-            println!(
-                "Found {} files · {} skipped · all up to date  ({:.1}s)",
-                total,
-                skipped,
-                elapsed.as_secs_f64()
-            );
+    if scan.dirty_files.is_empty() {
+        if removed_count > 0 {
+            finish_removed_only_update(
+                &store,
+                &root,
+                total_start,
+                scan.elapsed,
+                quiet,
+                removed_count,
+            )?;
         } else {
-            println!(
-                "Found {} files · all up to date  ({:.1}s)",
-                total,
-                elapsed.as_secs_f64()
-            );
+            print_all_up_to_date(files.len() + skipped, skipped, total_start.elapsed());
+            store.write_meta()?;
         }
-        store.write_meta()?;
         return Ok(());
     }
 
-    let show_progress = !quiet && dirty_files.len() >= PROGRESS_THRESHOLD;
-
+    let show_progress = !quiet && scan.dirty_files.len() >= PROGRESS_THRESHOLD;
     if !quiet {
-        let total = files.len() + skipped;
-        if skipped > 0 {
-            println!(
-                "Found {} files · {} skipped · {} changed",
-                total,
-                skipped,
-                dirty_files.len()
-            );
-        } else {
-            println!("Found {} files · {} changed", total, dirty_files.len());
-        }
+        print_files_summary(files.len() + skipped, skipped, scan.dirty_files.len());
     }
 
-    // Phase 2 (parallel): parse all stale files.
-    // map_init creates one ParserCache per rayon worker thread — parsers and
-    // compiled queries are reused across files instead of constructed per-file.
-    let (parse_results, phase2_elapsed) = parse::parse_dirty_files(&dirty_files, show_progress);
+    // Phase 2 (parallel): parse all stale files. map_init creates one
+    // ParserCache per rayon worker thread to amortize parser construction.
+    let dirty_paths: Vec<&PathBuf> = scan.dirty_files.iter().map(|file| file.path).collect();
+    let fingerprints_by_path: std::collections::HashMap<_, _> = scan
+        .dirty_files
+        .iter()
+        .map(|file| (file.path.as_path(), file.fingerprint.clone()))
+        .collect();
+    let (parse_results, phase2_elapsed) = parse::parse_dirty_files(&dirty_paths, show_progress);
 
-    // Phase 2b (parallel): pre-serialize JSON fields for all parsed files.
-    // serde_json::to_string is CPU-bound — rayon cuts this from O(N) serial to
-    // O(N/cores) before we enter the single-threaded SQLite transaction.
-    let phase2b_start = Instant::now();
-    let serialized_rows: Vec<PreserializedRow> = parse_results
+    // Phase 2b (parallel): pre-serialize JSON fields before the single-threaded
+    // SQLite write phase.
+    let (serialized_rows, phase2b_elapsed) =
+        serialize_dirty_rows(&parse_results, &root, &fingerprints_by_path);
+
+    // Phase 3 (transacted): write pre-serialized rows to DB in one commit.
+    let is_full_generate = force || scan.dirty_files.len() == files.len();
+    let phase3_start = Instant::now();
+    run_with_spinner(show_progress, "{spinner:.green} Writing index...", || {
+        store.write_indexed_files(&serialized_rows, is_full_generate)
+    })?;
+    let phase3_elapsed = phase3_start.elapsed();
+
+    // Phase 4: rebuild the pre-computed reverse dependency graph.
+    let phase4_start = Instant::now();
+    run_with_spinner(
+        show_progress,
+        "{spinner:.blue} Building dependency graph...",
+        || store.rebuild_and_write_reverse_deps(&root),
+    )?;
+    let phase4_elapsed = phase4_start.elapsed();
+
+    store.write_meta()?;
+    let total_elapsed = total_start.elapsed();
+
+    println!(
+        "{} {} file(s) indexed in {:.1}s",
+        "Done ✓".green().bold(),
+        serialized_rows.len(),
+        total_elapsed.as_secs_f64()
+    );
+
+    if !quiet {
+        print_phase_timings(
+            total_elapsed,
+            scan.elapsed,
+            phase2_elapsed,
+            phase2b_elapsed,
+            phase3_elapsed,
+            phase4_elapsed,
+        );
+    }
+
+    Ok(())
+}
+
+fn delete_removed_files(store: &SqliteStore, removed_paths: &[String]) -> Result<usize> {
+    let mut removed_count = 0;
+    for rel_path in removed_paths {
+        if store.delete_single_file(rel_path)? {
+            removed_count += 1;
+        }
+    }
+    Ok(removed_count)
+}
+
+fn finish_removed_only_update(
+    store: &SqliteStore,
+    root: &Path,
+    total_start: Instant,
+    phase1_elapsed: Duration,
+    quiet: bool,
+    removed_count: usize,
+) -> Result<()> {
+    if !quiet {
+        println!("Found {removed_count} removed file(s)");
+    }
+
+    let phase4_start = Instant::now();
+    run_with_spinner(
+        false,
+        "{spinner:.blue} Building dependency graph...",
+        || store.rebuild_and_write_reverse_deps(root),
+    )?;
+    let phase4_elapsed = phase4_start.elapsed();
+
+    store.write_meta()?;
+    let total_elapsed = total_start.elapsed();
+    println!(
+        "{} {} file(s) pruned in {:.1}s",
+        "Done ✓".green().bold(),
+        removed_count,
+        total_elapsed.as_secs_f64()
+    );
+
+    if !quiet {
+        print_phase_timings(
+            total_elapsed,
+            phase1_elapsed,
+            Duration::default(),
+            Duration::default(),
+            Duration::default(),
+            phase4_elapsed,
+        );
+    }
+
+    Ok(())
+}
+
+fn start_spinner(message: &str) -> ProgressBar {
+    let sp = ProgressBar::new_spinner();
+    sp.set_style(ProgressStyle::with_template(message).expect("valid template"));
+    sp.enable_steady_tick(Duration::from_millis(80));
+    sp
+}
+
+fn run_with_spinner<T>(show: bool, message: &str, op: impl FnOnce() -> T) -> T {
+    if !show {
+        return op();
+    }
+    let sp = start_spinner(message);
+    let result = op();
+    sp.finish_and_clear();
+    result
+}
+
+fn print_no_supported_files(config: &Config) {
+    println!("{} No supported source files found", "!".yellow());
+    println!(
+        "\n  {} Supported languages: {}",
+        "hint:".cyan(),
+        config
+            .languages
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    println!(
+        "  {} Did you mean to run from your project root?",
+        "hint:".cyan()
+    );
+}
+
+fn print_dry_run_summary(files: &[PathBuf], root: &Path, force: bool) {
+    let dirty_files = staleness::dry_run_dirty_files(files, root, force);
+
+    for abs_path in &dirty_files {
+        let rel = abs_path.strip_prefix(root).unwrap_or(abs_path);
+        println!("  {} Would index: {}", "✓".green(), rel.display());
+    }
+    if dirty_files.is_empty() {
+        println!("{} All files up to date", "✓".green());
+    } else {
+        println!(
+            "\n{} {} file(s) would be indexed",
+            "✓".green().bold(),
+            dirty_files.len()
+        );
+    }
+    println!("\n{} (dry run — nothing written)", "!".yellow());
+}
+
+fn print_all_up_to_date(total: usize, skipped: usize, elapsed: Duration) {
+    if skipped > 0 {
+        println!(
+            "Found {} files · {} skipped · all up to date  ({:.1}s)",
+            total,
+            skipped,
+            elapsed.as_secs_f64()
+        );
+    } else {
+        println!(
+            "Found {} files · all up to date  ({:.1}s)",
+            total,
+            elapsed.as_secs_f64()
+        );
+    }
+}
+
+fn print_files_summary(total: usize, skipped: usize, dirty: usize) {
+    if skipped > 0 {
+        println!("Found {total} files · {skipped} skipped · {dirty} changed");
+    } else {
+        println!("Found {total} files · {dirty} changed");
+    }
+}
+
+fn serialize_dirty_rows(
+    parse_results: &[(PathBuf, fmm_core::parser::ParseResult)],
+    root: &Path,
+    fingerprints_by_path: &std::collections::HashMap<&Path, Option<Fingerprint>>,
+) -> (Vec<PreserializedRow>, Duration) {
+    let start = Instant::now();
+    let rows = parse_results
         .par_iter()
         .filter_map(|(abs_path, result)| {
             let rel = abs_path
-                .strip_prefix(&root)
+                .strip_prefix(root)
                 .unwrap_or(abs_path)
                 .display()
                 .to_string();
-            let mtime = fs_utils::file_mtime_rfc3339(abs_path);
-            match serialize_file_data(&rel, result, mtime.as_deref()) {
+            let fingerprint = fingerprints_by_path
+                .get(abs_path.as_path())
+                .cloned()
+                .flatten()
+                .or_else(|| staleness::source_fingerprint(abs_path).ok());
+            let Some(fingerprint) = fingerprint else {
+                eprintln!(
+                    "{} fingerprint {}",
+                    "error:".red().bold(),
+                    abs_path.display(),
+                );
+                return None;
+            };
+            match serialize_file_data_with_fingerprint(&rel, result, &fingerprint) {
                 Ok(row) => Some(row),
                 Err(e) => {
                     eprintln!(
@@ -165,70 +304,27 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
             }
         })
         .collect();
-    let phase2b_elapsed = phase2b_start.elapsed();
+    (rows, start.elapsed())
+}
 
-    // Phase 3 (transacted): write pre-serialized rows to DB in one commit.
-    // FmmStore::write_indexed_files handles the full transaction internally:
-    // full reindex DELETEs all files first (CASCADE), then uses plain INSERT;
-    // incremental uses INSERT OR REPLACE per row.
-    let is_full_generate = force || dirty_files.len() == files.len();
-    let phase3_start = Instant::now();
-    if show_progress {
-        let sp = ProgressBar::new_spinner();
-        sp.set_style(
-            ProgressStyle::with_template("{spinner:.green} Writing index...")
-                .expect("valid template"),
-        );
-        sp.enable_steady_tick(Duration::from_millis(80));
-        store.write_indexed_files(&serialized_rows, is_full_generate)?;
-        sp.finish_and_clear();
-    } else {
-        store.write_indexed_files(&serialized_rows, is_full_generate)?;
-    }
-    let phase3_elapsed = phase3_start.elapsed();
-
-    // Phase 4: rebuild the pre-computed reverse dependency graph.
-    let phase4_start = Instant::now();
-    if show_progress {
-        let sp = ProgressBar::new_spinner();
-        sp.set_style(
-            ProgressStyle::with_template("{spinner:.blue} Building dependency graph...")
-                .expect("valid template"),
-        );
-        sp.enable_steady_tick(Duration::from_millis(80));
-        store.rebuild_and_write_reverse_deps(&root)?;
-        sp.finish_and_clear();
-    } else {
-        store.rebuild_and_write_reverse_deps(&root)?;
-    }
-    let phase4_elapsed = phase4_start.elapsed();
-
-    store.write_meta()?;
-
-    let total_elapsed = total_start.elapsed();
-
+fn print_phase_timings(
+    total: Duration,
+    phase1: Duration,
+    phase2: Duration,
+    phase2b: Duration,
+    phase3: Duration,
+    phase4: Duration,
+) {
+    let accounted = phase1 + phase2 + phase2b + phase3 + phase4;
+    let other = total.saturating_sub(accounted);
     println!(
-        "{} {} file(s) indexed in {:.1}s",
-        "Done ✓".green().bold(),
-        serialized_rows.len(),
-        total_elapsed.as_secs_f64()
+        "  parse: {:.1}s · serialize: {:.1}s · write: {:.1}s · deps: {:.1}s · other: {:.1}s",
+        phase2.as_secs_f64(),
+        phase2b.as_secs_f64(),
+        phase3.as_secs_f64(),
+        phase4.as_secs_f64(),
+        other.as_secs_f64(),
     );
-
-    if !quiet {
-        let accounted =
-            phase1_elapsed + phase2_elapsed + phase2b_elapsed + phase3_elapsed + phase4_elapsed;
-        let other = total_elapsed.saturating_sub(accounted);
-        println!(
-            "  parse: {:.1}s · serialize: {:.1}s · write: {:.1}s · deps: {:.1}s · other: {:.1}s",
-            phase2_elapsed.as_secs_f64(),
-            phase2b_elapsed.as_secs_f64(),
-            phase3_elapsed.as_secs_f64(),
-            phase4_elapsed.as_secs_f64(),
-            other.as_secs_f64(),
-        );
-    }
-
-    Ok(())
 }
 
 pub fn validate(paths: &[String]) -> Result<()> {
@@ -253,9 +349,9 @@ pub fn validate(paths: &[String]) -> Result<()> {
     }
 
     let store = SqliteStore::open(&root)?;
-    // Load all indexed mtimes once to avoid per-file queries and to determine
+    // Load all fingerprints once to avoid per-file queries and to determine
     // the reason a file is invalid ("stale" vs "not indexed").
-    let indexed_mtimes = store.load_indexed_mtimes()?;
+    let indexed_fingerprints = store.load_fingerprints()?;
 
     println!("Validating {} files against index...", files.len());
 
@@ -267,11 +363,15 @@ pub fn validate(paths: &[String]) -> Result<()> {
                 .unwrap_or(file)
                 .display()
                 .to_string();
-            let mtime = fs_utils::file_mtime_rfc3339(file);
-            if store.is_file_up_to_date(&rel, mtime.as_deref()) {
+            let decision = staleness::decide_file(file, &root, &indexed_fingerprints, false);
+            if matches!(
+                decision,
+                Ok(staleness::StalenessDecision::UpToDate)
+                    | Ok(staleness::StalenessDecision::RefreshFingerprint(_))
+            ) {
                 None
             } else {
-                let reason = if indexed_mtimes.contains_key(&rel) {
+                let reason = if indexed_fingerprints.contains_key(&rel) {
                     "stale".to_string()
                 } else {
                     "not indexed".to_string()

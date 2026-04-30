@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
 
+use crate::identity::Fingerprint;
 use crate::parser::ParseResult;
 
 /// Pre-serialized file data ready for batch insertion into a store.
@@ -24,6 +25,7 @@ pub struct PreserializedRow {
     pub namespace_imports_json: String,
     pub function_names_json: String,
     pub indexed_at: String,
+    pub fingerprint: Option<Fingerprint>,
     pub exports: Vec<ExportRecord>,
     pub methods: Vec<MethodRecord>,
 }
@@ -52,6 +54,28 @@ pub fn serialize_file_data(
     rel_path: &str,
     result: &ParseResult,
     mtime: Option<&str>,
+) -> Result<PreserializedRow> {
+    serialize_file_data_inner(rel_path, result, mtime, None)
+}
+
+pub fn serialize_file_data_with_fingerprint(
+    rel_path: &str,
+    result: &ParseResult,
+    fingerprint: &Fingerprint,
+) -> Result<PreserializedRow> {
+    serialize_file_data_inner(
+        rel_path,
+        result,
+        Some(&fingerprint.source_mtime),
+        Some(fingerprint),
+    )
+}
+
+fn serialize_file_data_inner(
+    rel_path: &str,
+    result: &ParseResult,
+    mtime: Option<&str>,
+    fingerprint: Option<&Fingerprint>,
 ) -> Result<PreserializedRow> {
     let meta = &result.metadata;
     let function_names = extract_function_names(result.custom_fields.as_ref());
@@ -101,6 +125,7 @@ pub fn serialize_file_data(
         function_names_json: serde_json::to_string(&function_names)
             .context("serialize function_names")?,
         indexed_at: Utc::now().to_rfc3339(),
+        fingerprint: fingerprint.cloned(),
         exports,
         methods,
     })

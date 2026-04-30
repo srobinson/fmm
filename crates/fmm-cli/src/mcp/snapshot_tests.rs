@@ -107,6 +107,7 @@ fn make_row(
         namespace_imports_json: serde_json::to_string(&namespace_imports).unwrap(),
         function_names_json: serde_json::to_string(&function_names).unwrap(),
         indexed_at: "2026-03-18T00:00:00+00:00".to_string(),
+        fingerprint: None,
         exports: exports
             .into_iter()
             .map(|(name, start, end)| ExportRecord {

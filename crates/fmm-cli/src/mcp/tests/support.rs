@@ -1,4 +1,5 @@
 use super::super::McpServer;
+use fmm_core::identity::Fingerprint;
 use fmm_core::manifest::Manifest;
 use fmm_core::store::FmmStore;
 use fmm_core::types::PreserializedRow;
@@ -20,7 +21,15 @@ impl FmmStore for NullStore {
         ))
     }
 
-    fn load_indexed_mtimes(&self) -> Result<HashMap<String, String>, Self::Error> {
+    fn load_fingerprints(&self) -> Result<HashMap<String, Fingerprint>, Self::Error> {
+        unimplemented!("NullStore")
+    }
+
+    fn update_file_fingerprint(
+        &self,
+        _rel_path: &str,
+        _fingerprint: &Fingerprint,
+    ) -> Result<bool, Self::Error> {
         unimplemented!("NullStore")
     }
 
