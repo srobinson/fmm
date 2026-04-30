@@ -21,6 +21,8 @@ pub(super) fn load_workspace_packages(
         manifest.workspace_packages.insert(name, path);
     }
 
+    // Discover on load to recover ecosystem partitions. Older stores only
+    // persisted a global package table, which cannot represent name collisions.
     let info = fmm_core::resolver::workspace::discover(root);
     if !info.packages.is_empty() || !info.roots.is_empty() {
         manifest.set_workspace_info(info);
