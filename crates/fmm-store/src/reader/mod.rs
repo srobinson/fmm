@@ -124,6 +124,33 @@ mod tests {
     }
 
     #[test]
+    fn loaded_manifest_falls_back_to_sorted_ids_when_file_paths_empty() {
+        // Defensive contract: if files exists without identity rows (e.g. a
+        // partial corruption or a forward-compat migration that drops only
+        // file_paths), load_manifest_from_db must rebuild dense ids from sorted
+        // paths rather than yielding a manifest without identity.
+        let dir = TempDir::new().unwrap();
+        let mut conn = open_or_create(dir.path()).unwrap();
+        let result = make_result(vec![], vec![], vec![]);
+
+        write_file(&mut conn, "src/z.ts", &result);
+        write_file(&mut conn, "src/a.ts", &result);
+
+        conn.execute("DELETE FROM file_paths", []).unwrap();
+
+        let manifest = load_manifest_from_db(&conn, dir.path()).unwrap();
+
+        assert_eq!(
+            manifest.file_id("src/a.ts"),
+            Some(fmm_core::identity::FileId(0))
+        );
+        assert_eq!(
+            manifest.file_id("src/z.ts"),
+            Some(fmm_core::identity::FileId(1))
+        );
+    }
+
+    #[test]
     fn ts_wins_over_js_collision() {
         let dir = TempDir::new().unwrap();
         let mut conn = open_or_create(dir.path()).unwrap();

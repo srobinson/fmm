@@ -98,11 +98,13 @@ CREATE TABLE IF NOT EXISTS files (
 
 -- Durable internal path identity. FileIds are rebuilt on full generate and
 -- appended during watch updates so survivor ids stay stable within a session.
+-- The UNIQUE constraint on `path` is what backs file_id_for_path lookups; no
+-- explicit secondary index is needed because SQLite creates an implicit one
+-- for UNIQUE.
 CREATE TABLE IF NOT EXISTS file_paths (
     file_id INTEGER PRIMARY KEY,
     path    TEXT NOT NULL UNIQUE REFERENCES files(path) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_file_paths_path ON file_paths(path);
 
 -- Export locations. Replaces export_index, export_locations, export_all.
 CREATE TABLE IF NOT EXISTS exports (
