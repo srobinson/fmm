@@ -320,6 +320,11 @@ impl Manifest {
         Ok(())
     }
 
+    /// Replace the in-memory identity map with one loaded from durable storage.
+    pub fn set_file_identity(&mut self, file_identity: FileIdentityMap) {
+        self.file_identity = file_identity;
+    }
+
     pub fn file_identity(&self) -> &FileIdentityMap {
         &self.file_identity
     }

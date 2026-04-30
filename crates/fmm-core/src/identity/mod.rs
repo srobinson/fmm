@@ -36,6 +36,14 @@ pub enum IdentityError {
     /// Canonical relative paths must not contain absolute or parent segments.
     #[error("relative path contains a non-normal component")]
     NonNormalComponent,
+
+    /// A persisted identity map cannot contain the same id twice.
+    #[error("duplicate file id {0}")]
+    DuplicateFileId(u32),
+
+    /// A persisted identity map cannot contain the same path twice.
+    #[error("duplicate relative path {0}")]
+    DuplicateRelativePath(String),
 }
 
 /// Dense internal file identity.
@@ -161,6 +169,40 @@ impl FileIdentityMap {
             .map(RelativePath::from_slash_path)
             .collect::<Result<Vec<_>>>()?;
         Ok(Self::from_relative_values(paths))
+    }
+
+    /// Build a map from persisted file id and relative path pairs.
+    pub fn from_file_id_paths<I, P>(entries: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = (FileId, P)>,
+        P: AsRef<str>,
+    {
+        let mut path_to_id = HashMap::new();
+        let mut id_to_path = Vec::new();
+
+        for (id, path) in entries {
+            let path = RelativePath::from_slash_path(path)?;
+            let index = id.0 as usize;
+            if id_to_path.len() <= index {
+                id_to_path.resize_with(index + 1, || None);
+            }
+            if id_to_path[index].is_some() {
+                return Err(IdentityError::DuplicateFileId(id.0));
+            }
+            if path_to_id.contains_key(&path) {
+                return Err(IdentityError::DuplicateRelativePath(
+                    path.as_str().to_string(),
+                ));
+            }
+
+            id_to_path[index] = Some(path.clone());
+            path_to_id.insert(path, id);
+        }
+
+        Ok(Self {
+            path_to_id,
+            id_to_path,
+        })
     }
 
     /// Return the id currently assigned to a path key.
@@ -351,5 +393,64 @@ mod tests {
             identities.path_for_id(a_id).map(|path| path.as_str()),
             Some("src/a.ts")
         );
+    }
+
+    #[test]
+    fn from_file_id_paths_preserves_sparse_ids() {
+        let identities =
+            FileIdentityMap::from_file_id_paths([(FileId(0), "src/a.ts"), (FileId(3), "src/d.ts")])
+                .unwrap();
+
+        assert_eq!(identities.id_for_path("src/a.ts"), Some(FileId(0)));
+        assert_eq!(identities.id_for_path("src/d.ts"), Some(FileId(3)));
+        assert_eq!(identities.path_for_id(FileId(1)), None);
+        assert_eq!(identities.path_for_id(FileId(2)), None);
+        assert_eq!(
+            identities.path_for_id(FileId(3)).map(RelativePath::as_str),
+            Some("src/d.ts")
+        );
+    }
+
+    #[test]
+    fn from_file_id_paths_accepts_empty_input() {
+        let identities =
+            FileIdentityMap::from_file_id_paths(std::iter::empty::<(FileId, &str)>()).unwrap();
+
+        assert_eq!(identities.id_for_path("src/a.ts"), None);
+        assert_eq!(identities.path_for_id(FileId(0)), None);
+    }
+
+    #[test]
+    fn from_file_id_paths_rejects_duplicate_file_id() {
+        let result =
+            FileIdentityMap::from_file_id_paths([(FileId(0), "src/a.ts"), (FileId(0), "src/b.ts")]);
+
+        assert!(
+            matches!(result, Err(IdentityError::DuplicateFileId(0))),
+            "expected DuplicateFileId(0), got {result:?}"
+        );
+    }
+
+    #[test]
+    fn from_file_id_paths_rejects_duplicate_path() {
+        let result =
+            FileIdentityMap::from_file_id_paths([(FileId(0), "src/a.ts"), (FileId(1), "src/a.ts")]);
+
+        match result {
+            Err(IdentityError::DuplicateRelativePath(path)) => assert_eq!(path, "src/a.ts"),
+            other => panic!("expected DuplicateRelativePath, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn from_file_id_paths_rejects_non_normal_paths() {
+        let cases = ["", "/abs/path", "..", "./src/a.ts", "src/../a.ts"];
+        for path in cases {
+            let result = FileIdentityMap::from_file_id_paths([(FileId(0), path)]);
+            assert!(
+                matches!(result, Err(IdentityError::NonNormalComponent)),
+                "expected NonNormalComponent for {path:?}, got {result:?}"
+            );
+        }
     }
 }

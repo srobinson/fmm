@@ -1,6 +1,7 @@
 //! Read operations for loading a `Manifest` from the SQLite index.
 
 mod exports;
+mod file_paths;
 mod files;
 mod reverse_deps;
 mod workspace;
@@ -19,11 +20,13 @@ pub fn load_manifest_from_db(conn: &Connection, root: &Path) -> Result<Manifest>
     let mut manifest = Manifest::new();
 
     files::load_files(conn, &mut manifest)?;
+    if !file_paths::load_file_identity(conn, &mut manifest)? {
+        manifest.rebuild_file_identity()?;
+    }
     exports::load_exports(conn, &mut manifest)?;
     exports::load_methods(conn, &mut manifest)?;
     reverse_deps::load_reverse_deps(conn, &mut manifest)?;
     workspace::load_workspace_packages(conn, root, &mut manifest)?;
-    manifest.rebuild_file_identity()?;
 
     Ok(manifest)
 }
@@ -96,7 +99,7 @@ mod tests {
     }
 
     #[test]
-    fn loaded_manifest_assigns_sorted_file_ids() {
+    fn loaded_manifest_uses_stored_file_ids() {
         let dir = TempDir::new().unwrap();
         let mut conn = open_or_create(dir.path()).unwrap();
         let result = make_result(vec![], vec![], vec![]);
@@ -107,16 +110,16 @@ mod tests {
         let manifest = load_manifest_from_db(&conn, dir.path()).unwrap();
 
         assert_eq!(
-            manifest.file_id("src/a.ts"),
+            manifest.file_id("src/z.ts"),
             Some(fmm_core::identity::FileId(0))
         );
         assert_eq!(
-            manifest.file_id("src/z.ts"),
+            manifest.file_id("src/a.ts"),
             Some(fmm_core::identity::FileId(1))
         );
         assert_eq!(
             manifest.path_for_file_id(fmm_core::identity::FileId(0)),
-            Some("src/a.ts")
+            Some("src/z.ts")
         );
     }
 

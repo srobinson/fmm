@@ -124,6 +124,7 @@ mod tests {
 
         for expected in &[
             "exports",
+            "file_paths",
             "files",
             "meta",
             "methods",

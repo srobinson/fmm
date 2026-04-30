@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 
 use fmm_core::identity::Fingerprint;
 use fmm_core::manifest::Manifest;
@@ -96,7 +96,13 @@ impl SqliteStore {
     pub fn clear_index(&self) -> Result<(), StoreError> {
         let conn = self.conn.borrow();
         conn.execute_batch(
-            "DELETE FROM files; DELETE FROM reverse_deps; DELETE FROM workspace_packages;",
+            "DELETE FROM files;
+             DELETE FROM reverse_deps;
+             DELETE FROM workspace_packages;",
+        )?;
+        conn.execute(
+            "DELETE FROM meta WHERE key = ?1",
+            params![writer::NEXT_FILE_ID_KEY],
         )?;
         Ok(())
     }
@@ -136,8 +142,18 @@ impl FmmStore for SqliteStore {
             writer::delete_all_files(&tx).map_err(StoreError::Other)?;
         }
 
+        let file_identity = if full_reindex {
+            Some(writer::full_reindex_file_identity(rows).map_err(StoreError::Other)?)
+        } else {
+            None
+        };
+
         for row in rows {
-            writer::upsert_preserialized(&tx, row, full_reindex).map_err(StoreError::Other)?;
+            let file_id = file_identity
+                .as_ref()
+                .and_then(|identity| identity.id_for_path(&row.rel_path));
+            writer::upsert_preserialized_with_file_id(&tx, row, full_reindex, file_id)
+                .map_err(StoreError::Other)?;
         }
 
         tx.commit()?;
@@ -186,7 +202,7 @@ impl FmmStore for SqliteStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fmm_core::identity::{Fingerprint, PARSER_CACHE_VERSION};
+    use fmm_core::identity::{FileId, Fingerprint, PARSER_CACHE_VERSION};
     use fmm_core::parser::{ExportEntry, Metadata, ParseResult};
     use fmm_core::store::FmmStore;
     use fmm_core::types::serialize_file_data;
@@ -358,5 +374,80 @@ mod tests {
         let manifest = store.load_manifest().unwrap();
         assert!(!manifest.files.contains_key("src/old.ts"));
         assert!(manifest.files.contains_key("src/new.ts"));
+    }
+
+    #[test]
+    fn sqlite_store_full_reindex_persists_sorted_file_paths() {
+        let dir = TempDir::new().unwrap();
+        let store = SqliteStore::open_or_create(dir.path()).unwrap();
+
+        let result = make_parse_result(vec![]);
+        let row_z = serialize_file_data("src/z.ts", &result, None).unwrap();
+        let row_a = serialize_file_data("src/a.ts", &result, None).unwrap();
+        store.write_indexed_files(&[row_z, row_a], true).unwrap();
+
+        let conn = store.conn.borrow();
+        let rows: Vec<(u32, String)> = {
+            let mut stmt = conn
+                .prepare("SELECT file_id, path FROM file_paths ORDER BY file_id")
+                .unwrap();
+            stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect()
+        };
+        assert_eq!(
+            rows,
+            vec![(0, "src/a.ts".to_string()), (1, "src/z.ts".to_string())]
+        );
+
+        drop(conn);
+        let manifest = store.load_manifest().unwrap();
+        assert_eq!(manifest.file_id("src/a.ts"), Some(FileId(0)));
+        assert_eq!(manifest.path_for_file_id(FileId(1)), Some("src/z.ts"));
+    }
+
+    #[test]
+    fn sqlite_store_incremental_file_ids_leave_deleted_slots_vacant() {
+        let dir = TempDir::new().unwrap();
+        let store = SqliteStore::open_or_create(dir.path()).unwrap();
+
+        let result = make_parse_result(vec![]);
+        let row_a = serialize_file_data("src/a.ts", &result, None).unwrap();
+        let row_b = serialize_file_data("src/b.ts", &result, None).unwrap();
+        let row_c = serialize_file_data("src/c.ts", &result, None).unwrap();
+        store
+            .write_indexed_files(&[row_a, row_b, row_c], true)
+            .unwrap();
+
+        assert!(store.delete_single_file("src/c.ts").unwrap());
+
+        let row_d = serialize_file_data("src/d.ts", &result, None).unwrap();
+        store.upsert_single_file(&row_d).unwrap();
+
+        let manifest = store.load_manifest().unwrap();
+        assert_eq!(manifest.file_id("src/a.ts"), Some(FileId(0)));
+        assert_eq!(manifest.file_id("src/b.ts"), Some(FileId(1)));
+        assert_eq!(manifest.path_for_file_id(FileId(2)), None);
+        assert_eq!(manifest.file_id("src/d.ts"), Some(FileId(3)));
+    }
+
+    #[test]
+    fn sqlite_store_clear_index_resets_file_id_high_water_mark() {
+        let dir = TempDir::new().unwrap();
+        let store = SqliteStore::open_or_create(dir.path()).unwrap();
+
+        let result = make_parse_result(vec![]);
+        let row_a = serialize_file_data("src/a.ts", &result, None).unwrap();
+        let row_b = serialize_file_data("src/b.ts", &result, None).unwrap();
+        store.write_indexed_files(&[row_a, row_b], true).unwrap();
+
+        store.clear_index().unwrap();
+
+        let row_x = serialize_file_data("src/x.ts", &result, None).unwrap();
+        store.upsert_single_file(&row_x).unwrap();
+
+        let manifest = store.load_manifest().unwrap();
+        assert_eq!(manifest.file_id("src/x.ts"), Some(FileId(0)));
     }
 }

@@ -2,11 +2,11 @@
 
 use anyhow::{Context, Result};
 use chrono::Utc;
-use rusqlite::{Connection, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use std::collections::HashMap;
 use std::path::Path;
 
-use fmm_core::identity::Fingerprint;
+use fmm_core::identity::{FileId, FileIdentityMap, Fingerprint};
 use fmm_core::manifest::FileEntry;
 use fmm_core::parser::ParseResult;
 
@@ -14,6 +14,8 @@ use fmm_core::parser::ParseResult;
 pub use fmm_core::types::{
     ExportRecord, MethodRecord, PreserializedRow, extract_function_names, serialize_file_data,
 };
+
+pub(crate) const NEXT_FILE_ID_KEY: &str = "next_file_id";
 
 /// Load complete fingerprints from the DB in one query.
 ///
@@ -98,6 +100,25 @@ pub fn upsert_preserialized(
     row: &PreserializedRow,
     plain_insert: bool,
 ) -> Result<()> {
+    upsert_preserialized_with_file_id(tx, row, plain_insert, None)
+}
+
+/// Write a pre-serialized file row with a caller-supplied identity.
+///
+/// Full reindex passes sorted ids from one identity map. Incremental callers
+/// omit the id so existing rows keep their id and new paths append after the
+/// persisted high water mark.
+pub fn upsert_preserialized_with_file_id(
+    tx: &Transaction<'_>,
+    row: &PreserializedRow,
+    plain_insert: bool,
+    file_id: Option<FileId>,
+) -> Result<()> {
+    let existing_file_id = match file_id {
+        Some(id) => Some(id),
+        None => file_id_for_path(tx, &row.rel_path)?,
+    };
+
     {
         let sql = if plain_insert {
             "INSERT INTO files
@@ -141,6 +162,12 @@ pub fn upsert_preserialized(
             .context("Failed to upsert file row")?;
     }
 
+    let file_id = match existing_file_id {
+        Some(id) => id,
+        None => allocate_file_id(tx)?,
+    };
+    insert_file_path(tx, file_id, &row.rel_path)?;
+
     {
         let sql = if plain_insert {
             "INSERT INTO exports (name, file_path, start_line, end_line)
@@ -178,12 +205,16 @@ pub fn upsert_preserialized(
     Ok(())
 }
 
-/// Delete all rows from `files` (CASCADE clears `exports` and `methods`).
+/// Delete all rows from `files` and reset per-session FileId allocation.
 ///
-/// Used before a full-generate bulk INSERT to avoid per-row CASCADE overhead.
+/// Used before a full-generate bulk INSERT so path identity is rebuilt from
+/// sorted active rows. CASCADE clears `exports`, `methods`, and `file_paths`.
 pub fn delete_all_files(tx: &Transaction<'_>) -> Result<()> {
     tx.execute_batch("DELETE FROM files")
-        .context("Failed to delete all files")
+        .context("Failed to delete all files")?;
+    tx.execute("DELETE FROM meta WHERE key = ?1", params![NEXT_FILE_ID_KEY])
+        .context("Failed to reset file id allocation")?;
+    Ok(())
 }
 
 /// Insert or replace a complete file record plus its exports and methods.
@@ -199,6 +230,7 @@ pub fn upsert_file_data(
     let meta = &result.metadata;
     let function_names = extract_function_names(result.custom_fields.as_ref());
     let indexed_at = Utc::now().to_rfc3339();
+    let existing_file_id = file_id_for_path(tx, rel_path)?;
 
     tx.execute(
         "INSERT OR REPLACE INTO files
@@ -221,6 +253,12 @@ pub fn upsert_file_data(
         ],
     )
     .context("Failed to upsert file row")?;
+
+    let file_id = match existing_file_id {
+        Some(id) => id,
+        None => allocate_file_id(tx)?,
+    };
+    insert_file_path(tx, file_id, rel_path)?;
 
     // Exports (top-level only)
     {
@@ -264,6 +302,95 @@ pub fn upsert_file_data(
     }
 
     Ok(())
+}
+
+/// Build the identity map used by full reindex writes.
+///
+/// FileIds are deterministic for the active row set after `fmm generate`, but
+/// incremental watch updates preserve survivor ids and append new paths.
+pub fn full_reindex_file_identity(rows: &[PreserializedRow]) -> Result<FileIdentityMap> {
+    FileIdentityMap::from_relative_paths(rows.iter().map(|row| row.rel_path.as_str()))
+        .map_err(Into::into)
+}
+
+fn file_id_for_path(tx: &Transaction<'_>, path: &str) -> Result<Option<FileId>> {
+    let id = tx
+        .query_row(
+            "SELECT file_id FROM file_paths WHERE path = ?1",
+            params![path],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .context("Failed to load file path identity")?;
+
+    id.map(file_id_from_i64).transpose()
+}
+
+fn allocate_file_id(tx: &Transaction<'_>) -> Result<FileId> {
+    let next = next_file_id(tx)?;
+    write_next_file_id(tx, next.0.checked_add(1).context("FileId overflow")?)?;
+    Ok(next)
+}
+
+fn insert_file_path(tx: &Transaction<'_>, id: FileId, path: &str) -> Result<()> {
+    tx.execute(
+        "INSERT OR REPLACE INTO file_paths (file_id, path) VALUES (?1, ?2)",
+        params![id.0, path],
+    )
+    .context("Failed to upsert file path identity")?;
+
+    let next = id.0.checked_add(1).context("FileId overflow")?;
+    match read_next_file_id(tx)? {
+        Some(current) if current >= next => {}
+        _ => write_next_file_id(tx, next)?,
+    }
+
+    Ok(())
+}
+
+fn next_file_id(tx: &Transaction<'_>) -> Result<FileId> {
+    if let Some(value) = read_next_file_id(tx)? {
+        return Ok(FileId(value));
+    }
+
+    let next = tx
+        .query_row(
+            "SELECT COALESCE(MAX(file_id) + 1, 0) FROM file_paths",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .context("Failed to load next file id")?;
+    file_id_from_i64(next)
+}
+
+fn read_next_file_id(tx: &Transaction<'_>) -> Result<Option<u32>> {
+    tx.query_row(
+        "SELECT value FROM meta WHERE key = ?1",
+        params![NEXT_FILE_ID_KEY],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .context("Failed to load next file id")?
+    .map(|value| {
+        value
+            .parse::<u32>()
+            .context("Stored next file id is not a u32")
+    })
+    .transpose()
+}
+
+fn write_next_file_id(tx: &Transaction<'_>, next: u32) -> Result<()> {
+    tx.execute(
+        "INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)",
+        params![NEXT_FILE_ID_KEY, next.to_string()],
+    )
+    .context("Failed to store next file id")?;
+    Ok(())
+}
+
+fn file_id_from_i64(value: i64) -> Result<FileId> {
+    let id = u32::try_from(value).context("Stored file id is outside u32 range")?;
+    Ok(FileId(id))
 }
 
 /// Load all file rows from the DB into a map keyed by relative path.

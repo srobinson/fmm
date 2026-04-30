@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
 pub fn ensure_schema(conn: &Connection) -> Result<()> {
     let version = read_schema_version(conn)?;
@@ -61,6 +61,7 @@ pub fn drop_all_tables(conn: &Connection) -> Result<()> {
          DROP TABLE IF EXISTS reverse_deps;
          DROP TABLE IF EXISTS methods;
          DROP TABLE IF EXISTS exports;
+         DROP TABLE IF EXISTS file_paths;
          DROP TABLE IF EXISTS files;
          DROP TABLE IF EXISTS workspace_packages;
          DROP TABLE IF EXISTS meta;
@@ -94,6 +95,14 @@ CREATE TABLE IF NOT EXISTS files (
     content_hash      TEXT,
     parser_cache_version INTEGER
 );
+
+-- Durable internal path identity. FileIds are rebuilt on full generate and
+-- appended during watch updates so survivor ids stay stable within a session.
+CREATE TABLE IF NOT EXISTS file_paths (
+    file_id INTEGER PRIMARY KEY,
+    path    TEXT NOT NULL UNIQUE REFERENCES files(path) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_file_paths_path ON file_paths(path);
 
 -- Export locations. Replaces export_index, export_locations, export_all.
 CREATE TABLE IF NOT EXISTS exports (
