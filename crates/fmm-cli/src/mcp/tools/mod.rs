@@ -1,6 +1,7 @@
 //! MCP tool implementations — one file per tool.
 
 pub(super) mod common;
+mod cycles;
 mod exports;
 mod glossary;
 mod graph;
@@ -11,6 +12,7 @@ mod read;
 mod search;
 
 // Tool dispatch — re-exported for use from mcp/mod.rs
+pub(super) use cycles::tool_dependency_cycles;
 pub(super) use exports::tool_list_exports;
 pub(super) use glossary::tool_glossary;
 pub(super) use graph::tool_dependency_graph;

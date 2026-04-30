@@ -154,6 +154,14 @@ fn run_command(command: Commands) -> anyhow::Result<()> {
         } => {
             cli::deps(&file, depth, &filter, json)?;
         }
+        Commands::Cycles {
+            file,
+            filter,
+            edge_mode,
+            json,
+        } => {
+            cli::cycles(file.as_deref(), &filter, &edge_mode, json)?;
+        }
         Commands::Outline {
             file,
             include_private,

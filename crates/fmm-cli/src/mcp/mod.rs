@@ -310,6 +310,9 @@ impl<S: FmmStore> McpServer<S> {
             "fmm_dependency_graph" => {
                 tools::tool_dependency_graph(manifest, &self.root, &arguments)
             }
+            "fmm_dependency_cycles" => {
+                tools::tool_dependency_cycles(manifest, &self.root, &arguments)
+            }
             "fmm_search" => tools::tool_search(manifest, &self.root, &arguments),
             "fmm_read_symbol" => tools::tool_read_symbol(manifest, &self.root, &arguments),
             "fmm_file_outline" => tools::tool_file_outline(manifest, &self.root, &arguments),

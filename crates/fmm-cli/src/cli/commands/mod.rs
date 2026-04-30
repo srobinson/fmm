@@ -5,6 +5,7 @@ use fmm_core::manifest::Manifest;
 use fmm_core::store::FmmStore;
 use fmm_store::SqliteStore;
 
+mod cycles;
 mod deps;
 mod exports;
 mod lookup;
@@ -12,6 +13,7 @@ mod ls;
 mod outline;
 mod read;
 
+pub use cycles::cycles;
 pub use deps::deps;
 pub use exports::exports;
 pub use lookup::lookup;

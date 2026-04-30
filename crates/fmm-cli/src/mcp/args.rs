@@ -23,6 +23,15 @@ pub(super) struct DependencyGraphArgs {
 }
 
 #[derive(Debug, Deserialize)]
+pub(super) struct DependencyCyclesArgs {
+    pub(super) file: Option<String>,
+    /// source / tests / all (default)
+    pub(super) filter: Option<String>,
+    /// runtime / all (default: runtime)
+    pub(super) edge_mode: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub(super) struct SearchArgs {
     pub(super) term: Option<String>,
     pub(super) export: Option<String>,

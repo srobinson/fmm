@@ -4,6 +4,10 @@ use std::ops::Range;
 use crate::identity::{EdgeKind, FileId, FileIdentityMap};
 use crate::manifest::{Manifest, build_dependency_edges};
 
+mod cycles;
+
+pub use cycles::{CycleEdgeMode, dependency_cycles};
+
 /// Dense graph node identity used inside `GraphIndex`.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

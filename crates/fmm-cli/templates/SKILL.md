@@ -252,6 +252,16 @@ Get a file's dependency graph: upstream dependencies (what it imports) and downs
 | `depth` | integer | no | Traversal depth (default: 1 = direct deps only). depth=2 adds transitive deps. depth=-1 computes the full transitive ... |
 | `filter` | enum: all \| source \| tests | no | Filter upstream and downstream lists by file type. 'all' (default): no filtering. 'source': exclude test files (*.spe... |
 
+### `fmm_dependency_cycles`
+
+Report strongly connected dependency cycles over the internal graph. Defaults to runtime edges, excluding TypeScript type-only imports. Use edge_mode='all' to include type-only edges. Optional file scopes output to cycles containing that file. filter='source' excludes tests, filter='tests' shows only test files.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `file` | string | no | Optional file path to scope cycle reports to SCCs containing that file. |
+| `filter` | enum: all \| source \| tests | no | Filter reported cycle members by file type. 'all' (default): no filtering. 'source': exclude test files. 'tests': sho... |
+| `edge_mode` | enum: runtime \| all | no | Edge mode for cycle reporting. 'runtime' (default) excludes TypeScript type-only edges. 'all' includes type-only edges. |
+
 ### `fmm_read_symbol`
 
 Read the source code for a specific exported symbol or uniquely named non-exported top-level function. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: "Injector.loadInstance")`. Use `path/to/file:helperFunction` notation to disambiguate duplicate exports or duplicate non-exported top-level functions. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.
