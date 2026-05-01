@@ -10,7 +10,7 @@ pub fn ensure_schema(conn: &Connection) -> Result<()> {
     if version == Some(SCHEMA_VERSION) {
         return Ok(());
     }
-    if version.is_some() {
+    if version.is_some() || has_existing_schema(conn)? {
         // Version mismatch: nuke and rebuild. The database is a regeneratable
         // index, so data loss is acceptable.
         drop_all_tables(conn)?;
@@ -44,6 +44,18 @@ pub fn read_schema_version(conn: &Connection) -> Result<Option<u32>> {
         .and_then(|v| v.parse::<u32>().ok());
 
     Ok(version)
+}
+
+fn has_existing_schema(conn: &Connection) -> Result<bool> {
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+            [],
+            |row| row.get(0),
+        )
+        .context("Failed to query sqlite schema tables")?;
+    Ok(count > 0)
 }
 
 pub fn write_schema_version(conn: &Connection, version: u32) -> Result<()> {

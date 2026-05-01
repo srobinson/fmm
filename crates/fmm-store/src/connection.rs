@@ -39,6 +39,7 @@ pub fn open_db(root: &Path) -> Result<Connection> {
     let conn = Connection::open(&db_path)
         .with_context(|| format!("Failed to open database at {}", db_path.display()))?;
     apply_pragmas(&conn)?;
+    check_schema_version_match(&conn)?;
     check_version_match(&conn)?;
     Ok(conn)
 }
@@ -82,6 +83,21 @@ fn check_version_match(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+fn check_schema_version_match(conn: &Connection) -> Result<()> {
+    let stored = schema::read_schema_version(conn)?;
+    match stored {
+        Some(schema::SCHEMA_VERSION) => Ok(()),
+        Some(version) => anyhow::bail!(
+            "Index schema version {} does not match fmm schema version {}. Run `fmm generate --force` to rebuild.",
+            version,
+            schema::SCHEMA_VERSION
+        ),
+        None => anyhow::bail!(
+            "Index schema version is missing or unreadable. Run `fmm generate --force` to rebuild."
+        ),
+    }
+}
+
 fn apply_pragmas(conn: &Connection) -> Result<()> {
     // journal_mode=WAL: allows concurrent readers while a writer is active.
     // synchronous=NORMAL: durable enough for a regeneratable index.
@@ -106,6 +122,23 @@ mod tests {
     use super::*;
     use crate::schema::SCHEMA_VERSION;
     use tempfile::TempDir;
+
+    fn create_old_files_table(conn: &Connection) {
+        conn.execute_batch(
+            "CREATE TABLE files (
+                 path TEXT PRIMARY KEY,
+                 loc INTEGER NOT NULL,
+                 modified TEXT,
+                 imports TEXT,
+                 dependencies TEXT,
+                 named_imports TEXT,
+                 namespace_imports TEXT,
+                 function_names TEXT,
+                 indexed_at TEXT NOT NULL
+             );",
+        )
+        .unwrap();
+    }
 
     #[test]
     fn open_or_create_creates_all_tables() {
@@ -219,6 +252,67 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn open_db_errors_on_stale_schema_version() {
+        let dir = TempDir::new().unwrap();
+        let conn = Connection::open(dir.path().join(DB_FILENAME)).unwrap();
+        create_old_files_table(&conn);
+        conn.execute_batch(&format!(
+            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO meta VALUES ('schema_version', '4');
+             INSERT INTO meta VALUES ('fmm_version', '{}');",
+            fmm_core::VERSION
+        ))
+        .unwrap();
+        drop(conn);
+
+        let error = open_db(dir.path()).unwrap_err().to_string();
+
+        assert!(error.contains("schema version"));
+        assert!(error.contains("Run `fmm generate --force`"));
+        assert!(!error.contains("source_mtime"));
+    }
+
+    #[test]
+    fn open_db_errors_when_meta_table_missing() {
+        let dir = TempDir::new().unwrap();
+        let conn = Connection::open(dir.path().join(DB_FILENAME)).unwrap();
+        create_old_files_table(&conn);
+        drop(conn);
+
+        let error = open_db(dir.path()).unwrap_err().to_string();
+
+        assert!(error.contains("missing or unreadable"));
+        assert!(error.contains("Run `fmm generate --force`"));
+    }
+
+    #[test]
+    fn open_or_create_rebuilds_existing_db_without_meta() {
+        let dir = TempDir::new().unwrap();
+        let conn = Connection::open(dir.path().join(DB_FILENAME)).unwrap();
+        create_old_files_table(&conn);
+        drop(conn);
+
+        let conn = open_or_create(dir.path()).unwrap();
+        let version: String = conn
+            .query_row(
+                "SELECT value FROM meta WHERE key='schema_version'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let source_mtime_columns: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('files') WHERE name='source_mtime'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(version, SCHEMA_VERSION.to_string());
+        assert_eq!(source_mtime_columns, 1);
     }
 
     #[test]
