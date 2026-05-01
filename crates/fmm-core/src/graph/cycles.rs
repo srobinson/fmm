@@ -84,7 +84,7 @@ impl TarjanState {
 
         while !self.frames.is_empty() {
             let Some(edge) = self.next_edge(graph, edge_mode, kept_nodes) else {
-                self.finish_node(graph, edge_mode, kept_nodes);
+                self.finish_node(graph, edge_mode);
                 continue;
             };
 
@@ -127,11 +127,11 @@ impl TarjanState {
         None
     }
 
-    fn finish_node(&mut self, graph: &GraphIndex, edge_mode: CycleEdgeMode, kept_nodes: &[bool]) {
+    fn finish_node(&mut self, graph: &GraphIndex, edge_mode: CycleEdgeMode) {
         let frame = self.frames.pop().expect("frame exists");
         let node = frame.node;
         if self.lowlinks[node.0 as usize] == self.indices[node.0 as usize].unwrap() {
-            self.collect_component(graph, edge_mode, kept_nodes, node);
+            self.collect_component(graph, edge_mode, node);
         }
         if let Some(parent) = self.frames.last() {
             let child_lowlink = self.lowlinks[node.0 as usize];
@@ -139,13 +139,7 @@ impl TarjanState {
         }
     }
 
-    fn collect_component(
-        &mut self,
-        graph: &GraphIndex,
-        edge_mode: CycleEdgeMode,
-        kept_nodes: &[bool],
-        root: NodeId,
-    ) {
+    fn collect_component(&mut self, graph: &GraphIndex, edge_mode: CycleEdgeMode, root: NodeId) {
         let mut component = Vec::new();
         while let Some(node) = self.stack.pop() {
             self.on_stack[node.0 as usize] = false;
@@ -154,7 +148,7 @@ impl TarjanState {
                 break;
             }
         }
-        if component.len() > 1 || has_self_loop(graph, edge_mode, kept_nodes, root) {
+        if component.len() > 1 || has_self_loop(graph, edge_mode, root) {
             component.sort();
             self.components.push(component);
         }
@@ -171,13 +165,9 @@ impl TarjanState {
     }
 }
 
-fn has_self_loop(
-    graph: &GraphIndex,
-    edge_mode: CycleEdgeMode,
-    kept_nodes: &[bool],
-    node: NodeId,
-) -> bool {
-    graph.downstream_edges(node).iter().any(|edge| {
-        edge.target == node && edge_mode.keeps(edge.kind) && kept_nodes[node.0 as usize]
-    })
+fn has_self_loop(graph: &GraphIndex, edge_mode: CycleEdgeMode, node: NodeId) -> bool {
+    graph
+        .downstream_edges(node)
+        .iter()
+        .any(|edge| edge.target == node && edge_mode.keeps(edge.kind))
 }
