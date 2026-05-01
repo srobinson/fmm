@@ -1,12 +1,14 @@
 use std::collections::{HashMap, HashSet};
 
 use streaming_iterator::StreamingIterator;
-use tree_sitter::QueryCursor;
+use tree_sitter::{Query, QueryCursor};
 
 use crate::identity::EdgeKind;
 
 use super::TypeScriptParser;
 use super::tsconfig::resolve_alias;
+
+type ClassifyKind = fn(tree_sitter::Node) -> EdgeKind;
 
 impl TypeScriptParser {
     pub(super) fn extract_imports(
@@ -54,44 +56,30 @@ impl TypeScriptParser {
         let mut seen = HashSet::new();
         let mut kinds = HashMap::new();
 
-        // Regular import statements
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.import_query, root_node, source_bytes);
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let cleaned = text.trim_matches('\'').trim_matches('"').to_string();
-                    let kind = import_statement_kind(capture.node);
-                    if cleaned.starts_with('.') || cleaned.starts_with('/') {
-                        insert_dependency(&mut seen, &mut kinds, cleaned, kind);
-                    } else if !aliases.is_empty()
-                        && let Some(resolved) = resolve_alias(&cleaned, aliases)
-                    {
-                        // ALP-794: path alias — resolve to physical path and treat as local dep.
-                        insert_dependency(&mut seen, &mut kinds, resolved, kind);
-                    } else {
-                        insert_dependency_kind(&mut kinds, cleaned, kind);
-                    }
-                }
-            }
-        }
-
-        // ALP-749/750: re-export sources — `export { X } from './y'` and `export * from './y'`
-        let mut cursor2 = QueryCursor::new();
-        let mut iter2 = cursor2.matches(&self.reexport_source_query, root_node, source_bytes);
-        while let Some(m) = iter2.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let cleaned = text.trim_matches('\'').trim_matches('"').to_string();
-                    let kind = export_statement_kind(capture.node);
-                    if cleaned.starts_with('.') || cleaned.starts_with('/') {
-                        insert_dependency(&mut seen, &mut kinds, cleaned, kind);
-                    } else if !aliases.is_empty()
-                        && let Some(resolved) = resolve_alias(&cleaned, aliases)
-                    {
-                        insert_dependency(&mut seen, &mut kinds, resolved, kind);
-                    } else {
-                        insert_dependency_kind(&mut kinds, cleaned, kind);
+        // Import statements and ALP-749/750 re-export sources share the same
+        // path/alias/external branching; only the kind classifier differs.
+        let passes: [(&Query, ClassifyKind); 2] = [
+            (&self.import_query, import_statement_kind),
+            (&self.reexport_source_query, export_statement_kind),
+        ];
+        for (query, classify) in passes {
+            let mut cursor = QueryCursor::new();
+            let mut iter = cursor.matches(query, root_node, source_bytes);
+            while let Some(m) = iter.next() {
+                for capture in m.captures {
+                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                        let cleaned = text.trim_matches('\'').trim_matches('"').to_string();
+                        let kind = classify(capture.node);
+                        if cleaned.starts_with('.') || cleaned.starts_with('/') {
+                            insert_dependency(&mut seen, &mut kinds, cleaned, kind);
+                        } else if !aliases.is_empty()
+                            && let Some(resolved) = resolve_alias(&cleaned, aliases)
+                        {
+                            // ALP-794: path alias — resolve to physical path and treat as local dep.
+                            insert_dependency(&mut seen, &mut kinds, resolved, kind);
+                        } else {
+                            insert_dependency_kind(&mut kinds, cleaned, kind);
+                        }
                     }
                 }
             }

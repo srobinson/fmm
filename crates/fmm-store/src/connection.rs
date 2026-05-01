@@ -99,6 +99,7 @@ fn check_schema_version_match(conn: &Connection) -> Result<()> {
 }
 
 fn apply_pragmas(conn: &Connection) -> Result<()> {
+    // busy_timeout: let concurrent CLI and MCP users drain short transactions.
     // journal_mode=WAL: allows concurrent readers while a writer is active.
     // synchronous=NORMAL: durable enough for a regeneratable index.
     // mmap_size=256MB: reduces syscall overhead on large repos.
@@ -106,7 +107,8 @@ fn apply_pragmas(conn: &Connection) -> Result<()> {
     // foreign_keys=ON: enforce ON DELETE CASCADE for exports/methods.
     // cache_size=-64000: 64MB page cache for bulk write performance.
     conn.execute_batch(
-        "PRAGMA journal_mode=WAL;
+        "PRAGMA busy_timeout=5000;
+         PRAGMA journal_mode=WAL;
          PRAGMA synchronous=NORMAL;
          PRAGMA mmap_size=268435456;
          PRAGMA temp_store=memory;
@@ -214,6 +216,18 @@ mod tests {
             .unwrap();
 
         assert_eq!(mode, "wal");
+    }
+
+    #[test]
+    fn busy_timeout_is_configured() {
+        let dir = TempDir::new().unwrap();
+        let conn = open_or_create(dir.path()).unwrap();
+
+        let timeout_ms: i64 = conn
+            .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
+            .unwrap();
+
+        assert_eq!(timeout_ms, 5000);
     }
 
     #[test]
