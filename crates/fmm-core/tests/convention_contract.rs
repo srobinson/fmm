@@ -1,4 +1,6 @@
-use fmm_core::convention::{ConventionPlugin, ConventionRegistry, ConventionTestPatterns};
+use fmm_core::convention::{
+    ConventionPlugin, ConventionRegistry, ConventionTestPatterns, FmmTestFileConvention,
+};
 use fmm_core::parser::ParserRegistry;
 
 struct FixtureConvention;
@@ -169,4 +171,56 @@ fn convention_registry_exposes_parser_descriptor_conventions_through_adapter() {
         .flat_map(|patterns| patterns.test_symbol_prefixes.iter().copied())
         .collect();
     assert!(symbol_prefixes.contains(&"test_"));
+}
+
+#[test]
+fn builtin_convention_registry_registers_fmm_test_file_convention() {
+    let parser_registry = ParserRegistry::with_builtins();
+    let registry = ConventionRegistry::with_builtin_conventions(&parser_registry);
+
+    let plugin = registry
+        .plugin(FmmTestFileConvention::id())
+        .expect("fmm test file convention plugin");
+    assert_eq!(
+        plugin.test_patterns.path_contains,
+        &["/tests/", "/test/", "/__tests__/"]
+    );
+    assert!(registry.is_test_file("tests/helpers.py"));
+}
+
+#[test]
+fn convention_registry_test_file_classification_matches_parser_patterns() {
+    let parser_registry = ParserRegistry::with_builtins();
+    let registry = ConventionRegistry::with_builtin_conventions(&parser_registry);
+
+    for path in [
+        "src/foo.spec.ts",
+        "src/foo.test.tsx",
+        "src/foo_test.go",
+        "src/foo_test.rs",
+        "src/test_foo.py",
+        "src/main.rs",
+        "src/server.go",
+    ] {
+        assert_eq!(
+            registry.is_test_file(path),
+            parser_registry.is_language_test_file(path),
+            "{path}"
+        );
+    }
+}
+
+#[test]
+fn convention_registry_test_file_classification_preserves_directory_heuristics() {
+    let parser_registry = ParserRegistry::with_builtins();
+    let registry = ConventionRegistry::with_builtin_conventions(&parser_registry);
+
+    assert!(registry.is_test_file("tests/helpers.py"));
+    assert!(registry.is_test_file("test/fixtures.ts"));
+    assert!(registry.is_test_file("__tests__/utils.ts"));
+    assert!(registry.is_test_file("src/tests/helpers.py"));
+    assert!(registry.is_test_file("src/test/fixtures.ts"));
+    assert!(registry.is_test_file("src/__tests__/utils.ts"));
+    assert!(!registry.is_test_file("src/contest/result.ts"));
+    assert!(!registry.is_test_file("attest/helpers.py"));
 }
