@@ -62,13 +62,11 @@ impl TypeScriptParser {
                     let kind = import_statement_kind(capture.node);
                     if cleaned.starts_with('.') || cleaned.starts_with('/') {
                         insert_dependency(&mut seen, &mut kinds, cleaned, kind);
-                    } else if !aliases.is_empty() {
+                    } else if !aliases.is_empty()
+                        && let Some(resolved) = resolve_alias(&cleaned, aliases)
+                    {
                         // ALP-794: path alias — resolve to physical path and treat as local dep.
-                        if let Some(resolved) = resolve_alias(&cleaned, aliases) {
-                            insert_dependency(&mut seen, &mut kinds, resolved, kind);
-                        } else {
-                            insert_dependency_kind(&mut kinds, cleaned, kind);
-                        }
+                        insert_dependency(&mut seen, &mut kinds, resolved, kind);
                     } else {
                         insert_dependency_kind(&mut kinds, cleaned, kind);
                     }
