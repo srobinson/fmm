@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use fmm_core::store::FmmStore;
-use fmm_store::SqliteStore;
+use fmm_store::{DB_FILENAME, SqliteStore};
 
 use crate::fs_utils;
 
@@ -39,25 +39,28 @@ pub(crate) fn dry_run_dirty_files<'a>(
     files: &'a [PathBuf],
     root: &Path,
     force: bool,
-) -> Vec<&'a PathBuf> {
+) -> Result<Vec<&'a PathBuf>> {
+    // --force regenerates everything, so skip the cache lookup entirely.
+    // This also avoids surfacing stale-schema errors that the matching
+    // non-dry-run --force run would silently auto-migrate past.
+    if force {
+        return Ok(files.iter().collect());
+    }
     match SqliteStore::open(root) {
         Ok(store) => {
-            let cached = if !force {
-                store.load_fingerprints().unwrap_or_default()
-            } else {
-                HashMap::new()
-            };
-            files
+            let cached = store.load_fingerprints().unwrap_or_default();
+            Ok(files
                 .iter()
                 .filter(|file| {
                     matches!(
-                        decide_file(file, root, &cached, force),
+                        decide_file(file, root, &cached, false),
                         Ok(StalenessDecision::Reparse(_))
                     )
                 })
-                .collect()
+                .collect())
         }
-        _ => files.iter().collect(),
+        Err(_) if !root.join(DB_FILENAME).exists() => Ok(files.iter().collect()),
+        Err(error) => Err(error.into()),
     }
 }
 

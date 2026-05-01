@@ -1,3 +1,4 @@
+use anyhow::Result;
 use colored::Colorize;
 use fmm_core::config::Config;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -41,8 +42,8 @@ pub(super) fn print_no_supported_files(config: &Config) {
     );
 }
 
-pub(super) fn print_dry_run_summary(files: &[PathBuf], root: &Path, force: bool) {
-    let dirty_files = staleness::dry_run_dirty_files(files, root, force);
+pub(super) fn print_dry_run_summary(files: &[PathBuf], root: &Path, force: bool) -> Result<()> {
+    let dirty_files = staleness::dry_run_dirty_files(files, root, force)?;
 
     for abs_path in &dirty_files {
         let rel = abs_path.strip_prefix(root).unwrap_or(abs_path);
@@ -58,6 +59,7 @@ pub(super) fn print_dry_run_summary(files: &[PathBuf], root: &Path, force: bool)
         );
     }
     println!("\n{} (dry run — nothing written)", "!".yellow());
+    Ok(())
 }
 
 pub(super) fn print_all_up_to_date(total: usize, skipped: usize, elapsed: Duration) {

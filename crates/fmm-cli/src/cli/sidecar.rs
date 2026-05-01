@@ -43,7 +43,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     }
 
     if dry_run {
-        print_dry_run_summary(&files, &root, force);
+        print_dry_run_summary(&files, &root, force)?;
         return Ok(());
     }
 

@@ -122,6 +122,23 @@ fn db_reverse_dep_count(base: &Path, target: &str) -> i64 {
     .unwrap_or(0)
 }
 
+fn create_old_files_table(conn: &rusqlite::Connection) {
+    conn.execute_batch(
+        "CREATE TABLE files (
+             path TEXT PRIMARY KEY,
+             loc INTEGER NOT NULL,
+             modified TEXT,
+             imports TEXT,
+             dependencies TEXT,
+             named_imports TEXT,
+             namespace_imports TEXT,
+             function_names TEXT,
+             indexed_at TEXT NOT NULL
+         );",
+    )
+    .unwrap();
+}
+
 #[test]
 fn generate_creates_db() {
     let tmp = setup_project();
@@ -266,6 +283,60 @@ fn generate_dry_run_preserves_stale_db() {
 
     // DB should NOT contain the new export (dry run)
     assert!(!db_has_export(tmp.path(), "src/auth.ts", "DRY_RUN_TEST"));
+}
+
+#[test]
+fn generate_dry_run_errors_on_stale_schema_version() {
+    let tmp = setup_project();
+    let conn = rusqlite::Connection::open(tmp.path().join(fmm_store::DB_FILENAME)).unwrap();
+    create_old_files_table(&conn);
+    conn.execute_batch(&format!(
+        "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+         INSERT INTO meta VALUES ('schema_version', '4');
+         INSERT INTO meta VALUES ('fmm_version', '{}');",
+        fmm_core::VERSION
+    ))
+    .unwrap();
+    drop(conn);
+
+    let path = tmp.path().to_str().unwrap();
+    let error = fmm::cli::generate(&[path.to_string()], true, false, true)
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("schema version"));
+    assert!(error.contains("Run `fmm generate --force`"));
+    assert!(!error.contains("source_mtime"));
+}
+
+#[test]
+fn generate_dry_run_errors_when_meta_table_missing() {
+    let tmp = setup_project();
+    let conn = rusqlite::Connection::open(tmp.path().join(fmm_store::DB_FILENAME)).unwrap();
+    create_old_files_table(&conn);
+    drop(conn);
+
+    let path = tmp.path().to_str().unwrap();
+    let error = fmm::cli::generate(&[path.to_string()], true, false, true)
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("missing or unreadable"));
+    assert!(error.contains("Run `fmm generate --force`"));
+}
+
+#[test]
+fn generate_dry_run_force_succeeds_on_stale_schema() {
+    let tmp = setup_project();
+    let conn = rusqlite::Connection::open(tmp.path().join(fmm_store::DB_FILENAME)).unwrap();
+    create_old_files_table(&conn);
+    drop(conn);
+
+    let path = tmp.path().to_str().unwrap();
+    // --force --dry-run must not surface a "Run --force" diagnostic when the
+    // user is already running --force; the matching non-dry-run --force run
+    // would auto-migrate past the stale schema.
+    fmm::cli::generate(&[path.to_string()], true, true, true).unwrap();
 }
 
 #[test]
