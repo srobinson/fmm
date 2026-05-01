@@ -117,7 +117,8 @@ pub struct Metadata {
     pub exports: Vec<ExportEntry>,
     pub imports: Vec<String>,
     pub dependencies: Vec<String>,
-    /// Internal dependency edge classification keyed by dependency specifier.
+    /// Internal dependency edge classification keyed by dependency or import
+    /// specifier.
     /// Missing entries are interpreted as runtime edges for backward
     /// compatibility with language parsers that do not classify edge kinds.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]

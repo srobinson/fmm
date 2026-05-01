@@ -4,15 +4,17 @@ use std::sync::Arc;
 
 use rayon::prelude::*;
 
+use crate::identity::EdgeKind;
 use crate::manifest::{FileEntry, Manifest};
 use crate::resolver::{
     CrossPackageResolver, DenoImportResolver, GoImportResolver, ImportResolver, RustImportResolver,
     normal_components, resolve_by_directory_prefix, workspace::WorkspaceEcosystem,
 };
 
+use super::dependency_kind;
 use super::path::{is_go_source_file, is_js_ts_source_file, is_rust_source_file};
 
-pub(super) fn collect_workspace_edges(manifest: &Manifest) -> Vec<(String, String)> {
+pub(super) fn collect_workspace_edges(manifest: &Manifest) -> Vec<(String, String, EdgeKind)> {
     let js_resolver: Arc<dyn ImportResolver> = Arc::new(CrossPackageResolver::new(
         manifest.workspace_packages_for(WorkspaceEcosystem::Js),
     ));
@@ -202,7 +204,7 @@ fn deno_workspace_edges(
     importer: &Path,
     resolver: &DenoImportResolver,
     key_map: WorkspaceKeyMap<'_>,
-) -> Vec<(String, String)> {
+) -> Vec<(String, String, EdgeKind)> {
     entry
         .imports
         .iter()
@@ -210,7 +212,13 @@ fn deno_workspace_edges(
             resolver
                 .resolve(importer, import_str)
                 .and_then(|resolved| resolved_to_manifest_key(&resolved, key_map))
-                .map(|target_key| (target_key, file_path.to_string()))
+                .map(|target_key| {
+                    (
+                        target_key,
+                        file_path.to_string(),
+                        dependency_kind(entry, import_str),
+                    )
+                })
         })
         .collect()
 }
@@ -222,21 +230,22 @@ fn js_workspace_edges(
     workspace_roots: &[PathBuf],
     resolver: &dyn ImportResolver,
     key_map: WorkspaceKeyMap<'_>,
-) -> Vec<(String, String)> {
+) -> Vec<(String, String, EdgeKind)> {
     entry
         .imports
         .iter()
         .filter_map(|import_str| {
+            let kind = dependency_kind(entry, import_str);
             if let Some(resolved) = resolver.resolve(importer, import_str)
                 && let Some(target_key) = resolved_to_manifest_key(&resolved, key_map)
             {
-                return Some((target_key, file_path.to_string()));
+                return Some((target_key, file_path.to_string(), kind));
             }
 
             resolve_by_directory_prefix(import_str, workspace_roots, key_map.original_keys)
                 .and_then(|path| {
                     resolved_to_manifest_key(&path, key_map)
-                        .map(|target_key| (target_key, file_path.to_string()))
+                        .map(|target_key| (target_key, file_path.to_string(), kind))
                 })
         })
         .collect()
@@ -248,14 +257,14 @@ fn rust_workspace_edges(
     importer: &Path,
     resolver: &dyn ImportResolver,
     key_map: WorkspaceKeyMap<'_>,
-) -> Vec<(String, String)> {
+) -> Vec<(String, String, EdgeKind)> {
     rust_import_specifiers(entry)
         .into_iter()
         .filter_map(|specifier| {
             resolver
                 .resolve(importer, &specifier)
                 .and_then(|resolved| resolved_to_manifest_key(&resolved, key_map))
-                .map(|target_key| (target_key, file_path.to_string()))
+                .map(|target_key| (target_key, file_path.to_string(), EdgeKind::Runtime))
         })
         .collect()
 }
@@ -283,7 +292,7 @@ fn go_workspace_edges(
     importer: &Path,
     resolver: &dyn ImportResolver,
     key_map: WorkspaceKeyMap<'_>,
-) -> Vec<(String, String)> {
+) -> Vec<(String, String, EdgeKind)> {
     entry
         .imports
         .iter()
@@ -291,7 +300,7 @@ fn go_workspace_edges(
         .flat_map(|package_dir| {
             go_package_manifest_keys(&package_dir, key_map)
                 .into_iter()
-                .map(|target_key| (target_key, file_path.to_string()))
+                .map(|target_key| (target_key, file_path.to_string(), EdgeKind::Runtime))
         })
         .collect()
 }

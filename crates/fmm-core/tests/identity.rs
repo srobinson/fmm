@@ -1,6 +1,6 @@
 use std::mem::size_of;
 
-use fmm_core::identity::{EdgeKind, FileId, Fingerprint, normalize_relative};
+use fmm_core::identity::{EdgeKind, FileId, Fingerprint, PARSER_CACHE_VERSION, normalize_relative};
 use tempfile::TempDir;
 
 #[test]
@@ -39,13 +39,13 @@ fn fingerprint_carries_cache_identity_fields() {
         source_mtime: "2026-04-30T15:30:00Z".to_string(),
         source_size: 128,
         content_hash: "xxh3:abc123".to_string(),
-        parser_cache_version: 1,
+        parser_cache_version: PARSER_CACHE_VERSION,
     };
 
     assert_eq!(fingerprint.source_mtime, "2026-04-30T15:30:00Z");
     assert_eq!(fingerprint.source_size, 128);
     assert_eq!(fingerprint.content_hash, "xxh3:abc123");
-    assert_eq!(fingerprint.parser_cache_version, 1);
+    assert_eq!(fingerprint.parser_cache_version, PARSER_CACHE_VERSION);
 }
 
 #[test]

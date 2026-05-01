@@ -66,7 +66,11 @@ impl TypeScriptParser {
                         // ALP-794: path alias — resolve to physical path and treat as local dep.
                         if let Some(resolved) = resolve_alias(&cleaned, aliases) {
                             insert_dependency(&mut seen, &mut kinds, resolved, kind);
+                        } else {
+                            insert_dependency_kind(&mut kinds, cleaned, kind);
                         }
+                    } else {
+                        insert_dependency_kind(&mut kinds, cleaned, kind);
                     }
                 }
             }
@@ -86,6 +90,8 @@ impl TypeScriptParser {
                         && let Some(resolved) = resolve_alias(&cleaned, aliases)
                     {
                         insert_dependency(&mut seen, &mut kinds, resolved, kind);
+                    } else {
+                        insert_dependency_kind(&mut kinds, cleaned, kind);
                     }
                 }
             }
@@ -222,6 +228,14 @@ fn insert_dependency(
     kind: EdgeKind,
 ) {
     seen.insert(dependency.clone());
+    insert_dependency_kind(kinds, dependency, kind);
+}
+
+fn insert_dependency_kind(
+    kinds: &mut HashMap<String, EdgeKind>,
+    dependency: String,
+    kind: EdgeKind,
+) {
     kinds
         .entry(dependency)
         .and_modify(|existing| {

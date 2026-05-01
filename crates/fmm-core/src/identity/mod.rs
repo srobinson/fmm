@@ -7,7 +7,7 @@ use std::path::{Component, Path};
 ///
 /// Bump this when parser output semantics change without a source file content
 /// change.
-pub const PARSER_CACHE_VERSION: u32 = 1;
+pub const PARSER_CACHE_VERSION: u32 = 2;
 
 /// Result type for identity primitive operations.
 pub type Result<T> = std::result::Result<T, IdentityError>;

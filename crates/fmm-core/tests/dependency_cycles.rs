@@ -1,8 +1,10 @@
 use std::collections::HashMap;
+use std::path::Path;
 
 use fmm_core::identity::EdgeKind;
 use fmm_core::manifest::Manifest;
-use fmm_core::parser::Metadata;
+use fmm_core::parser::builtin::typescript::TypeScriptParser;
+use fmm_core::parser::{Metadata, Parser};
 use fmm_core::search::{CycleEdgeMode, dependency_cycles};
 
 fn add_file(
@@ -31,6 +33,54 @@ fn runtime_manifest(edges: &[(&str, Vec<&str>)]) -> Manifest {
     manifest
 }
 
+fn write_file(base: &Path, rel: &str, content: &str) {
+    let path = base.join(rel);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, content).unwrap();
+}
+
+fn add_ts_file(manifest: &mut Manifest, parser: &mut TypeScriptParser, path: &str, source: &str) {
+    manifest.add_file(path, parser.parse(source).unwrap().metadata);
+}
+
+fn workspace_package_cycle_manifest(root: &Path, a_source: &str, b_source: &str) -> Manifest {
+    write_file(
+        root,
+        "packages/a/package.json",
+        r#"{"name":"@scope/a","main":"src/index.ts"}"#,
+    );
+    write_file(root, "packages/a/src/index.ts", a_source);
+    write_file(
+        root,
+        "packages/b/package.json",
+        r#"{"name":"@scope/b","main":"src/index.ts"}"#,
+    );
+    write_file(root, "packages/b/src/index.ts", b_source);
+
+    let mut parser = TypeScriptParser::new().unwrap();
+    let mut manifest = Manifest::new();
+    manifest
+        .workspace_packages
+        .insert("@scope/a".into(), root.join("packages/a"));
+    manifest
+        .workspace_packages
+        .insert("@scope/b".into(), root.join("packages/b"));
+    add_ts_file(
+        &mut manifest,
+        &mut parser,
+        "packages/a/src/index.ts",
+        a_source,
+    );
+    add_ts_file(
+        &mut manifest,
+        &mut parser,
+        "packages/b/src/index.ts",
+        b_source,
+    );
+    manifest.rebuild_file_identity().unwrap();
+    manifest
+}
+
 #[test]
 fn dependency_cycles_groups_runtime_scc_paths_deterministically() {
     let manifest = runtime_manifest(&[
@@ -44,6 +94,46 @@ fn dependency_cycles_groups_runtime_scc_paths_deterministically() {
     assert_eq!(
         cycles,
         vec![vec!["src/a.ts".to_string(), "src/b.ts".to_string()]]
+    );
+}
+
+#[test]
+fn dependency_cycles_excludes_type_only_workspace_package_cycles_in_runtime_mode() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let manifest = workspace_package_cycle_manifest(
+        tmp.path(),
+        "import type { B } from '@scope/b';\nexport type A = B;\n",
+        "import type { A } from '@scope/a';\nexport type B = A;\n",
+    );
+
+    assert_eq!(
+        dependency_cycles(&manifest, None, CycleEdgeMode::Runtime).unwrap(),
+        Vec::<Vec<String>>::new()
+    );
+    assert_eq!(
+        dependency_cycles(&manifest, None, CycleEdgeMode::All).unwrap(),
+        vec![vec![
+            "packages/a/src/index.ts".to_string(),
+            "packages/b/src/index.ts".to_string()
+        ]]
+    );
+}
+
+#[test]
+fn dependency_cycles_reports_mixed_workspace_package_cycles_in_runtime_mode() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let manifest = workspace_package_cycle_manifest(
+        tmp.path(),
+        "import type { B } from '@scope/b';\nimport { b } from '@scope/b';\nexport type A = B;\nexport const a = b;\n",
+        "import type { A } from '@scope/a';\nimport { a } from '@scope/a';\nexport type B = A;\nexport const b = a;\n",
+    );
+
+    assert_eq!(
+        dependency_cycles(&manifest, None, CycleEdgeMode::Runtime).unwrap(),
+        vec![vec![
+            "packages/a/src/index.ts".to_string(),
+            "packages/b/src/index.ts".to_string()
+        ]]
     );
 }
 

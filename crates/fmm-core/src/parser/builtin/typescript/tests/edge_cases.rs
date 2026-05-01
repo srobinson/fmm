@@ -98,6 +98,18 @@ fn dependency_kind_marks_import_type_as_type_only() {
 }
 
 #[test]
+fn dependency_kind_marks_package_import_type_as_type_only() {
+    let result = parse("import type { Foo } from '@scope/foo';");
+
+    assert_eq!(result.metadata.imports, vec!["@scope/foo"]);
+    assert!(result.metadata.dependencies.is_empty());
+    assert_eq!(
+        result.metadata.dependency_kinds.get("@scope/foo"),
+        Some(&EdgeKind::TypeOnly)
+    );
+}
+
+#[test]
 fn dependency_kind_marks_value_import_as_runtime() {
     let result = parse("import { Foo } from './foo';");
 
@@ -115,6 +127,18 @@ fn dependency_kind_marks_mixed_type_and_value_import_as_runtime() {
     assert_eq!(result.metadata.dependencies, vec!["./foo"]);
     assert_eq!(
         result.metadata.dependency_kinds.get("./foo"),
+        Some(&EdgeKind::Runtime)
+    );
+}
+
+#[test]
+fn dependency_kind_marks_mixed_package_imports_as_runtime() {
+    let result = parse("import type { Foo } from '@scope/foo';\nimport { bar } from '@scope/foo';");
+
+    assert_eq!(result.metadata.imports, vec!["@scope/foo"]);
+    assert!(result.metadata.dependencies.is_empty());
+    assert_eq!(
+        result.metadata.dependency_kinds.get("@scope/foo"),
         Some(&EdgeKind::Runtime)
     );
 }

@@ -19,7 +19,8 @@ pub struct FileEntry {
     pub methods: Option<HashMap<String, ExportLines>>,
     pub imports: Vec<String>,
     pub dependencies: Vec<String>,
-    /// Internal dependency edge classification keyed by dependency specifier.
+    /// Internal dependency edge classification keyed by dependency or import
+    /// specifier.
     /// Public output remains path based through `dependencies`.
     #[serde(skip)]
     pub dependency_kinds: HashMap<String, EdgeKind>,

@@ -7,7 +7,7 @@ use crate::manifest::Manifest;
 use super::local::try_resolve_local_dep;
 use super::path::{builtin_source_extensions, is_cargo_workspace_source};
 use super::workspace::collect_workspace_edges;
-use super::{dep_matches, dotted_dep_matches, python_dep_matches};
+use super::{dep_matches, dependency_kind, dotted_dep_matches, python_dep_matches};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DependencyEdge {
@@ -97,8 +97,8 @@ pub(crate) fn build_dependency_edges(manifest: &Manifest) -> Vec<DependencyEdge>
     }
 
     if has_workspace {
-        for (target, importer) in collect_workspace_edges(manifest) {
-            merge_edge(&mut edges, importer, target, EdgeKind::Runtime);
+        for (target, importer, kind) in collect_workspace_edges(manifest) {
+            merge_edge(&mut edges, importer, target, kind);
         }
     }
 
@@ -110,14 +110,6 @@ pub(crate) fn build_dependency_edges(manifest: &Manifest) -> Vec<DependencyEdge>
             kind,
         })
         .collect()
-}
-
-fn dependency_kind(entry: &crate::manifest::FileEntry, dependency: &str) -> EdgeKind {
-    entry
-        .dependency_kinds
-        .get(dependency)
-        .copied()
-        .unwrap_or(EdgeKind::Runtime)
 }
 
 fn merge_edge(
