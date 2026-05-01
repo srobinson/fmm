@@ -33,7 +33,7 @@ pub const CYCLES_ABOUT: &str = "Report strongly connected dependency cycles. Def
 #[rustfmt::skip]
 pub const CYCLES_FILE_HELP: &str = "Optional source file path to scope cycle reports";
 #[rustfmt::skip]
-pub const CYCLES_FILTER_HELP: &str = "Filter cycle members by file type: all (default), source (exclude tests), tests (only tests)";
+pub const CYCLES_FILTER_HELP: &str = "Filter cycle graph by file type: all (default), source (exclude tests), tests (only tests)";
 #[rustfmt::skip]
 pub const CYCLES_EDGE_MODE_HELP: &str = "Edge mode: runtime (default, excludes type-only edges) or all";
 

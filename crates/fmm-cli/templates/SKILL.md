@@ -259,7 +259,7 @@ Report strongly connected dependency cycles over the internal graph. Defaults to
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `file` | string | no | Optional file path to scope cycle reports to SCCs containing that file. |
-| `filter` | enum: all \| source \| tests | no | Filter reported cycle members by file type. 'all' (default): no filtering. 'source': exclude test files. 'tests': sho... |
+| `filter` | enum: all \| source \| tests | no | Filter the cycle graph by file type before SCC detection. 'all' (default): no filtering. 'source': exclude test files... |
 | `edge_mode` | enum: runtime \| all | no | Edge mode for cycle reporting. 'runtime' (default) excludes TypeScript type-only edges. 'all' includes type-only edges. |
 
 ### `fmm_read_symbol`

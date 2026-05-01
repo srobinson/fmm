@@ -31,10 +31,13 @@ pub fn cycles(file: Option<&str>, filter: &str, edge_mode: &str, json_output: bo
 
     let edge_mode =
         crate::cycle_report::parse_edge_mode(Some(edge_mode)).map_err(anyhow::Error::msg)?;
+    let file_filter =
+        crate::cycle_report::CycleFileFilter::parse(filter).map_err(anyhow::Error::msg)?;
     let config = fmm_core::config::Config::load_from_dir(&root).unwrap_or_default();
-    let cycles = fmm_core::search::dependency_cycles(&manifest, file, edge_mode)?;
     let cycles =
-        crate::cycle_report::filter_cycles(cycles, filter, |path| config.is_test_file(path));
+        fmm_core::search::dependency_cycles_with_path_filter(&manifest, file, edge_mode, |path| {
+            file_filter.keeps(path, |candidate| config.is_test_file(candidate))
+        })?;
 
     if json_output {
         println!("{}", serde_json::to_string_pretty(&CyclesJson { cycles })?);

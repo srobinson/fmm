@@ -91,7 +91,7 @@ serde_json::from_str(r##"{
           },
           "filter": {
             "type": "string",
-            "description": "Filter reported cycle members by file type. 'all' (default): no filtering. 'source': exclude test files. 'tests': show only test files.",
+            "description": "Filter the cycle graph by file type before SCC detection. 'all' (default): no filtering. 'source': exclude test files. 'tests': show only test files.",
             "enum": [
               "all",
               "source",

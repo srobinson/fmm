@@ -86,7 +86,7 @@ pub const DEFAULT_SEARCH_LIMIT: usize = 50;
 
 pub use crate::graph::CycleEdgeMode;
 pub use bare_search::bare_search;
-pub use dependency_cycles::dependency_cycles;
+pub use dependency_cycles::{dependency_cycles, dependency_cycles_with_path_filter};
 pub use dependency_graph::dependency_graph;
 pub use dependency_graph_transitive::dependency_graph_transitive;
 pub use filter_search::filter_search;

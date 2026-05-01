@@ -288,8 +288,8 @@ cli_flag        = "file"
 name            = "filter"
 type            = "string"
 enum            = ["all", "source", "tests"]
-mcp_description = "Filter reported cycle members by file type. 'all' (default): no filtering. 'source': exclude test files. 'tests': show only test files."
-cli_help        = "Filter cycle members by file type: all (default), source (exclude tests), tests (only tests)"
+mcp_description = "Filter the cycle graph by file type before SCC detection. 'all' (default): no filtering. 'source': exclude test files. 'tests': show only test files."
+cli_help        = "Filter cycle graph by file type: all (default), source (exclude tests), tests (only tests)"
 cli_flag        = "--filter"
 
 [[tools.fmm_dependency_cycles.params]]

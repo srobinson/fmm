@@ -487,7 +487,7 @@ pub enum Commands {
         #[arg(value_name = "FILE")]
         file: Option<String>,
 
-        /// Filter cycle members by file type: all (default), source (exclude tests), tests (only tests)
+        /// Filter cycle graph by file type: all (default), source (exclude tests), tests (only tests)
         #[arg(long, default_value = "all", value_parser = ["all", "source", "tests"])]
         filter: String,
 

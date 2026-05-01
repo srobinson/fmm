@@ -62,6 +62,24 @@ fn cycle_server() -> TestServer {
         vec!["./mixed"],
         HashMap::new(),
     );
+    add_file(
+        &mut manifest,
+        "src/bridge-a.ts",
+        vec!["./bridge-a.test"],
+        HashMap::new(),
+    );
+    add_file(
+        &mut manifest,
+        "src/bridge-a.test.ts",
+        vec!["./bridge-b"],
+        HashMap::new(),
+    );
+    add_file(
+        &mut manifest,
+        "src/bridge-b.ts",
+        vec!["./bridge-a"],
+        HashMap::new(),
+    );
     manifest.rebuild_file_identity().unwrap();
     test_server(manifest)
 }
@@ -103,6 +121,8 @@ fn dependency_cycles_source_filter_excludes_tests() {
     assert!(!text.contains("src/a.test.ts"), "got:\n{text}");
     assert!(!text.contains("src/test/helper.ts"), "got:\n{text}");
     assert!(!text.contains("src/mixed.ts"), "got:\n{text}");
+    assert!(!text.contains("src/bridge-a.ts"), "got:\n{text}");
+    assert!(!text.contains("src/bridge-b.ts"), "got:\n{text}");
 }
 
 #[test]

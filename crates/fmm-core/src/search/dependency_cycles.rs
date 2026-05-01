@@ -6,10 +6,27 @@ pub fn dependency_cycles(
     file: Option<&str>,
     edge_mode: CycleEdgeMode,
 ) -> Result<Vec<Vec<String>>, GraphError> {
+    dependency_cycles_with_path_filter(manifest, file, edge_mode, |_| true)
+}
+
+pub fn dependency_cycles_with_path_filter(
+    manifest: &Manifest,
+    file: Option<&str>,
+    edge_mode: CycleEdgeMode,
+    keep_path: impl Fn(&str) -> bool,
+) -> Result<Vec<Vec<String>>, GraphError> {
     let graph = GraphIndex::from_manifest(manifest)?;
     let mut cycles = Vec::new();
 
-    for component in crate::graph::dependency_cycles(&graph, edge_mode) {
+    for component in crate::graph::dependency_cycles_with_node_filter(&graph, edge_mode, |node| {
+        let Some(file_id) = graph.file_id_for_node(node) else {
+            return false;
+        };
+        let Some(path) = graph.path_for_file_id(file_id) else {
+            return false;
+        };
+        keep_path(path)
+    }) {
         let mut members = component
             .into_iter()
             .filter_map(|node| {

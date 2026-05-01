@@ -21,20 +21,18 @@ pub(in crate::mcp) fn tool_dependency_cycles(
         }
     }
 
-    let filter = args.filter.as_deref().unwrap_or("all");
-    if !matches!(filter, "all" | "source" | "tests") {
-        return Err(format!(
-            "Invalid filter '{}'. Valid values: all, source, tests.",
-            filter
-        ));
-    }
+    let file_filter =
+        crate::cycle_report::CycleFileFilter::parse(args.filter.as_deref().unwrap_or("all"))?;
 
     let edge_mode = crate::cycle_report::parse_edge_mode(args.edge_mode.as_deref())?;
     let config = fmm_core::config::Config::load_from_dir(root).unwrap_or_default();
-    let cycles = fmm_core::search::dependency_cycles(manifest, args.file.as_deref(), edge_mode)
-        .map_err(|e| e.to_string())?;
-    let cycles =
-        crate::cycle_report::filter_cycles(cycles, filter, |path| config.is_test_file(path));
+    let cycles = fmm_core::search::dependency_cycles_with_path_filter(
+        manifest,
+        args.file.as_deref(),
+        edge_mode,
+        |path| file_filter.keeps(path, |candidate| config.is_test_file(candidate)),
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(fmm_core::format::format_dependency_cycles(&cycles))
 }
