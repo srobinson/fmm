@@ -80,6 +80,36 @@ serde_json::from_str(r##"{
       }
     },
     {
+      "name": "fmm_dependency_cycles",
+      "description": "Report strongly connected dependency cycles over the internal graph. Defaults to runtime edges, excluding TypeScript type-only imports. Use edge_mode='all' to include type-only edges. Optional file scopes output to cycles containing that file. filter='source' excludes tests, filter='tests' shows only test files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "Optional file path to scope cycle reports to SCCs containing that file."
+          },
+          "filter": {
+            "type": "string",
+            "description": "Filter the cycle graph by file type before SCC detection. 'all' (default): no filtering. 'source': exclude test files. 'tests': show only test files.",
+            "enum": [
+              "all",
+              "source",
+              "tests"
+            ]
+          },
+          "edge_mode": {
+            "type": "string",
+            "description": "Edge mode for cycle reporting. 'runtime' (default) excludes TypeScript type-only edges. 'all' includes type-only edges.",
+            "enum": [
+              "runtime",
+              "all"
+            ]
+          }
+        }
+      }
+    },
+    {
       "name": "fmm_read_symbol",
       "description": "Read the source code for a specific exported symbol or uniquely named non-exported top-level function. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Use `path/to/file:helperFunction` notation to disambiguate duplicate exports or duplicate non-exported top-level functions. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.",
       "inputSchema": {

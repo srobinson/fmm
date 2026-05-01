@@ -1,9 +1,10 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
+use crate::identity::{FileId, FileIdentityMap};
 use crate::parser::Metadata;
 use crate::resolver::workspace::{WorkspaceEcosystem, WorkspaceInfo};
 
@@ -11,121 +12,26 @@ pub mod call_site_finder;
 pub mod private_members;
 
 mod dependency_matcher;
+mod file_entry;
 mod glossary_builder;
-
-use dependency_matcher::build_reverse_deps;
+mod reexports;
+mod reverse_index;
 
 // Re-export public API consumed by other modules.
 pub(crate) use dependency_matcher::{
-    builtin_source_extensions, strip_source_ext, try_resolve_local_dep,
+    build_dependency_edges, builtin_source_extensions, strip_source_ext, try_resolve_local_dep,
 };
 pub use dependency_matcher::{dep_matches, dotted_dep_matches, python_dep_matches};
+pub use file_entry::FileEntry;
 pub use glossary_builder::{GlossaryEntry, GlossaryMode, GlossarySource};
+pub use reexports::OutlineReExport;
+pub use reverse_index::ReverseDeps;
 
 /// Line range for an export symbol.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ExportLines {
     pub start: usize,
     pub end: usize,
-}
-
-/// Entry for a single file in the in-memory index
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct FileEntry {
-    pub exports: Vec<String>,
-    /// Line ranges for exports (parallel to exports vec).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub export_lines: Option<Vec<ExportLines>>,
-    /// Public class methods: `"ClassName.method"` → line range. Populated from the
-    /// `methods:` sidecar section or from `ExportEntry` entries that have `parent_class` set.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub methods: Option<HashMap<String, ExportLines>>,
-    pub imports: Vec<String>,
-    pub dependencies: Vec<String>,
-    pub loc: usize,
-    /// Last-modified date from the sidecar `modified:` field (YYYY-MM-DD). None if absent.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub modified: Option<String>,
-    /// Names of exported module-level function declarations (TS/JS, Python, Rust).
-    /// Populated from sidecar typescript.function_names section. Not persisted.
-    /// Used to build function_index for call-site precision in fmm_glossary.
-    #[serde(skip)]
-    pub function_names: Vec<String>,
-    /// Named imports per source module (TS/JS, Python, Rust). Key = import path as written in source.
-    /// Value = original exported names (alias-resolved). Populated from sidecar named_imports section.
-    /// Used by Layer 2 filtering in fmm_glossary.
-    #[serde(skip)]
-    pub named_imports: HashMap<String, Vec<String>>,
-    /// Source paths of namespace imports and wildcard re-exports. Populated from sidecar.
-    #[serde(skip)]
-    pub namespace_imports: Vec<String>,
-    /// ALP-922: depth-1 nested function declarations inside function bodies.
-    /// dotted_name (e.g. "createTypeChecker.getIndexType") -> line range.
-    /// Always shown in fmm_file_outline. Searchable via fmm_search.
-    #[serde(skip)]
-    pub nested_fns: HashMap<String, ExportLines>,
-    /// ALP-922: depth-1 non-trivial prologue var/const/let declarations.
-    /// dotted_name (e.g. "createTypeChecker.silentNeverType") -> line range.
-    /// Shown only when include_private: true in fmm_file_outline.
-    #[serde(skip)]
-    pub closure_state: HashMap<String, ExportLines>,
-}
-
-impl From<Metadata> for FileEntry {
-    fn from(metadata: Metadata) -> Self {
-        let mut exports = Vec::new();
-        let mut export_lines = Vec::new();
-        let mut methods: HashMap<String, ExportLines> = HashMap::new();
-        let mut nested_fns: HashMap<String, ExportLines> = HashMap::new();
-        let mut closure_state: HashMap<String, ExportLines> = HashMap::new();
-
-        for e in &metadata.exports {
-            if let Some(ref parent) = e.parent_class {
-                let key = format!("{}.{}", parent, e.name);
-                let el = ExportLines {
-                    start: e.start_line,
-                    end: e.end_line,
-                };
-                match e.kind.as_deref() {
-                    Some("nested-fn") => {
-                        nested_fns.insert(key, el);
-                    }
-                    Some("closure-state") => {
-                        closure_state.insert(key, el);
-                    }
-                    _ => {
-                        methods.insert(key, el);
-                    }
-                }
-            } else {
-                exports.push(e.name.clone());
-                export_lines.push(ExportLines {
-                    start: e.start_line,
-                    end: e.end_line,
-                });
-            }
-        }
-
-        let has_lines = export_lines.iter().any(|l| l.start > 0);
-        Self {
-            exports,
-            export_lines: if has_lines { Some(export_lines) } else { None },
-            methods: if methods.is_empty() {
-                None
-            } else {
-                Some(methods)
-            },
-            imports: metadata.imports,
-            dependencies: metadata.dependencies,
-            loc: metadata.loc,
-            modified: None,
-            function_names: Vec::new(),
-            named_imports: metadata.named_imports,
-            namespace_imports: metadata.namespace_imports,
-            nested_fns,
-            closure_state,
-        }
-    }
 }
 
 /// Export index entry: file path + optional line range.
@@ -135,19 +41,6 @@ pub struct ExportLocation {
     pub lines: Option<ExportLines>,
 }
 
-/// A re-export surfaced from another module, resolved to its origin definition.
-///
-/// Produced by [`Manifest::reexports_in_file`] and rendered by
-/// `format_file_outline` into a separate `re-exports:` section so agents can
-/// distinguish surface re-exports from local definitions at a glance.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OutlineReExport {
-    pub name: String,
-    pub origin_file: String,
-    pub origin_start: usize,
-    pub origin_end: usize,
-}
-
 /// In-memory index built from the SQLite database.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -155,6 +48,10 @@ pub struct Manifest {
     pub version: String,
     pub generated: DateTime<Utc>,
     pub files: HashMap<String, FileEntry>,
+    /// Internal file identity map used by graph storage. Skipped at public
+    /// boundaries so CLI and MCP contracts remain path based.
+    #[serde(skip)]
+    file_identity: FileIdentityMap,
     /// Maps export name -> file path (backward compat)
     pub export_index: HashMap<String, String>,
     /// Maps export name -> full location (file + lines)
@@ -172,7 +69,7 @@ pub struct Manifest {
     /// Loaded from the pre-computed `reverse_deps` table for O(1) downstream lookups.
     /// Not persisted in this struct — loaded from DB on each `Manifest::load()` call.
     #[serde(skip)]
-    pub reverse_deps: HashMap<String, Vec<String>>,
+    pub reverse_deps: ReverseDeps,
     /// Maps export name → file location for confirmed module-level function declarations (TS/JS).
     /// Enables O(1) "is this a bare function?" check at glossary query time.
     /// Only populated for exports listed in a file's `function_names` sidecar section.
@@ -205,6 +102,7 @@ impl Manifest {
             version: "2.0".to_string(),
             generated: Utc::now(),
             files: HashMap::new(),
+            file_identity: FileIdentityMap::default(),
             export_index: HashMap::new(),
             export_locations: HashMap::new(),
             export_all: HashMap::new(),
@@ -254,6 +152,8 @@ impl Manifest {
 
     /// Add or update a file entry in the index
     pub fn add_file(&mut self, path: &str, metadata: Metadata) {
+        let _ = self.file_identity.ensure_relative_path(path);
+
         if let Some(old_entry) = self.files.get(path) {
             for old_export in &old_entry.exports {
                 if self.export_index.get(old_export) == Some(&path.to_string()) {
@@ -373,6 +273,8 @@ impl Manifest {
 
     pub fn remove_file(&mut self, path: &str) {
         if let Some(entry) = self.files.remove(path) {
+            let _ = self.file_identity.remove_relative_path(path);
+
             for export in &entry.exports {
                 self.export_index.remove(export);
                 self.export_locations.remove(export);
@@ -412,6 +314,29 @@ impl Manifest {
         self.files.get(path)
     }
 
+    pub fn rebuild_file_identity(&mut self) -> crate::identity::Result<()> {
+        self.file_identity =
+            FileIdentityMap::from_relative_paths(self.files.keys().map(String::as_str))?;
+        Ok(())
+    }
+
+    /// Replace the in-memory identity map with one loaded from durable storage.
+    pub fn set_file_identity(&mut self, file_identity: FileIdentityMap) {
+        self.file_identity = file_identity;
+    }
+
+    pub fn file_identity(&self) -> &FileIdentityMap {
+        &self.file_identity
+    }
+
+    pub fn file_id(&self, path: &str) -> Option<FileId> {
+        self.file_identity.id_for_path(path)
+    }
+
+    pub fn path_for_file_id(&self, id: FileId) -> Option<&str> {
+        self.file_identity.path_for_id(id).map(|path| path.as_str())
+    }
+
     pub fn validate_file(&self, path: &str, current: &Metadata) -> bool {
         if let Some(entry) = self.files.get(path) {
             let current_names: Vec<String> = current
@@ -435,92 +360,6 @@ impl Manifest {
 
     pub fn file_paths(&self) -> Vec<&String> {
         self.files.keys().collect()
-    }
-
-    /// Rebuild the reverse dependency index from the current file set.
-    ///
-    /// Called automatically by `load_from_sidecars`. Call this manually when
-    /// building a manifest incrementally via `add_file` (e.g. in tests or
-    /// benchmarks) to ensure downstream lookups are accurate.
-    pub fn rebuild_reverse_deps(&mut self) {
-        self.reverse_deps = build_reverse_deps(self);
-    }
-
-    /// Return the re-exports surfaced by `file`, each resolved to its origin
-    /// definition. A re-export is an exported name whose string also appears
-    /// as a value in the file's `named_imports` map (i.e. imported by name
-    /// from another module and re-surfaced in this file's public API).
-    ///
-    /// Aliased imports like `from X import A as B` are NOT re-exports:
-    /// `named_imports` stores the original name `A`, while the file exports
-    /// the local alias `B`. The name lookup therefore treats `B` as a local
-    /// definition, matching the Phase 2 shadow-silencing logic.
-    ///
-    /// Origin resolution:
-    /// 1. `export_locations[name]` with a valid (non-self, lines.start > 0)
-    ///    entry — first choice.
-    /// 2. Fallback to `(file, import_line, import_line)` using the
-    ///    re-exporter's own `export_lines[i]` when the origin is not in the
-    ///    index (e.g. imported from a third-party package outside the
-    ///    workspace). The entry is still actionable — agents can jump to
-    ///    the import line to see where it comes from.
-    ///
-    /// Results are sorted alphabetically by name for stable output.
-    pub fn reexports_in_file(&self, file: &str) -> Vec<OutlineReExport> {
-        let Some(entry) = self.files.get(file) else {
-            return Vec::new();
-        };
-
-        let imported_names: HashSet<&str> = entry
-            .named_imports
-            .values()
-            .flat_map(|v| v.iter().map(String::as_str))
-            .collect();
-
-        let mut out = Vec::with_capacity(entry.exports.len());
-        for (i, name) in entry.exports.iter().enumerate() {
-            if !imported_names.contains(name.as_str()) {
-                continue;
-            }
-
-            // Prefer the indexed origin definition when available.
-            let origin = self
-                .export_locations
-                .get(name)
-                .filter(|loc| loc.file != file)
-                .and_then(|loc| {
-                    let lines = loc.lines.as_ref()?;
-                    if lines.start == 0 {
-                        return None;
-                    }
-                    Some((loc.file.clone(), lines.start, lines.end))
-                });
-
-            let (origin_file, origin_start, origin_end) = match origin {
-                Some(r) => r,
-                None => {
-                    // Fall back to the re-exporter's own import line.
-                    let (s, e) = entry
-                        .export_lines
-                        .as_ref()
-                        .and_then(|els| els.get(i))
-                        .filter(|el| el.start > 0)
-                        .map(|el| (el.start, el.end))
-                        .unwrap_or((0, 0));
-                    (file.to_string(), s, e)
-                }
-            };
-
-            out.push(OutlineReExport {
-                name: name.clone(),
-                origin_file,
-                origin_start,
-                origin_end,
-            });
-        }
-
-        out.sort_by(|a, b| a.name.cmp(&b.name));
-        out
     }
 }
 

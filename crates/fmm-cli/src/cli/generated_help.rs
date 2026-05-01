@@ -29,6 +29,15 @@ pub const DEPS_DEPTH_HELP: &str = "Traversal depth (1 = direct deps only, -1 = f
 pub const DEPS_FILTER_HELP: &str = "Filter upstream/downstream by file type: all (default), source (exclude tests), tests (only tests)";
 
 #[rustfmt::skip]
+pub const CYCLES_ABOUT: &str = "Report strongly connected dependency cycles. Defaults to runtime edges and path-based output.";
+#[rustfmt::skip]
+pub const CYCLES_FILE_HELP: &str = "Optional source file path to scope cycle reports";
+#[rustfmt::skip]
+pub const CYCLES_FILTER_HELP: &str = "Filter cycle graph by file type: all (default), source (exclude tests), tests (only tests)";
+#[rustfmt::skip]
+pub const CYCLES_EDGE_MODE_HELP: &str = "Edge mode: runtime (default, excludes type-only edges) or all";
+
+#[rustfmt::skip]
 pub const READ_ABOUT: &str = "Read the source code of an exported symbol, a specific method, or a non-exported function.\n\nUse plain name for a unique top-level symbol, ClassName.method notation for a specific public/private method, or path/to/file:helperFn notation to disambiguate duplicate symbols. Truncates at 10KB by default; use --no-truncate for full source.";
 #[rustfmt::skip]
 pub const READ_NAME_HELP: &str = "Symbol name, ClassName.method for a specific method, or path/to/file:fn to disambiguate duplicates";

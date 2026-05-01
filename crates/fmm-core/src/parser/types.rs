@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
+use crate::identity::EdgeKind;
+
 /// Language-specific test file naming conventions.
 ///
 /// These supplement the configurable `test_patterns` in `.fmmrc.toml`.
@@ -115,6 +117,12 @@ pub struct Metadata {
     pub exports: Vec<ExportEntry>,
     pub imports: Vec<String>,
     pub dependencies: Vec<String>,
+    /// Internal dependency edge classification keyed by dependency or import
+    /// specifier.
+    /// Missing entries are interpreted as runtime edges for backward
+    /// compatibility with language parsers that do not classify edge kinds.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub dependency_kinds: HashMap<String, EdgeKind>,
     pub loc: usize,
     /// Named imports per source module (TS/JS, Python, Rust).
     /// Key = import path as written in source (`"./ReactFiberWorkLoop"`).

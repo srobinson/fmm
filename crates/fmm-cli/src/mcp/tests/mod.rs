@@ -1,3 +1,4 @@
+mod dependency_cycles;
 mod dependency_graph;
 mod glossary;
 mod list_exports;

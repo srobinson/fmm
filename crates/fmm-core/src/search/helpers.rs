@@ -42,20 +42,6 @@ pub(super) fn file_entry_to_result(path: &str, entry: &FileEntry) -> FileSearchR
     }
 }
 
-pub(super) fn direct_upstream_from_reverse_deps(manifest: &Manifest, file: &str) -> Vec<String> {
-    let mut upstream: Vec<String> = manifest
-        .reverse_deps
-        .iter()
-        .filter(|(target, sources)| {
-            target.as_str() != file && sources.iter().any(|source| source == file)
-        })
-        .map(|(target, _)| target.clone())
-        .collect();
-    upstream.sort();
-    upstream.dedup();
-    upstream
-}
-
 pub(super) fn reverse_deps_resolve_specifier(
     workspace_specifier_names: &[String],
     direct_upstream: &[String],

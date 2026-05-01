@@ -2,6 +2,7 @@ mod support;
 
 mod filters;
 mod fuzzy_search;
+mod graph_adapter;
 mod js_directory_imports;
 mod js_relative_files;
 mod package_imports;

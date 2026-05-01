@@ -5,8 +5,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 
+use fmm_core::identity::Fingerprint;
 use fmm_core::manifest::Manifest;
 use fmm_core::store::FmmStore;
 use fmm_core::types::PreserializedRow;
@@ -73,12 +74,6 @@ impl SqliteStore {
         &self.root
     }
 
-    /// Check whether a file's index entry is at least as fresh as its source mtime.
-    pub fn is_file_up_to_date(&self, rel_path: &str, source_mtime: Option<&str>) -> bool {
-        let conn = self.conn.borrow();
-        writer::is_file_up_to_date(&conn, rel_path, source_mtime)
-    }
-
     /// Returns the number of indexed files.
     ///
     /// # Errors
@@ -101,8 +96,27 @@ impl SqliteStore {
     pub fn clear_index(&self) -> Result<(), StoreError> {
         let conn = self.conn.borrow();
         conn.execute_batch(
-            "DELETE FROM files; DELETE FROM reverse_deps; DELETE FROM workspace_packages;",
+            "DELETE FROM files;
+             DELETE FROM reverse_deps;
+             DELETE FROM workspace_packages;",
         )?;
+        conn.execute(
+            "DELETE FROM meta WHERE key = ?1",
+            params![writer::NEXT_FILE_ID_KEY],
+        )?;
+        Ok(())
+    }
+
+    /// Rebuild path identity from the current indexed file rows.
+    ///
+    /// # Errors
+    ///
+    /// Returns `StoreError` if the database transaction or identity rebuild fails.
+    pub fn rebuild_file_identity_from_indexed_files(&self) -> Result<(), StoreError> {
+        let mut conn = self.conn.borrow_mut();
+        let tx = conn.transaction()?;
+        writer::rebuild_file_identity_from_files(&tx).map_err(StoreError::Other)?;
+        tx.commit()?;
         Ok(())
     }
 }
@@ -115,9 +129,18 @@ impl FmmStore for SqliteStore {
         reader::load_manifest_from_db(&conn, &self.root).map_err(StoreError::Other)
     }
 
-    fn load_indexed_mtimes(&self) -> Result<HashMap<String, String>, Self::Error> {
+    fn load_fingerprints(&self) -> Result<HashMap<String, Fingerprint>, Self::Error> {
         let conn = self.conn.borrow();
-        writer::load_indexed_mtimes(&conn).map_err(StoreError::Other)
+        writer::load_fingerprints(&conn).map_err(StoreError::Other)
+    }
+
+    fn update_file_fingerprint(
+        &self,
+        rel_path: &str,
+        fingerprint: &Fingerprint,
+    ) -> Result<bool, Self::Error> {
+        let conn = self.conn.borrow();
+        writer::update_file_fingerprint(&conn, rel_path, fingerprint).map_err(StoreError::Other)
     }
 
     fn write_indexed_files(
@@ -132,8 +155,18 @@ impl FmmStore for SqliteStore {
             writer::delete_all_files(&tx).map_err(StoreError::Other)?;
         }
 
+        let file_identity = if full_reindex {
+            Some(writer::full_reindex_file_identity(rows).map_err(StoreError::Other)?)
+        } else {
+            None
+        };
+
         for row in rows {
-            writer::upsert_preserialized(&tx, row, full_reindex).map_err(StoreError::Other)?;
+            let file_id = file_identity
+                .as_ref()
+                .and_then(|identity| identity.id_for_path(&row.rel_path));
+            writer::upsert_preserialized_with_file_id(&tx, row, full_reindex, file_id)
+                .map_err(StoreError::Other)?;
         }
 
         tx.commit()?;
@@ -182,6 +215,7 @@ impl FmmStore for SqliteStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fmm_core::identity::{FileId, Fingerprint, PARSER_CACHE_VERSION};
     use fmm_core::parser::{ExportEntry, Metadata, ParseResult};
     use fmm_core::store::FmmStore;
     use fmm_core::types::serialize_file_data;
@@ -197,6 +231,15 @@ mod tests {
                 ..Default::default()
             },
             custom_fields: None,
+        }
+    }
+
+    fn fingerprint() -> Fingerprint {
+        Fingerprint {
+            source_mtime: "2026-03-01T00:00:00+00:00".to_string(),
+            source_size: 9,
+            content_hash: "fnv1a64:test".to_string(),
+            parser_cache_version: PARSER_CACHE_VERSION,
         }
     }
 
@@ -268,17 +311,18 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_store_load_indexed_mtimes() {
+    fn sqlite_store_load_fingerprints() {
         let dir = TempDir::new().unwrap();
         let store = SqliteStore::open_or_create(dir.path()).unwrap();
 
         let result = make_parse_result(vec![]);
-        let row =
+        let mut row =
             serialize_file_data("src/x.ts", &result, Some("2026-03-01T00:00:00+00:00")).unwrap();
+        row.fingerprint = Some(fingerprint());
         store.upsert_single_file(&row).unwrap();
 
-        let mtimes = store.load_indexed_mtimes().unwrap();
-        assert!(mtimes.contains_key("src/x.ts"));
+        let fingerprints = store.load_fingerprints().unwrap();
+        assert_eq!(fingerprints.get("src/x.ts"), Some(&fingerprint()));
     }
 
     #[test]
@@ -343,5 +387,80 @@ mod tests {
         let manifest = store.load_manifest().unwrap();
         assert!(!manifest.files.contains_key("src/old.ts"));
         assert!(manifest.files.contains_key("src/new.ts"));
+    }
+
+    #[test]
+    fn sqlite_store_full_reindex_persists_sorted_file_paths() {
+        let dir = TempDir::new().unwrap();
+        let store = SqliteStore::open_or_create(dir.path()).unwrap();
+
+        let result = make_parse_result(vec![]);
+        let row_z = serialize_file_data("src/z.ts", &result, None).unwrap();
+        let row_a = serialize_file_data("src/a.ts", &result, None).unwrap();
+        store.write_indexed_files(&[row_z, row_a], true).unwrap();
+
+        let conn = store.conn.borrow();
+        let rows: Vec<(u32, String)> = {
+            let mut stmt = conn
+                .prepare("SELECT file_id, path FROM file_paths ORDER BY file_id")
+                .unwrap();
+            stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect()
+        };
+        assert_eq!(
+            rows,
+            vec![(0, "src/a.ts".to_string()), (1, "src/z.ts".to_string())]
+        );
+
+        drop(conn);
+        let manifest = store.load_manifest().unwrap();
+        assert_eq!(manifest.file_id("src/a.ts"), Some(FileId(0)));
+        assert_eq!(manifest.path_for_file_id(FileId(1)), Some("src/z.ts"));
+    }
+
+    #[test]
+    fn sqlite_store_incremental_file_ids_leave_deleted_slots_vacant() {
+        let dir = TempDir::new().unwrap();
+        let store = SqliteStore::open_or_create(dir.path()).unwrap();
+
+        let result = make_parse_result(vec![]);
+        let row_a = serialize_file_data("src/a.ts", &result, None).unwrap();
+        let row_b = serialize_file_data("src/b.ts", &result, None).unwrap();
+        let row_c = serialize_file_data("src/c.ts", &result, None).unwrap();
+        store
+            .write_indexed_files(&[row_a, row_b, row_c], true)
+            .unwrap();
+
+        assert!(store.delete_single_file("src/c.ts").unwrap());
+
+        let row_d = serialize_file_data("src/d.ts", &result, None).unwrap();
+        store.upsert_single_file(&row_d).unwrap();
+
+        let manifest = store.load_manifest().unwrap();
+        assert_eq!(manifest.file_id("src/a.ts"), Some(FileId(0)));
+        assert_eq!(manifest.file_id("src/b.ts"), Some(FileId(1)));
+        assert_eq!(manifest.path_for_file_id(FileId(2)), None);
+        assert_eq!(manifest.file_id("src/d.ts"), Some(FileId(3)));
+    }
+
+    #[test]
+    fn sqlite_store_clear_index_resets_file_id_high_water_mark() {
+        let dir = TempDir::new().unwrap();
+        let store = SqliteStore::open_or_create(dir.path()).unwrap();
+
+        let result = make_parse_result(vec![]);
+        let row_a = serialize_file_data("src/a.ts", &result, None).unwrap();
+        let row_b = serialize_file_data("src/b.ts", &result, None).unwrap();
+        store.write_indexed_files(&[row_a, row_b], true).unwrap();
+
+        store.clear_index().unwrap();
+
+        let row_x = serialize_file_data("src/x.ts", &result, None).unwrap();
+        store.upsert_single_file(&row_x).unwrap();
+
+        let manifest = store.load_manifest().unwrap();
+        assert_eq!(manifest.file_id("src/x.ts"), Some(FileId(0)));
     }
 }

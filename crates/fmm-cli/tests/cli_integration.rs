@@ -101,6 +101,44 @@ fn db_file_count(base: &Path) -> i64 {
         .unwrap_or(0)
 }
 
+fn db_file_paths(base: &Path) -> Vec<(u32, String)> {
+    let conn = rusqlite::Connection::open(base.join(".fmm.db")).unwrap();
+    let mut stmt = conn
+        .prepare("SELECT file_id, path FROM file_paths ORDER BY file_id")
+        .unwrap();
+    stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
+fn db_reverse_dep_count(base: &Path, target: &str) -> i64 {
+    let conn = rusqlite::Connection::open(base.join(".fmm.db")).unwrap();
+    conn.query_row(
+        "SELECT COUNT(*) FROM reverse_deps WHERE target_path = ?1",
+        rusqlite::params![target],
+        |row| row.get(0),
+    )
+    .unwrap_or(0)
+}
+
+fn create_old_files_table(conn: &rusqlite::Connection) {
+    conn.execute_batch(
+        "CREATE TABLE files (
+             path TEXT PRIMARY KEY,
+             loc INTEGER NOT NULL,
+             modified TEXT,
+             imports TEXT,
+             dependencies TEXT,
+             named_imports TEXT,
+             namespace_imports TEXT,
+             function_names TEXT,
+             indexed_at TEXT NOT NULL
+         );",
+    )
+    .unwrap();
+}
+
 #[test]
 fn generate_creates_db() {
     let tmp = setup_project();
@@ -160,6 +198,65 @@ fn generate_updates_stale_files() {
 }
 
 #[test]
+fn generate_prunes_deleted_files_and_reverse_deps() {
+    let tmp = setup_project();
+    let path = tmp.path().to_str().unwrap();
+
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
+    assert!(db_indexed(tmp.path(), "src/db.ts"));
+    assert_eq!(db_reverse_dep_count(tmp.path(), "src/db.ts"), 1);
+
+    fs::remove_file(tmp.path().join("src/db.ts")).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
+
+    assert!(!db_indexed(tmp.path(), "src/db.ts"));
+    assert_eq!(db_reverse_dep_count(tmp.path(), "src/db.ts"), 0);
+}
+
+#[test]
+fn generate_rebuilds_file_ids_when_file_is_added() {
+    let tmp = TempDir::new().unwrap();
+    let src = tmp.path().join("src");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(src.join("a.ts"), "export const A = 1;\n").unwrap();
+    fs::write(src.join("c.ts"), "export const C = 1;\n").unwrap();
+    let path = tmp.path().to_str().unwrap();
+
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
+    fs::write(src.join("b.ts"), "export const B = 1;\n").unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
+
+    assert_eq!(
+        db_file_paths(tmp.path()),
+        vec![
+            (0, "src/a.ts".to_string()),
+            (1, "src/b.ts".to_string()),
+            (2, "src/c.ts".to_string())
+        ]
+    );
+}
+
+#[test]
+fn generate_rebuilds_file_ids_when_file_is_deleted() {
+    let tmp = TempDir::new().unwrap();
+    let src = tmp.path().join("src");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(src.join("a.ts"), "export const A = 1;\n").unwrap();
+    fs::write(src.join("b.ts"), "export const B = 1;\n").unwrap();
+    fs::write(src.join("c.ts"), "export const C = 1;\n").unwrap();
+    let path = tmp.path().to_str().unwrap();
+
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
+    fs::remove_file(src.join("b.ts")).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
+
+    assert_eq!(
+        db_file_paths(tmp.path()),
+        vec![(0, "src/a.ts".to_string()), (1, "src/c.ts".to_string())]
+    );
+}
+
+#[test]
 fn generate_dry_run_creates_no_files() {
     let tmp = setup_project();
     let path = tmp.path().to_str().unwrap();
@@ -186,6 +283,60 @@ fn generate_dry_run_preserves_stale_db() {
 
     // DB should NOT contain the new export (dry run)
     assert!(!db_has_export(tmp.path(), "src/auth.ts", "DRY_RUN_TEST"));
+}
+
+#[test]
+fn generate_dry_run_errors_on_stale_schema_version() {
+    let tmp = setup_project();
+    let conn = rusqlite::Connection::open(tmp.path().join(fmm_store::DB_FILENAME)).unwrap();
+    create_old_files_table(&conn);
+    conn.execute_batch(&format!(
+        "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+         INSERT INTO meta VALUES ('schema_version', '4');
+         INSERT INTO meta VALUES ('fmm_version', '{}');",
+        fmm_core::VERSION
+    ))
+    .unwrap();
+    drop(conn);
+
+    let path = tmp.path().to_str().unwrap();
+    let error = fmm::cli::generate(&[path.to_string()], true, false, true)
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("schema version"));
+    assert!(error.contains("Run `fmm generate --force`"));
+    assert!(!error.contains("source_mtime"));
+}
+
+#[test]
+fn generate_dry_run_errors_when_meta_table_missing() {
+    let tmp = setup_project();
+    let conn = rusqlite::Connection::open(tmp.path().join(fmm_store::DB_FILENAME)).unwrap();
+    create_old_files_table(&conn);
+    drop(conn);
+
+    let path = tmp.path().to_str().unwrap();
+    let error = fmm::cli::generate(&[path.to_string()], true, false, true)
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("missing or unreadable"));
+    assert!(error.contains("Run `fmm generate --force`"));
+}
+
+#[test]
+fn generate_dry_run_force_succeeds_on_stale_schema() {
+    let tmp = setup_project();
+    let conn = rusqlite::Connection::open(tmp.path().join(fmm_store::DB_FILENAME)).unwrap();
+    create_old_files_table(&conn);
+    drop(conn);
+
+    let path = tmp.path().to_str().unwrap();
+    // --force --dry-run must not surface a "Run --force" diagnostic when the
+    // user is already running --force; the matching non-dry-run --force run
+    // would auto-migrate past the stale schema.
+    fmm::cli::generate(&[path.to_string()], true, true, true).unwrap();
 }
 
 #[test]

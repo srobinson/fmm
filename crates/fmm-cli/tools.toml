@@ -272,6 +272,34 @@ mcp_description = "Filter upstream and downstream lists by file type. 'all' (def
 cli_help        = "Filter upstream/downstream by file type: all (default), source (exclude tests), tests (only tests)"
 cli_flag        = "--filter"
 
+[tools.fmm_dependency_cycles]
+cli_name        = "cycles"
+mcp_description = "Report strongly connected dependency cycles over the internal graph. Defaults to runtime edges, excluding TypeScript type-only imports. Use edge_mode='all' to include type-only edges. Optional file scopes output to cycles containing that file. filter='source' excludes tests, filter='tests' shows only test files."
+cli_about       = "Report strongly connected dependency cycles. Defaults to runtime edges and path-based output."
+
+[[tools.fmm_dependency_cycles.params]]
+name            = "file"
+type            = "string"
+mcp_description = "Optional file path to scope cycle reports to SCCs containing that file."
+cli_help        = "Optional source file path to scope cycle reports"
+cli_flag        = "file"
+
+[[tools.fmm_dependency_cycles.params]]
+name            = "filter"
+type            = "string"
+enum            = ["all", "source", "tests"]
+mcp_description = "Filter the cycle graph by file type before SCC detection. 'all' (default): no filtering. 'source': exclude test files. 'tests': show only test files."
+cli_help        = "Filter cycle graph by file type: all (default), source (exclude tests), tests (only tests)"
+cli_flag        = "--filter"
+
+[[tools.fmm_dependency_cycles.params]]
+name            = "edge_mode"
+type            = "string"
+enum            = ["runtime", "all"]
+mcp_description = "Edge mode for cycle reporting. 'runtime' (default) excludes TypeScript type-only edges. 'all' includes type-only edges."
+cli_help        = "Edge mode: runtime (default, excludes type-only edges) or all"
+cli_flag        = "--edge-mode"
+
 [tools.fmm_read_symbol]
 cli_name        = "read"
 mcp_description = "Read the source code for a specific exported symbol or uniquely named non-exported top-level function. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Use `path/to/file:helperFunction` notation to disambiguate duplicate exports or duplicate non-exported top-level functions. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line."

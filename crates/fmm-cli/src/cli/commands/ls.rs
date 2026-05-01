@@ -1,6 +1,9 @@
 use anyhow::Result;
+use fmm_core::search::DependencyGraphQuery;
 
 use super::{load_manifest, warn_no_sidecars};
+
+type ListEntry<'a> = (&'a str, usize, usize, usize, Option<&'a str>);
 
 #[derive(serde::Serialize)]
 struct ListFileJson {
@@ -45,7 +48,7 @@ pub fn ls(
         anyhow::bail!("Invalid --order '{}'. Valid values: asc, desc.", o);
     }
 
-    // Normalise "." / "./" to None — they should list the full repo root,
+    // Normalise "." / "./" to None so they list the full repo root,
     // matching the behaviour of omitting the directory parameter entirely.
     let directory = directory.and_then(|d| {
         if matches!(d, "." | "./") {
@@ -64,46 +67,7 @@ pub fn ls(
         })
         .transpose()?;
 
-    let mut entries: Vec<(&str, usize, usize, usize, Option<&str>)> = manifest
-        .files
-        .iter()
-        .filter(|(path, _)| {
-            if let Some(d) = directory
-                && !path.starts_with(d)
-            {
-                return false;
-            }
-            if let Some(pat) = &glob_pattern {
-                let filename = std::path::Path::new(path.as_str())
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("");
-                if !pat.matches(filename) {
-                    return false;
-                }
-            }
-            match filter {
-                "tests" => config.is_test_file(path),
-                "source" => !config.is_test_file(path),
-                _ => true,
-            }
-        })
-        .map(|(path, entry)| {
-            let downstream = manifest
-                .reverse_deps
-                .get(path.as_str())
-                .map(|v| v.len())
-                .unwrap_or(0);
-            let modified = entry.modified.as_deref();
-            (
-                path.as_str(),
-                entry.loc,
-                entry.exports.len(),
-                downstream,
-                modified,
-            )
-        })
-        .collect();
+    let mut entries = collect_entries(&manifest, directory, glob_pattern.as_ref(), filter, &config);
 
     // Rollup mode: group by immediate subdirectory.
     if group_by == Some("subdir") {
@@ -120,50 +84,7 @@ pub fn ls(
         return Ok(());
     }
 
-    let desc = match sort_by {
-        "loc" | "exports" | "downstream" | "modified" => order != Some("asc"),
-        _ => order == Some("desc"),
-    };
-
-    match sort_by {
-        "loc" => {
-            if desc {
-                entries.sort_by(|(_, a, _, _, _), (_, b, _, _, _)| b.cmp(a));
-            } else {
-                entries.sort_by_key(|(_, a, _, _, _)| *a);
-            }
-        }
-        "exports" => {
-            if desc {
-                entries.sort_by(|(_, _, a, _, _), (_, _, b, _, _)| b.cmp(a));
-            } else {
-                entries.sort_by_key(|(_, _, a, _, _)| *a);
-            }
-        }
-        "downstream" => {
-            if desc {
-                entries.sort_by(|(_, _, _, a, _), (_, _, _, b, _)| b.cmp(a));
-            } else {
-                entries.sort_by_key(|(_, _, _, a, _)| *a);
-            }
-        }
-        "modified" => {
-            if desc {
-                entries.sort_by(|(_, _, _, _, a), (_, _, _, _, b)| b.cmp(a));
-            } else {
-                entries.sort_by_key(|(_, _, _, _, a)| *a);
-            }
-        }
-        _ => {
-            if desc {
-                entries.sort_by(|(a, _, _, _, _), (b, _, _, _, _)| {
-                    b.to_lowercase().cmp(&a.to_lowercase())
-                });
-            } else {
-                entries.sort_by_key(|(path, _, _, _, _)| path.to_lowercase());
-            }
-        }
-    }
+    sort_entries(&mut entries, sort_by, order);
 
     let total = entries.len();
     let total_loc: usize = entries.iter().map(|(_, loc, _, _, _)| loc).sum();
@@ -205,4 +126,74 @@ pub fn ls(
     }
 
     Ok(())
+}
+
+fn collect_entries<'a>(
+    manifest: &'a fmm_core::manifest::Manifest,
+    directory: Option<&str>,
+    glob_pattern: Option<&glob::Pattern>,
+    filter: &str,
+    config: &fmm_core::config::Config,
+) -> Vec<ListEntry<'a>> {
+    let graph_query = DependencyGraphQuery::new(manifest).ok();
+
+    manifest
+        .files
+        .iter()
+        .filter(|(path, _)| {
+            if let Some(d) = directory
+                && !path.starts_with(d)
+            {
+                return false;
+            }
+            if let Some(pat) = glob_pattern {
+                let filename = std::path::Path::new(path.as_str())
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+                if !pat.matches(filename) {
+                    return false;
+                }
+            }
+            match filter {
+                "tests" => config.is_test_file(path),
+                "source" => !config.is_test_file(path),
+                _ => true,
+            }
+        })
+        .map(|(path, entry)| {
+            let downstream = graph_query
+                .as_ref()
+                .map_or(0, |graph| graph.downstream_count(path));
+            (
+                path.as_str(),
+                entry.loc,
+                entry.exports.len(),
+                downstream,
+                entry.modified.as_deref(),
+            )
+        })
+        .collect()
+}
+
+fn sort_entries(entries: &mut [ListEntry<'_>], sort_by: &str, order: Option<&str>) {
+    let desc = match sort_by {
+        "loc" | "exports" | "downstream" | "modified" => order != Some("asc"),
+        _ => order == Some("desc"),
+    };
+
+    match sort_by {
+        "loc" if desc => entries.sort_by(|(_, a, _, _, _), (_, b, _, _, _)| b.cmp(a)),
+        "loc" => entries.sort_by_key(|(_, loc, _, _, _)| *loc),
+        "exports" if desc => entries.sort_by(|(_, _, a, _, _), (_, _, b, _, _)| b.cmp(a)),
+        "exports" => entries.sort_by_key(|(_, _, exports, _, _)| *exports),
+        "downstream" if desc => entries.sort_by(|(_, _, _, a, _), (_, _, _, b, _)| b.cmp(a)),
+        "downstream" => entries.sort_by_key(|(_, _, _, downstream, _)| *downstream),
+        "modified" if desc => entries.sort_by(|(_, _, _, _, a), (_, _, _, _, b)| b.cmp(a)),
+        "modified" => entries.sort_by_key(|(_, _, _, _, modified)| *modified),
+        _ if desc => {
+            entries.sort_by_key(|(path, _, _, _, _)| std::cmp::Reverse(path.to_lowercase()))
+        }
+        _ => entries.sort_by_key(|(path, _, _, _, _)| path.to_lowercase()),
+    }
 }

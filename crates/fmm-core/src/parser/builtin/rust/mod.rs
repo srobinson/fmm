@@ -258,6 +258,7 @@ impl RustParser {
                 exports,
                 imports,
                 dependencies,
+                dependency_kinds: Default::default(),
                 named_imports,
                 namespace_imports,
                 loc,

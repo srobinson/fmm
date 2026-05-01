@@ -3,14 +3,14 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 5;
 
 pub fn ensure_schema(conn: &Connection) -> Result<()> {
     let version = read_schema_version(conn)?;
     if version == Some(SCHEMA_VERSION) {
         return Ok(());
     }
-    if version.is_some() {
+    if version.is_some() || has_existing_schema(conn)? {
         // Version mismatch: nuke and rebuild. The database is a regeneratable
         // index, so data loss is acceptable.
         drop_all_tables(conn)?;
@@ -46,6 +46,18 @@ pub fn read_schema_version(conn: &Connection) -> Result<Option<u32>> {
     Ok(version)
 }
 
+fn has_existing_schema(conn: &Connection) -> Result<bool> {
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+            [],
+            |row| row.get(0),
+        )
+        .context("Failed to query sqlite schema tables")?;
+    Ok(count > 0)
+}
+
 pub fn write_schema_version(conn: &Connection, version: u32) -> Result<()> {
     conn.execute(
         "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?1)",
@@ -61,6 +73,7 @@ pub fn drop_all_tables(conn: &Connection) -> Result<()> {
          DROP TABLE IF EXISTS reverse_deps;
          DROP TABLE IF EXISTS methods;
          DROP TABLE IF EXISTS exports;
+         DROP TABLE IF EXISTS file_paths;
          DROP TABLE IF EXISTS files;
          DROP TABLE IF EXISTS workspace_packages;
          DROP TABLE IF EXISTS meta;
@@ -85,10 +98,25 @@ CREATE TABLE IF NOT EXISTS files (
     modified          TEXT,
     imports           TEXT,
     dependencies      TEXT,
+    dependency_kinds  TEXT,
     named_imports     TEXT,
     namespace_imports TEXT,
     function_names    TEXT,
-    indexed_at        TEXT NOT NULL
+    indexed_at        TEXT NOT NULL,
+    source_mtime      TEXT,
+    source_size       INTEGER,
+    content_hash      TEXT,
+    parser_cache_version INTEGER
+);
+
+-- Durable internal path identity. FileIds are rebuilt on full generate and
+-- appended during watch updates so survivor ids stay stable within a session.
+-- The UNIQUE constraint on `path` is what backs file_id_for_path lookups; no
+-- explicit secondary index is needed because SQLite creates an implicit one
+-- for UNIQUE.
+CREATE TABLE IF NOT EXISTS file_paths (
+    file_id INTEGER PRIMARY KEY,
+    path    TEXT NOT NULL UNIQUE REFERENCES files(path) ON DELETE CASCADE
 );
 
 -- Export locations. Replaces export_index, export_locations, export_all.

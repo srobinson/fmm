@@ -6,4 +6,6 @@ expression: extract_text(&response)
 file: src/app.ts
 local_deps: [src/config.ts, src/utils.ts]
 external: [react]
+downstream:
+  - src/test/app.test.ts
 imports: [react]

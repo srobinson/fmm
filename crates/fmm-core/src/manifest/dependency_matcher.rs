@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use crate::identity::EdgeKind;
+
 mod local;
 mod path;
 mod reverse;
@@ -7,6 +9,7 @@ mod workspace;
 
 pub(crate) use local::try_resolve_local_dep;
 pub(crate) use path::{builtin_source_extensions, strip_source_ext};
+pub(crate) use reverse::build_dependency_edges;
 pub(super) use reverse::build_reverse_deps;
 
 #[cfg(test)]
@@ -43,6 +46,14 @@ pub fn python_dep_matches(dep: &str, target_file: &str, dependent_file: &str) ->
 /// (`src/agno/models/message.py`).
 pub fn dotted_dep_matches(dep: &str, target_file: &str) -> bool {
     local::match_python_dotted_dependency(dep, target_file)
+}
+
+fn dependency_kind(entry: &crate::manifest::FileEntry, specifier: &str) -> EdgeKind {
+    entry
+        .dependency_kinds
+        .get(specifier)
+        .copied()
+        .unwrap_or(EdgeKind::Runtime)
 }
 
 #[cfg(test)]

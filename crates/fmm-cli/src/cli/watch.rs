@@ -9,10 +9,9 @@ use notify::RecursiveMode;
 use notify_debouncer_full::{DebounceEventResult, new_debouncer};
 
 use fmm_core::store::FmmStore;
-use fmm_core::types::serialize_file_data;
+use fmm_core::types::serialize_file_data_with_fingerprint;
 use fmm_store::SqliteStore;
 
-use crate::fs_utils;
 use fmm_core::config::Config;
 
 use super::{collect_files, resolve_root};
@@ -156,17 +155,26 @@ fn index_file(path: &Path, root: &std::path::PathBuf) -> anyhow::Result<bool> {
         .display()
         .to_string();
 
-    let mtime = fs_utils::file_mtime_rfc3339(path);
     let store = SqliteStore::open_or_create(root)?;
+    let fingerprints = store.load_fingerprints()?;
 
-    if store.is_file_up_to_date(&rel, mtime.as_deref()) {
-        return Ok(false);
+    match super::sidecar::staleness::decide_file(path, root, &fingerprints, false)? {
+        super::sidecar::staleness::StalenessDecision::UpToDate => return Ok(false),
+        super::sidecar::staleness::StalenessDecision::RefreshFingerprint(fingerprint) => {
+            store.update_file_fingerprint(&rel, &fingerprint)?;
+            return Ok(false);
+        }
+        super::sidecar::staleness::StalenessDecision::Reparse(fingerprint) => {
+            let fingerprint = match fingerprint {
+                Some(fp) => fp,
+                None => super::sidecar::staleness::source_fingerprint(path)?,
+            };
+            let processor = FileProcessor::new(root);
+            let result = processor.parse(path)?;
+            let row = serialize_file_data_with_fingerprint(&rel, &result, &fingerprint)?;
+            store.upsert_single_file(&row)?;
+        }
     }
-
-    let processor = FileProcessor::new(root);
-    let result = processor.parse(path)?;
-    let row = serialize_file_data(&rel, &result, mtime.as_deref())?;
-    store.upsert_single_file(&row)?;
 
     store.rebuild_and_write_reverse_deps(root)?;
     Ok(true)
@@ -187,12 +195,17 @@ fn remove_file_from_db(path: &Path, root: &std::path::PathBuf) -> anyhow::Result
     }
 
     let store = SqliteStore::open(root)?;
-    Ok(store.delete_single_file(&rel)?)
+    let deleted = store.delete_single_file(&rel)?;
+    if deleted {
+        store.rebuild_and_write_reverse_deps(root)?;
+    }
+    Ok(deleted)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fmm_core::identity::FileId;
     use notify::event::{CreateKind, ModifyKind, RemoveKind};
     use std::fs;
     use std::sync::atomic::AtomicUsize;
@@ -312,6 +325,37 @@ mod tests {
         let manifest = store.load_manifest().unwrap();
         assert!(manifest.export_index.contains_key("newFunc"));
         assert_eq!(updates.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn handle_create_preserves_survivor_file_ids() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("a.ts"), "export const A = 1;\n").unwrap();
+        fs::write(src.join("c.ts"), "export const C = 1;\n").unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        let config = Config::default();
+
+        crate::cli::generate(&[root.to_string_lossy().to_string()], false, false, true).unwrap();
+        fs::write(src.join("b.ts"), "export const B = 1;\n").unwrap();
+        let source_b = root.join("src/b.ts");
+
+        let updates = AtomicUsize::new(0);
+        handle_event(
+            &source_b,
+            &notify::EventKind::Create(CreateKind::File),
+            &config,
+            &root,
+            &updates,
+        );
+
+        let store = SqliteStore::open(&root).unwrap();
+        let manifest = store.load_manifest().unwrap();
+        assert_eq!(manifest.file_id("src/a.ts"), Some(FileId(0)));
+        assert_eq!(manifest.file_id("src/c.ts"), Some(FileId(1)));
+        assert_eq!(manifest.file_id("src/b.ts"), Some(FileId(2)));
+        assert_eq!(updates.load(Ordering::Relaxed), 1);
     }
 
     #[test]
@@ -459,5 +503,63 @@ mod tests {
         let manifest = store.load_manifest().unwrap();
         assert!(manifest.export_index.contains_key("Widget"));
         assert_eq!(updates.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn handle_remove_rebuilds_reverse_deps() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(
+            src.join("app.ts"),
+            "import { helper } from './util';\nexport const value = helper();\n",
+        )
+        .unwrap();
+        fs::write(
+            src.join("util.ts"),
+            "export function helper(): number { return 1; }\n",
+        )
+        .unwrap();
+        let config = Config::default();
+        let root = tmp.path().canonicalize().unwrap();
+        let app = root.join("src/app.ts");
+        let util = root.join("src/util.ts");
+        let updates = AtomicUsize::new(0);
+
+        handle_event(
+            &app,
+            &notify::EventKind::Create(CreateKind::File),
+            &config,
+            &root,
+            &updates,
+        );
+        handle_event(
+            &util,
+            &notify::EventKind::Create(CreateKind::File),
+            &config,
+            &root,
+            &updates,
+        );
+        {
+            let store = SqliteStore::open(&root).unwrap();
+            let manifest = store.load_manifest().unwrap();
+            assert_eq!(
+                manifest.reverse_deps.get("src/util.ts"),
+                Some(&vec!["src/app.ts".to_string()])
+            );
+        }
+
+        fs::remove_file(&util).unwrap();
+        handle_event(
+            &util,
+            &notify::EventKind::Remove(RemoveKind::File),
+            &config,
+            &root,
+            &updates,
+        );
+
+        let store = SqliteStore::open(&root).unwrap();
+        let manifest = store.load_manifest().unwrap();
+        assert!(!manifest.reverse_deps.contains_key("src/util.ts"));
     }
 }

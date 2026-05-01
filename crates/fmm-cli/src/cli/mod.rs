@@ -23,7 +23,7 @@ use help_text::{HELP_TEMPLATE, LONG_ABOUT, LONG_HELP, SHORT_HELP};
 
 mod generated_help;
 
-pub use commands::{deps, exports, lookup, ls, outline, read_symbol};
+pub use commands::{cycles, deps, exports, lookup, ls, outline, read_symbol};
 pub use glossary::glossary;
 pub use init::init;
 pub use search::{SearchOptions, search};
@@ -465,6 +465,35 @@ pub enum Commands {
         /// Filter upstream/downstream by file type: all (default), source (exclude tests), tests (only tests)
         #[arg(long, default_value = "all", value_parser = ["all", "source", "tests"])]
         filter: String,
+
+        /// Output as JSON
+        #[arg(short = 'j', long = "json")]
+        json: bool,
+    },
+
+    /// Report dependency cycles
+    #[command(
+        long_about = generated_help::CYCLES_ABOUT,
+        after_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+  <dim>$</dim> <bold>fmm cycles</bold>                                      <dim># Runtime dependency cycles</dim>
+  <dim>$</dim> <bold>fmm cycles src/app.ts</bold>                           <dim># Cycles containing one file</dim>
+  <dim>$</dim> <bold>fmm cycles --edge-mode all</bold>                      <dim># Include type-only edges</dim>
+  <dim>$</dim> <bold>fmm cycles --filter source</bold>                      <dim># Exclude test files</dim>
+  <dim>$</dim> <bold>fmm cycles --json</bold>                               <dim># JSON output</dim>"#),
+    )]
+    Cycles {
+        /// Optional source file path to scope cycle reports
+        #[arg(value_name = "FILE")]
+        file: Option<String>,
+
+        /// Filter cycle graph by file type: all (default), source (exclude tests), tests (only tests)
+        #[arg(long, default_value = "all", value_parser = ["all", "source", "tests"])]
+        filter: String,
+
+        /// Edge mode: runtime (default, excludes type-only edges) or all
+        #[arg(long = "edge-mode", default_value = "runtime", value_parser = ["runtime", "all"])]
+        edge_mode: String,
 
         /// Output as JSON
         #[arg(short = 'j', long = "json")]

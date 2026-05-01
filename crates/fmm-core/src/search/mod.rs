@@ -4,9 +4,11 @@
 //! `mcp/mod.rs` into reusable functions with typed result structs.
 
 mod bare_search;
+mod dependency_cycles;
 mod dependency_graph;
 mod dependency_graph_transitive;
 mod filter_search;
+mod graph_query;
 mod helpers;
 
 #[cfg(test)]
@@ -82,8 +84,11 @@ pub const DEFAULT_SEARCH_LIMIT: usize = 50;
 // Re-exports
 // ---------------------------------------------------------------------------
 
+pub use crate::graph::CycleEdgeMode;
 pub use bare_search::bare_search;
+pub use dependency_cycles::{dependency_cycles, dependency_cycles_with_path_filter};
 pub use dependency_graph::dependency_graph;
 pub use dependency_graph_transitive::dependency_graph_transitive;
 pub use filter_search::filter_search;
+pub use graph_query::DependencyGraphQuery;
 pub use helpers::find_export_matches;

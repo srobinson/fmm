@@ -1,5 +1,6 @@
 use super::*;
 use crate::connection::open_or_create;
+use fmm_core::identity::{Fingerprint, PARSER_CACHE_VERSION};
 use fmm_core::parser::{ExportEntry, Metadata};
 
 use tempfile::TempDir;
@@ -18,6 +19,15 @@ fn make_parse_result(
             ..Default::default()
         },
         custom_fields: None,
+    }
+}
+
+fn fingerprint(mtime: &str, size: u64, hash: &str) -> Fingerprint {
+    Fingerprint {
+        source_mtime: mtime.to_string(),
+        source_size: size,
+        content_hash: hash.to_string(),
+        parser_cache_version: PARSER_CACHE_VERSION,
     }
 }
 
@@ -142,41 +152,60 @@ fn methods_inserted_with_dedup() {
 }
 
 #[test]
-fn is_file_up_to_date_returns_false_when_not_indexed() {
-    let dir = TempDir::new().unwrap();
-    let conn = open_or_create(dir.path()).unwrap();
-    assert!(!is_file_up_to_date(
-        &conn,
-        "src/missing.ts",
-        Some("2026-01-01T00:00:00+00:00")
-    ));
-}
-
-#[test]
-fn is_file_up_to_date_returns_true_when_indexed_at_is_newer() {
+fn load_fingerprints_returns_complete_rows_only() {
     let dir = TempDir::new().unwrap();
     let mut conn = open_or_create(dir.path()).unwrap();
 
     let result = make_parse_result(vec![], vec![], vec![]);
+    let mut row =
+        serialize_file_data("src/file.ts", &result, Some("2020-01-01T00:00:00+00:00")).unwrap();
+    row.fingerprint = Some(fingerprint(
+        "2020-01-01T00:00:00+00:00",
+        12,
+        "fnv1a64:abc123",
+    ));
     {
         let tx = conn.transaction().unwrap();
-        // indexed_at will be set to Utc::now()
-        upsert_file_data(
-            &tx,
-            "src/file.ts",
-            &result,
-            Some("2020-01-01T00:00:00+00:00"),
-        )
-        .unwrap();
+        upsert_file_data(&tx, "src/missing-fingerprint.ts", &result, None).unwrap();
+        upsert_preserialized(&tx, &row, false).unwrap();
         tx.commit().unwrap();
     }
 
-    // Source mtime of 2020 is older than indexed_at (now)
-    assert!(is_file_up_to_date(
-        &conn,
-        "src/file.ts",
-        Some("2020-01-01T00:00:00+00:00")
-    ));
+    let fingerprints = load_fingerprints(&conn).unwrap();
+
+    assert_eq!(fingerprints.len(), 1);
+    assert_eq!(
+        fingerprints.get("src/file.ts").unwrap().content_hash,
+        "fnv1a64:abc123"
+    );
+}
+
+#[test]
+fn update_file_fingerprint_refreshes_metadata_without_touching_exports() {
+    let dir = TempDir::new().unwrap();
+    let mut conn = open_or_create(dir.path()).unwrap();
+
+    let result = make_parse_result(vec![ExportEntry::new("Alpha".into(), 1, 5)], vec![], vec![]);
+    {
+        let tx = conn.transaction().unwrap();
+        upsert_file_data(&tx, "src/file.ts", &result, None).unwrap();
+        tx.commit().unwrap();
+    }
+
+    let refreshed = fingerprint("2026-01-01T00:00:00+00:00", 42, "fnv1a64:refreshed");
+
+    assert!(update_file_fingerprint(&conn, "src/file.ts", &refreshed).unwrap());
+
+    let fingerprints = load_fingerprints(&conn).unwrap();
+    assert_eq!(fingerprints.get("src/file.ts"), Some(&refreshed));
+    let export_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM exports WHERE file_path='src/file.ts'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(export_count, 1);
 }
 
 #[test]
@@ -229,7 +258,7 @@ fn load_files_map_roundtrip() {
         tx.commit().unwrap();
     }
 
-    let map = load_files_map(&conn).unwrap();
+    let map = crate::reader::load_files_map(&conn).unwrap();
     let entry = map.get("src/component.tsx").unwrap();
     assert_eq!(entry.imports, vec!["react"]);
     assert_eq!(entry.dependencies, vec!["./helpers"]);

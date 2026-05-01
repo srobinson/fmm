@@ -21,7 +21,7 @@ pub(super) fn relative_importer_starts_with_package_dir(
     })
 }
 
-fn normal_components(path: &Path) -> Vec<String> {
+pub(crate) fn normal_components(path: &Path) -> Vec<String> {
     path.components()
         .filter_map(|component| match component {
             Component::Normal(value) => value.to_str().map(str::to_string),

@@ -377,6 +377,19 @@ pub fn format_dependency_graph_transitive(
     lines.join("\n")
 }
 
+pub fn format_dependency_cycles(cycles: &[Vec<String>]) -> String {
+    let mut lines = Vec::new();
+    lines.push("---".to_string());
+    lines.push("cycles:".to_string());
+    for cycle in cycles {
+        lines.push("  - files:".to_string());
+        for path in cycle {
+            lines.push(format!("      - {}", yaml_escape(path)));
+        }
+    }
+    lines.join("\n")
+}
+
 /// Format read symbol: YAML header + source code.
 ///
 /// When `line_numbers` is true, each source line is prefixed with its absolute

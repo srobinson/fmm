@@ -2,10 +2,11 @@
 
 use anyhow::{Context, Result};
 use chrono::Utc;
-use rusqlite::{Connection, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use std::collections::HashMap;
 use std::path::Path;
 
+use fmm_core::identity::{FileId, FileIdentityMap, Fingerprint};
 use fmm_core::manifest::FileEntry;
 use fmm_core::parser::ParseResult;
 
@@ -14,35 +15,80 @@ pub use fmm_core::types::{
     ExportRecord, MethodRecord, PreserializedRow, extract_function_names, serialize_file_data,
 };
 
-/// Returns `true` when the DB's `indexed_at` for `rel_path` is >= `source_mtime`,
-/// meaning the stored data is at least as fresh as the source file.
-pub fn is_file_up_to_date(conn: &Connection, rel_path: &str, source_mtime: Option<&str>) -> bool {
-    let Some(mtime) = source_mtime else {
-        return false;
-    };
-    conn.query_row(
-        "SELECT indexed_at FROM files WHERE path = ?1",
-        params![rel_path],
-        |row| row.get::<_, String>(0),
-    )
-    .ok()
-    .map(|indexed_at| indexed_at.as_str() >= mtime)
-    .unwrap_or(false)
-}
+pub(crate) const NEXT_FILE_ID_KEY: &str = "next_file_id";
 
-/// Load all `(path, indexed_at)` pairs from the DB in one query.
+/// Load complete fingerprints from the DB in one query.
 ///
 /// Used by the bulk staleness check in `fmm generate` to avoid individual
 /// queries per file.
-pub fn load_indexed_mtimes(conn: &Connection) -> Result<HashMap<String, String>> {
-    let mut stmt = conn.prepare("SELECT path, indexed_at FROM files")?;
-    let map = stmt
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+pub fn load_fingerprints(conn: &Connection) -> Result<HashMap<String, Fingerprint>> {
+    let mut stmt = conn.prepare(
+        "SELECT path, source_mtime, source_size, content_hash, parser_cache_version FROM files",
+    )?;
+    let mut map = HashMap::new();
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, Option<i64>>(2)?,
+            row.get::<_, Option<String>>(3)?,
+            row.get::<_, Option<u32>>(4)?,
+        ))
+    })?;
+
+    for row in rows {
+        let (path, source_mtime, source_size, content_hash, parser_cache_version) = row?;
+        let Some(source_mtime) = source_mtime else {
+            continue;
+        };
+        let Some(source_size) = source_size else {
+            continue;
+        };
+        let Some(content_hash) = content_hash else {
+            continue;
+        };
+        let Some(parser_cache_version) = parser_cache_version else {
+            continue;
+        };
+        let Ok(source_size) = u64::try_from(source_size) else {
+            continue;
+        };
+        map.insert(
+            path,
+            Fingerprint {
+                source_mtime,
+                source_size,
+                content_hash,
+                parser_cache_version,
+            },
+        );
+    }
+
     Ok(map)
+}
+
+pub fn update_file_fingerprint(
+    conn: &Connection,
+    rel_path: &str,
+    fingerprint: &Fingerprint,
+) -> Result<bool> {
+    let rows = conn.execute(
+        "UPDATE files
+         SET modified = ?2,
+             source_mtime = ?2,
+             source_size = ?3,
+             content_hash = ?4,
+             parser_cache_version = ?5
+         WHERE path = ?1",
+        params![
+            rel_path,
+            fingerprint.source_mtime,
+            i64::try_from(fingerprint.source_size).unwrap_or(i64::MAX),
+            fingerprint.content_hash,
+            fingerprint.parser_cache_version,
+        ],
+    )?;
+    Ok(rows > 0)
 }
 
 /// Write a pre-serialized file row to the DB within an open transaction.
@@ -54,18 +100,43 @@ pub fn upsert_preserialized(
     row: &PreserializedRow,
     plain_insert: bool,
 ) -> Result<()> {
+    upsert_preserialized_with_file_id(tx, row, plain_insert, None)
+}
+
+/// Write a pre-serialized file row with a caller-supplied identity.
+///
+/// Full reindex passes sorted ids from one identity map. Incremental callers
+/// omit the id so existing rows keep their id and new paths append after the
+/// persisted high water mark.
+pub fn upsert_preserialized_with_file_id(
+    tx: &Transaction<'_>,
+    row: &PreserializedRow,
+    plain_insert: bool,
+    file_id: Option<FileId>,
+) -> Result<()> {
+    let existing_file_id = match file_id {
+        Some(id) => Some(id),
+        None => file_id_for_path(tx, &row.rel_path)?,
+    };
+
     {
         let sql = if plain_insert {
             "INSERT INTO files
-                 (path, loc, modified, imports, dependencies, named_imports,
-                  namespace_imports, function_names, indexed_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+                 (path, loc, modified, imports, dependencies, dependency_kinds, named_imports,
+                  namespace_imports, function_names, indexed_at, source_mtime,
+                  source_size, content_hash, parser_cache_version)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)"
         } else {
             "INSERT OR REPLACE INTO files
-                 (path, loc, modified, imports, dependencies, named_imports,
-                  namespace_imports, function_names, indexed_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+                 (path, loc, modified, imports, dependencies, dependency_kinds, named_imports,
+                  namespace_imports, function_names, indexed_at, source_mtime,
+                  source_size, content_hash, parser_cache_version)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)"
         };
+        let source_size = row
+            .fingerprint
+            .as_ref()
+            .map(|fingerprint| i64::try_from(fingerprint.source_size).unwrap_or(i64::MAX));
         tx.prepare_cached(sql)?
             .execute(params![
                 row.rel_path,
@@ -73,13 +144,30 @@ pub fn upsert_preserialized(
                 row.mtime,
                 row.imports_json,
                 row.deps_json,
+                row.dependency_kinds_json,
                 row.named_imports_json,
                 row.namespace_imports_json,
                 row.function_names_json,
                 row.indexed_at,
+                row.fingerprint
+                    .as_ref()
+                    .map(|fingerprint| &fingerprint.source_mtime),
+                source_size,
+                row.fingerprint
+                    .as_ref()
+                    .map(|fingerprint| &fingerprint.content_hash),
+                row.fingerprint
+                    .as_ref()
+                    .map(|fingerprint| fingerprint.parser_cache_version),
             ])
             .context("Failed to upsert file row")?;
     }
+
+    let file_id = match existing_file_id {
+        Some(id) => id,
+        None => allocate_file_id(tx)?,
+    };
+    insert_file_path(tx, file_id, &row.rel_path)?;
 
     {
         let sql = if plain_insert {
@@ -118,12 +206,16 @@ pub fn upsert_preserialized(
     Ok(())
 }
 
-/// Delete all rows from `files` (CASCADE clears `exports` and `methods`).
+/// Delete all rows from `files` and reset per-session FileId allocation.
 ///
-/// Used before a full-generate bulk INSERT to avoid per-row CASCADE overhead.
+/// Used before a full-generate bulk INSERT so path identity is rebuilt from
+/// sorted active rows. CASCADE clears `exports`, `methods`, and `file_paths`.
 pub fn delete_all_files(tx: &Transaction<'_>) -> Result<()> {
     tx.execute_batch("DELETE FROM files")
-        .context("Failed to delete all files")
+        .context("Failed to delete all files")?;
+    tx.execute("DELETE FROM meta WHERE key = ?1", params![NEXT_FILE_ID_KEY])
+        .context("Failed to reset file id allocation")?;
+    Ok(())
 }
 
 /// Insert or replace a complete file record plus its exports and methods.
@@ -139,12 +231,13 @@ pub fn upsert_file_data(
     let meta = &result.metadata;
     let function_names = extract_function_names(result.custom_fields.as_ref());
     let indexed_at = Utc::now().to_rfc3339();
+    let existing_file_id = file_id_for_path(tx, rel_path)?;
 
     tx.execute(
         "INSERT OR REPLACE INTO files
-             (path, loc, modified, imports, dependencies, named_imports,
+             (path, loc, modified, imports, dependencies, dependency_kinds, named_imports,
               namespace_imports, function_names, indexed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             rel_path,
             meta.loc as i64,
@@ -152,6 +245,8 @@ pub fn upsert_file_data(
             serde_json::to_string(&meta.imports).context("Failed to serialize imports")?,
             serde_json::to_string(&meta.dependencies)
                 .context("Failed to serialize dependencies")?,
+            serde_json::to_string(&meta.dependency_kinds)
+                .context("Failed to serialize dependency_kinds")?,
             serde_json::to_string(&meta.named_imports)
                 .context("Failed to serialize named_imports")?,
             serde_json::to_string(&meta.namespace_imports)
@@ -161,6 +256,12 @@ pub fn upsert_file_data(
         ],
     )
     .context("Failed to upsert file row")?;
+
+    let file_id = match existing_file_id {
+        Some(id) => id,
+        None => allocate_file_id(tx)?,
+    };
+    insert_file_path(tx, file_id, rel_path)?;
 
     // Exports (top-level only)
     {
@@ -206,73 +307,120 @@ pub fn upsert_file_data(
     Ok(())
 }
 
-/// Load all file rows from the DB into a map keyed by relative path.
+/// Build the identity map used by full reindex writes.
 ///
-/// Only the fields needed for reverse-dependency computation are populated.
-pub fn load_files_map(conn: &Connection) -> Result<HashMap<String, FileEntry>> {
-    let mut stmt = conn.prepare(
-        "SELECT path, loc, modified, imports, dependencies,
-                named_imports, namespace_imports, function_names
-         FROM files",
-    )?;
+/// FileIds are deterministic for the active row set after `fmm generate`, but
+/// incremental watch updates preserve survivor ids and append new paths.
+pub fn full_reindex_file_identity(rows: &[PreserializedRow]) -> Result<FileIdentityMap> {
+    FileIdentityMap::from_relative_paths(rows.iter().map(|row| row.rel_path.as_str()))
+        .map_err(Into::into)
+}
 
-    let rows = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, i64>(1)?,
-            row.get::<_, Option<String>>(2)?,
-            row.get::<_, Option<String>>(3)?,
-            row.get::<_, Option<String>>(4)?,
-            row.get::<_, Option<String>>(5)?,
-            row.get::<_, Option<String>>(6)?,
-            row.get::<_, Option<String>>(7)?,
-        ))
-    })?;
+/// Rebuild stored FileIds from the complete current `files` table.
+///
+/// This is the generate boundary after incremental row writes have finished.
+pub fn rebuild_file_identity_from_files(tx: &Transaction<'_>) -> Result<()> {
+    let paths = {
+        let mut stmt = tx
+            .prepare("SELECT path FROM files ORDER BY path")
+            .context("Failed to prepare indexed file path query")?;
+        stmt.query_map([], |row| row.get::<_, String>(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .context("Failed to load indexed file paths")?
+    };
+    let identity = FileIdentityMap::from_relative_paths(paths.iter().map(String::as_str))?;
 
-    let mut map = HashMap::new();
-    for row in rows {
-        let (path, loc, modified, imports_j, deps_j, ni_j, ns_j, fn_j) = row?;
+    tx.execute("DELETE FROM file_paths", [])
+        .context("Failed to clear file path identity")?;
+    tx.execute("DELETE FROM meta WHERE key = ?1", params![NEXT_FILE_ID_KEY])
+        .context("Failed to reset file id allocation")?;
+    for path in paths {
+        let file_id = identity
+            .id_for_path(&path)
+            .context("Rebuilt identity did not contain indexed path")?;
+        insert_file_path(tx, file_id, &path)?;
+    }
+    Ok(())
+}
 
-        let imports: Vec<String> = imports_j
-            .as_deref()
-            .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_default();
-        let dependencies: Vec<String> = deps_j
-            .as_deref()
-            .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_default();
-        let named_imports: HashMap<String, Vec<String>> = ni_j
-            .as_deref()
-            .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_default();
-        let namespace_imports: Vec<String> = ns_j
-            .as_deref()
-            .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_default();
-        let function_names: Vec<String> = fn_j
-            .as_deref()
-            .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_default();
+fn file_id_for_path(tx: &Transaction<'_>, path: &str) -> Result<Option<FileId>> {
+    let id = tx
+        .query_row(
+            "SELECT file_id FROM file_paths WHERE path = ?1",
+            params![path],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .context("Failed to load file path identity")?;
 
-        map.insert(
-            path,
-            FileEntry {
-                exports: Vec::new(),
-                export_lines: None,
-                methods: None,
-                imports,
-                dependencies,
-                loc: loc as usize,
-                modified,
-                function_names,
-                named_imports,
-                namespace_imports,
-                ..Default::default()
-            },
-        );
+    id.map(file_id_from_i64).transpose()
+}
+
+fn allocate_file_id(tx: &Transaction<'_>) -> Result<FileId> {
+    let next = next_file_id(tx)?;
+    write_next_file_id(tx, next.0.checked_add(1).context("FileId overflow")?)?;
+    Ok(next)
+}
+
+fn insert_file_path(tx: &Transaction<'_>, id: FileId, path: &str) -> Result<()> {
+    tx.execute(
+        "INSERT OR REPLACE INTO file_paths (file_id, path) VALUES (?1, ?2)",
+        params![id.0, path],
+    )
+    .context("Failed to upsert file path identity")?;
+
+    let next = id.0.checked_add(1).context("FileId overflow")?;
+    match read_next_file_id(tx)? {
+        Some(current) if current >= next => {}
+        _ => write_next_file_id(tx, next)?,
     }
 
-    Ok(map)
+    Ok(())
+}
+
+fn next_file_id(tx: &Transaction<'_>) -> Result<FileId> {
+    if let Some(value) = read_next_file_id(tx)? {
+        return Ok(FileId(value));
+    }
+
+    let next = tx
+        .query_row(
+            "SELECT COALESCE(MAX(file_id) + 1, 0) FROM file_paths",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .context("Failed to load next file id")?;
+    file_id_from_i64(next)
+}
+
+fn read_next_file_id(tx: &Transaction<'_>) -> Result<Option<u32>> {
+    tx.query_row(
+        "SELECT value FROM meta WHERE key = ?1",
+        params![NEXT_FILE_ID_KEY],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .context("Failed to load next file id")?
+    .map(|value| {
+        value
+            .parse::<u32>()
+            .context("Stored next file id is not a u32")
+    })
+    .transpose()
+}
+
+fn write_next_file_id(tx: &Transaction<'_>, next: u32) -> Result<()> {
+    tx.execute(
+        "INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)",
+        params![NEXT_FILE_ID_KEY, next.to_string()],
+    )
+    .context("Failed to store next file id")?;
+    Ok(())
+}
+
+fn file_id_from_i64(value: i64) -> Result<FileId> {
+    let id = u32::try_from(value).context("Stored file id is outside u32 range")?;
+    Ok(FileId(id))
 }
 
 /// Load all file data from the DB, recompute reverse dependency edges,
@@ -281,7 +429,7 @@ pub fn load_files_map(conn: &Connection) -> Result<HashMap<String, FileEntry>> {
 /// Converts relative DB paths to absolute for the cross-package resolver,
 /// then strips back to relative before writing.
 pub fn rebuild_and_write_reverse_deps(conn: &mut Connection, root: &Path) -> Result<()> {
-    let rel_files_map = load_files_map(conn)?;
+    let rel_files_map = crate::reader::load_files_map(conn)?;
 
     let workspace_info = fmm_core::resolver::workspace::discover(root);
 

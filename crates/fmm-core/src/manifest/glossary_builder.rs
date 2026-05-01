@@ -49,33 +49,30 @@ pub struct GlossarySource {
     pub reexport_files: Vec<String>,
 }
 
-/// Return a reference to the lazily-initialised `ParserRegistry` used for
-/// test file and test symbol detection.
+/// Return a reference to the lazily-initialised `ParserRegistry` used by
+/// glossary convention adapters.
 fn builtin_registry() -> &'static crate::parser::ParserRegistry {
     use std::sync::OnceLock;
     static REGISTRY: OnceLock<crate::parser::ParserRegistry> = OnceLock::new();
     REGISTRY.get_or_init(crate::parser::ParserRegistry::with_builtins)
 }
 
+/// Return the lazily-initialised convention registry used for glossary test classification.
+fn builtin_convention_registry() -> &'static crate::convention::ConventionRegistry<'static> {
+    use std::sync::OnceLock;
+    static REGISTRY: OnceLock<crate::convention::ConventionRegistry<'static>> = OnceLock::new();
+    REGISTRY.get_or_init(|| {
+        crate::convention::ConventionRegistry::with_builtin_conventions(builtin_registry())
+    })
+}
+
 /// Returns true if a file path is a test file (by path conventions only, ignoring symbol name).
 ///
 /// Two layers of detection:
-/// 1. **Language-specific**: delegates to `ParserRegistry::is_language_test_file()`,
-///    which checks filename suffixes/prefixes declared by each language descriptor.
-///    Adding `test_file_patterns()` to a new parser automatically extends this.
-/// 2. **Directory-based** (language-neutral): `tests/`, `test/`, `__tests__/` path segments.
+/// 1. Language-specific filename suffixes and prefixes from parser descriptors.
+/// 2. fmm-owned directory conventions from `FmmTestFileConvention`.
 fn is_test_file(file: &str) -> bool {
-    // Language-specific filename patterns (from registry descriptors)
-    if builtin_registry().is_language_test_file(file) {
-        return true;
-    }
-    // Language-neutral directory conventions
-    file.starts_with("tests/")
-        || file.starts_with("test/")
-        || file.starts_with("__tests__/")
-        || file.contains("/tests/")
-        || file.contains("/test/")
-        || file.contains("/__tests__/")
+    builtin_convention_registry().is_test_file(file)
 }
 
 /// Returns true if an export should be classified as a test artifact.
@@ -83,10 +80,10 @@ fn is_test_file(file: &str) -> bool {
 /// Checks symbol name conventions (from registry `test_symbol_prefixes`)
 /// and file path conventions (see `is_test_file`).
 fn is_test_export(name: &str, file: &str) -> bool {
-    // Check symbol name against all registered test symbol prefixes
-    let registry = builtin_registry();
-    for desc in registry.descriptors() {
-        for prefix in desc.test_patterns.test_symbol_prefixes {
+    // Check symbol name against language descriptor test symbol prefixes.
+    let registry = builtin_convention_registry();
+    for patterns in registry.language_test_patterns() {
+        for prefix in patterns.test_symbol_prefixes {
             if name.starts_with(prefix) {
                 return true;
             }

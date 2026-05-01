@@ -103,8 +103,9 @@ fn depends_on_cycle_does_not_return_target_file() {
 }
 
 #[test]
-fn depends_on_uses_reverse_index_for_rust_cross_crate_edges() {
-    use crate::manifest::{FileEntry, Manifest};
+fn depends_on_uses_graph_index_for_rust_cross_crate_edges() {
+    use crate::manifest::Manifest;
+    use crate::parser::Metadata;
     use std::collections::HashMap;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -139,7 +140,7 @@ version = "0.1.0"
 edition = "2024"
 "#,
     );
-    let target = write_file(
+    write_file(
         tmp.path(),
         "crates/fmm-core/src/store.rs",
         "pub trait FmmStore {}",
@@ -158,14 +159,14 @@ edition = "2024"
 fmm-core.workspace = true
 "#,
     );
-    let importer = write_file(
+    write_file(
         tmp.path(),
         "crates/fmm-cli/src/main.rs",
         "use fmm_core::store::FmmStore;",
     );
 
-    let target_key = target.to_string_lossy().into_owned();
-    let importer_key = importer.to_string_lossy().into_owned();
+    let target_key = "crates/fmm-core/src/store.rs".to_string();
+    let importer_key = "crates/fmm-cli/src/main.rs".to_string();
     let mut manifest = Manifest::new();
     manifest
         .workspace_packages
@@ -173,12 +174,10 @@ fmm-core.workspace = true
     manifest
         .workspace_packages
         .insert("fmm".into(), tmp.path().join("crates/fmm-cli"));
-    manifest
-        .files
-        .insert(target_key.clone(), FileEntry::default());
-    manifest.files.insert(
-        importer_key.clone(),
-        FileEntry {
+    manifest.add_file(&target_key, Metadata::default());
+    manifest.add_file(
+        &importer_key,
+        Metadata {
             named_imports: HashMap::from([(
                 "fmm_core::store".to_string(),
                 vec!["FmmStore".to_string()],
@@ -186,7 +185,6 @@ fmm-core.workspace = true
             ..Default::default()
         },
     );
-    manifest.rebuild_reverse_deps();
 
     let results = filter_search(
         &manifest,

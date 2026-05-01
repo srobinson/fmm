@@ -8,4 +8,4 @@ summary: 1 files · 15 LOC · largest: src/test/app.test.ts (15 LOC)
 total: 1
 files:
   - src/test/app.test.ts  # loc: 15, exports: 0
-# ↓ N = local relative-import dependents only. Cross-package importers not included.
+# ↓ N = direct dependents resolved by the dependency graph.

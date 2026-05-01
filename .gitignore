@@ -1,6 +1,7 @@
 .fmm.db
 .fmm.db-shm
 .fmm.db-wal
+.fmm.test-generate.lock
 .nancy/
 
 # Rust

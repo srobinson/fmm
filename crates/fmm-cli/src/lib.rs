@@ -1,4 +1,5 @@
 pub mod cli;
+pub(crate) mod cycle_report;
 pub mod fs_utils;
 pub(crate) mod glossary;
 pub mod mcp;
