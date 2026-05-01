@@ -316,6 +316,33 @@ pub fn full_reindex_file_identity(rows: &[PreserializedRow]) -> Result<FileIdent
         .map_err(Into::into)
 }
 
+/// Rebuild stored FileIds from the complete current `files` table.
+///
+/// This is the generate boundary after incremental row writes have finished.
+pub fn rebuild_file_identity_from_files(tx: &Transaction<'_>) -> Result<()> {
+    let paths = {
+        let mut stmt = tx
+            .prepare("SELECT path FROM files ORDER BY path")
+            .context("Failed to prepare indexed file path query")?;
+        stmt.query_map([], |row| row.get::<_, String>(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .context("Failed to load indexed file paths")?
+    };
+    let identity = FileIdentityMap::from_relative_paths(paths.iter().map(String::as_str))?;
+
+    tx.execute("DELETE FROM file_paths", [])
+        .context("Failed to clear file path identity")?;
+    tx.execute("DELETE FROM meta WHERE key = ?1", params![NEXT_FILE_ID_KEY])
+        .context("Failed to reset file id allocation")?;
+    for path in paths {
+        let file_id = identity
+            .id_for_path(&path)
+            .context("Rebuilt identity did not contain indexed path")?;
+        insert_file_path(tx, file_id, &path)?;
+    }
+    Ok(())
+}
+
 fn file_id_for_path(tx: &Transaction<'_>, path: &str) -> Result<Option<FileId>> {
     let id = tx
         .query_row(

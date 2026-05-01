@@ -59,6 +59,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     let removed_count = delete_removed_files(&store, &scan.removed_paths)?;
 
     if scan.dirty_files.is_empty() {
+        store.rebuild_file_identity_from_indexed_files()?;
         if removed_count > 0 {
             finish_removed_only_update(
                 &store,
@@ -101,6 +102,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     run_with_spinner(show_progress, "{spinner:.green} Writing index...", || {
         store.write_indexed_files(&serialized_rows, is_full_generate)
     })?;
+    store.rebuild_file_identity_from_indexed_files()?;
     let phase3_elapsed = phase3_start.elapsed();
 
     // Phase 4: rebuild the pre-computed reverse dependency graph.

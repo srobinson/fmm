@@ -205,6 +205,7 @@ fn remove_file_from_db(path: &Path, root: &std::path::PathBuf) -> anyhow::Result
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fmm_core::identity::FileId;
     use notify::event::{CreateKind, ModifyKind, RemoveKind};
     use std::fs;
     use std::sync::atomic::AtomicUsize;
@@ -324,6 +325,37 @@ mod tests {
         let manifest = store.load_manifest().unwrap();
         assert!(manifest.export_index.contains_key("newFunc"));
         assert_eq!(updates.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn handle_create_preserves_survivor_file_ids() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("a.ts"), "export const A = 1;\n").unwrap();
+        fs::write(src.join("c.ts"), "export const C = 1;\n").unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        let config = Config::default();
+
+        crate::cli::generate(&[root.to_string_lossy().to_string()], false, false, true).unwrap();
+        fs::write(src.join("b.ts"), "export const B = 1;\n").unwrap();
+        let source_b = root.join("src/b.ts");
+
+        let updates = AtomicUsize::new(0);
+        handle_event(
+            &source_b,
+            &notify::EventKind::Create(CreateKind::File),
+            &config,
+            &root,
+            &updates,
+        );
+
+        let store = SqliteStore::open(&root).unwrap();
+        let manifest = store.load_manifest().unwrap();
+        assert_eq!(manifest.file_id("src/a.ts"), Some(FileId(0)));
+        assert_eq!(manifest.file_id("src/c.ts"), Some(FileId(1)));
+        assert_eq!(manifest.file_id("src/b.ts"), Some(FileId(2)));
+        assert_eq!(updates.load(Ordering::Relaxed), 1);
     }
 
     #[test]

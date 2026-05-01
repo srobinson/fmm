@@ -106,6 +106,19 @@ impl SqliteStore {
         )?;
         Ok(())
     }
+
+    /// Rebuild path identity from the current indexed file rows.
+    ///
+    /// # Errors
+    ///
+    /// Returns `StoreError` if the database transaction or identity rebuild fails.
+    pub fn rebuild_file_identity_from_indexed_files(&self) -> Result<(), StoreError> {
+        let mut conn = self.conn.borrow_mut();
+        let tx = conn.transaction()?;
+        writer::rebuild_file_identity_from_files(&tx).map_err(StoreError::Other)?;
+        tx.commit()?;
+        Ok(())
+    }
 }
 
 impl FmmStore for SqliteStore {

@@ -101,6 +101,17 @@ fn db_file_count(base: &Path) -> i64 {
         .unwrap_or(0)
 }
 
+fn db_file_paths(base: &Path) -> Vec<(u32, String)> {
+    let conn = rusqlite::Connection::open(base.join(".fmm.db")).unwrap();
+    let mut stmt = conn
+        .prepare("SELECT file_id, path FROM file_paths ORDER BY file_id")
+        .unwrap();
+    stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
 fn db_reverse_dep_count(base: &Path, target: &str) -> i64 {
     let conn = rusqlite::Connection::open(base.join(".fmm.db")).unwrap();
     conn.query_row(
@@ -183,6 +194,49 @@ fn generate_prunes_deleted_files_and_reverse_deps() {
 
     assert!(!db_indexed(tmp.path(), "src/db.ts"));
     assert_eq!(db_reverse_dep_count(tmp.path(), "src/db.ts"), 0);
+}
+
+#[test]
+fn generate_rebuilds_file_ids_when_file_is_added() {
+    let tmp = TempDir::new().unwrap();
+    let src = tmp.path().join("src");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(src.join("a.ts"), "export const A = 1;\n").unwrap();
+    fs::write(src.join("c.ts"), "export const C = 1;\n").unwrap();
+    let path = tmp.path().to_str().unwrap();
+
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
+    fs::write(src.join("b.ts"), "export const B = 1;\n").unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
+
+    assert_eq!(
+        db_file_paths(tmp.path()),
+        vec![
+            (0, "src/a.ts".to_string()),
+            (1, "src/b.ts".to_string()),
+            (2, "src/c.ts".to_string())
+        ]
+    );
+}
+
+#[test]
+fn generate_rebuilds_file_ids_when_file_is_deleted() {
+    let tmp = TempDir::new().unwrap();
+    let src = tmp.path().join("src");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(src.join("a.ts"), "export const A = 1;\n").unwrap();
+    fs::write(src.join("b.ts"), "export const B = 1;\n").unwrap();
+    fs::write(src.join("c.ts"), "export const C = 1;\n").unwrap();
+    let path = tmp.path().to_str().unwrap();
+
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
+    fs::remove_file(src.join("b.ts")).unwrap();
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
+
+    assert_eq!(
+        db_file_paths(tmp.path()),
+        vec![(0, "src/a.ts".to_string()), (1, "src/c.ts".to_string())]
+    );
 }
 
 #[test]
