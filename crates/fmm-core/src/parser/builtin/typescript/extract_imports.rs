@@ -18,20 +18,22 @@ impl TypeScriptParser {
         let source_bytes = source.as_bytes();
         let mut seen = HashSet::new();
 
-        let mut cursor = QueryCursor::new();
-        let mut iter = cursor.matches(&self.import_query, root_node, source_bytes);
+        for query in [&self.import_query, &self.reexport_source_query] {
+            let mut cursor = QueryCursor::new();
+            let mut iter = cursor.matches(query, root_node, source_bytes);
 
-        while let Some(m) = iter.next() {
-            for capture in m.captures {
-                if let Ok(text) = capture.node.utf8_text(source_bytes) {
-                    let cleaned = text.trim_matches('\'').trim_matches('"').to_string();
-                    // Relative paths go to dependencies; alias matches go to dependencies.
-                    // Everything else (external packages) stays here as imports.
-                    if !cleaned.starts_with('.')
-                        && !cleaned.starts_with('/')
-                        && (aliases.is_empty() || resolve_alias(&cleaned, aliases).is_none())
-                    {
-                        seen.insert(cleaned);
+            while let Some(m) = iter.next() {
+                for capture in m.captures {
+                    if let Ok(text) = capture.node.utf8_text(source_bytes) {
+                        let cleaned = text.trim_matches('\'').trim_matches('"').to_string();
+                        // Relative paths go to dependencies; alias matches go to dependencies.
+                        // Everything else (external packages) stays here as imports.
+                        if !cleaned.starts_with('.')
+                            && !cleaned.starts_with('/')
+                            && (aliases.is_empty() || resolve_alias(&cleaned, aliases).is_none())
+                        {
+                            seen.insert(cleaned);
+                        }
                     }
                 }
             }

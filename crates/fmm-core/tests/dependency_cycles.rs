@@ -138,6 +138,64 @@ fn dependency_cycles_reports_mixed_workspace_package_cycles_in_runtime_mode() {
 }
 
 #[test]
+fn dependency_cycles_excludes_type_only_workspace_package_reexport_cycles_in_runtime_mode() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let manifest = workspace_package_cycle_manifest(
+        tmp.path(),
+        "export type { B } from '@scope/b';\n",
+        "export { type A } from '@scope/a';\n",
+    );
+
+    assert_eq!(
+        dependency_cycles(&manifest, None, CycleEdgeMode::Runtime).unwrap(),
+        Vec::<Vec<String>>::new()
+    );
+    assert_eq!(
+        dependency_cycles(&manifest, None, CycleEdgeMode::All).unwrap(),
+        vec![vec![
+            "packages/a/src/index.ts".to_string(),
+            "packages/b/src/index.ts".to_string()
+        ]]
+    );
+}
+
+#[test]
+fn dependency_cycles_reports_value_workspace_package_reexport_cycles_in_runtime_mode() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let manifest = workspace_package_cycle_manifest(
+        tmp.path(),
+        "export { b } from '@scope/b';\nexport const a = 1;\n",
+        "export { a } from '@scope/a';\nexport const b = 1;\n",
+    );
+
+    assert_eq!(
+        dependency_cycles(&manifest, None, CycleEdgeMode::Runtime).unwrap(),
+        vec![vec![
+            "packages/a/src/index.ts".to_string(),
+            "packages/b/src/index.ts".to_string()
+        ]]
+    );
+}
+
+#[test]
+fn dependency_cycles_reports_mixed_workspace_package_reexport_cycles_in_runtime_mode() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let manifest = workspace_package_cycle_manifest(
+        tmp.path(),
+        "export { type B, b } from '@scope/b';\nexport type A = string;\nexport const a = 1;\n",
+        "export { type A, a } from '@scope/a';\nexport type B = string;\nexport const b = 1;\n",
+    );
+
+    assert_eq!(
+        dependency_cycles(&manifest, None, CycleEdgeMode::Runtime).unwrap(),
+        vec![vec![
+            "packages/a/src/index.ts".to_string(),
+            "packages/b/src/index.ts".to_string()
+        ]]
+    );
+}
+
+#[test]
 fn dependency_cycles_excludes_type_only_cycles_in_runtime_mode() {
     let mut manifest = Manifest::new();
     add_file(
