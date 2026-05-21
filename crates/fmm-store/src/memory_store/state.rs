@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use fmm_core::identity::{EdgeKind, Fingerprint};
+use fmm_core::parser::{DeclarationKind, SymbolVisibility};
 use fmm_core::types::PreserializedRow;
 
 use super::MemoryStoreError;
@@ -25,13 +26,19 @@ pub(super) struct StoredExport {
     pub(super) name: String,
     pub(super) start_line: i64,
     pub(super) end_line: i64,
+    pub(super) signature: Option<String>,
+    pub(super) visibility: Option<SymbolVisibility>,
+    pub(super) declaration_kind: Option<DeclarationKind>,
 }
 
 pub(super) struct StoredMethod {
     pub(super) dotted_name: String,
     pub(super) start_line: i64,
     pub(super) end_line: i64,
-    pub(super) kind: Option<String>,
+    pub(super) relationship_kind: Option<String>,
+    pub(super) signature: Option<String>,
+    pub(super) visibility: Option<SymbolVisibility>,
+    pub(super) declaration_kind: Option<DeclarationKind>,
 }
 
 pub(super) struct InnerState {
@@ -75,6 +82,9 @@ impl InnerState {
                 name: e.name.clone(),
                 start_line: e.start_line,
                 end_line: e.end_line,
+                signature: e.signature.clone(),
+                visibility: e.visibility,
+                declaration_kind: e.declaration_kind,
             })
             .collect();
 
@@ -85,7 +95,10 @@ impl InnerState {
                 dotted_name: m.dotted_name.clone(),
                 start_line: m.start_line,
                 end_line: m.end_line,
-                kind: m.kind.clone(),
+                relationship_kind: m.relationship_kind.clone(),
+                signature: m.signature.clone(),
+                visibility: m.visibility,
+                declaration_kind: m.declaration_kind,
             })
             .collect();
 

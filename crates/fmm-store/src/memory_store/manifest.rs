@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use fmm_core::manifest::{ExportLines, ExportLocation, FileEntry, Manifest};
+use fmm_core::manifest::{ExportLines, ExportLocation, FileEntry, Manifest, SymbolMetadata};
 
 use super::state::InnerState;
 
@@ -73,6 +73,20 @@ fn populate_exports(manifest: &mut Manifest, file_path: &str, sf: &super::state:
 
     if let Some(entry) = manifest.files.get_mut(file_path) {
         entry.exports = names;
+        entry.export_metadata = sf
+            .exports
+            .iter()
+            .map(|exp| {
+                (
+                    exp.name.clone(),
+                    SymbolMetadata::from_parts(
+                        exp.signature.clone(),
+                        exp.visibility,
+                        exp.declaration_kind,
+                    ),
+                )
+            })
+            .collect();
         if has_lines {
             entry.export_lines = Some(line_ranges.clone());
         }
@@ -151,7 +165,15 @@ fn populate_methods(manifest: &mut Manifest, file_path: &str, sf: &super::state:
         let el = lines.clone().unwrap_or(ExportLines { start: 0, end: 0 });
 
         if let Some(fe) = manifest.files.get_mut(file_path) {
-            match method.kind.as_deref() {
+            fe.method_metadata.insert(
+                method.dotted_name.clone(),
+                SymbolMetadata::from_parts(
+                    method.signature.clone(),
+                    method.visibility,
+                    method.declaration_kind,
+                ),
+            );
+            match method.relationship_kind.as_deref() {
                 Some("nested-fn") => {
                     fe.nested_fns.insert(method.dotted_name.clone(), el);
                 }

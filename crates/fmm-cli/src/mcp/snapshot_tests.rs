@@ -119,6 +119,9 @@ fn make_row(
                 name: name.to_string(),
                 start_line: start,
                 end_line: end,
+                signature: None,
+                visibility: None,
+                declaration_kind: None,
             })
             .collect(),
         methods: methods
@@ -127,7 +130,10 @@ fn make_row(
                 dotted_name: name.to_string(),
                 start_line: start,
                 end_line: end,
-                kind: kind.map(String::from),
+                relationship_kind: kind.map(String::from),
+                signature: None,
+                visibility: None,
+                declaration_kind: None,
             })
             .collect(),
     }

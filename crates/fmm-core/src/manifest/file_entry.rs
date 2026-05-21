@@ -2,9 +2,34 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::identity::EdgeKind;
-use crate::parser::Metadata;
+use crate::parser::{DeclarationKind, Metadata, SymbolVisibility};
 
 use super::ExportLines;
+
+/// Default-hidden symbol metadata used by outline density renderers.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SymbolMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub declaration_kind: Option<String>,
+}
+
+impl SymbolMetadata {
+    pub fn from_parts(
+        signature: Option<String>,
+        visibility: Option<SymbolVisibility>,
+        declaration_kind: Option<DeclarationKind>,
+    ) -> Self {
+        Self {
+            signature,
+            visibility: visibility.map(|value| value.as_str().to_string()),
+            declaration_kind: declaration_kind.map(|value| value.as_str().to_string()),
+        }
+    }
+}
 
 /// Entry for a single file in the in-memory index
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -13,10 +38,18 @@ pub struct FileEntry {
     /// Line ranges for exports (parallel to exports vec).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub export_lines: Option<Vec<ExportLines>>,
+    /// Metadata keyed by export name. Populated from storage, hidden until the
+    /// outline renderer opts in.
+    #[serde(skip)]
+    pub export_metadata: HashMap<String, SymbolMetadata>,
     /// Public class methods: `"ClassName.method"` → line range. Populated from the
     /// `methods:` sidecar section or from `ExportEntry` entries that have `parent_class` set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub methods: Option<HashMap<String, ExportLines>>,
+    /// Metadata keyed by dotted method name. Populated from storage, hidden until
+    /// the outline renderer opts in.
+    #[serde(skip)]
+    pub method_metadata: HashMap<String, SymbolMetadata>,
     pub imports: Vec<String>,
     pub dependencies: Vec<String>,
     /// Internal dependency edge classification keyed by dependency or import
@@ -58,6 +91,8 @@ impl From<Metadata> for FileEntry {
         let mut exports = Vec::new();
         let mut export_lines = Vec::new();
         let mut methods: HashMap<String, ExportLines> = HashMap::new();
+        let mut export_metadata: HashMap<String, SymbolMetadata> = HashMap::new();
+        let mut method_metadata: HashMap<String, SymbolMetadata> = HashMap::new();
         let mut nested_fns: HashMap<String, ExportLines> = HashMap::new();
         let mut closure_state: HashMap<String, ExportLines> = HashMap::new();
 
@@ -68,23 +103,39 @@ impl From<Metadata> for FileEntry {
                     start: e.start_line,
                     end: e.end_line,
                 };
-                match e.kind.as_deref() {
+                match e.relationship_kind.as_deref() {
                     Some("nested-fn") => {
-                        nested_fns.insert(key, el);
+                        nested_fns.insert(key.clone(), el);
                     }
                     Some("closure-state") => {
-                        closure_state.insert(key, el);
+                        closure_state.insert(key.clone(), el);
                     }
                     _ => {
-                        methods.insert(key, el);
+                        methods.insert(key.clone(), el);
                     }
                 }
+                method_metadata.insert(
+                    key,
+                    SymbolMetadata::from_parts(
+                        e.signature.clone(),
+                        e.visibility,
+                        e.declaration_kind,
+                    ),
+                );
             } else {
                 exports.push(e.name.clone());
                 export_lines.push(ExportLines {
                     start: e.start_line,
                     end: e.end_line,
                 });
+                export_metadata.insert(
+                    e.name.clone(),
+                    SymbolMetadata::from_parts(
+                        e.signature.clone(),
+                        e.visibility,
+                        e.declaration_kind,
+                    ),
+                );
             }
         }
 
@@ -92,11 +143,13 @@ impl From<Metadata> for FileEntry {
         Self {
             exports,
             export_lines: if has_lines { Some(export_lines) } else { None },
+            export_metadata,
             methods: if methods.is_empty() {
                 None
             } else {
                 Some(methods)
             },
+            method_metadata,
             imports: metadata.imports,
             dependencies: metadata.dependencies,
             dependency_kinds: metadata.dependency_kinds,

@@ -50,6 +50,12 @@ pub struct ExportEntry {
     pub name: String,
     pub start_line: usize,
     pub end_line: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<SymbolVisibility>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub declaration_kind: Option<DeclarationKind>,
     /// When set, this entry is a method of the named class, not a top-level export.
     /// The method renders under `methods:` in the sidecar as `ClassName.method: [start, end]`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -59,7 +65,67 @@ pub struct ExportEntry {
     /// "closure-state" = depth-1 non-trivial var/const/let prologue declaration.
     /// None = regular top-level export or class method (existing behavior).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub kind: Option<String>,
+    pub relationship_kind: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SymbolVisibility {
+    Public,
+    Crate,
+    Protected,
+    Private,
+    NonExported,
+}
+
+impl SymbolVisibility {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Public => "public",
+            Self::Crate => "crate",
+            Self::Protected => "protected",
+            Self::Private => "private",
+            Self::NonExported => "non_exported",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeclarationKind {
+    Fn,
+    Method,
+    Field,
+    Const,
+    Test,
+    Struct,
+    Trait,
+    Impl,
+    Enum,
+    Variant,
+    Module,
+    Macro,
+    Type,
+}
+
+impl DeclarationKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Fn => "fn",
+            Self::Method => "method",
+            Self::Field => "field",
+            Self::Const => "const",
+            Self::Test => "test",
+            Self::Struct => "struct",
+            Self::Trait => "trait",
+            Self::Impl => "impl",
+            Self::Enum => "enum",
+            Self::Variant => "variant",
+            Self::Module => "module",
+            Self::Macro => "macro",
+            Self::Type => "type",
+        }
+    }
 }
 
 impl ExportEntry {
@@ -68,8 +134,11 @@ impl ExportEntry {
             name,
             start_line,
             end_line,
+            signature: None,
+            visibility: None,
+            declaration_kind: None,
             parent_class: None,
-            kind: None,
+            relationship_kind: None,
         }
     }
 
@@ -79,8 +148,11 @@ impl ExportEntry {
             name,
             start_line,
             end_line,
+            signature: None,
+            visibility: None,
+            declaration_kind: None,
             parent_class: Some(parent_class),
-            kind: None,
+            relationship_kind: None,
         }
     }
 
@@ -90,8 +162,11 @@ impl ExportEntry {
             name,
             start_line,
             end_line,
+            signature: None,
+            visibility: None,
+            declaration_kind: None,
             parent_class: Some(parent_fn),
-            kind: Some("nested-fn".to_string()),
+            relationship_kind: Some("nested-fn".to_string()),
         }
     }
 
@@ -106,8 +181,11 @@ impl ExportEntry {
             name,
             start_line,
             end_line,
+            signature: None,
+            visibility: None,
+            declaration_kind: None,
             parent_class: Some(parent_fn),
-            kind: Some("closure-state".to_string()),
+            relationship_kind: Some("closure-state".to_string()),
         }
     }
 }

@@ -22,7 +22,7 @@ pub(crate) use dependency_matcher::{
     build_dependency_edges, builtin_source_extensions, strip_source_ext, try_resolve_local_dep,
 };
 pub use dependency_matcher::{dep_matches, dotted_dep_matches, python_dep_matches};
-pub use file_entry::FileEntry;
+pub use file_entry::{FileEntry, SymbolMetadata};
 pub use glossary_builder::{GlossaryEntry, GlossaryMode, GlossarySource};
 pub use reexports::OutlineReExport;
 pub use reverse_index::ReverseDeps;

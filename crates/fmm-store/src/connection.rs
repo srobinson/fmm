@@ -275,8 +275,9 @@ mod tests {
         create_old_files_table(&conn);
         conn.execute_batch(&format!(
             "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-             INSERT INTO meta VALUES ('schema_version', '4');
+             INSERT INTO meta VALUES ('schema_version', '{}');
              INSERT INTO meta VALUES ('fmm_version', '{}');",
+            SCHEMA_VERSION - 1,
             fmm_core::VERSION
         ))
         .unwrap();

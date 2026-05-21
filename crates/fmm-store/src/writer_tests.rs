@@ -1,7 +1,7 @@
 use super::*;
 use crate::connection::open_or_create;
 use fmm_core::identity::{Fingerprint, PARSER_CACHE_VERSION};
-use fmm_core::parser::{ExportEntry, Metadata};
+use fmm_core::parser::{DeclarationKind, ExportEntry, Metadata, SymbolVisibility};
 
 use tempfile::TempDir;
 
@@ -149,6 +149,106 @@ fn methods_inserted_with_dedup() {
         .unwrap();
     // Only first occurrence inserted (dedup)
     assert_eq!(count, 1);
+}
+
+#[test]
+fn symbol_density_fields_are_stored_without_changing_relationship_kind() {
+    let dir = TempDir::new().unwrap();
+    let mut conn = open_or_create(dir.path()).unwrap();
+    let mut export = ExportEntry::new("makeServer".into(), 1, 5);
+    export.signature = Some("fn makeServer() -> Server".into());
+    export.visibility = Some(SymbolVisibility::Public);
+    export.declaration_kind = Some(DeclarationKind::Fn);
+
+    let mut method = ExportEntry::method("run".into(), 7, 12, "Server".into());
+    method.signature = Some("run(options: RunOptions): void".into());
+    method.visibility = Some(SymbolVisibility::Private);
+    method.declaration_kind = Some(DeclarationKind::Method);
+    method.relationship_kind = Some("nested-fn".into());
+
+    let result = make_parse_result(vec![export, method], vec![], vec![]);
+
+    {
+        let tx = conn.transaction().unwrap();
+        upsert_file_data(&tx, "src/server.ts", &result, None).unwrap();
+        tx.commit().unwrap();
+    }
+
+    let export_row: (String, String, String) = conn
+        .query_row(
+            "SELECT signature, visibility, declaration_kind FROM exports WHERE name='makeServer'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        export_row,
+        (
+            "fn makeServer() -> Server".into(),
+            "public".into(),
+            "fn".into()
+        )
+    );
+
+    let method_row: (String, String, String, String) = conn
+        .query_row(
+            "SELECT relationship_kind, signature, visibility, declaration_kind FROM methods WHERE dotted_name='Server.run'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        method_row,
+        (
+            "nested-fn".into(),
+            "run(options: RunOptions): void".into(),
+            "private".into(),
+            "method".into()
+        )
+    );
+
+    let manifest = crate::reader::load_manifest_from_db(&conn, dir.path()).unwrap();
+    let file = manifest.files.get("src/server.ts").unwrap();
+    assert_eq!(
+        file.export_metadata
+            .get("makeServer")
+            .unwrap()
+            .declaration_kind
+            .as_deref(),
+        Some("fn")
+    );
+    assert_eq!(
+        file.method_metadata
+            .get("Server.run")
+            .unwrap()
+            .visibility
+            .as_deref(),
+        Some("private")
+    );
+}
+
+#[test]
+fn symbol_density_columns_reject_unknown_taxonomy_values() {
+    let dir = TempDir::new().unwrap();
+    let conn = open_or_create(dir.path()).unwrap();
+
+    conn.execute(
+        "INSERT INTO files (path, loc, indexed_at) VALUES ('src/a.ts', 1, 'now')",
+        [],
+    )
+    .unwrap();
+
+    let bad_visibility = conn.execute(
+        "INSERT INTO exports (name, file_path, visibility) VALUES ('a', 'src/a.ts', 'package')",
+        [],
+    );
+    assert!(bad_visibility.is_err());
+
+    let bad_kind = conn.execute(
+        "INSERT INTO methods (dotted_name, file_path, declaration_kind) VALUES ('A.a', 'src/a.ts', 'class')",
+        [],
+    );
+    assert!(bad_kind.is_err());
 }
 
 #[test]
