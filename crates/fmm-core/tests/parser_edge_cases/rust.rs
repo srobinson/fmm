@@ -1,6 +1,7 @@
 use super::support::{
     assert_empty_parse, assert_exports_include, assert_no_exports, assert_parse_ok, parse_with,
 };
+use fmm_core::parser::SymbolVisibility;
 use fmm_core::parser::builtin::rust::RustParser;
 
 #[test]
@@ -31,9 +32,18 @@ fn syntax_errors_are_tolerated() {
 
 #[test]
 fn no_exports() {
-    assert_no_exports(
+    let result = parse_with(
         RustParser::new().unwrap(),
         "fn private_fn() {}\nstruct Internal {}",
+    );
+
+    assert_exports_include(&result, &["private_fn", "Internal"]);
+    assert!(
+        result
+            .metadata
+            .exports
+            .iter()
+            .all(|entry| entry.visibility == Some(SymbolVisibility::Private))
     );
 }
 

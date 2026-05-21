@@ -1,6 +1,7 @@
 use super::RustParser;
-use crate::parser::ExportEntry;
+use super::symbol_metadata::{normalize_macro_name, rust_entry};
 use crate::parser::builtin::query_helpers::extract_field_text;
+use crate::parser::{DeclarationKind, ExportEntry};
 use tree_sitter::Node;
 
 impl RustParser {
@@ -29,7 +30,16 @@ impl RustParser {
                             .map(|a| a.start_position().row + 1)
                             .unwrap_or(child.start_position().row + 1);
                         let end_line = child.end_position().row + 1;
-                        results.push(ExportEntry::new(format!("{}!", name), start_line, end_line));
+                        let mut entry = rust_entry(
+                            format!("{}!", normalize_macro_name(&name)),
+                            child,
+                            source_bytes,
+                            DeclarationKind::Macro,
+                        );
+                        entry.start_line = start_line;
+                        entry.end_line = end_line;
+                        entry.visibility = Some(crate::parser::SymbolVisibility::Public);
+                        results.push(entry);
                     }
                     pending_attrs.clear();
                 }
@@ -99,7 +109,11 @@ impl RustParser {
             if self.attr_item_has_name(source_bytes, *attr, "proc_macro_derive") {
                 // Extract derive name from token_tree argument: #[proc_macro_derive(MyDerive)]
                 if let Some(name) = self.extract_first_token_in_attr(source_bytes, *attr) {
-                    return Some(ExportEntry::new(name, start_line, end_line));
+                    let mut entry =
+                        rust_entry(name, func_node, source_bytes, DeclarationKind::Macro);
+                    entry.start_line = start_line;
+                    entry.end_line = end_line;
+                    return Some(entry);
                 }
             }
             if self.attr_item_has_name(source_bytes, *attr, "proc_macro_attribute")
@@ -107,7 +121,11 @@ impl RustParser {
             {
                 // Use the function name directly
                 if let Some(name) = extract_field_text(&func_node, source_bytes, "name") {
-                    return Some(ExportEntry::new(name, start_line, end_line));
+                    let mut entry =
+                        rust_entry(name, func_node, source_bytes, DeclarationKind::Macro);
+                    entry.start_line = start_line;
+                    entry.end_line = end_line;
+                    return Some(entry);
                 }
             }
         }

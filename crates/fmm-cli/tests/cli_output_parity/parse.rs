@@ -97,11 +97,21 @@ pub(super) fn parse_export_table(text: &str) -> Vec<Value> {
             if parts.len() < 2 {
                 return None;
             }
+            let file_index = parts.iter().position(|part| part.contains('/'))?;
             let mut entry = Map::new();
-            entry.insert("name".to_string(), Value::String(parts[0].to_string()));
-            entry.insert("file".to_string(), Value::String(parts[1].to_string()));
-            if parts.len() >= 4 {
-                entry.insert("lines".to_string(), parse_lines_pair(&parts[2..].join(" ")));
+            entry.insert(
+                "name".to_string(),
+                Value::String(parts[..file_index].join(" ")),
+            );
+            entry.insert(
+                "file".to_string(),
+                Value::String(parts[file_index].to_string()),
+            );
+            if parts.len() > file_index + 1 {
+                entry.insert(
+                    "lines".to_string(),
+                    parse_lines_pair(&parts[file_index + 1..].join(" ")),
+                );
             }
             Some(Value::Object(entry))
         })
@@ -122,11 +132,14 @@ pub(super) fn parse_named_lines_block(text: &str, section: &str) -> Vec<Value> {
                 let item = line.trim();
                 if let Some((name, value)) = item.split_once(": ") {
                     entries.push(object([
-                        ("name", Value::String(name.to_string())),
+                        ("name", Value::String(unquote_yaml_key(name).to_string())),
                         ("lines", parse_lines_pair(value)),
                     ]));
                 } else {
-                    entries.push(object([("name", Value::String(item.to_string()))]));
+                    entries.push(object([(
+                        "name",
+                        Value::String(unquote_yaml_key(item).to_string()),
+                    )]));
                 }
             } else if !line.starts_with(' ') && !line.trim().is_empty() {
                 break;
@@ -347,6 +360,10 @@ fn parse_atom(value: &str) -> Value {
     } else {
         Value::String(value.to_string())
     }
+}
+
+fn unquote_yaml_key(value: &str) -> &str {
+    value.trim().trim_matches('"').trim_matches('\'')
 }
 
 pub(super) fn strip_comment(line: &str) -> &str {

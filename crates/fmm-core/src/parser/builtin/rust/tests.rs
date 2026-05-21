@@ -6,5 +6,6 @@ mod function_names;
 mod impl_methods;
 mod import_metadata;
 mod macros;
+mod outline_metadata;
 mod reexports;
 mod support;

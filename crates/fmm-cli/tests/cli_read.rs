@@ -280,9 +280,7 @@ fn read_duplicate_non_exported_top_level_symbol_requires_file_qualified_symbol()
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert!(
-        stderr.contains(
-            "Symbol 'helper' is ambiguous: 2 non-exported top-level declarations use this name"
-        ),
+        stderr.contains("Symbol 'helper' is ambiguous: 2 indexed exports use this name"),
         "got: {stderr}"
     );
     assert!(

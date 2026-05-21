@@ -1,4 +1,5 @@
 use super::support::parse;
+use crate::parser::{DeclarationKind, SymbolVisibility};
 
 #[test]
 fn pub_use_simple_path_indexes_rightmost_segment() {
@@ -96,12 +97,16 @@ fn pub_use_external_crate_indexes_rightmost() {
 }
 
 #[test]
-fn pub_crate_use_not_indexed() {
+fn pub_crate_use_indexed() {
     let source = "pub(crate) use crate::runtime::Runtime;";
     let result = parse(source);
-    let names = result.metadata.export_names();
-    assert!(
-        !names.contains(&"Runtime".to_string()),
-        "pub(crate) use should not be indexed as a public export"
-    );
+    let entry = result
+        .metadata
+        .exports
+        .iter()
+        .find(|entry| entry.name == "Runtime")
+        .expect("pub(crate) use should be indexed with crate visibility");
+    assert_eq!(entry.visibility, Some(SymbolVisibility::Crate));
+    assert_eq!(entry.declaration_kind, Some(DeclarationKind::Module));
+    assert_eq!(entry.signature.as_deref(), Some("Runtime"));
 }

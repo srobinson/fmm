@@ -39,12 +39,12 @@ fn binary_bin_dir_exports_all_functions() {
 }
 
 #[test]
-fn lib_still_requires_pub() {
+fn lib_indexes_public_and_private_declarations() {
     let source = "pub fn visible() {}\nfn private() {}\npub struct Exported {}\nstruct Hidden {}";
     let result = parse_file(source, "src/lib.rs");
     let names = result.metadata.export_names();
     assert!(names.contains(&"visible".to_string()));
     assert!(names.contains(&"Exported".to_string()));
-    assert!(!names.contains(&"private".to_string()));
-    assert!(!names.contains(&"Hidden".to_string()));
+    assert!(names.contains(&"private".to_string()));
+    assert!(names.contains(&"Hidden".to_string()));
 }

@@ -19,16 +19,6 @@ pub fn assert_exports_include(result: &ParseResult, expected: &[&str]) {
     }
 }
 
-pub fn assert_exports_exclude(result: &ParseResult, absent: &[&str]) {
-    let names = export_names(result);
-    for absent_name in absent {
-        assert!(
-            !names.iter().any(|actual| actual == absent_name),
-            "unexpected export {absent_name}; exports: {names:?}"
-        );
-    }
-}
-
 pub fn assert_imports_include(result: &ParseResult, expected: &[&str]) {
     for expected_import in expected {
         assert!(

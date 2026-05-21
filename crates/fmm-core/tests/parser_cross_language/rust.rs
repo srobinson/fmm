@@ -1,8 +1,9 @@
 use crate::support::{
-    assert_dependencies_include, assert_exports_exclude, assert_exports_include,
-    assert_imports_include, custom_string_array, custom_u64, parse_with,
+    assert_dependencies_include, assert_exports_include, assert_imports_include,
+    custom_string_array, custom_u64, parse_with,
 };
 use fmm_core::parser::builtin::rust::RustParser;
+use fmm_core::parser::{DeclarationKind, ParseResult, SymbolVisibility};
 
 // Rust validation
 
@@ -12,8 +13,23 @@ fn rust_real_repo_bat_style_config() {
     let source = include_str!("fixtures/rust/rust_real_repo_bat_style_config.rs");
     let result = parse_with(RustParser::new().unwrap(), source);
 
-    assert_exports_include(&result, &["Config", "PagingMode", "load_config"]);
-    assert_eq!(result.metadata.export_names().len(), 3);
+    assert_exports_include(
+        &result,
+        &[
+            "Config",
+            "PagingMode",
+            "impl Default for Config",
+            "impl Default for PagingMode",
+            "load_config",
+        ],
+    );
+    assert_eq!(result.metadata.export_names().len(), 5);
+    assert_visibility(&result, "Config", SymbolVisibility::Public);
+    assert_visibility(
+        &result,
+        "impl Default for Config",
+        SymbolVisibility::Private,
+    );
 
     assert_imports_include(&result, &["anyhow", "serde"]);
 
@@ -56,18 +72,55 @@ fn rust_real_repo_ripgrep_style_searcher() {
     assert!(lifetime_names.iter().any(|name| name == "'a"));
 }
 
-/// Rust module with pub(crate) and pub(super) — should be excluded from exports
+/// Rust module with pub(crate) and pub(super) visibility metadata.
 #[test]
 fn rust_real_repo_visibility_filtering() {
     let source = include_str!("fixtures/rust/rust_real_repo_visibility_filtering.rs");
     let result = parse_with(RustParser::new().unwrap(), source);
 
-    assert_exports_include(&result, &["public_api", "PublicType"]);
-    assert_exports_exclude(
+    assert_exports_include(
         &result,
-        &["internal_helper", "parent_only", "totally_private"],
+        &[
+            "public_api",
+            "PublicType",
+            "internal_helper",
+            "parent_only",
+            "totally_private",
+        ],
     );
-    assert_eq!(result.metadata.export_names().len(), 2);
+    assert_signature(
+        &result,
+        "public_api",
+        "pub fn public_api() -> String",
+        DeclarationKind::Fn,
+    );
+    assert_signature(
+        &result,
+        "PublicType",
+        "pub struct PublicType",
+        DeclarationKind::Struct,
+    );
+}
+
+fn assert_visibility(result: &ParseResult, name: &str, visibility: SymbolVisibility) {
+    let entry = result
+        .metadata
+        .exports
+        .iter()
+        .find(|entry| entry.name == name)
+        .unwrap_or_else(|| panic!("{name} should be indexed"));
+    assert_eq!(entry.visibility, Some(visibility));
+}
+
+fn assert_signature(result: &ParseResult, name: &str, signature: &str, kind: DeclarationKind) {
+    let entry = result
+        .metadata
+        .exports
+        .iter()
+        .find(|entry| entry.name == name)
+        .unwrap_or_else(|| panic!("{name} should be indexed"));
+    assert_eq!(entry.signature.as_deref(), Some(signature));
+    assert_eq!(entry.declaration_kind, Some(kind));
 }
 
 /// Rust module with multiple derive blocks and use groups
