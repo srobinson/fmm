@@ -76,7 +76,6 @@ impl RustParser {
         }
 
         exports.sort_by_key(|e| e.start_line);
-        exports.dedup_by(|a, b| a.name == b.name && a.parent_class == b.parent_class);
         exports
     }
 

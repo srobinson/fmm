@@ -12,7 +12,8 @@ use fmm_core::parser::ParseResult;
 
 // Re-export domain types from fmm-core for backward compatibility.
 pub use fmm_core::types::{
-    ExportRecord, MethodRecord, PreserializedRow, extract_function_names, serialize_file_data,
+    ExportRecord, MethodRecord, PreserializedRow, disambiguate_export_name, duplicate_export_names,
+    extract_function_names, serialize_file_data,
 };
 
 pub(crate) const NEXT_FILE_ID_KEY: &str = "next_file_id";
@@ -285,10 +286,21 @@ pub fn upsert_file_data(
              (name, file_path, start_line, end_line, signature, visibility, declaration_kind)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         )?;
+        let duplicate_export_names = duplicate_export_names(
+            meta.exports
+                .iter()
+                .filter(|entry| entry.parent_class.is_none())
+                .map(|entry| entry.name.clone()),
+        );
         for entry in &meta.exports {
             if entry.parent_class.is_none() {
+                let name = disambiguate_export_name(
+                    &entry.name,
+                    entry.start_line as i64,
+                    &duplicate_export_names,
+                );
                 stmt.execute(params![
-                    entry.name,
+                    name,
                     rel_path,
                     entry.start_line as i64,
                     entry.end_line as i64,

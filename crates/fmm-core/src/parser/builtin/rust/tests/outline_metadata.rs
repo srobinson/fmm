@@ -223,6 +223,31 @@ pub mod second {
     );
 }
 
+#[test]
+fn rust_duplicate_impl_blocks_are_not_collapsed() {
+    let source = r#"
+pub struct Parser;
+
+impl Parser {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Parser {
+    pub fn parse(&self) {}
+}
+"#;
+    let result = parse(source);
+    let matches = result
+        .metadata
+        .exports
+        .iter()
+        .filter(|entry| entry.name == "impl Parser")
+        .count();
+    assert_eq!(matches, 2, "same-type impl blocks should both index");
+}
+
 fn assert_entry(
     exports: &[ExportEntry],
     name: &str,

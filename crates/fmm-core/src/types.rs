@@ -87,12 +87,19 @@ fn serialize_file_data_inner(
     let meta = &result.metadata;
     let function_names = extract_function_names(result.custom_fields.as_ref());
 
+    let duplicate_export_names = duplicate_export_names(
+        meta.exports
+            .iter()
+            .filter(|e| e.parent_class.is_none())
+            .map(|e| e.name.clone()),
+    );
+
     let exports: Vec<ExportRecord> = meta
         .exports
         .iter()
         .filter(|e| e.parent_class.is_none())
         .map(|e| ExportRecord {
-            name: e.name.clone(),
+            name: disambiguate_export_name(&e.name, e.start_line as i64, &duplicate_export_names),
             start_line: e.start_line as i64,
             end_line: e.end_line as i64,
             signature: e.signature.clone(),
@@ -144,6 +151,31 @@ fn serialize_file_data_inner(
         exports,
         methods,
     })
+}
+
+pub fn duplicate_export_names(names: impl IntoIterator<Item = String>) -> HashSet<String> {
+    let mut seen = HashSet::new();
+    let mut duplicates = HashSet::new();
+
+    for name in names {
+        if !seen.insert(name.clone()) {
+            duplicates.insert(name);
+        }
+    }
+
+    duplicates
+}
+
+pub fn disambiguate_export_name(
+    name: &str,
+    start_line: i64,
+    duplicate_names: &HashSet<String>,
+) -> String {
+    if duplicate_names.contains(name) {
+        format!("{name} @ line {start_line}")
+    } else {
+        name.to_string()
+    }
 }
 
 pub fn extract_function_names(

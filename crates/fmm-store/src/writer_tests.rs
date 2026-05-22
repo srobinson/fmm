@@ -31,6 +31,16 @@ fn fingerprint(mtime: &str, size: u64, hash: &str) -> Fingerprint {
     }
 }
 
+fn export_names(conn: &rusqlite::Connection, file_path: &str) -> Vec<String> {
+    let mut stmt = conn
+        .prepare("SELECT name FROM exports WHERE file_path = ?1 ORDER BY start_line")
+        .unwrap();
+    stmt.query_map([file_path], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<Vec<String>, _>>()
+        .unwrap()
+}
+
 #[test]
 fn upsert_and_query_file() {
     let dir = TempDir::new().unwrap();
@@ -117,6 +127,53 @@ fn exports_inserted_and_cascaded_on_replace() {
         )
         .unwrap();
     assert_eq!(count2, 1);
+}
+
+#[test]
+fn duplicate_top_level_export_names_are_disambiguated() {
+    let dir = TempDir::new().unwrap();
+    let mut conn = open_or_create(dir.path()).unwrap();
+
+    let result = make_parse_result(
+        vec![
+            ExportEntry::new("same".into(), 3, 3),
+            ExportEntry::new("same".into(), 7, 7),
+        ],
+        vec![],
+        vec![],
+    );
+
+    {
+        let tx = conn.transaction().unwrap();
+        upsert_file_data(&tx, "src/mod.rs", &result, None).unwrap();
+        tx.commit().unwrap();
+    }
+
+    let names = export_names(&conn, "src/mod.rs");
+    assert_eq!(names, vec!["same @ line 3", "same @ line 7"]);
+}
+
+#[test]
+fn preserialized_duplicate_top_level_export_names_are_disambiguated() {
+    let result = make_parse_result(
+        vec![
+            ExportEntry::new("impl TypeScriptParser".into(), 9, 100),
+            ExportEntry::new("impl TypeScriptParser".into(), 110, 140),
+        ],
+        vec![],
+        vec![],
+    );
+
+    let row = serialize_file_data("src/parser.rs", &result, None).unwrap();
+    let names: Vec<String> = row.exports.iter().map(|entry| entry.name.clone()).collect();
+
+    assert_eq!(
+        names,
+        vec![
+            "impl TypeScriptParser @ line 9",
+            "impl TypeScriptParser @ line 110"
+        ]
+    );
 }
 
 #[test]
