@@ -10,6 +10,8 @@
 
 * clarify `read_symbol` diagnostics for file path inputs
 * clarify `read_symbol` guidance for Rust path syntax
+* clarify dotted glossary substring matching
+* document path based test filtering for Rust inline test modules
 
 ## [0.2.9](https://github.com/srobinson/fmm/compare/v0.2.8...v0.2.9) (2026-05-01)
 

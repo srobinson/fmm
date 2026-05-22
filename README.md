@@ -102,8 +102,8 @@ fmm includes a built-in MCP server with 8 tools. Configure via `fmm init --mcp` 
 | `fmm_file_outline`     | Table of contents with line ranges, size, signature, visibility, kind, and inline freshness for stale queried files |
 | `fmm_list_exports`     | Search exports by pattern — substring (case-insensitive) or regex (auto-detected: `^handle`, `Service$`, `^[A-Z]`) |
 | `fmm_search`           | Indexed structural queries across exports, files, imports, and dependencies   |
-| `fmm_list_files`       | List indexed files under a directory path; `pattern` uses filename globs      |
-| `fmm_glossary`         | Symbol-level blast radius — all definitions of X + files that import each one; dotted members include declaration `kind` |
+| `fmm_list_files`       | List indexed files under a directory path; `pattern` uses filename globs; `filter: "tests"` is path/name based, so Rust inline `#[cfg(test)] mod tests` blocks in source files are excluded |
+| `fmm_glossary`         | Symbol-level blast radius; dotted members add call-site precision but use case-insensitive substring matching, so `Type.foo` can also match `Type.foo_bar`; includes declaration `kind` |
 
 Bare Rust module names read the `mod foo;` declaration with `kind: module`. They do not follow into `foo.rs` or `foo/mod.rs`.
 

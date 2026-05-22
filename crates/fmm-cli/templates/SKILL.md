@@ -48,6 +48,7 @@ Reserve `Read` for two cases only: editing a specific symbol, or understanding l
 fmm_list_files(sort_by: "downstream")   →  highest blast-radius first
 fmm_list_files(group_by: "subdir")      →  directory topology in one call
 fmm_list_files(filter: "source")        →  source files only (no tests)
+fmm_list_files(filter: "tests")         →  test files by path/name; Rust inline #[cfg(test)] modules inside source files are excluded
 fmm_list_files(pattern: "*.ts")         →  filter by filename glob
 ```
 
@@ -179,6 +180,8 @@ fmm_search(term: "createServerFn") →
 ```
 
 **The dotted pattern is the contract.** `fmm_glossary(pattern: "loadInstance")` returns every file that imports `injector.ts` — a superset. `fmm_glossary(pattern: "Injector.loadInstance")` runs a tree-sitter second pass and returns only files with an actual call site. Use the dotted form for rename safety.
+
+**Dotted substring matching.** Dotted glossary patterns narrow to call sites but still match symbols as substrings of the full dotted name. `fmm_glossary(pattern: "Type.foo")` may return both `Type.foo` and `Type.foo_bar`; increase specificity or filter JSON output when you need a single symbol.
 
 **Dotted fields.** If the dotted member is an indexed field, `fmm_glossary` emits `kind: field` and explains that field access is not a method call site.
 
@@ -312,11 +315,11 @@ List all indexed files under a directory prefix. The first tool to reach for whe
 | `sort_by` | enum: name \| path \| loc \| exports \| downstream \| modified | no | Sort field. 'loc' (default): lines of code descending. 'name' or 'path': alphabetical file path. 'exports': export co... |
 | `order` | enum: asc \| desc | no | Sort order. Defaults: 'name' → asc, 'loc'/'exports'/'downstream' → desc. Explicit 'asc'/'desc' overrides the defa... |
 | `group_by` | enum: subdir | no | Collapse files into directory buckets. 'subdir': group by immediate subdirectory, showing file count and total LOC pe... |
-| `filter` | enum: all \| source \| tests | no | File type filter. 'all' (default): no filtering. 'source': exclude test files. 'tests': return only test files. Detec... |
+| `filter` | enum: all \| source \| tests | no | File type filter. 'all' (default): no filtering. 'source': exclude test files. 'tests': return only files classified ... |
 
 ### `fmm_glossary`
 
-Symbol-level impact analysis. Given a symbol name or pattern, returns all definitions and exactly which files import each one. Three-layer precision: bare name returns named-import filtered callers (Layer 2, default); dotted method names (e.g. 'Injector.loadInstance') add call-site precision; dotted field names report kind: field without implying method callers; precision: 'call-site' adds Layer 3 tree-sitter to remove dead imports and annotate re-exports. Use before renaming or changing a signature.
+Symbol-level impact analysis. Given a symbol name or pattern, returns all matching definitions and exactly which files import each one. Three-layer precision: bare names return named-import filtered callers (Layer 2, default); dotted method names (e.g. 'Injector.loadInstance') add call-site precision; dotted patterns use the same case-insensitive substring matching, so 'Type.foo' can match both 'Type.foo' and 'Type.foo_bar'. Dotted field names report kind: field without implying method callers; precision: 'call-site' adds Layer 3 tree-sitter verification to remove dead imports and annotate re-exports. Use before renaming or changing a signature.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

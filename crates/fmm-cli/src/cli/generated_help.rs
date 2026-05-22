@@ -71,7 +71,7 @@ pub const SEARCH_MAX_LOC_HELP: &str = "Maximum lines of code";
 pub const SEARCH_LIMIT_HELP: &str = "Maximum number of fuzzy export results (default: 50)";
 
 #[rustfmt::skip]
-pub const LS_ABOUT: &str = "List all files indexed by fmm under a directory prefix.\n\nShows file paths with LOC and export count.\n\nSort modes (--sort-by):\n- loc (default): heaviest files first\n- name/path: alphabetical file path\n- exports: most exported symbols first\n- downstream: most depended-upon files first (best for pre-refactoring blast radius)\n- modified: most recently changed first\n\nUse --group-by=subdir to collapse into directory buckets.\nUse --filter=source to exclude test files; --filter=tests for test files only.";
+pub const LS_ABOUT: &str = "List all files indexed by fmm under a directory prefix.\n\nShows file paths with LOC and export count.\n\nSort modes (--sort-by):\n- loc (default): heaviest files first\n- name/path: alphabetical file path\n- exports: most exported symbols first\n- downstream: most depended-upon files first (best for pre-refactoring blast radius)\n- modified: most recently changed first\n\nUse --group-by=subdir to collapse into directory buckets.\nUse --filter=source to exclude test files; --filter=tests for test files only.\nTest filtering is path based: Rust inline #[cfg(test)] mod tests blocks inside ordinary source files do not make the containing file a test file.";
 #[rustfmt::skip]
 pub const LS_DIRECTORY_HELP: &str = "Directory prefix to filter (e.g. src/, packages/core/)";
 #[rustfmt::skip]
@@ -87,7 +87,7 @@ pub const LS_ORDER_HELP: &str = "Sort order: asc or desc (default depends on sor
 #[rustfmt::skip]
 pub const LS_GROUP_BY_HELP: &str = "Collapse files into directory buckets (subdir: group by immediate subdirectory)";
 #[rustfmt::skip]
-pub const LS_FILTER_HELP: &str = "File type filter: all (default), source (exclude tests), tests (only tests)";
+pub const LS_FILTER_HELP: &str = "File type filter: all (default), source (exclude tests), tests (path/name classified tests only)";
 
 #[rustfmt::skip]
 pub const GLOSSARY_ABOUT: &str = "Symbol-level impact analysis.\n\nGiven a symbol name or pattern, shows every definition and exactly which files import it. Use before renaming a function or changing a signature to know precisely what breaks.";

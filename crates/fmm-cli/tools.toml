@@ -20,6 +20,7 @@ workflow = """
 fmm_list_files(sort_by: "downstream")   →  highest blast-radius first
 fmm_list_files(group_by: "subdir")      →  directory topology in one call
 fmm_list_files(filter: "source")        →  source files only (no tests)
+fmm_list_files(filter: "tests")         →  test files by path/name; Rust inline #[cfg(test)] modules inside source files are excluded
 fmm_list_files(pattern: "*.ts")         →  filter by filename glob
 ```
 
@@ -151,6 +152,8 @@ fmm_search(term: "createServerFn") →
 ```
 
 **The dotted pattern is the contract.** `fmm_glossary(pattern: "loadInstance")` returns every file that imports `injector.ts` — a superset. `fmm_glossary(pattern: "Injector.loadInstance")` runs a tree-sitter second pass and returns only files with an actual call site. Use the dotted form for rename safety.
+
+**Dotted substring matching.** Dotted glossary patterns narrow to call sites but still match symbols as substrings of the full dotted name. `fmm_glossary(pattern: "Type.foo")` may return both `Type.foo` and `Type.foo_bar`; increase specificity or filter JSON output when you need a single symbol.
 
 **Dotted fields.** If the dotted member is an indexed field, `fmm_glossary` emits `kind: field` and explains that field access is not a method call site.
 
@@ -412,7 +415,7 @@ cli_flag        = "--limit"
 [tools.fmm_list_files]
 cli_name        = "ls"
 mcp_description = "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC, export count, and downstream dependent count. Default sort: LOC descending (largest files first). sort_by options: loc (default), name/path, exports, downstream (blast-radius sort), modified (most recently changed first). Default limit: 200. Use offset to page through large directories."
-cli_about       = "List all files indexed by fmm under a directory prefix.\n\nShows file paths with LOC and export count.\n\nSort modes (--sort-by):\n- loc (default): heaviest files first\n- name/path: alphabetical file path\n- exports: most exported symbols first\n- downstream: most depended-upon files first (best for pre-refactoring blast radius)\n- modified: most recently changed first\n\nUse --group-by=subdir to collapse into directory buckets.\nUse --filter=source to exclude test files; --filter=tests for test files only."
+cli_about       = "List all files indexed by fmm under a directory prefix.\n\nShows file paths with LOC and export count.\n\nSort modes (--sort-by):\n- loc (default): heaviest files first\n- name/path: alphabetical file path\n- exports: most exported symbols first\n- downstream: most depended-upon files first (best for pre-refactoring blast radius)\n- modified: most recently changed first\n\nUse --group-by=subdir to collapse into directory buckets.\nUse --filter=source to exclude test files; --filter=tests for test files only.\nTest filtering is path based: Rust inline #[cfg(test)] mod tests blocks inside ordinary source files do not make the containing file a test file."
 
 [[tools.fmm_list_files.params]]
 name            = "directory"
@@ -470,20 +473,20 @@ cli_flag        = "--group-by"
 name            = "filter"
 type            = "string"
 enum            = ["all", "source", "tests"]
-mcp_description = "File type filter. 'all' (default): no filtering. 'source': exclude test files. 'tests': return only test files. Detection heuristic uses path segments (/test/, /e2e/, /__tests__/) and filename suffixes (.spec.ts, .test.ts, _test.go, etc.), configurable via test_patterns in .fmmrc.toml."
-cli_help        = "File type filter: all (default), source (exclude tests), tests (only tests)"
+mcp_description = "File type filter. 'all' (default): no filtering. 'source': exclude test files. 'tests': return only files classified as tests by path or filename. Detection uses path segments (/test/, /e2e/, /__tests__/) and filename suffixes (.spec.ts, .test.ts, _test.go, *_tests.rs, tests.rs, etc.), configurable via test_patterns in .fmmrc.toml. Rust inline #[cfg(test)] mod tests blocks inside ordinary source files do not make the containing file a test file."
+cli_help        = "File type filter: all (default), source (exclude tests), tests (path/name classified tests only)"
 cli_flag        = "--filter"
 
 [tools.fmm_glossary]
 cli_name        = "glossary"
-mcp_description = "Symbol-level impact analysis. Given a symbol name or pattern, returns all definitions and exactly which files import each one. Three-layer precision: bare name returns named-import filtered callers (Layer 2, default); dotted method names (e.g. 'Injector.loadInstance') add call-site precision; dotted field names report kind: field without implying method callers; precision: 'call-site' adds Layer 3 tree-sitter to remove dead imports and annotate re-exports. Use before renaming or changing a signature."
+mcp_description = "Symbol-level impact analysis. Given a symbol name or pattern, returns all matching definitions and exactly which files import each one. Three-layer precision: bare names return named-import filtered callers (Layer 2, default); dotted method names (e.g. 'Injector.loadInstance') add call-site precision; dotted patterns use the same case-insensitive substring matching, so 'Type.foo' can match both 'Type.foo' and 'Type.foo_bar'. Dotted field names report kind: field without implying method callers; precision: 'call-site' adds Layer 3 tree-sitter verification to remove dead imports and annotate re-exports. Use before renaming or changing a signature."
 cli_about       = "Symbol-level impact analysis.\n\nGiven a symbol name or pattern, shows every definition and exactly which files import it. Use before renaming a function or changing a signature to know precisely what breaks."
 
 [[tools.fmm_glossary.params]]
 name            = "pattern"
 type            = "string"
 required        = true
-mcp_description = "Required. Case-insensitive substring filter on export name. Bare name (e.g. 'loadInstance') returns named-import filtered used_by (Layer 2). Dotted method name (e.g. 'Injector.loadInstance') adds call-site precision, filtered to actual callers. Dotted field name emits kind: field and does not imply a method call site."
+mcp_description = "Required. Case-insensitive substring filter on export name. Bare name (e.g. 'loadInstance') returns named-import filtered used_by (Layer 2). Dotted method name (e.g. 'Injector.loadInstance') adds call-site precision, filtered to actual callers, and matches on the full dotted name as a substring, so 'Type.foo' can match 'Type.foo' and 'Type.foo_bar'. Dotted field name emits kind: field and does not imply a method call site."
 cli_help        = "Symbol name or substring pattern (case-insensitive)"
 cli_flag        = "pattern"
 

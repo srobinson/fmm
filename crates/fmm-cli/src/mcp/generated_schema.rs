@@ -245,7 +245,7 @@ serde_json::from_str(r##"{
           },
           "filter": {
             "type": "string",
-            "description": "File type filter. 'all' (default): no filtering. 'source': exclude test files. 'tests': return only test files. Detection heuristic uses path segments (/test/, /e2e/, /__tests__/) and filename suffixes (.spec.ts, .test.ts, _test.go, etc.), configurable via test_patterns in .fmmrc.toml.",
+            "description": "File type filter. 'all' (default): no filtering. 'source': exclude test files. 'tests': return only files classified as tests by path or filename. Detection uses path segments (/test/, /e2e/, /__tests__/) and filename suffixes (.spec.ts, .test.ts, _test.go, *_tests.rs, tests.rs, etc.), configurable via test_patterns in .fmmrc.toml. Rust inline #[cfg(test)] mod tests blocks inside ordinary source files do not make the containing file a test file.",
             "enum": [
               "all",
               "source",
@@ -257,13 +257,13 @@ serde_json::from_str(r##"{
     },
     {
       "name": "fmm_glossary",
-      "description": "Symbol-level impact analysis. Given a symbol name or pattern, returns all definitions and exactly which files import each one. Three-layer precision: bare name returns named-import filtered callers (Layer 2, default); dotted method names (e.g. 'Injector.loadInstance') add call-site precision; dotted field names report kind: field without implying method callers; precision: 'call-site' adds Layer 3 tree-sitter to remove dead imports and annotate re-exports. Use before renaming or changing a signature.",
+      "description": "Symbol-level impact analysis. Given a symbol name or pattern, returns all matching definitions and exactly which files import each one. Three-layer precision: bare names return named-import filtered callers (Layer 2, default); dotted method names (e.g. 'Injector.loadInstance') add call-site precision; dotted patterns use the same case-insensitive substring matching, so 'Type.foo' can match both 'Type.foo' and 'Type.foo_bar'. Dotted field names report kind: field without implying method callers; precision: 'call-site' adds Layer 3 tree-sitter verification to remove dead imports and annotate re-exports. Use before renaming or changing a signature.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "pattern": {
             "type": "string",
-            "description": "Required. Case-insensitive substring filter on export name. Bare name (e.g. 'loadInstance') returns named-import filtered used_by (Layer 2). Dotted method name (e.g. 'Injector.loadInstance') adds call-site precision, filtered to actual callers. Dotted field name emits kind: field and does not imply a method call site."
+            "description": "Required. Case-insensitive substring filter on export name. Bare name (e.g. 'loadInstance') returns named-import filtered used_by (Layer 2). Dotted method name (e.g. 'Injector.loadInstance') adds call-site precision, filtered to actual callers, and matches on the full dotted name as a substring, so 'Type.foo' can match 'Type.foo' and 'Type.foo_bar'. Dotted field name emits kind: field and does not imply a method call site."
           },
           "limit": {
             "type": "integer",
