@@ -1,5 +1,5 @@
 use crate::support::parse_with;
-use fmm_core::parser::builtin::python::PythonParser;
+use fmm_core::parser::{DeclarationKind, SymbolVisibility, builtin::python::PythonParser};
 
 // Python validation
 
@@ -197,6 +197,21 @@ fn python_real_repo_fastapi_decorated_exports() {
         "CacheKey range should start at @dataclass(frozen=True)"
     );
 
+    assert_python_outline_metadata(
+        &result,
+        "health_check",
+        "def health_check()",
+        SymbolVisibility::Public,
+        DeclarationKind::Fn,
+    );
+    assert_python_outline_metadata(
+        &result,
+        "_internal_validator",
+        "def _internal_validator(data)",
+        SymbolVisibility::Private,
+        DeclarationKind::Fn,
+    );
+
     // Imports
     assert!(result.metadata.imports.contains(&"dataclasses".to_string()));
     assert!(result.metadata.imports.contains(&"pydantic".to_string()));
@@ -233,4 +248,22 @@ fn python_real_repo_dunder_all_with_decorated_models() {
     // Unlisted items not exported
     assert!(!names.contains(&"_MigrationState".to_string()));
     assert!(!names.contains(&"_run_migrations".to_string()));
+}
+
+fn assert_python_outline_metadata(
+    result: &fmm_core::parser::ParseResult,
+    name: &str,
+    signature: &str,
+    visibility: SymbolVisibility,
+    kind: DeclarationKind,
+) {
+    let entry = result
+        .metadata
+        .exports
+        .iter()
+        .find(|entry| entry.name == name)
+        .unwrap_or_else(|| panic!("missing export {name}"));
+    assert_eq!(entry.signature.as_deref(), Some(signature));
+    assert_eq!(entry.visibility, Some(visibility));
+    assert_eq!(entry.declaration_kind, Some(kind));
 }

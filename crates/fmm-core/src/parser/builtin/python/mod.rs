@@ -1,4 +1,5 @@
 mod extract_classes;
+mod symbol_metadata;
 
 #[cfg(test)]
 mod tests;
@@ -140,11 +141,15 @@ impl PythonParser {
                         && seen.insert(text.to_string())
                     {
                         let decl = top_level_ancestor(capture.node);
-                        exports.push(ExportEntry::new(
+                        let public_names = HashSet::new();
+                        if let Some(entry) = symbol_metadata::python_entry(
                             text.to_string(),
-                            decl.start_position().row + 1,
-                            decl.end_position().row + 1,
-                        ));
+                            decl,
+                            source_bytes,
+                            &public_names,
+                        ) {
+                            exports.push(entry);
+                        }
                     }
                 }
             }
@@ -162,11 +167,11 @@ impl PythonParser {
     }
 
     /// Build a map of top-level definition names to their line ranges.
-    fn build_definition_map(
+    fn build_definition_map<'tree>(
         &self,
         source: &str,
-        root_node: tree_sitter::Node,
-    ) -> HashMap<String, (usize, usize)> {
+        root_node: tree_sitter::Node<'tree>,
+    ) -> HashMap<String, tree_sitter::Node<'tree>> {
         let source_bytes = source.as_bytes();
         let mut defs = HashMap::new();
 
@@ -177,10 +182,7 @@ impl PythonParser {
                 for capture in m.captures {
                     if let Ok(text) = capture.node.utf8_text(source_bytes) {
                         let decl = top_level_ancestor(capture.node);
-                        defs.insert(
-                            text.to_string(),
-                            (decl.start_position().row + 1, decl.end_position().row + 1),
-                        );
+                        defs.insert(text.to_string(), decl);
                     }
                 }
             }
@@ -320,12 +322,19 @@ impl PythonParser {
                 {
                     let name = text.trim_matches('\'').trim_matches('"').to_string();
                     if !name.is_empty() && seen.insert(name.clone()) {
-                        let (start, end) = def_map
-                            .get(&name)
-                            .copied()
-                            .or_else(|| import_map.get(&name).copied())
-                            .unwrap_or((0, 0));
-                        exports.push(ExportEntry::new(name, start, end));
+                        let entry = if let Some(decl) = def_map.get(&name).copied() {
+                            symbol_metadata::python_entry(name, decl, source_bytes, &seen)
+                        } else {
+                            let (start, end) = import_map.get(&name).copied().unwrap_or((0, 0));
+                            let mut entry = ExportEntry::new(name, start, end);
+                            entry.visibility = Some(crate::parser::SymbolVisibility::Public);
+                            entry.declaration_kind = Some(crate::parser::DeclarationKind::Const);
+                            entry.signature = Some(entry.name.clone());
+                            Some(entry)
+                        };
+                        if let Some(entry) = entry {
+                            exports.push(entry);
+                        }
                     }
                 }
             }

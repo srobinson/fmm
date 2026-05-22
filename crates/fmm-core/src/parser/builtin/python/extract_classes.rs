@@ -1,4 +1,5 @@
 use super::PythonParser;
+use super::symbol_metadata::{assignment_name, python_field_entry, python_method_entry};
 use crate::parser::ExportEntry;
 use std::collections::HashSet;
 use streaming_iterator::StreamingIterator;
@@ -90,6 +91,13 @@ impl PythonParser {
                                 }
                             }
                         }
+                        "expression_statement" => {
+                            if let Some(entry) =
+                                Self::extract_python_field_entry(&class_name, child, source_bytes)
+                            {
+                                entries.push(entry);
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -114,10 +122,24 @@ impl PythonParser {
             return None;
         }
 
-        Some(ExportEntry::method(
+        Some(python_method_entry(
             method_name,
-            method_node.start_position().row + 1,
-            method_node.end_position().row + 1,
+            method_node,
+            source_bytes,
+            class_name.to_string(),
+        ))
+    }
+
+    fn extract_python_field_entry(
+        class_name: &str,
+        field_node: Node,
+        source_bytes: &[u8],
+    ) -> Option<ExportEntry> {
+        let name = assignment_name(field_node, source_bytes)?;
+        Some(python_field_entry(
+            name,
+            field_node,
+            source_bytes,
             class_name.to_string(),
         ))
     }
