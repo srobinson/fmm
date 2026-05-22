@@ -230,6 +230,10 @@ fn resolve_symbol_location(
     name: &str,
     guidance: ReadSymbolGuidance,
 ) -> Result<(String, Option<ExportLines>), String> {
+    if name.contains("::") {
+        return Err(rust_path_notation(name));
+    }
+
     if let Some(colon_pos) = name.find(':') {
         resolve_colon_notation(manifest, root, name, colon_pos, guidance)
     } else if name.contains('.') {
@@ -237,6 +241,13 @@ fn resolve_symbol_location(
     } else {
         resolve_bare_symbol(manifest, root, name, guidance)
     }
+}
+
+fn rust_path_notation(name: &str) -> String {
+    format!(
+        "Rust path syntax '{}' is not supported by read_symbol. For Rust paths, use the dotted form: 'Type.method' (e.g. 'ServerState.new').",
+        name
+    )
 }
 
 fn resolve_colon_notation(

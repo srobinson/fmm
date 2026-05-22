@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Bug Fixes
+
+* clarify `read_symbol` guidance for Rust path syntax
+
 ## [0.2.9](https://github.com/srobinson/fmm/compare/v0.2.8...v0.2.9) (2026-05-01)
 
 

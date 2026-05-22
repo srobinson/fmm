@@ -33,6 +33,27 @@ fn read_symbol_not_found() {
 }
 
 #[test]
+fn read_symbol_rust_path_suggests_dotted_method_not_file_symbol() {
+    let (_tmp, server) = setup_mcp_server();
+    let text = call_tool_expect_error(
+        &server,
+        "fmm_read_symbol",
+        json!({"name": "ServerState::new"}),
+    );
+
+    assert!(
+        text.contains("Rust path syntax 'ServerState::new' is not supported by read_symbol"),
+        "got: {text}"
+    );
+    assert!(
+        text.contains("For Rust paths, use the dotted form: 'Type.method'"),
+        "got: {text}"
+    );
+    assert!(text.contains("e.g. 'ServerState.new'"), "got: {text}");
+    assert!(!text.contains("For file:symbol notation"), "got: {text}");
+}
+
+#[test]
 fn read_symbol_duplicate_export_requires_file_qualified_name() {
     let (_tmp, server) = setup_collision_server();
     let text = call_tool_expect_error(

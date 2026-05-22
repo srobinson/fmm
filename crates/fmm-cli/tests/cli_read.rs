@@ -182,6 +182,51 @@ fn read_missing_method_suggests_cli_outline() {
 }
 
 #[test]
+fn read_rust_path_suggests_dotted_method_not_file_symbol() {
+    let tmp = setup_read_project();
+    let output = run_fmm(tmp.path(), &["read", "SecretService::run"]);
+
+    assert!(
+        !output.status.success(),
+        "fmm read should fail for Rust path syntax"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        stderr.contains("Rust path syntax 'SecretService::run' is not supported by read_symbol"),
+        "got: {stderr}"
+    );
+    assert!(
+        stderr.contains("For Rust paths, use the dotted form: 'Type.method'"),
+        "got: {stderr}"
+    );
+    assert!(stderr.contains("e.g. 'ServerState.new'"), "got: {stderr}");
+    assert!(
+        !stderr.contains("For file:symbol notation"),
+        "got: {stderr}"
+    );
+}
+
+#[test]
+fn read_ambiguous_colon_name_keeps_file_symbol_guidance() {
+    let tmp = setup_read_project();
+    let output = run_fmm(tmp.path(), &["read", "SecretService:run"]);
+
+    assert!(
+        !output.status.success(),
+        "fmm read should fail for ambiguous colon syntax"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        stderr.contains("Ambiguous name 'SecretService:run'"),
+        "got: {stderr}"
+    );
+    assert!(stderr.contains("For file:symbol notation"), "got: {stderr}");
+    assert!(!stderr.contains("Rust path syntax"), "got: {stderr}");
+}
+
+#[test]
 fn read_public_symbol_still_works_with_line_numbers() {
     let tmp = setup_read_project();
     let output = run_fmm(
