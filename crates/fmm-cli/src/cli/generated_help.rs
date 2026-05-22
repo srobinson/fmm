@@ -38,7 +38,7 @@ pub const CYCLES_FILTER_HELP: &str = "Filter cycle graph by file type: all (defa
 pub const CYCLES_EDGE_MODE_HELP: &str = "Edge mode: runtime (default, excludes type-only edges) or all";
 
 #[rustfmt::skip]
-pub const READ_ABOUT: &str = "Read the source code of an exported symbol, a specific member, or a non-exported function.\n\nUse plain name for a unique top-level symbol, ClassName.member notation for a specific public/private method or indexed field, or path/to/file:helperFn notation to disambiguate duplicate symbols. Truncates at 10KB by default; use --no-truncate for full source.";
+pub const READ_ABOUT: &str = "Read the source code of an exported symbol, a specific member, or a non-exported function.\n\nUse plain name for a unique top-level symbol, ClassName.member notation for a specific public/private method or indexed field, or path/to/file:helperFn notation to disambiguate duplicate symbols. Bare Rust module names return the `mod foo;` declaration with `kind: module`; they do not follow into `foo.rs` or `foo/mod.rs`. Truncates at 10KB by default; use --no-truncate for full source.";
 #[rustfmt::skip]
 pub const READ_NAME_HELP: &str = "Symbol name, ClassName.method for a specific method, or path/to/file:fn to disambiguate duplicates";
 #[rustfmt::skip]

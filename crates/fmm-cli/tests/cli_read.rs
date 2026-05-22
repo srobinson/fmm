@@ -37,6 +37,22 @@ fn setup_read_project() -> TempDir {
     tmp
 }
 
+fn setup_module_decl_project() -> TempDir {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    write_file(
+        root,
+        "src/lib.rs",
+        "pub mod public_api;\nmod internal_api;\n\npub fn build() -> &'static str {\n    \"ok\"\n}\n",
+    );
+    write_file(root, "src/public_api.rs", "pub fn backing_public() {}\n");
+    write_file(root, "src/internal_api.rs", "pub fn backing_private() {}\n");
+
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
+    tmp
+}
+
 fn setup_duplicate_symbol_project() -> TempDir {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();
@@ -124,6 +140,67 @@ fn parse_json(output: &Output) -> Value {
         String::from_utf8_lossy(&output.stderr)
     );
     serde_json::from_slice(&output.stdout).unwrap()
+}
+
+#[test]
+fn read_rust_module_declarations_report_module_kind_without_following_backing_file() {
+    let tmp = setup_module_decl_project();
+
+    let public_output = run_fmm(tmp.path(), &["read", "public_api", "--line-numbers"]);
+    assert!(
+        public_output.status.success(),
+        "fmm read public_api failed: {}",
+        String::from_utf8_lossy(&public_output.stderr)
+    );
+    let public_stdout = String::from_utf8_lossy(&public_output.stdout);
+    assert!(
+        public_stdout.contains("kind: module"),
+        "public module kind missing, got: {public_stdout}"
+    );
+    assert!(
+        public_stdout.contains("pub mod public_api;"),
+        "public module declaration missing, got: {public_stdout}"
+    );
+    assert!(
+        !public_stdout.contains("backing_public"),
+        "read should not follow the backing public module file, got: {public_stdout}"
+    );
+
+    let private_output = run_fmm(tmp.path(), &["read", "internal_api", "--line-numbers"]);
+    assert!(
+        private_output.status.success(),
+        "fmm read internal_api failed: {}",
+        String::from_utf8_lossy(&private_output.stderr)
+    );
+    let private_stdout = String::from_utf8_lossy(&private_output.stdout);
+    assert!(
+        private_stdout.contains("kind: module"),
+        "private module kind missing, got: {private_stdout}"
+    );
+    assert!(
+        private_stdout.contains("mod internal_api;"),
+        "private module declaration missing, got: {private_stdout}"
+    );
+    assert!(
+        !private_stdout.contains("backing_private"),
+        "read should not follow the backing private module file, got: {private_stdout}"
+    );
+
+    let function_output = run_fmm(tmp.path(), &["read", "build", "--line-numbers"]);
+    assert!(
+        function_output.status.success(),
+        "fmm read build failed: {}",
+        String::from_utf8_lossy(&function_output.stderr)
+    );
+    let function_stdout = String::from_utf8_lossy(&function_output.stdout);
+    assert!(
+        function_stdout.contains("kind: fn"),
+        "function kind missing, got: {function_stdout}"
+    );
+    assert!(
+        !function_stdout.contains("kind: module"),
+        "function should not be misclassified as module, got: {function_stdout}"
+    );
 }
 
 #[test]

@@ -130,6 +130,103 @@ fn read_symbol_dotted_notation_reports_indexed_kind_and_omits_private_absence() 
 }
 
 #[test]
+fn read_symbol_rust_module_declarations_report_module_kind() {
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("lib.rs");
+    std::fs::write(
+        &file_path,
+        "pub mod public_api;\nmod internal_api;\n\npub fn build() -> &'static str {\n    \"ok\"\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("public_api.rs"),
+        "pub fn backing_public() {}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("internal_api.rs"),
+        "pub fn backing_private() {}\n",
+    )
+    .unwrap();
+
+    let module_entry =
+        |name: &str, line: usize, visibility: SymbolVisibility, signature: &str| ExportEntry {
+            declaration_kind: Some(DeclarationKind::Module),
+            visibility: Some(visibility),
+            signature: Some(signature.to_string()),
+            ..ExportEntry::new(name.to_string(), line, line)
+        };
+
+    let mut manifest = Manifest::new();
+    manifest.add_file(
+        "lib.rs",
+        Metadata {
+            exports: vec![
+                module_entry(
+                    "public_api",
+                    1,
+                    SymbolVisibility::Public,
+                    "pub mod public_api",
+                ),
+                module_entry(
+                    "internal_api",
+                    2,
+                    SymbolVisibility::Private,
+                    "mod internal_api",
+                ),
+                ExportEntry {
+                    declaration_kind: Some(DeclarationKind::Fn),
+                    visibility: Some(SymbolVisibility::Public),
+                    ..ExportEntry::new("build".to_string(), 4, 6)
+                },
+            ],
+            loc: 6,
+            ..Default::default()
+        },
+    );
+
+    let server = test_server_at(manifest, dir.path().to_path_buf());
+
+    let public_text = tool_text(&server, "fmm_read_symbol", json!({"name": "public_api"}));
+    assert!(
+        public_text.contains("kind: module"),
+        "public module kind missing, got: {public_text}"
+    );
+    assert!(
+        public_text.contains("pub mod public_api;"),
+        "public module declaration missing, got: {public_text}"
+    );
+    assert!(
+        !public_text.contains("backing_public"),
+        "read_symbol should not follow the backing public module file, got: {public_text}"
+    );
+
+    let private_text = tool_text(&server, "fmm_read_symbol", json!({"name": "internal_api"}));
+    assert!(
+        private_text.contains("kind: module"),
+        "private module kind missing, got: {private_text}"
+    );
+    assert!(
+        private_text.contains("mod internal_api;"),
+        "private module declaration missing, got: {private_text}"
+    );
+    assert!(
+        !private_text.contains("backing_private"),
+        "read_symbol should not follow the backing private module file, got: {private_text}"
+    );
+
+    let function_text = tool_text(&server, "fmm_read_symbol", json!({"name": "build"}));
+    assert!(
+        function_text.contains("kind: fn"),
+        "function kind should stay distinct from module, got: {function_text}"
+    );
+    assert!(
+        !function_text.contains("kind: module"),
+        "function should not be misclassified as module, got: {function_text}"
+    );
+}
+
+#[test]
 fn read_symbol_dotted_not_found_gives_helpful_error() {
     let server = test_server(Manifest::new());
     let text = tool_text(

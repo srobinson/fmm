@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Tests
+
+* lock `read_symbol` Rust module declaration kind coverage
+
 ### Bug Fixes
 
 * clarify `read_symbol` guidance for Rust path syntax

@@ -65,6 +65,7 @@ fmm_file_outline(..., include_private: true)  →  private members and non-expor
 ```
 fmm_read_symbol("ClassName")                     →  full class source (capped at 10KB)
 fmm_read_symbol("Class.member")                  →  single method or indexed field; includes kind when known
+fmm_read_symbol("module_name")                   →  Rust `mod module_name;` declaration with kind: module
 fmm_read_symbol("src/foo.ts:helperFn")           →  non-exported top-level function
 fmm_read_symbol("Symbol", line_numbers: true)    →  with absolute line numbers
 fmm_read_symbol("LargeClass", truncate: false)   →  bypass 10KB cap
@@ -266,7 +267,7 @@ Report strongly connected dependency cycles over the internal graph. Defaults to
 
 ### `fmm_read_symbol`
 
-Read the source code for a specific exported symbol or uniquely named non-exported top-level function. Returns the exact lines where the function/class/type/member is defined, without reading the entire file. Use `ClassName.member` notation to read a specific public/private method or indexed field: `fmm_read_symbol(name: "Injector.loadInstance")`. Use `path/to/file:helperFunction` notation to disambiguate duplicate exports or duplicate non-exported top-level functions. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.
+Read the source code for a specific exported symbol or uniquely named non-exported top-level function. Returns the exact lines where the function/class/type/member is defined, without reading the entire file. Use `ClassName.member` notation to read a specific public/private method or indexed field: `fmm_read_symbol(name: "Injector.loadInstance")`. Bare Rust module names return the `mod foo;` declaration with `kind: module`; they do not follow into `foo.rs` or `foo/mod.rs`. Use `path/to/file:helperFunction` notation to disambiguate duplicate exports or duplicate non-exported top-level functions. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

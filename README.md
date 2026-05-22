@@ -105,6 +105,8 @@ fmm includes a built-in MCP server with 8 tools. Configure via `fmm init --mcp` 
 | `fmm_list_files`       | List indexed files under a directory path; `pattern` uses filename globs      |
 | `fmm_glossary`         | Symbol-level blast radius — all definitions of X + files that import each one; dotted members include declaration `kind` |
 
+Bare Rust module names read the `mod foo;` declaration with `kind: module`. They do not follow into `foo.rs` or `foo/mod.rs`.
+
 ## fmm_file_outline
 
 Default outline output is structured for orientation before source reads. Each populated symbol can show `signature`, `visibility`, and `kind`; private members and non-exported declarations use explicit rows instead of suffix comments. If the queried file is stale relative to the index, the response includes one `freshness` row for that file.
