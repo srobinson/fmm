@@ -100,6 +100,42 @@ fn file_outline_no_methods_unchanged() {
 }
 
 #[test]
+fn file_outline_emits_freshness_after_file_before_loc() {
+    let entry = make_bare_entry();
+    let out = format_file_outline(
+        "src/mod.ts",
+        &entry,
+        &[],
+        None,
+        None,
+        Some("src/mod.ts is stale; run fmm generate"),
+    );
+    let lines: Vec<&str> = out.lines().collect();
+
+    assert_eq!(lines[1], "file: src/mod.ts");
+    assert_eq!(lines[2], "freshness: src/mod.ts is stale; run fmm generate");
+    assert_eq!(lines[3], "loc: 50");
+    assert_eq!(
+        out.matches("\nfreshness:").count(),
+        1,
+        "freshness must be emitted exactly once; got:\n{}",
+        out
+    );
+}
+
+#[test]
+fn file_outline_omits_freshness_when_absent() {
+    let entry = make_bare_entry();
+    let out = format_file_outline("src/mod.ts", &entry, &[], None, None, None);
+
+    assert!(
+        !out.contains("freshness:"),
+        "freshness must be omitted when absent; got:\n{}",
+        out
+    );
+}
+
+#[test]
 fn file_outline_emits_populated_density_metadata() {
     let mut entry = make_entry_with_methods(vec![("run", 1, 10)], vec![("run.helper", 3, 5)]);
     entry.export_metadata.insert(
