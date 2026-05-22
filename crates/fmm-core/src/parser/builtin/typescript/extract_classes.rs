@@ -4,7 +4,7 @@ use streaming_iterator::StreamingIterator;
 use tree_sitter::QueryCursor;
 
 use super::TypeScriptParser;
-use crate::parser::ExportEntry;
+use crate::parser::{DeclarationKind, ExportEntry, SymbolVisibility};
 
 impl TypeScriptParser {
     pub(super) fn extract_class_methods(
@@ -57,12 +57,24 @@ impl TypeScriptParser {
             };
 
             for i in 0..body.child_count() {
-                if let Some(child) = body.child(i as u32)
-                    && child.kind() == "method_definition"
-                    && let Some(entry) =
-                        Self::extract_method_entry(&class_name, child, source_bytes)
-                {
-                    entries.push(entry);
+                if let Some(child) = body.child(i as u32) {
+                    match child.kind() {
+                        "method_definition" => {
+                            if let Some(entry) =
+                                Self::extract_method_entry(&class_name, child, source_bytes)
+                            {
+                                entries.push(entry);
+                            }
+                        }
+                        "public_field_definition" => {
+                            if let Some(entry) =
+                                Self::extract_field_entry(&class_name, child, source_bytes)
+                            {
+                                entries.push(entry);
+                            }
+                        }
+                        _ => {}
+                    }
                 }
             }
         }
@@ -71,37 +83,42 @@ impl TypeScriptParser {
     }
 
     /// Extract a single method_definition node as an ExportEntry.
-    /// Returns None for private or protected methods.
     fn extract_method_entry(
         class_name: &str,
         method_node: tree_sitter::Node,
         source_bytes: &[u8],
     ) -> Option<ExportEntry> {
-        // Check accessibility_modifier — skip private and protected
-        for i in 0..method_node.child_count() {
-            if let Some(child) = method_node.child(i as u32)
-                && child.kind() == "accessibility_modifier"
-            {
-                let text = child.utf8_text(source_bytes).unwrap_or("");
-                if text == "private" || text == "protected" {
-                    return None;
-                }
-            }
-        }
-
-        // Get method name from the "name" field
         let name_node = method_node.child_by_field_name("name")?;
         let method_name = name_node.utf8_text(source_bytes).ok()?.to_string();
 
-        // Skip empty names, computed property names ([Symbol.iterator]), and private fields (#foo)
-        if method_name.is_empty() || method_name.starts_with('[') || method_name.starts_with('#') {
+        if method_name.is_empty() || method_name.starts_with('[') {
             return None;
         }
 
-        Some(ExportEntry::method(
+        Some(super::symbol_metadata::ts_method_entry(
             method_name,
-            method_node.start_position().row + 1,
-            method_node.end_position().row + 1,
+            method_node,
+            source_bytes,
+            class_name.to_string(),
+        ))
+    }
+
+    fn extract_field_entry(
+        class_name: &str,
+        field_node: tree_sitter::Node,
+        source_bytes: &[u8],
+    ) -> Option<ExportEntry> {
+        let name_node = field_node.child_by_field_name("name")?;
+        let field_name = name_node.utf8_text(source_bytes).ok()?.to_string();
+
+        if field_name.is_empty() || field_name.starts_with('[') {
+            return None;
+        }
+
+        Some(super::symbol_metadata::ts_field_entry(
+            field_name,
+            field_node,
+            source_bytes,
             class_name.to_string(),
         ))
     }
@@ -181,6 +198,15 @@ impl TypeScriptParser {
                             stmt.end_position().row + 1,
                             fn_name.clone(),
                         ));
+                        if let Some(last) = entries.last_mut() {
+                            super::symbol_metadata::annotate_entry(
+                                last,
+                                stmt,
+                                source_bytes,
+                                SymbolVisibility::NonExported,
+                                DeclarationKind::Fn,
+                            );
+                        }
                     }
                     "lexical_declaration" | "variable_declaration" if !first_nested_fn_seen => {
                         // Prologue: extract individual declarators that are non-trivial
@@ -203,6 +229,15 @@ impl TypeScriptParser {
                                     decl.end_position().row + 1,
                                     fn_name.clone(),
                                 ));
+                                if let Some(last) = entries.last_mut() {
+                                    super::symbol_metadata::annotate_entry(
+                                        last,
+                                        decl,
+                                        source_bytes,
+                                        SymbolVisibility::NonExported,
+                                        DeclarationKind::Const,
+                                    );
+                                }
                             }
                         }
                     }
