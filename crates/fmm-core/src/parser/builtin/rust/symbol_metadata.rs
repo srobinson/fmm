@@ -93,6 +93,10 @@ fn visibility_text(node: Node, source_bytes: &[u8]) -> Option<String> {
 }
 
 fn signature_end_byte(node: Node) -> Option<usize> {
+    if node.kind() == "macro_definition" {
+        return macro_signature_end_byte(node);
+    }
+
     node.child_by_field_name("body")
         .map(|body| body.start_byte())
         .or_else(|| {
@@ -112,6 +116,14 @@ fn is_rust_body_node(kind: &str) -> bool {
             | "enum_variant_list"
             | "trait_item_list"
     )
+}
+
+fn macro_signature_end_byte(node: Node) -> Option<usize> {
+    let name = node.child_by_field_name("name")?;
+    let mut cursor = node.walk();
+    node.children(&mut cursor)
+        .find(|child| child.start_byte() > name.end_byte())
+        .map(|child| child.start_byte())
 }
 
 fn enclosing_modules_are_public(node: Node, source_bytes: &[u8]) -> bool {

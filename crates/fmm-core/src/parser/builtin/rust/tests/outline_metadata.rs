@@ -122,11 +122,15 @@ macro_rules! exported_macro {
         SymbolVisibility::Private,
         DeclarationKind::Variant,
     );
-    assert_entry(
+    let macro_entry = assert_entry(
         exports,
         "exported_macro!",
         SymbolVisibility::Public,
         DeclarationKind::Macro,
+    );
+    assert_eq!(
+        macro_entry.signature.as_deref(),
+        Some("macro_rules! exported_macro")
     );
 }
 
@@ -248,12 +252,12 @@ impl Parser {
     assert_eq!(matches, 2, "same-type impl blocks should both index");
 }
 
-fn assert_entry(
-    exports: &[ExportEntry],
+fn assert_entry<'a>(
+    exports: &'a [ExportEntry],
     name: &str,
     visibility: SymbolVisibility,
     kind: DeclarationKind,
-) {
+) -> &'a ExportEntry {
     let entry = exports
         .iter()
         .find(|entry| entry.name == name && entry.parent_class.is_none())
@@ -261,6 +265,7 @@ fn assert_entry(
     assert_eq!(entry.visibility, Some(visibility));
     assert_eq!(entry.declaration_kind, Some(kind));
     assert!(entry.signature.is_some(), "{name} should carry signature");
+    entry
 }
 
 fn assert_child_entry(
