@@ -23,6 +23,7 @@ pub(super) fn default_test_filename_suffixes() -> Vec<String> {
         ".test.js".to_string(),
         "_test.go".to_string(),
         "_test.rs".to_string(),
+        "_tests.rs".to_string(),
         ".spec.tsx".to_string(),
         ".test.tsx".to_string(),
     ]

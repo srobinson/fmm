@@ -303,7 +303,7 @@ pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
         extensions: &["rs"],
         reexport_filenames: &["mod.rs"],
         test_patterns: crate::parser::LanguageTestPatterns {
-            filename_suffixes: &["_test.rs"],
+            filename_suffixes: &["_test.rs", "_tests.rs"],
             filename_prefixes: &[],
             test_symbol_prefixes: &[],
         },

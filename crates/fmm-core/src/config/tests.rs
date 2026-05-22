@@ -1,4 +1,4 @@
-use super::defaults::default_languages;
+use super::defaults::{default_languages, default_test_filename_suffixes};
 use super::*;
 use crate::parser::ParserRegistry;
 use std::collections::BTreeSet;
@@ -146,12 +146,25 @@ fn is_test_file_detects_spec_suffix() {
 }
 
 #[test]
+fn is_test_file_detects_rust_plural_tests_suffix() {
+    let config = Config::default();
+    assert!(config.is_test_file("crates/fmm-core/src/resolver/workspace_tests.rs"));
+}
+
+#[test]
 fn is_test_file_detects_path_segment() {
     let config = Config::default();
     assert!(config.is_test_file("src/test/helper.ts"));
     assert!(config.is_test_file("packages/core/e2e/app.ts"));
     assert!(config.is_test_file("src/__tests__/utils.ts"));
     assert!(!config.is_test_file("src/contest/result.ts"));
+}
+
+#[test]
+fn default_test_filename_suffixes_include_rust_singular_and_plural() {
+    let suffixes = default_test_filename_suffixes();
+    assert!(suffixes.contains(&"_test.rs".to_string()));
+    assert!(suffixes.contains(&"_tests.rs".to_string()));
 }
 
 #[test]
