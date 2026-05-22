@@ -60,9 +60,9 @@ fn file_outline_shows_methods_under_class() {
     // Class line is a YAML object with range and size rows.
     assert!(out.contains("  NestFactoryStatic:\n    lines: [43, 381]\n    size: 339"));
 
-    // Methods are child objects under members.
-    assert!(out.contains("    members:\n      create:\n        lines: [55, 89]"));
-    assert!(out.contains("      createApplicationContext:\n        lines: [132, 158]"));
+    // Methods are child list items under members.
+    assert!(out.contains("    members:\n      - name: create\n        lines: [55, 89]"));
+    assert!(out.contains("      - name: createApplicationContext\n        lines: [132, 158]"));
 
     // Class without methods has no members block.
     assert!(out.contains("  NestFactory:\n    lines: [396, 396]\n    size: 1"));
@@ -80,9 +80,9 @@ fn file_outline_members_sorted_by_source_position() {
         ],
     );
     let out = format_file_outline("src/my.ts", &entry, &[], None, None, None);
-    let large_pos = out.find("large:").unwrap();
-    let medium_pos = out.find("medium:").unwrap();
-    let small_pos = out.find("small:").unwrap();
+    let large_pos = out.find("- name: large").unwrap();
+    let medium_pos = out.find("- name: medium").unwrap();
+    let small_pos = out.find("- name: small").unwrap();
     assert!(
         small_pos < large_pos && large_pos < medium_pos,
         "members should be sorted by source position: small > large > medium"
@@ -239,30 +239,20 @@ fn file_outline_private_field_annotated_correctly_when_public_methods_present() 
     private_map.insert(
         "MyClass".to_string(),
         vec![
-            PrivateMember {
-                name: "pool".to_string(),
-                start: 3,
-                end: 3,
-                is_method: false,
-            },
-            PrivateMember {
-                name: "_helper".to_string(),
-                start: 22,
-                end: 30,
-                is_method: true,
-            },
+            PrivateMember::new("pool", 3, 3, false),
+            PrivateMember::new("_helper", 22, 30, true),
         ],
     );
 
     let out = format_file_outline("src/my.ts", &entry, &[], Some(&private_map), None, None);
 
     assert!(
-        out.contains("      pool:\n        lines: [3, 3]\n        size: 1\n        visibility: private\n        kind: field"),
+        out.contains("      - name: pool\n        lines: [3, 3]\n        size: 1\n        visibility: private\n        kind: field"),
         "private field should render with explicit metadata; got:\n{}",
         out
     );
     assert!(
-        out.contains("      _helper:\n        lines: [22, 30]\n        size: 9\n        visibility: private\n        kind: method"),
+        out.contains("      - name: _helper\n        lines: [22, 30]\n        size: 9\n        visibility: private\n        kind: method"),
         "private method should render with explicit metadata; got:\n{}",
         out
     );
@@ -287,19 +277,67 @@ fn file_outline_include_private_does_not_duplicate_indexed_private_members() {
     let mut private_map = HashMap::new();
     private_map.insert(
         "MyClass".to_string(),
-        vec![PrivateMember {
-            name: "pool".to_string(),
-            start: 3,
-            end: 3,
-            is_method: false,
-        }],
+        vec![PrivateMember::new("pool", 3, 3, false)],
     );
 
     let out = format_file_outline("src/my.ts", &entry, &[], Some(&private_map), None, None);
-    assert_eq!(out.matches("      pool:").count(), 1, "got:\n{out}");
+    assert_eq!(out.matches("      - name: pool").count(), 1, "got:\n{out}");
     assert!(out.contains("        signature: 'private pool: Pool'"));
     assert!(out.contains("        visibility: private"));
     assert!(out.contains("        kind: field"));
+}
+
+#[test]
+fn file_outline_field_and_method_name_collision_uses_member_list() {
+    use crate::manifest::private_members::extract_private_members;
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let src = "use std::sync::atomic::{AtomicUsize, Ordering};\n\
+\n\
+pub(crate) struct EventLog {\n\
+    waiter_count: AtomicUsize,\n\
+}\n\
+\n\
+impl EventLog {\n\
+    pub(crate) async fn waiter_count(&self) -> usize {\n\
+        self.waiter_count.load(Ordering::SeqCst)\n\
+    }\n\
+}\n";
+    std::fs::write(tmp.path().join("event_log.rs"), src).unwrap();
+
+    let private_map = extract_private_members(tmp.path(), "event_log.rs", &["EventLog"]);
+    let mut entry = make_entry_with_methods(
+        vec![("EventLog", 3, 5)],
+        vec![("EventLog.waiter_count", 4, 4)],
+    );
+    entry.method_metadata.insert(
+        "EventLog.waiter_count".to_string(),
+        SymbolMetadata {
+            signature: Some("waiter_count: AtomicUsize".to_string()),
+            visibility: Some("private".to_string()),
+            declaration_kind: Some("field".to_string()),
+        },
+    );
+
+    let out = format_file_outline("event_log.rs", &entry, &[], Some(&private_map), None, None);
+
+    assert_eq!(
+        out.matches("      - name: waiter_count").count(),
+        2,
+        "field and method must both render; got:\n{out}"
+    );
+    assert!(
+        out.contains("      - name: waiter_count\n        lines: [4, 4]\n        size: 1\n        signature: 'waiter_count: AtomicUsize'\n        visibility: private\n        kind: field"),
+        "field metadata missing; got:\n{out}"
+    );
+    assert!(
+        out.contains("      - name: waiter_count\n        lines: [8, 10]\n        size: 3\n        signature: 'pub(crate) async fn waiter_count(&self) -> usize'\n        visibility: crate\n        kind: method"),
+        "method metadata missing; got:\n{out}"
+    );
+    assert!(
+        !out.contains("      waiter_count:\n"),
+        "members must not use name keyed YAML maps; got:\n{out}"
+    );
 }
 
 // ALP-829: format_read_symbol line_numbers

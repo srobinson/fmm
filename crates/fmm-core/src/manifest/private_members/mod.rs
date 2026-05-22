@@ -19,6 +19,8 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::path::Path;
 
+use super::SymbolMetadata;
+
 /// A non-exported top-level declaration (function, arrow function, or class).
 ///
 /// Extracted on demand when `include_private: true` is requested.
@@ -44,6 +46,25 @@ pub struct PrivateMember {
     pub end: usize,
     /// true = method (has a body that can be read); false = field.
     pub is_method: bool,
+    /// Optional parser metadata for renderers that can recover it on demand.
+    pub metadata: SymbolMetadata,
+}
+
+impl PrivateMember {
+    pub fn new(name: impl Into<String>, start: usize, end: usize, is_method: bool) -> Self {
+        Self {
+            name: name.into(),
+            start,
+            end,
+            is_method,
+            metadata: SymbolMetadata::default(),
+        }
+    }
+
+    pub fn with_metadata(mut self, metadata: SymbolMetadata) -> Self {
+        self.metadata = metadata;
+        self
+    }
 }
 
 /// Language-specific on-demand tree-sitter extraction of private/non-exported symbols.

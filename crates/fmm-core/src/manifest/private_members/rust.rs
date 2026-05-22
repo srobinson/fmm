@@ -1,6 +1,8 @@
 //! Rust private member and top-level function extraction.
 
 use super::{PrivateMember, PrivateMemberExtractor, TopLevelFunction};
+use crate::manifest::SymbolMetadata;
+use crate::parser::builtin::rust::rust_method_entry;
 use anyhow::Result;
 use std::collections::HashMap;
 
@@ -142,16 +144,29 @@ fn collect_private_methods(body: tree_sitter::Node, source: &[u8]) -> Vec<Privat
             && !has_public_visibility(child, source)
             && let Some(name) = fn_name(child, source)
         {
-            members.push(PrivateMember {
-                name,
-                start: child.start_position().row + 1,
-                end: child.end_position().row + 1,
-                is_method: true,
-            });
+            let metadata = rust_private_method_metadata(name.clone(), child, source);
+            members.push(
+                PrivateMember::new(
+                    name,
+                    child.start_position().row + 1,
+                    child.end_position().row + 1,
+                    true,
+                )
+                .with_metadata(metadata),
+            );
         }
     }
 
     members
+}
+
+fn rust_private_method_metadata(
+    name: String,
+    node: tree_sitter::Node,
+    source: &[u8],
+) -> SymbolMetadata {
+    let entry = rust_method_entry(name, node, source, String::new());
+    SymbolMetadata::from_parts(entry.signature, entry.visibility, entry.declaration_kind)
 }
 
 /// Extract the type name from an `impl_item` node.

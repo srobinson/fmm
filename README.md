@@ -123,7 +123,7 @@ symbols:
     visibility: public
     kind: fn
     members:
-      bind_export:
+      - name: bind_export
         lines: [154, 178]
         size: 25
         signature: fn bind_export(...)

@@ -124,21 +124,41 @@ fn push_symbol_entry(
     metadata: Option<&SymbolMetadata>,
 ) {
     lines.push(format!("{}{}:", spaces(indent), yaml_escape(name)));
+    push_symbol_body(lines, indent + 2, line_range, metadata);
+}
+
+fn push_member_entry(
+    lines: &mut Vec<String>,
+    indent: usize,
+    name: &str,
+    line_range: Option<&ExportLines>,
+    metadata: Option<&SymbolMetadata>,
+) {
+    lines.push(format!("{}- name: {}", spaces(indent), yaml_escape(name)));
+    push_symbol_body(lines, indent + 2, line_range, metadata);
+}
+
+fn push_symbol_body(
+    lines: &mut Vec<String>,
+    indent: usize,
+    line_range: Option<&ExportLines>,
+    metadata: Option<&SymbolMetadata>,
+) {
     if let Some(el) = line_range {
         lines.push(format!(
             "{}lines: [{}, {}]",
-            spaces(indent + 2),
+            spaces(indent),
             el.start,
             el.end
         ));
         lines.push(format!(
             "{}size: {}",
-            spaces(indent + 2),
+            spaces(indent),
             el.end.saturating_sub(el.start) + 1
         ));
     }
     if let Some(metadata) = metadata {
-        push_metadata(lines, indent + 2, metadata);
+        push_metadata(lines, indent, metadata);
     }
 }
 
@@ -178,7 +198,7 @@ fn push_members(
             start: member.start,
             end: member.end,
         };
-        push_symbol_entry(
+        push_member_entry(
             lines,
             6,
             &member.name,
@@ -247,17 +267,19 @@ fn collect_private_members(
         }) {
             continue;
         }
+        let mut metadata = member.metadata.clone();
+        if metadata.visibility.is_none() {
+            metadata.visibility = Some("private".to_string());
+        }
+        if metadata.declaration_kind.is_none() {
+            metadata.declaration_kind =
+                Some(if member.is_method { "method" } else { "field" }.to_string());
+        }
         members.push(OutlineMember {
             name: member.name.clone(),
             start: member.start,
             end: member.end,
-            metadata: SymbolMetadata {
-                signature: None,
-                visibility: Some("private".to_string()),
-                declaration_kind: Some(
-                    if member.is_method { "method" } else { "field" }.to_string(),
-                ),
-            },
+            metadata,
         });
     }
 }

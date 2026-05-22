@@ -3,6 +3,7 @@ mod extract_imports;
 mod extract_macros;
 mod metadata;
 mod symbol_metadata;
+pub(crate) use symbol_metadata::rust_method_entry;
 
 #[cfg(test)]
 mod tests;

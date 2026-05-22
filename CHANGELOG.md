@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Features
+
+* render outline `members:` as collision safe list records instead of a map keyed by name
+
+### BREAKING CHANGES
+
+* `fmm outline` and `fmm_file_outline` now emit `members:` as a list of records. Consumers parsing `members.{name}` must migrate to iterating `members[]` and filtering on `name`, `kind`, and `lines`.
+
 ### Tests
 
 * lock `read_symbol` Rust module declaration kind coverage

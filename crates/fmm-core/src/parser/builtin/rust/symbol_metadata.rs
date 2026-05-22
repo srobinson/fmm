@@ -18,7 +18,7 @@ pub(super) fn rust_entry(
     )
 }
 
-pub(super) fn rust_method_entry(
+pub(crate) fn rust_method_entry(
     name: String,
     node: Node,
     source_bytes: &[u8],

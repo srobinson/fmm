@@ -16,13 +16,13 @@ symbols:
     visibility: public
     kind: struct
     members:
-      start:
+      - name: start
         lines: [10, 30]
         size: 21
         signature: start()
         visibility: public
         kind: method
-      stop:
+      - name: stop
         lines: [32, 50]
         size: 19
         signature: stop()
