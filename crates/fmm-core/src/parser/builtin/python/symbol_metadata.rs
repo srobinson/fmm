@@ -79,9 +79,6 @@ fn declaration_kind(node: Node, source_bytes: &[u8]) -> Option<DeclarationKind> 
         "expression_statement" | "assignment" if is_type_alias(node, source_bytes) => {
             Some(DeclarationKind::Type)
         }
-        "expression_statement" | "assignment" if is_const_assignment(node, source_bytes) => {
-            Some(DeclarationKind::Const)
-        }
         "expression_statement" | "assignment" => Some(DeclarationKind::Const),
         _ => None,
     }
@@ -191,14 +188,6 @@ fn is_type_alias(node: Node, source_bytes: &[u8]) -> bool {
     })
 }
 
-fn is_const_assignment(node: Node, source_bytes: &[u8]) -> bool {
-    let Some(text) = assignment_text(node, source_bytes) else {
-        return false;
-    };
-    let name = assignment_name(node, source_bytes).unwrap_or_default();
-    is_upper_snake(&name) || text.contains("Final[") || text.contains(": Final")
-}
-
 pub(super) fn assignment_name(node: Node, source_bytes: &[u8]) -> Option<String> {
     let assignment = if node.kind() == "assignment" {
         node
@@ -213,11 +202,4 @@ pub(super) fn assignment_name(node: Node, source_bytes: &[u8]) -> Option<String>
 
 fn assignment_text(node: Node, source_bytes: &[u8]) -> Option<String> {
     node.utf8_text(source_bytes).ok().map(str::to_string)
-}
-
-fn is_upper_snake(name: &str) -> bool {
-    !name.is_empty()
-        && name
-            .chars()
-            .all(|c| c.is_ascii_uppercase() || c == '_' || c.is_ascii_digit())
 }
