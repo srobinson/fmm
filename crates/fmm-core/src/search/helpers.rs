@@ -3,7 +3,8 @@ use std::path::Path;
 
 use crate::manifest::{ExportLocation, FileEntry, Manifest};
 use crate::resolver::{
-    RustImportResolver, rust_module_name_from_specifier, workspace::WorkspaceEcosystem,
+    RustImportResolver, rust_module_name_from_path, rust_module_name_from_specifier,
+    workspace::WorkspaceEcosystem,
 };
 
 use super::{ExportHit, ExportHitCompact, FileSearchResult};
@@ -68,18 +69,8 @@ fn direct_upstream_resolves_local_rust_module(direct_upstream: &[String], specif
     };
 
     direct_upstream.iter().any(|target| {
-        local_rust_module_name(target).is_some_and(|target_module| target_module == module_name)
+        rust_module_name_from_path(target).is_some_and(|target_module| target_module == module_name)
     })
-}
-
-fn local_rust_module_name(target: &str) -> Option<&str> {
-    let path = Path::new(target);
-    let stem = path.file_stem()?.to_str()?;
-    if stem == "mod" {
-        path.parent()?.file_name()?.to_str()
-    } else {
-        Some(stem)
-    }
 }
 
 pub(super) fn workspace_specifier_names_for_source(

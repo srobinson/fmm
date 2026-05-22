@@ -199,6 +199,75 @@ fn dependency_graph_annotates_circular_downstream() {
 }
 
 #[test]
+fn dependency_graph_labels_rust_mod_parent_downstream() {
+    let entry = make_bare_entry();
+    let lib = "crates/rtm-core/src/lib.rs".to_string();
+    let local = vec![lib.clone()];
+    let downstream = vec![&lib];
+    let out = format_dependency_graph(
+        "crates/rtm-core/src/proto.rs",
+        &entry,
+        &local,
+        &[],
+        &downstream,
+    );
+    assert!(
+        out.contains("  - crates/rtm-core/src/lib.rs  # mod-hierarchy"),
+        "mod hierarchy annotation missing; got:\n{}",
+        out
+    );
+    assert!(
+        !out.contains("# circular"),
+        "mod parent should not be labeled circular; got:\n{}",
+        out
+    );
+}
+
+#[test]
+fn dependency_graph_labels_rust_mod_child_downstream() {
+    let entry = make_bare_entry();
+    let child = "crates/rtm-core/src/proto.rs".to_string();
+    let local = vec![child.clone()];
+    let downstream = vec![&child];
+    let out = format_dependency_graph(
+        "crates/rtm-core/src/lib.rs",
+        &entry,
+        &local,
+        &[],
+        &downstream,
+    );
+    assert!(
+        out.contains("  - crates/rtm-core/src/proto.rs  # mod-hierarchy"),
+        "mod hierarchy annotation missing; got:\n{}",
+        out
+    );
+    assert!(
+        !out.contains("# circular"),
+        "mod child should not be labeled circular; got:\n{}",
+        out
+    );
+}
+
+#[test]
+fn dependency_graph_rust_sibling_cycle_stays_circular() {
+    let entry = make_bare_entry();
+    let sibling = "src/b.rs".to_string();
+    let local = vec![sibling.clone()];
+    let downstream = vec![&sibling];
+    let out = format_dependency_graph("src/a.rs", &entry, &local, &[], &downstream);
+    assert!(
+        out.contains("  - src/b.rs  # circular"),
+        "sibling import cycle should stay circular; got:\n{}",
+        out
+    );
+    assert!(
+        !out.contains("# mod-hierarchy"),
+        "sibling import cycle should not be a mod hierarchy; got:\n{}",
+        out
+    );
+}
+
+#[test]
 fn dependency_graph_transitive_no_circular_unchanged() {
     let entry = make_bare_entry();
     let upstream = vec![("src/a.ts".to_string(), 1)];
@@ -224,6 +293,31 @@ fn dependency_graph_transitive_annotates_circular_downstream() {
     assert!(
         out.contains("  - file: src/c.ts  depth: 1"),
         "non-circular entry wrong; got:\n{}",
+        out
+    );
+}
+
+#[test]
+fn dependency_graph_transitive_labels_rust_mod_parent_downstream() {
+    let entry = make_bare_entry();
+    let upstream = vec![("crates/rtm-core/src/lib.rs".to_string(), 1)];
+    let downstream = vec![("crates/rtm-core/src/lib.rs".to_string(), 1)];
+    let out = format_dependency_graph_transitive(
+        "crates/rtm-core/src/proto.rs",
+        &entry,
+        &upstream,
+        &[],
+        &downstream,
+        1,
+    );
+    assert!(
+        out.contains("  - file: crates/rtm-core/src/lib.rs  depth: 1  # mod-hierarchy"),
+        "mod hierarchy annotation missing; got:\n{}",
+        out
+    );
+    assert!(
+        !out.contains("# circular"),
+        "mod parent should not be labeled circular; got:\n{}",
         out
     );
 }

@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 use crate::format::yaml_escape;
 use crate::manifest::private_members::{PrivateMember, TopLevelFunction};
 use crate::manifest::{ExportLines, FileEntry, OutlineReExport, SymbolMetadata};
+use crate::resolver::is_direct_rust_mod_relative;
 
 use super::helpers::{push_exports_map, push_inline_list};
 
@@ -339,6 +340,14 @@ pub fn format_lookup_export(
 
 /// Format dependency graph as YAML.
 /// `local` contains resolved intra-project file paths; `external` contains package names.
+fn circular_annotation(file: &str, dep: &str) -> &'static str {
+    if is_direct_rust_mod_relative(file, dep) {
+        "# mod-hierarchy"
+    } else {
+        "# circular"
+    }
+}
+
 pub fn format_dependency_graph(
     file: &str,
     entry: &FileEntry,
@@ -365,7 +374,11 @@ pub fn format_dependency_graph(
         lines.push("downstream:".to_string());
         for dep in downstream {
             if local_set.contains(dep.as_str()) {
-                lines.push(format!("  - {}  # circular", yaml_escape(dep)));
+                lines.push(format!(
+                    "  - {}  {}",
+                    yaml_escape(dep),
+                    circular_annotation(file, dep)
+                ));
             } else {
                 lines.push(format!("  - {}", yaml_escape(dep)));
             }
@@ -416,9 +429,10 @@ pub fn format_dependency_graph_transitive(
         for (path, d) in downstream {
             if upstream_set.contains(path.as_str()) {
                 lines.push(format!(
-                    "  - file: {}  depth: {}  # circular",
+                    "  - file: {}  depth: {}  {}",
                     yaml_escape(path),
-                    d
+                    d,
+                    circular_annotation(file, path)
                 ));
             } else {
                 lines.push(format!("  - file: {}  depth: {}", yaml_escape(path), d));
