@@ -19,5 +19,6 @@ pub mod ruby;
 pub mod rust;
 pub mod scala;
 pub mod swift;
+mod symbol_metadata;
 pub mod typescript;
 pub mod zig;

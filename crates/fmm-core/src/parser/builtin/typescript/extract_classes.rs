@@ -199,7 +199,7 @@ impl TypeScriptParser {
                             fn_name.clone(),
                         ));
                         if let Some(last) = entries.last_mut() {
-                            super::symbol_metadata::annotate_entry(
+                            super::symbol_metadata::apply_outline_metadata(
                                 last,
                                 stmt,
                                 source_bytes,
@@ -230,7 +230,7 @@ impl TypeScriptParser {
                                     fn_name.clone(),
                                 ));
                                 if let Some(last) = entries.last_mut() {
-                                    super::symbol_metadata::annotate_entry(
+                                    super::symbol_metadata::apply_outline_metadata(
                                         last,
                                         decl,
                                         source_bytes,

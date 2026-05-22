@@ -1,3 +1,4 @@
+use crate::parser::builtin::symbol_metadata as shared_metadata;
 use crate::parser::{DeclarationKind, ExportEntry, SymbolVisibility};
 use tree_sitter::Node;
 
@@ -8,13 +9,14 @@ pub(super) fn ts_entry(
     visibility: SymbolVisibility,
     declaration_kind: DeclarationKind,
 ) -> ExportEntry {
-    let mut entry = ExportEntry::new(
+    shared_metadata::export_entry(
         name,
-        node.start_position().row + 1,
-        node.end_position().row + 1,
-    );
-    annotate_entry(&mut entry, node, source_bytes, visibility, declaration_kind);
-    entry
+        node,
+        source_bytes,
+        visibility,
+        declaration_kind,
+        signature_end_byte,
+    )
 }
 
 pub(super) fn ts_method_entry(
@@ -23,20 +25,15 @@ pub(super) fn ts_method_entry(
     source_bytes: &[u8],
     parent_class: String,
 ) -> ExportEntry {
-    let mut entry = ExportEntry::method(
+    shared_metadata::method_entry(
         name,
-        node.start_position().row + 1,
-        node.end_position().row + 1,
-        parent_class,
-    );
-    annotate_entry(
-        &mut entry,
         node,
         source_bytes,
+        parent_class,
         visibility_for_member(node, source_bytes),
         DeclarationKind::Method,
-    );
-    entry
+        signature_end_byte,
+    )
 }
 
 pub(super) fn ts_field_entry(
@@ -45,32 +42,15 @@ pub(super) fn ts_field_entry(
     source_bytes: &[u8],
     parent_class: String,
 ) -> ExportEntry {
-    let mut entry = ExportEntry::method(
+    shared_metadata::method_entry(
         name,
-        node.start_position().row + 1,
-        node.end_position().row + 1,
-        parent_class,
-    );
-    annotate_entry(
-        &mut entry,
         node,
         source_bytes,
+        parent_class,
         visibility_for_member(node, source_bytes),
         DeclarationKind::Field,
-    );
-    entry
-}
-
-pub(super) fn annotate_entry(
-    entry: &mut ExportEntry,
-    node: Node,
-    source_bytes: &[u8],
-    visibility: SymbolVisibility,
-    declaration_kind: DeclarationKind,
-) {
-    entry.signature = Some(signature_text(node, source_bytes));
-    entry.visibility = Some(visibility);
-    entry.declaration_kind = Some(declaration_kind);
+        signature_end_byte,
+    )
 }
 
 pub(super) fn visibility_for_member(node: Node, source_bytes: &[u8]) -> SymbolVisibility {
@@ -88,25 +68,25 @@ pub(super) fn visibility_for_member(node: Node, source_bytes: &[u8]) -> SymbolVi
     }
 }
 
-pub(super) fn signature_text(node: Node, source_bytes: &[u8]) -> String {
-    let end_byte = signature_end_byte(node).unwrap_or_else(|| node.end_byte());
-    let text = std::str::from_utf8(&source_bytes[node.start_byte()..end_byte]).unwrap_or("");
-    text.trim()
-        .trim_end_matches(';')
-        .trim_end_matches(',')
-        .trim()
-        .to_string()
+pub(super) fn apply_outline_metadata(
+    entry: &mut ExportEntry,
+    node: Node,
+    source_bytes: &[u8],
+    visibility: SymbolVisibility,
+    declaration_kind: DeclarationKind,
+) {
+    shared_metadata::apply_outline_metadata(
+        entry,
+        node,
+        source_bytes,
+        visibility,
+        declaration_kind,
+        signature_end_byte,
+    );
 }
 
 pub(super) fn top_level_ancestor(node: Node) -> Node {
-    let mut current = node;
-    while let Some(parent) = current.parent() {
-        if parent.parent().is_none() {
-            return current;
-        }
-        current = parent;
-    }
-    current
+    shared_metadata::top_level_ancestor(node)
 }
 
 pub(super) fn collect_test_blocks(node: Node, source_bytes: &[u8], entries: &mut Vec<ExportEntry>) {

@@ -1,3 +1,4 @@
+use crate::parser::builtin::symbol_metadata as shared_metadata;
 use crate::parser::{DeclarationKind, ExportEntry, SymbolVisibility};
 use std::collections::HashSet;
 use tree_sitter::Node;
@@ -9,19 +10,15 @@ pub(super) fn python_entry(
     explicit_public_names: &HashSet<String>,
 ) -> Option<ExportEntry> {
     let kind = declaration_kind(node, source_bytes)?;
-    let mut entry = ExportEntry::new(
+    let signature_node = signature_node(node);
+    Some(shared_metadata::export_entry_from_source(
         name.clone(),
-        node.start_position().row + 1,
-        node.end_position().row + 1,
-    );
-    annotate_entry(
-        &mut entry,
-        node,
+        shared_metadata::SignatureSource::with_signature_node(node, signature_node),
         source_bytes,
         visibility_for_name(&name, explicit_public_names),
         kind,
-    );
-    Some(entry)
+        signature_end_byte,
+    ))
 }
 
 pub(super) fn python_method_entry(
@@ -30,20 +27,16 @@ pub(super) fn python_method_entry(
     source_bytes: &[u8],
     parent_class: String,
 ) -> ExportEntry {
-    let mut entry = ExportEntry::method(
+    let signature_node = signature_node(node);
+    shared_metadata::method_entry_from_source(
         name.clone(),
-        node.start_position().row + 1,
-        node.end_position().row + 1,
-        parent_class,
-    );
-    annotate_entry(
-        &mut entry,
-        node,
+        shared_metadata::SignatureSource::with_signature_node(node, signature_node),
         source_bytes,
+        parent_class,
         visibility_for_member_name(&name),
         DeclarationKind::Method,
-    );
-    entry
+        signature_end_byte,
+    )
 }
 
 pub(super) fn python_field_entry(
@@ -52,32 +45,16 @@ pub(super) fn python_field_entry(
     source_bytes: &[u8],
     parent_class: String,
 ) -> ExportEntry {
-    let mut entry = ExportEntry::method(
+    let signature_node = signature_node(node);
+    shared_metadata::method_entry_from_source(
         name.clone(),
-        node.start_position().row + 1,
-        node.end_position().row + 1,
-        parent_class,
-    );
-    annotate_entry(
-        &mut entry,
-        node,
+        shared_metadata::SignatureSource::with_signature_node(node, signature_node),
         source_bytes,
+        parent_class,
         visibility_for_member_name(&name),
         DeclarationKind::Field,
-    );
-    entry
-}
-
-fn annotate_entry(
-    entry: &mut ExportEntry,
-    node: Node,
-    source_bytes: &[u8],
-    visibility: SymbolVisibility,
-    declaration_kind: DeclarationKind,
-) {
-    entry.signature = Some(signature_text(node, source_bytes));
-    entry.visibility = Some(visibility);
-    entry.declaration_kind = Some(declaration_kind);
+        signature_end_byte,
+    )
 }
 
 fn declaration_kind(node: Node, source_bytes: &[u8]) -> Option<DeclarationKind> {
@@ -138,20 +115,15 @@ fn visibility_for_member_name(name: &str) -> SymbolVisibility {
     }
 }
 
-fn signature_text(node: Node, source_bytes: &[u8]) -> String {
-    let node = function_node(node)
+fn signature_node(node: Node) -> Node {
+    function_node(node)
         .or_else(|| class_node(node))
-        .unwrap_or(node);
-    let end_byte = node
-        .child_by_field_name("body")
+        .unwrap_or(node)
+}
+
+fn signature_end_byte(node: Node) -> Option<usize> {
+    node.child_by_field_name("body")
         .map(|body| body.start_byte())
-        .unwrap_or_else(|| node.end_byte());
-    let text = std::str::from_utf8(&source_bytes[node.start_byte()..end_byte]).unwrap_or("");
-    text.trim()
-        .trim_end_matches(':')
-        .trim_end_matches(';')
-        .trim()
-        .to_string()
 }
 
 fn function_node(node: Node) -> Option<Node> {

@@ -56,26 +56,26 @@ impl TypeScriptParser {
         let parser = make_parser(&language, "TypeScript")?;
 
         let export_query_strs = [
-            "(export_statement (function_declaration name: (identifier) @name) @declaration)",
-            "(export_statement (lexical_declaration (variable_declarator name: (identifier) @name)) @declaration)",
-            "(export_statement (class_declaration name: (type_identifier) @name) @declaration)",
-            "(export_statement (interface_declaration name: (type_identifier) @name) @declaration)",
+            "(export_statement (function_declaration name: (identifier) @name))",
+            "(export_statement (lexical_declaration (variable_declarator name: (identifier) @name)))",
+            "(export_statement (class_declaration name: (type_identifier) @name))",
+            "(export_statement (interface_declaration name: (type_identifier) @name))",
             // ALP-752: capture alias when present (export { foo as bar } → bar)
             "(export_statement (export_clause (export_specifier alias: (identifier) @name)))",
             // ALP-752: capture name only when no alias is present (export { foo } → foo)
             "(export_statement (export_clause (export_specifier !alias name: (identifier) @name)))",
             // export type Foo = { ... }
-            "(export_statement (type_alias_declaration name: (type_identifier) @name) @declaration)",
+            "(export_statement (type_alias_declaration name: (type_identifier) @name))",
             // export default SomeIdentifier
             "(export_statement value: (identifier) @name)",
             // ALP-751: export enum Direction {} / export const enum Status {}
-            "(export_statement (enum_declaration name: (identifier) @name) @declaration)",
+            "(export_statement (enum_declaration name: (identifier) @name))",
             // ALP-755: export * as ns from './mod'
             "(export_statement (namespace_export (identifier) @name))",
             // ALP-756: export namespace Foo {} (uses `internal_module` in tree-sitter-typescript)
-            "(export_statement (internal_module name: (identifier) @name) @declaration)",
+            "(export_statement (internal_module name: (identifier) @name))",
             // ALP-756: export module Foo {} (uses `module` node)
-            "(export_statement (module name: (identifier) @name) @declaration)",
+            "(export_statement (module name: (identifier) @name))",
         ];
 
         let export_queries: Vec<Query> = export_query_strs
