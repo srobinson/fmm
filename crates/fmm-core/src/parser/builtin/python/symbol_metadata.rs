@@ -82,6 +82,7 @@ fn declaration_kind(node: Node, source_bytes: &[u8]) -> Option<DeclarationKind> 
         "expression_statement" | "assignment" if is_const_assignment(node, source_bytes) => {
             Some(DeclarationKind::Const)
         }
+        "expression_statement" | "assignment" => Some(DeclarationKind::Const),
         _ => None,
     }
 }

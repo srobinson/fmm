@@ -93,6 +93,46 @@ def _helper():
 }
 
 #[test]
+fn python_camelcase_assignments_keep_outline_metadata() {
+    let source = r#"
+Foo = MyClass()
+Bar = some_function()
+CONST_VAL = 42
+
+def some_function():
+    pass
+"#;
+
+    let result = parse(source);
+    let exports = &result.metadata.exports;
+
+    assert_entry(
+        exports,
+        "Foo",
+        SymbolVisibility::Public,
+        DeclarationKind::Const,
+    );
+    assert_entry(
+        exports,
+        "Bar",
+        SymbolVisibility::Public,
+        DeclarationKind::Const,
+    );
+    assert_entry(
+        exports,
+        "CONST_VAL",
+        SymbolVisibility::Public,
+        DeclarationKind::Const,
+    );
+    assert_entry(
+        exports,
+        "some_function",
+        SymbolVisibility::Public,
+        DeclarationKind::Fn,
+    );
+}
+
+#[test]
 fn python_class_members_carry_outline_metadata() {
     let source = r#"
 class Widget:

@@ -1,6 +1,7 @@
 use super::*;
 use crate::connection::open_or_create;
 use fmm_core::identity::{Fingerprint, PARSER_CACHE_VERSION};
+use fmm_core::parser::builtin::python::PythonParser;
 use fmm_core::parser::builtin::typescript::TypeScriptParser;
 use fmm_core::parser::{
     DeclarationKind, ExportEntry, Metadata, ParseResult, Parser, SymbolVisibility,
@@ -365,6 +366,42 @@ export class S {}
             ("Bar".into(), "const".into()),
             ("ns".into(), "const".into()),
             ("S".into(), "struct".into()),
+        ]
+    );
+}
+
+#[test]
+fn stored_python_camelcase_assignments_keep_const_kind() {
+    let dir = TempDir::new().unwrap();
+    let mut conn = open_or_create(dir.path()).unwrap();
+    let mut parser = PythonParser::new().unwrap();
+    let result = parser
+        .parse(
+            r#"
+Foo = MyClass()
+Bar = some_function()
+CONST_VAL = 42
+
+def some_function():
+    pass
+"#,
+        )
+        .unwrap();
+
+    {
+        let tx = conn.transaction().unwrap();
+        upsert_file_data(&tx, "t.py", &result, None).unwrap();
+        tx.commit().unwrap();
+    }
+
+    let rows = export_kinds(&conn, "t.py");
+    assert_eq!(
+        rows,
+        vec![
+            ("Foo".into(), "const".into()),
+            ("Bar".into(), "const".into()),
+            ("CONST_VAL".into(), "const".into()),
+            ("some_function".into(), "fn".into()),
         ]
     );
 }
