@@ -1,6 +1,7 @@
 //! `fmm_file_outline` tool implementation.
 
 use crate::mcp::args::FileOutlineArgs;
+use crate::outline_freshness;
 use fmm_core::manifest::Manifest;
 use serde_json::Value;
 
@@ -47,6 +48,7 @@ pub(in crate::mcp) fn tool_file_outline(
     };
 
     let reexports = manifest.reexports_in_file(&args.file);
+    let freshness = outline_freshness::outline_freshness(root, &args.file);
 
     Ok(fmm_core::format::format_file_outline(
         &args.file,
@@ -54,5 +56,6 @@ pub(in crate::mcp) fn tool_file_outline(
         &reexports,
         private_by_class.as_ref(),
         top_level_fns.as_deref(),
+        freshness.as_deref(),
     ))
 }

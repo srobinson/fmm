@@ -38,7 +38,7 @@ Reserve `Read` for two cases only: editing a specific symbol, or understanding l
 
 1. **Orient** — `fmm_list_files(sort_by: "downstream")` — highest blast-radius files first. Start here before touching anything.
 2. **Locate** — `fmm_lookup_export("SymbolName")` — O(1) file + line range. Replaces grep.
-3. **Outline** — `fmm_file_outline(file, include_private: true)` — full method inventory including private members.
+3. **Outline** — `fmm_file_outline(file, include_private: true)` — symbol inventory with line ranges, density fields, and private members.
 4. **Read** — `fmm_read_symbol("Class.method", line_numbers: true)` — surgical extraction.
 5. **Impact** — `fmm_glossary("Class.method")` — confirmed callers before renaming or changing a signature.
 
@@ -56,8 +56,8 @@ fmm_list_files(pattern: "*.ts")         →  filter by filename glob
 ```
 fmm_lookup_export("SymbolName")         →  O(1) file + line range
 fmm_list_exports(pattern: "auth")       →  fuzzy: validateAuth, authMiddleware
-fmm_file_outline(file: "src/foo.ts")    →  all exports with line ranges
-fmm_file_outline(..., include_private: true)  →  private members too
+fmm_file_outline(file: "src/foo.ts")    →  symbols with line ranges, signature, visibility, kind
+fmm_file_outline(..., include_private: true)  →  private members and non-exported top-level declarations too
 ```
 
 ### Reading Code
@@ -108,11 +108,11 @@ First tool to reach for in an unknown codebase. Default sort is `loc` (heaviest 
 ### "What's in this file?"
 
 ```
-1. fmm_file_outline(file: "src/foo.ts") → every export + public methods with line ranges
+1. fmm_file_outline(file: "src/foo.ts") → symbols with line ranges, signature, visibility, and kind
 2. Decide WHAT to read before reading anything
 ```
 
-`fmm_file_outline` lists all public methods on classes with exact line ranges. For a 1,000-line class, you see the full table of contents in one call.
+`fmm_file_outline` lists symbols and class members with exact line ranges and populated density fields. For a 1,000-line class, you see the full table of contents in one call.
 
 ### "Where is X defined?"
 
@@ -274,12 +274,12 @@ Read the source code for a specific exported symbol or uniquely named non-export
 
 ### `fmm_file_outline`
 
-Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. Set include_private: true to also show private/protected class members AND non-exported top-level functions (in a 'non_exported:' section). Supported: TypeScript, JavaScript, Python, Rust. On-demand tree-sitter parse — no index rebuild needed.
+Get a spatial outline of a file: symbols with line ranges, size, signature, visibility, and kind when populated. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. Set include_private: true to add on-demand private members not already indexed plus non-exported top-level declarations inline in symbols. Stale queried files include one inline freshness annotation. Supported: TypeScript, JavaScript, Python, Rust. On-demand tree-sitter parse for private additions; no index rebuild needed.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `file` | string | yes | File path to outline — returns all exports with line ranges and sizes |
-| `include_private` | boolean | no | When true, include private/protected members under each class (annotated '# private') AND non-exported top-level func... |
+| `file` | string | yes | File path to outline — returns symbols with line ranges, sizes, signatures, visibility, and kind when populated |
+| `include_private` | boolean | no | When true, add on-demand private members not already indexed plus non-exported top-level declarations inline in symbo... |
 
 ### `fmm_search`
 

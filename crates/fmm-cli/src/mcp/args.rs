@@ -54,7 +54,7 @@ pub(super) struct ReadSymbolArgs {
 #[derive(Debug, Deserialize)]
 pub(super) struct FileOutlineArgs {
     pub(super) file: String,
-    /// When true, include private/protected members in the outline (ALP-827).
+    /// When true, add on-demand private members and non-exported top-level declarations.
     pub(super) include_private: Option<bool>,
 }
 

@@ -12,9 +12,11 @@ fn file_outline_returns_symbols_with_lines() {
 
     assert!(text.contains("file: src/auth/session.ts"));
     assert!(text.contains("symbols:"));
-    assert!(text.contains("createSession: [6, 8]"));
-    assert!(text.contains("validateSession: [10, 12]"));
-    assert!(text.contains("# 3 lines"));
+    assert!(text.contains("createSession:\n    lines: [6, 8]\n    size: 3"));
+    assert!(text.contains("validateSession:\n    lines: [10, 12]\n    size: 3"));
+    assert!(text.contains("signature: export function createSession"));
+    assert!(text.contains("visibility: public"));
+    assert!(text.contains("kind: fn"));
     assert!(text.contains("imports: [jwt, redis]"));
 }
 

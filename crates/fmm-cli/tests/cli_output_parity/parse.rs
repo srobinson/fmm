@@ -121,8 +121,11 @@ pub(super) fn parse_export_table(text: &str) -> Vec<Value> {
 pub(super) fn parse_named_lines_block(text: &str, section: &str) -> Vec<Value> {
     let mut entries = Vec::new();
     let mut in_section = false;
-    for raw in text.lines() {
-        let line = strip_comment(raw).trim_end().to_string();
+    let lines: Vec<String> = text
+        .lines()
+        .map(|raw| strip_comment(raw).trim_end().to_string())
+        .collect();
+    for (index, line) in lines.iter().enumerate() {
         if line.trim() == format!("{section}:") {
             in_section = true;
             continue;
@@ -135,6 +138,16 @@ pub(super) fn parse_named_lines_block(text: &str, section: &str) -> Vec<Value> {
                         ("name", Value::String(unquote_yaml_key(name).to_string())),
                         ("lines", parse_lines_pair(value)),
                     ]));
+                } else if let Some(name) = item.strip_suffix(':') {
+                    let mut entry = Map::new();
+                    entry.insert(
+                        "name".to_string(),
+                        Value::String(unquote_yaml_key(name).to_string()),
+                    );
+                    if let Some(lines_value) = nested_field(&lines[index + 1..], "lines") {
+                        entry.insert("lines".to_string(), parse_lines_pair(&lines_value));
+                    }
+                    entries.push(Value::Object(entry));
                 } else {
                     entries.push(object([(
                         "name",
@@ -147,6 +160,19 @@ pub(super) fn parse_named_lines_block(text: &str, section: &str) -> Vec<Value> {
         }
     }
     entries
+}
+
+fn nested_field(lines: &[String], field: &str) -> Option<String> {
+    for line in lines {
+        if line.starts_with("  ") && !line.starts_with("    ") {
+            return None;
+        }
+        let trimmed = line.trim();
+        if let Some(value) = trimmed.strip_prefix(&format!("{field}: ")) {
+            return Some(value.to_string());
+        }
+    }
+    None
 }
 
 pub(super) fn parse_list_block(text: &str, section: &str) -> Vec<Value> {

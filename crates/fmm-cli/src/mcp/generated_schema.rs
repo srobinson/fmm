@@ -135,17 +135,17 @@ serde_json::from_str(r##"{
     },
     {
       "name": "fmm_file_outline",
-      "description": "Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. Set include_private: true to also show private/protected class members AND non-exported top-level functions (in a 'non_exported:' section). Supported: TypeScript, JavaScript, Python, Rust. On-demand tree-sitter parse — no index rebuild needed.",
+      "description": "Get a spatial outline of a file: symbols with line ranges, size, signature, visibility, and kind when populated. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. Set include_private: true to add on-demand private members not already indexed plus non-exported top-level declarations inline in symbols. Stale queried files include one inline freshness annotation. Supported: TypeScript, JavaScript, Python, Rust. On-demand tree-sitter parse for private additions; no index rebuild needed.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "file": {
             "type": "string",
-            "description": "File path to outline — returns all exports with line ranges and sizes"
+            "description": "File path to outline — returns symbols with line ranges, sizes, signatures, visibility, and kind when populated"
           },
           "include_private": {
             "type": "boolean",
-            "description": "When true, include private/protected members under each class (annotated '# private') AND non-exported top-level functions in a 'non_exported:' section (annotated '# non-exported'). On-demand tree-sitter parse — no index rebuild needed. Supported: TypeScript, JavaScript, Python, Rust. Default: false."
+            "description": "When true, add on-demand private members not already indexed plus non-exported top-level declarations inline in symbols with explicit visibility and kind rows. On-demand tree-sitter parse; no index rebuild needed. Supported: TypeScript, JavaScript, Python, Rust. Default: false."
           }
         },
         "required": [

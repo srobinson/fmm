@@ -9,7 +9,7 @@ mod glossary;
 pub mod init;
 mod resolve;
 mod search;
-mod sidecar;
+pub(crate) mod sidecar;
 mod status;
 mod watch;
 
@@ -500,12 +500,12 @@ pub enum Commands {
         json: bool,
     },
 
-    /// Show file table-of-contents with export line ranges
+    /// Show file table-of-contents with line ranges and density metadata
     #[command(
         long_about = generated_help::OUTLINE_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm outline crates/fmm-core/src/parser/mod.rs</bold> <dim># All exports + line ranges</dim>
+  <dim>$</dim> <bold>fmm outline crates/fmm-core/src/parser/mod.rs</bold> <dim># Symbols + signature/visibility/kind</dim>
   <dim>$</dim> <bold>fmm outline crates/fmm-core/src/parser/mod.rs --include-private</bold> <dim># Include private members</dim>
   <dim>$</dim> <bold>fmm outline crates/fmm-core/src/parser/mod.rs --json</bold> <dim># JSON output</dim>"#),
     )]
@@ -633,7 +633,7 @@ pub enum Commands {
   <bold>fmm_lookup_export</bold>    Find which file defines a symbol — O(1)
   <bold>fmm_read_symbol</bold>      Extract exact source; use ClassName.method for methods
   <bold>fmm_dependency_graph</bold>  local_deps, external packages, and downstream blast radius
-  <bold>fmm_file_outline</bold>     Table of contents with line ranges
+  <bold>fmm_file_outline</bold>     Table of contents with signatures, visibility, and kind
   <bold>fmm_list_exports</bold>     Search exports by pattern (fuzzy)
   <bold>fmm_search</bold>           Multi-criteria AND queries with relevance scoring
   <bold>fmm_list_files</bold>       List all indexed files under a directory path

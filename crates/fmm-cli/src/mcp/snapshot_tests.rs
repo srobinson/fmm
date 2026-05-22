@@ -91,6 +91,7 @@ fn make_row(
     deps: Vec<String>,
     imports: Vec<String>,
 ) -> PreserializedRow {
+    use fmm_core::parser::{DeclarationKind, SymbolVisibility};
     use fmm_core::types::{ExportRecord, MethodRecord};
 
     let named_imports: HashMap<String, Vec<String>> = HashMap::new();
@@ -119,9 +120,9 @@ fn make_row(
                 name: name.to_string(),
                 start_line: start,
                 end_line: end,
-                signature: None,
-                visibility: None,
-                declaration_kind: None,
+                signature: (name == "Server").then(|| "class Server".to_string()),
+                visibility: (name == "Server").then_some(SymbolVisibility::Public),
+                declaration_kind: (name == "Server").then_some(DeclarationKind::Struct),
             })
             .collect(),
         methods: methods
@@ -131,9 +132,15 @@ fn make_row(
                 start_line: start,
                 end_line: end,
                 relationship_kind: kind.map(String::from),
-                signature: None,
-                visibility: None,
-                declaration_kind: None,
+                signature: name
+                    .starts_with("Server.")
+                    .then(|| format!("{}()", name.rsplit('.').next().unwrap_or(name))),
+                visibility: name
+                    .starts_with("Server.")
+                    .then_some(SymbolVisibility::Public),
+                declaration_kind: name
+                    .starts_with("Server.")
+                    .then_some(DeclarationKind::Method),
             })
             .collect(),
     }

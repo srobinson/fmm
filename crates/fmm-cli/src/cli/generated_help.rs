@@ -47,7 +47,7 @@ pub const READ_TRUNCATE_HELP: &str = "Return full source, bypassing the 10KB tru
 pub const READ_LINE_NUMBERS_HELP: &str = "Prepend absolute line numbers to each source line";
 
 #[rustfmt::skip]
-pub const OUTLINE_ABOUT: &str = "Show all exports in a file with their line ranges.\n\nUse before reading source to identify which symbol to target with 'fmm read'.";
+pub const OUTLINE_ABOUT: &str = "Show symbols in a file with line ranges, size, signature, visibility, and kind when populated.\n\nUse before reading source to identify which symbol to target with 'fmm read'. Stale queried files include one inline freshness annotation.";
 #[rustfmt::skip]
 pub const OUTLINE_FILE_HELP: &str = "Source file path (relative to project root)";
 #[rustfmt::skip]

@@ -1,5 +1,5 @@
 use super::*;
-use crate::manifest::{ExportLines, FileEntry, OutlineReExport};
+use crate::manifest::{ExportLines, FileEntry, OutlineReExport, SymbolMetadata};
 use std::collections::HashMap;
 
 fn make_entry_with_methods(
@@ -55,23 +55,22 @@ fn file_outline_shows_methods_under_class() {
             ("NestFactoryStatic.createApplicationContext", 132, 158),
         ],
     );
-    let out = format_file_outline("src/factory.ts", &entry, &[], None, None);
+    let out = format_file_outline("src/factory.ts", &entry, &[], None, None, None);
 
-    // Class line shows method count
-    assert!(out.contains("NestFactoryStatic: [43, 381]"));
-    assert!(out.contains("2 public methods"));
+    // Class line is a YAML object with range and size rows.
+    assert!(out.contains("  NestFactoryStatic:\n    lines: [43, 381]\n    size: 339"));
 
-    // Methods are sub-entries (4-space indent)
-    assert!(out.contains("    create: [55, 89]"));
-    assert!(out.contains("    createApplicationContext: [132, 158]"));
+    // Methods are child objects under members.
+    assert!(out.contains("    members:\n      create:\n        lines: [55, 89]"));
+    assert!(out.contains("      createApplicationContext:\n        lines: [132, 158]"));
 
-    // Class without methods has no method count annotation
-    assert!(out.contains("NestFactory: [396, 396]"));
-    assert!(!out.contains("NestFactory.*public methods"));
+    // Class without methods has no members block.
+    assert!(out.contains("  NestFactory:\n    lines: [396, 396]\n    size: 1"));
+    assert!(!out.contains("public methods"));
 }
 
 #[test]
-fn file_outline_methods_sorted_by_size_descending() {
+fn file_outline_members_sorted_by_source_position() {
     let entry = make_entry_with_methods(
         vec![("MyClass", 1, 200)],
         vec![
@@ -80,24 +79,53 @@ fn file_outline_methods_sorted_by_size_descending() {
             ("MyClass.medium", 160, 189), // 29 lines
         ],
     );
-    let out = format_file_outline("src/my.ts", &entry, &[], None, None);
+    let out = format_file_outline("src/my.ts", &entry, &[], None, None, None);
     let large_pos = out.find("large:").unwrap();
     let medium_pos = out.find("medium:").unwrap();
     let small_pos = out.find("small:").unwrap();
     assert!(
-        large_pos < medium_pos && medium_pos < small_pos,
-        "methods should be sorted by size descending: large > medium > small"
+        small_pos < large_pos && large_pos < medium_pos,
+        "members should be sorted by source position: small > large > medium"
     );
 }
 
 #[test]
 fn file_outline_no_methods_unchanged() {
     let entry = make_entry_with_methods(vec![("foo", 1, 10), ("bar", 12, 20)], vec![]);
-    let out = format_file_outline("src/mod.ts", &entry, &[], None, None);
-    assert!(out.contains("  foo: [1, 10]  # 10 lines"));
-    assert!(out.contains("  bar: [12, 20]  # 9 lines"));
+    let out = format_file_outline("src/mod.ts", &entry, &[], None, None, None);
+    assert!(out.contains("  foo:\n    lines: [1, 10]\n    size: 10"));
+    assert!(out.contains("  bar:\n    lines: [12, 20]\n    size: 9"));
     assert!(!out.contains("public methods"));
-    assert!(!out.contains("    ")); // no sub-indent
+    assert!(!out.contains("members:"));
+}
+
+#[test]
+fn file_outline_emits_populated_density_metadata() {
+    let mut entry = make_entry_with_methods(vec![("run", 1, 10)], vec![("run.helper", 3, 5)]);
+    entry.export_metadata.insert(
+        "run".to_string(),
+        SymbolMetadata {
+            signature: Some("pub fn run()".to_string()),
+            visibility: Some("public".to_string()),
+            declaration_kind: Some("fn".to_string()),
+        },
+    );
+    entry.method_metadata.insert(
+        "run.helper".to_string(),
+        SymbolMetadata {
+            signature: Some("fn helper()".to_string()),
+            visibility: Some("non_exported".to_string()),
+            declaration_kind: Some("fn".to_string()),
+        },
+    );
+
+    let out = format_file_outline("src/mod.rs", &entry, &[], None, None, None);
+    assert!(out.contains("    signature: pub fn run()"));
+    assert!(out.contains("    visibility: public"));
+    assert!(out.contains("    kind: fn"));
+    assert!(out.contains("        signature: fn helper()"));
+    assert!(out.contains("        visibility: non_exported"));
+    assert!(out.contains("        kind: fn"));
 }
 
 #[test]
@@ -190,24 +218,52 @@ fn file_outline_private_field_annotated_correctly_when_public_methods_present() 
         ],
     );
 
-    let out = format_file_outline("src/my.ts", &entry, &[], Some(&private_map), None);
+    let out = format_file_outline("src/my.ts", &entry, &[], Some(&private_map), None, None);
 
     assert!(
-        out.contains("pool: [3, 3]  # private field"),
-        "private field should be annotated '# private field'; got:\n{}",
+        out.contains("      pool:\n        lines: [3, 3]\n        size: 1\n        visibility: private\n        kind: field"),
+        "private field should render with explicit metadata; got:\n{}",
         out
     );
     assert!(
-        out.contains("_helper: [22, 30]  # private"),
-        "private method should be annotated '# private'; got:\n{}",
+        out.contains("      _helper:\n        lines: [22, 30]\n        size: 9\n        visibility: private\n        kind: method"),
+        "private method should render with explicit metadata; got:\n{}",
         out
     );
-    // Confirm the field is NOT just annotated "# private" (without "field")
-    assert!(
-        !out.contains("pool: [3, 3]  # private\n"),
-        "private field must not carry generic '# private' label; got:\n{}",
-        out
+    assert!(!out.contains("# private"));
+    assert!(!out.contains("# private field"));
+}
+
+#[test]
+fn file_outline_include_private_does_not_duplicate_indexed_private_members() {
+    use crate::manifest::private_members::PrivateMember;
+
+    let mut entry = make_entry_with_methods(vec![("MyClass", 1, 20)], vec![("MyClass.pool", 3, 3)]);
+    entry.method_metadata.insert(
+        "MyClass.pool".to_string(),
+        SymbolMetadata {
+            signature: Some("private pool: Pool".to_string()),
+            visibility: Some("private".to_string()),
+            declaration_kind: Some("field".to_string()),
+        },
     );
+
+    let mut private_map = HashMap::new();
+    private_map.insert(
+        "MyClass".to_string(),
+        vec![PrivateMember {
+            name: "pool".to_string(),
+            start: 3,
+            end: 3,
+            is_method: false,
+        }],
+    );
+
+    let out = format_file_outline("src/my.ts", &entry, &[], Some(&private_map), None, None);
+    assert_eq!(out.matches("      pool:").count(), 1, "got:\n{out}");
+    assert!(out.contains("        signature: 'private pool: Pool'"));
+    assert!(out.contains("        visibility: private"));
+    assert!(out.contains("        kind: field"));
 }
 
 // ALP-829: format_read_symbol line_numbers
@@ -280,23 +336,23 @@ fn file_outline_mixed_local_and_reexports() {
         },
     ];
 
-    let out = format_file_outline("pkg/__init__.py", &entry, &reexports, None, None);
+    let out = format_file_outline("pkg/__init__.py", &entry, &reexports, None, None, None);
 
     // Local def stays in symbols with its in-file line range.
     assert!(
-        out.contains("  main: [83, 90]  # 8 lines"),
+        out.contains("  main:\n    lines: [83, 90]\n    size: 8"),
         "local def must render in symbols; got:\n{}",
         out
     );
     // Re-exported names must NOT appear in the symbols block with their
     // in-file import-line ranges.
     assert!(
-        !out.contains("  BindFailure: [3, 3]"),
+        !out.contains("  BindFailure:\n    lines: [3, 3]"),
         "re-export leaked into symbols block; got:\n{}",
         out
     );
     assert!(
-        !out.contains("  Manifest: [4, 4]"),
+        !out.contains("  Manifest:\n    lines: [4, 4]"),
         "re-export leaked into symbols block; got:\n{}",
         out
     );
@@ -322,15 +378,15 @@ fn file_outline_mixed_local_and_reexports() {
 #[test]
 fn file_outline_no_reexports_omits_section() {
     let entry = make_entry_with_methods(vec![("foo", 1, 10), ("bar", 12, 20)], vec![]);
-    let out = format_file_outline("src/mod.ts", &entry, &[], None, None);
+    let out = format_file_outline("src/mod.ts", &entry, &[], None, None, None);
 
     assert!(
         !out.contains("re-exports:"),
         "re-exports section must be omitted when empty; got:\n{}",
         out
     );
-    assert!(out.contains("  foo: [1, 10]"));
-    assert!(out.contains("  bar: [12, 20]"));
+    assert!(out.contains("  foo:\n    lines: [1, 10]"));
+    assert!(out.contains("  bar:\n    lines: [12, 20]"));
 }
 
 #[test]
@@ -345,7 +401,7 @@ fn file_outline_only_reexports_omits_symbols_block() {
         origin_end: 3,
     }];
 
-    let out = format_file_outline("pkg/__init__.py", &entry, &reexports, None, None);
+    let out = format_file_outline("pkg/__init__.py", &entry, &reexports, None, None, None);
 
     assert!(
         !out.contains("symbols:"),

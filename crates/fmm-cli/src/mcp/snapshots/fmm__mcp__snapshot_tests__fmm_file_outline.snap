@@ -1,5 +1,6 @@
 ---
 source: crates/fmm-cli/src/mcp/snapshot_tests.rs
+assertion_line: 283
 expression: extract_text(&response)
 ---
 ---
@@ -8,6 +9,22 @@ loc: 60
 imports: [express]
 dependencies: [./config, ./utils]
 symbols:
-  Server: [1, 55]  # 55 lines, 2 public methods
-    start: [10, 30]
-    stop: [32, 50]
+  Server:
+    lines: [1, 55]
+    size: 55
+    signature: class Server
+    visibility: public
+    kind: struct
+    members:
+      start:
+        lines: [10, 30]
+        size: 21
+        signature: start()
+        visibility: public
+        kind: method
+      stop:
+        lines: [32, 50]
+        size: 19
+        signature: stop()
+        visibility: public
+        kind: method

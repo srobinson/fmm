@@ -99,11 +99,35 @@ fmm includes a built-in MCP server with 8 tools. Configure via `fmm init --mcp` 
 | `fmm_lookup_export`    | Find which file defines a symbol — O(1)                                       |
 | `fmm_read_symbol`      | Extract exact source; `ClassName.method` for public or private methods; `line_numbers: true` to annotate lines; follows re-export chains |
 | `fmm_dependency_graph` | Intra-project deps (`local_deps`), external packages, and downstream blast radius. `filter: "source"` excludes test files; `filter: "tests"` shows test coverage |
-| `fmm_file_outline`     | Table of contents with line ranges; `include_private: true` shows private/protected members |
+| `fmm_file_outline`     | Table of contents with line ranges, size, signature, visibility, kind, and inline freshness for stale queried files |
 | `fmm_list_exports`     | Search exports by pattern — substring (case-insensitive) or regex (auto-detected: `^handle`, `Service$`, `^[A-Z]`) |
 | `fmm_search`           | Indexed structural queries across exports, files, imports, and dependencies   |
 | `fmm_list_files`       | List all indexed files under a directory path                                 |
 | `fmm_glossary`         | Symbol-level blast radius — all definitions of X + files that import each one |
+
+## fmm_file_outline
+
+Default outline output is structured for orientation before source reads. Each populated symbol can show `signature`, `visibility`, and `kind`; private members and non-exported declarations use explicit rows instead of suffix comments. If the queried file is stale relative to the index, the response includes one `freshness` row for that file.
+
+```yaml
+---
+file: crates/fmm-store/src/writer.rs
+loc: 356
+symbols:
+  upsert_file_data:
+    lines: [112, 230]
+    size: 119
+    signature: pub fn upsert_file_data(...)
+    visibility: public
+    kind: fn
+    members:
+      bind_export:
+        lines: [154, 178]
+        size: 25
+        signature: fn bind_export(...)
+        visibility: non_exported
+        kind: fn
+```
 
 ## How it works
 
