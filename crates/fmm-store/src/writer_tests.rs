@@ -1,7 +1,10 @@
 use super::*;
 use crate::connection::open_or_create;
 use fmm_core::identity::{Fingerprint, PARSER_CACHE_VERSION};
-use fmm_core::parser::{DeclarationKind, ExportEntry, Metadata, SymbolVisibility};
+use fmm_core::parser::builtin::typescript::TypeScriptParser;
+use fmm_core::parser::{
+    DeclarationKind, ExportEntry, Metadata, ParseResult, Parser, SymbolVisibility,
+};
 
 use tempfile::TempDir;
 
@@ -38,6 +41,18 @@ fn export_names(conn: &rusqlite::Connection, file_path: &str) -> Vec<String> {
     stmt.query_map([file_path], |row| row.get(0))
         .unwrap()
         .collect::<Result<Vec<String>, _>>()
+        .unwrap()
+}
+
+fn export_kinds(conn: &rusqlite::Connection, file_path: &str) -> Vec<(String, String)> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT name, declaration_kind FROM exports WHERE file_path = ?1 ORDER BY start_line",
+        )
+        .unwrap();
+    stmt.query_map([file_path], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<Result<Vec<(String, String)>, _>>()
         .unwrap()
 }
 
@@ -306,6 +321,52 @@ fn symbol_density_columns_reject_unknown_taxonomy_values() {
         [],
     );
     assert!(bad_kind.is_err());
+}
+
+#[test]
+fn stored_typescript_exports_do_not_use_forbidden_outline_kinds() {
+    let dir = TempDir::new().unwrap();
+    let mut conn = open_or_create(dir.path()).unwrap();
+    let mut parser = TypeScriptParser::new().unwrap();
+    let result = parser
+        .parse(
+            r#"
+export namespace Foo { export const x = 1; }
+export module Bar {}
+export * as ns from './other';
+export class S {}
+"#,
+        )
+        .unwrap();
+
+    {
+        let tx = conn.transaction().unwrap();
+        upsert_file_data(&tx, "src/test.ts", &result, None).unwrap();
+        tx.commit().unwrap();
+    }
+
+    let forbidden_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM exports
+             WHERE file_path='src/test.ts'
+               AND declaration_kind IN ('module', 'impl', 'macro', 'variant')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(forbidden_count, 0);
+
+    let rows = export_kinds(&conn, "src/test.ts");
+    assert_eq!(
+        rows,
+        vec![
+            ("x".into(), "const".into()),
+            ("Foo".into(), "const".into()),
+            ("Bar".into(), "const".into()),
+            ("ns".into(), "const".into()),
+            ("S".into(), "struct".into()),
+        ]
+    );
 }
 
 #[test]

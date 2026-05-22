@@ -15,6 +15,9 @@ export type Name = string;
 export enum Mode { Fast }
 export { run as execute };
 export default Service;
+export namespace Validation { export const ready = true; }
+export module Shapes {}
+export * as utils from './utils';
 "#;
 
     let result = parse(source);
@@ -59,6 +62,24 @@ export default Service;
     assert_entry(
         exports,
         "execute",
+        SymbolVisibility::Public,
+        DeclarationKind::Const,
+    );
+    assert_entry(
+        exports,
+        "Validation",
+        SymbolVisibility::Public,
+        DeclarationKind::Const,
+    );
+    assert_entry(
+        exports,
+        "Shapes",
+        SymbolVisibility::Public,
+        DeclarationKind::Const,
+    );
+    assert_entry(
+        exports,
+        "utils",
         SymbolVisibility::Public,
         DeclarationKind::Const,
     );

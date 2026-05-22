@@ -396,7 +396,7 @@ fn declaration_kind_for_export_query(query_index: usize) -> DeclarationKind {
         3 => DeclarationKind::Trait,
         6 => DeclarationKind::Type,
         8 => DeclarationKind::Enum,
-        9..=11 => DeclarationKind::Module,
+        9..=11 => DeclarationKind::Const,
         _ => DeclarationKind::Const,
     }
 }
