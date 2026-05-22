@@ -303,7 +303,7 @@ List all indexed files under a directory prefix. The first tool to reach for whe
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `directory` | string | no | Directory prefix to filter files (e.g. 'src/cli/' or 'libs/agno/models'). Omit to list all indexed files. |
-| `pattern` | string | no | Glob pattern to filter by filename within the directory (e.g. '*.py', '*.rs', 'test_*'). Supports * wildcard. |
+| `pattern` | string | no | Shell-style glob pattern to filter by filename within the directory (e.g. '*.py', '*test*', 'file?.rs', '[ab]*.ts'). ... |
 | `limit` | integer | no | Maximum number of files to return (default: 200). Increase for broader listings. |
 | `offset` | integer | no | Number of files to skip before returning results (default: 0). Use for pagination: offset=200 returns files 201–400. |
 | `sort_by` | enum: name \| path \| loc \| exports \| downstream \| modified | no | Sort field. 'loc' (default): lines of code descending. 'name' or 'path': alphabetical file path. 'exports': export co... |

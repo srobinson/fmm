@@ -102,7 +102,7 @@ fmm includes a built-in MCP server with 8 tools. Configure via `fmm init --mcp` 
 | `fmm_file_outline`     | Table of contents with line ranges, size, signature, visibility, kind, and inline freshness for stale queried files |
 | `fmm_list_exports`     | Search exports by pattern — substring (case-insensitive) or regex (auto-detected: `^handle`, `Service$`, `^[A-Z]`) |
 | `fmm_search`           | Indexed structural queries across exports, files, imports, and dependencies   |
-| `fmm_list_files`       | List all indexed files under a directory path                                 |
+| `fmm_list_files`       | List indexed files under a directory path; `pattern` uses filename globs      |
 | `fmm_glossary`         | Symbol-level blast radius — all definitions of X + files that import each one |
 
 ## fmm_file_outline

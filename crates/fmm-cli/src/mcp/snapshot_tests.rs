@@ -186,6 +186,18 @@ fn snapshot_fmm_list_files_grouped() {
 }
 
 #[test]
+fn snapshot_fmm_list_files_with_pattern() {
+    let server = snapshot_server();
+    let response = server
+        .call_tool(
+            "fmm_list_files",
+            serde_json::json!({"pattern": "*test*", "sort_by": "name"}),
+        )
+        .unwrap();
+    insta::assert_snapshot!("fmm_list_files_pattern", extract_text(&response));
+}
+
+#[test]
 fn snapshot_fmm_lookup_export() {
     let server = snapshot_server();
     let response = server

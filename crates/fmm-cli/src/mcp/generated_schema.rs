@@ -206,7 +206,7 @@ serde_json::from_str(r##"{
           },
           "pattern": {
             "type": "string",
-            "description": "Glob pattern to filter by filename within the directory (e.g. '*.py', '*.rs', 'test_*'). Supports * wildcard."
+            "description": "Shell-style glob pattern to filter by filename within the directory (e.g. '*.py', '*test*', 'file?.rs', '[ab]*.ts'). Matches filenames only, not full paths."
           },
           "limit": {
             "type": "integer",

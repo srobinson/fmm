@@ -1,4 +1,5 @@
-use super::super::tools::{compute_import_specifiers, glob_filename_matches, is_reexport_file};
+use super::super::tools::{compute_import_specifiers, is_reexport_file};
+use crate::filename_glob::glob_filename_matches;
 use std::path::Path;
 
 #[test]
@@ -31,6 +32,12 @@ fn glob_filename_matcher_handles_literals_and_stars() {
         ("test_*", "test_agent.py", true),
         ("test_*", "test_.py", true),
         ("test_*", "mytest_agent.py", false),
+        ("*preflight*", "spawn_preflight.rs", true),
+        ("*preflight*", "spawn_prepare.rs", false),
+        ("file?.rs", "file1.rs", true),
+        ("file?.rs", "file10.rs", false),
+        ("[sw]pawn_preflight.rs", "spawn_preflight.rs", true),
+        ("[ab]pawn_preflight.rs", "spawn_preflight.rs", false),
         ("mod.rs", "mod.rs", true),
         ("mod.rs", "mod.ts", false),
         ("*", "anything.py", true),

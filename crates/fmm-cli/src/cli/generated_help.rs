@@ -75,7 +75,7 @@ pub const LS_ABOUT: &str = "List all files indexed by fmm under a directory pref
 #[rustfmt::skip]
 pub const LS_DIRECTORY_HELP: &str = "Directory prefix to filter (e.g. src/, packages/core/)";
 #[rustfmt::skip]
-pub const LS_PATTERN_HELP: &str = "Glob pattern to filter by filename (e.g. '*.ts', '*.rs', 'test_*')";
+pub const LS_PATTERN_HELP: &str = "Shell-style glob pattern to filter by filename (e.g. '*.ts', '*test*', 'file?.rs')";
 #[rustfmt::skip]
 pub const LS_LIMIT_HELP: &str = "Maximum number of files to return (default: 200)";
 #[rustfmt::skip]

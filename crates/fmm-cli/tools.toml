@@ -421,8 +421,8 @@ cli_flag        = "directory"
 [[tools.fmm_list_files.params]]
 name            = "pattern"
 type            = "string"
-mcp_description = "Glob pattern to filter by filename within the directory (e.g. '*.py', '*.rs', 'test_*'). Supports * wildcard."
-cli_help        = "Glob pattern to filter by filename (e.g. '*.ts', '*.rs', 'test_*')"
+mcp_description = "Shell-style glob pattern to filter by filename within the directory (e.g. '*.py', '*test*', 'file?.rs', '[ab]*.ts'). Matches filenames only, not full paths."
+cli_help        = "Shell-style glob pattern to filter by filename (e.g. '*.ts', '*test*', 'file?.rs')"
 cli_flag        = "--pattern"
 
 [[tools.fmm_list_files.params]]

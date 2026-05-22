@@ -1,11 +1,12 @@
 //! `fmm_list_files` tool implementation.
 
+use crate::filename_glob::FilenameGlob;
 use crate::mcp::args::ListFilesArgs;
 use fmm_core::manifest::Manifest;
 use fmm_core::search::DependencyGraphQuery;
 use serde_json::Value;
 
-use super::common::{build_rollup, glob_filename_matches};
+use super::common::build_rollup;
 
 type ListEntry<'a> = (&'a str, usize, usize, usize, Option<&'a str>);
 
@@ -35,6 +36,9 @@ pub(in crate::mcp) fn tool_list_files(
     let order = args.order.as_deref();
     let group_by = args.group_by.as_deref();
     let filter = args.filter.as_deref().unwrap_or("all");
+    let filename_pattern = pat
+        .map(|p| FilenameGlob::new(p).map_err(|e| format!("Invalid pattern glob '{}': {}", p, e)))
+        .transpose()?;
 
     if !matches!(
         sort_by,
@@ -63,7 +67,7 @@ pub(in crate::mcp) fn tool_list_files(
         ));
     }
 
-    let mut entries = collect_entries(manifest, root, dir, pat, filter);
+    let mut entries = collect_entries(manifest, root, dir, filename_pattern.as_ref(), filter);
 
     // Rollup mode: group by immediate subdirectory.
     if group_by == Some("subdir") {
@@ -146,7 +150,7 @@ fn collect_entries<'a>(
     manifest: &'a Manifest,
     root: &std::path::Path,
     dir: Option<&str>,
-    pat: Option<&str>,
+    pat: Option<&FilenameGlob>,
     filter: &str,
 ) -> Vec<ListEntry<'a>> {
     let config = fmm_core::config::Config::load_from_dir(root).unwrap_or_default();
@@ -168,7 +172,7 @@ fn collect_entries<'a>(
             }
             if let Some(p) = pat {
                 let filename = path.rsplit('/').next().unwrap_or(path.as_str());
-                if !glob_filename_matches(p, filename) {
+                if !p.matches(filename) {
                     return false;
                 }
             }

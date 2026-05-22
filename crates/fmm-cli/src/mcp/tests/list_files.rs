@@ -260,6 +260,50 @@ fn list_files_invalid_directory_returns_empty() {
 }
 
 #[test]
+fn list_files_pattern_matches_embedded_glob() {
+    let server = test_server(manifest_from(&[
+        (
+            "crates/rtm-daemon/src/spawn_preflight.rs",
+            20,
+            &["spawn_preflight"],
+        ),
+        (
+            "crates/rtm-daemon/src/spawn_prepare.rs",
+            10,
+            &["spawn_prepare"],
+        ),
+        ("crates/rtm-daemon/src/preflight_check.rs", 15, &[]),
+    ]));
+
+    let text = tool_text(
+        &server,
+        "fmm_list_files",
+        json!({
+            "directory": "crates/rtm-daemon/src/",
+            "pattern": "*preflight*",
+            "sort_by": "name",
+        }),
+    );
+
+    assert!(text.contains("total: 2"), "got:\n{text}");
+    assert!(text.contains("spawn_preflight.rs"), "got:\n{text}");
+    assert!(text.contains("preflight_check.rs"), "got:\n{text}");
+    assert!(!text.contains("spawn_prepare.rs"), "got:\n{text}");
+}
+
+#[test]
+fn list_files_rejects_invalid_pattern_glob() {
+    let server = sort_server();
+    let text = tool_text(&server, "fmm_list_files", json!({"pattern": "["}));
+
+    assert_error(&text);
+    assert!(
+        text.contains("Invalid pattern glob '['"),
+        "expected invalid glob diagnostic, got:\n{text}",
+    );
+}
+
+#[test]
 fn list_files_group_by_subdir_with_directory_splits_into_subdirs() {
     let server = group_by_directory_server();
     let text = tool_text(

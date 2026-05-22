@@ -1,0 +1,10 @@
+---
+source: crates/fmm-cli/src/mcp/snapshot_tests.rs
+expression: extract_text(&response)
+---
+---
+summary: 1 files · 15 LOC · largest: src/test/app.test.ts (15 LOC)
+total: 1
+files:
+  - src/test/app.test.ts  # loc: 15, exports: 0
+# ↓ N = direct dependents resolved by the dependency graph.

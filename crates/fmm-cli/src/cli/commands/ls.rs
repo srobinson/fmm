@@ -1,3 +1,4 @@
+use crate::filename_glob::FilenameGlob;
 use anyhow::Result;
 use fmm_core::search::DependencyGraphQuery;
 
@@ -62,7 +63,7 @@ pub fn ls(
 
     let glob_pattern = pattern
         .map(|p| {
-            glob::Pattern::new(p)
+            FilenameGlob::new(p)
                 .map_err(|e| anyhow::anyhow!("Invalid --pattern glob '{}': {}", p, e))
         })
         .transpose()?;
@@ -131,7 +132,7 @@ pub fn ls(
 fn collect_entries<'a>(
     manifest: &'a fmm_core::manifest::Manifest,
     directory: Option<&str>,
-    glob_pattern: Option<&glob::Pattern>,
+    glob_pattern: Option<&FilenameGlob>,
     filter: &str,
     config: &fmm_core::config::Config,
 ) -> Vec<ListEntry<'a>> {
