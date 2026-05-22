@@ -259,6 +259,52 @@ fn read_missing_method_suggests_cli_outline() {
 }
 
 #[test]
+fn read_source_file_path_suggests_outline_not_method_notation() {
+    let tmp = setup_read_project();
+    let output = run_fmm(tmp.path(), &["read", "src/service.ts"]);
+
+    assert!(
+        !output.status.success(),
+        "fmm read should fail for a file path"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        stderr.contains("'src/service.ts' looks like a file path"),
+        "got: {stderr}"
+    );
+    assert!(
+        stderr.contains("Use fmm outline src/service.ts"),
+        "got: {stderr}"
+    );
+    assert!(
+        !stderr.contains("Class 'src/service'"),
+        "got misleading class guidance: {stderr}"
+    );
+}
+
+#[test]
+fn read_config_file_path_suggests_outline_not_method_notation() {
+    let tmp = setup_read_project();
+    let output = run_fmm(tmp.path(), &["read", "config.toml"]);
+
+    assert!(
+        !output.status.success(),
+        "fmm read should fail for a config file path"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        stderr.contains("'config.toml' looks like a file path"),
+        "got: {stderr}"
+    );
+    assert!(
+        !stderr.contains("Class 'config'"),
+        "got misleading class guidance: {stderr}"
+    );
+}
+
+#[test]
 fn read_rust_path_suggests_dotted_method_not_file_symbol() {
     let tmp = setup_read_project();
     let output = run_fmm(tmp.path(), &["read", "SecretService::run"]);

@@ -1,0 +1,5 @@
+---
+source: crates/fmm-cli/src/mcp/snapshot_tests.rs
+expression: extract_text(&response)
+---
+ERROR: 'src/service.ts' looks like a file path, not a Class.method symbol. Use fmm_file_outline(file: "src/service.ts") to inspect an indexed source file, or pass a symbol name without a file extension.

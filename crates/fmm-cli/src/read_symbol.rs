@@ -1,5 +1,14 @@
 use fmm_core::manifest::{ExportLines, ExportLocation, Manifest};
-use std::path::Path;
+use fmm_core::parser::ParserRegistry;
+use std::{collections::HashSet, path::Path, sync::LazyLock};
+
+const CONFIG_FILE_EXTENSIONS: &[&str] = &["toml"];
+
+static FILE_PATH_EXTENSIONS: LazyLock<HashSet<String>> = LazyLock::new(|| {
+    let mut extensions = ParserRegistry::with_builtins().source_extensions().clone();
+    extensions.extend(CONFIG_FILE_EXTENSIONS.iter().map(|ext| ext.to_string()));
+    extensions
+});
 
 #[derive(Debug, Clone)]
 pub(crate) struct ReadSymbolResult {
@@ -35,6 +44,19 @@ pub(crate) enum ReadSymbolGuidance {
 }
 
 impl ReadSymbolGuidance {
+    fn file_path_symbol(self, name: &str) -> String {
+        match self {
+            Self::Cli => format!(
+                "'{}' looks like a file path, not a Class.method symbol. Use fmm outline {} to inspect an indexed source file, or pass a symbol name without a file extension.",
+                name, name
+            ),
+            Self::Mcp => format!(
+                "'{}' looks like a file path, not a Class.method symbol. Use fmm_file_outline(file: \"{}\") to inspect an indexed source file, or pass a symbol name without a file extension.",
+                name, name
+            ),
+        }
+    }
+
     fn empty_symbol(self) -> &'static str {
         match self {
             Self::Cli => {
@@ -457,6 +479,10 @@ fn resolve_dotted_notation(
         return Ok((loc.file.clone(), loc.lines.clone()));
     }
 
+    if looks_like_file_path(name) {
+        return Err(guidance.file_path_symbol(name));
+    }
+
     let dot = name.rfind('.').expect("name contains dot");
     let class_name = &name[..dot];
     let method_name = &name[dot + 1..];
@@ -484,6 +510,14 @@ fn resolve_dotted_notation(
         .first()
         .expect("class_files is not empty after guard");
     Err(guidance.missing_method(name, method_name, class_name, class_file))
+}
+
+fn looks_like_file_path(name: &str) -> bool {
+    let Some(ext) = Path::new(name).extension().and_then(|ext| ext.to_str()) else {
+        return false;
+    };
+    let ext = ext.to_ascii_lowercase();
+    FILE_PATH_EXTENSIONS.contains(ext.as_str())
 }
 
 fn resolve_export(

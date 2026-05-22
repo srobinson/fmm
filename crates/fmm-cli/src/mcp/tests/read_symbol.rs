@@ -243,6 +243,30 @@ fn read_symbol_dotted_not_found_gives_helpful_error() {
 }
 
 #[test]
+fn read_symbol_file_path_name_gives_file_outline_guidance() {
+    let server = test_server(Manifest::new());
+    let text = tool_text(
+        &server,
+        "fmm_read_symbol",
+        json!({"name": "src/service.ts"}),
+    );
+
+    assert_error(&text);
+    assert!(
+        text.contains("'src/service.ts' looks like a file path"),
+        "got: {text}"
+    );
+    assert!(
+        text.contains("fmm_file_outline(file: \"src/service.ts\")"),
+        "got: {text}"
+    );
+    assert!(
+        !text.contains("Class 'src/service'"),
+        "got misleading class guidance: {text}"
+    );
+}
+
+#[test]
 fn read_symbol_follows_reexport_to_concrete_definition() {
     let dir = tempfile::tempdir().unwrap();
     let init_path = dir.path().join("agno").join("__init__.py");

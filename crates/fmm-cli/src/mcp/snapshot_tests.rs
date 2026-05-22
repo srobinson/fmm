@@ -309,6 +309,18 @@ fn snapshot_fmm_read_symbol_not_found() {
 }
 
 #[test]
+fn snapshot_fmm_read_symbol_file_path_name() {
+    let server = snapshot_server();
+    let response = server
+        .call_tool(
+            "fmm_read_symbol",
+            serde_json::json!({"name": "src/service.ts"}),
+        )
+        .unwrap();
+    insta::assert_snapshot!("fmm_read_symbol_file_path_name", extract_text(&response));
+}
+
+#[test]
 fn snapshot_fmm_read_symbol_with_source() {
     // read_symbol with an actual file on disk
     let dir = tempfile::tempdir().unwrap();
