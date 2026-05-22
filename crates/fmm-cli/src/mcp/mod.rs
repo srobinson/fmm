@@ -20,7 +20,7 @@ const PROTOCOL_VERSION: &str = "2024-11-05";
 /// Large responses get truncated to disk by Claude, defeating the purpose.
 pub(crate) const MAX_RESPONSE_BYTES: usize = 10_240;
 
-fn cap_response(text: String, truncate: bool) -> String {
+fn cap_response(text: String, truncate: bool, accepts_truncate: bool) -> String {
     if !truncate || text.len() <= MAX_RESPONSE_BYTES {
         return text;
     }
@@ -33,9 +33,14 @@ fn cap_response(text: String, truncate: bool) -> String {
     let mut result = text[..cut_point].to_string();
     let total_lines = text.lines().count();
     let shown_lines = result.lines().count();
+    let hint = if accepts_truncate {
+        " Use truncate: false to get the full response."
+    } else {
+        ""
+    };
     result.push_str(&format!(
-        "\n\n[Truncated — showing {}/{} lines. Use truncate: false to get the full source.]",
-        shown_lines, total_lines
+        "\n\n[Truncated — showing {}/{} lines.{}]",
+        shown_lines, total_lines, hint
     ));
     result
 }
@@ -321,18 +326,22 @@ impl<S: FmmStore> McpServer<S> {
             _ => Err(format!("Unknown tool: {}", tool_name)),
         };
 
-        // fmm_read_symbol and fmm_glossary support truncate: false to bypass the 10KB cap.
-        let should_truncate = match tool_name {
-            "fmm_read_symbol" | "fmm_glossary" => arguments
+        let accepts_truncate = matches!(
+            tool_name,
+            "fmm_file_outline" | "fmm_read_symbol" | "fmm_glossary"
+        );
+        let should_truncate = if accepts_truncate {
+            arguments
                 .get("truncate")
                 .and_then(|v| v.as_bool())
-                .unwrap_or(true),
-            _ => true,
+                .unwrap_or(true)
+        } else {
+            true
         };
 
         match result {
             Ok(text) => {
-                let text = cap_response(text, should_truncate);
+                let text = cap_response(text, should_truncate, accepts_truncate);
                 Ok(json!({
                     "content": [{
                         "type": "text",

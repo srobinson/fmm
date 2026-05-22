@@ -280,6 +280,7 @@ Get a spatial outline of a file: symbols with line ranges, size, signature, visi
 |-----------|------|----------|-------------|
 | `file` | string | yes | File path to outline — returns symbols with line ranges, sizes, signatures, visibility, and kind when populated |
 | `include_private` | boolean | no | When true, add on-demand private members not already indexed plus non-exported top-level declarations inline in symbo... |
+| `truncate` | boolean | no | When false, bypasses the 10KB MCP response cap and returns the full outline response. Default: true. |
 
 ### `fmm_search`
 

@@ -87,3 +87,41 @@ fn file_outline_returns_symbols() {
     );
     assert!(text.contains("loc: 12"));
 }
+
+#[test]
+fn file_outline_truncate_false_bypasses_response_cap() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path();
+    let mut source = String::new();
+    for i in 0..500 {
+        source.push_str(&format!(
+            "export function function{i:03}() {{\n  return {i};\n}}\n\n"
+        ));
+    }
+    write_file(root, "src/large.ts", &source);
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
+    let server = fmm::mcp::SqliteMcpServer::with_root(root.to_path_buf());
+
+    let default_text = call_tool_text(&server, "fmm_file_outline", json!({"file": "src/large.ts"}));
+    assert!(
+        default_text.contains("[Truncated"),
+        "default response should be capped; got {} bytes",
+        default_text.len()
+    );
+    assert!(
+        default_text.contains("truncate: false to get the full response"),
+        "truncation hint must reference a real fmm_file_outline parameter; got: {default_text}"
+    );
+
+    let full_text = call_tool_text(
+        &server,
+        "fmm_file_outline",
+        json!({"file": "src/large.ts", "truncate": false}),
+    );
+    assert!(
+        !full_text.contains("[Truncated"),
+        "truncate=false must leave outline uncapped"
+    );
+    assert!(full_text.contains("function000:"));
+    assert!(full_text.contains("function499:"));
+}

@@ -146,6 +146,10 @@ serde_json::from_str(r##"{
           "include_private": {
             "type": "boolean",
             "description": "When true, add on-demand private members not already indexed plus non-exported top-level declarations inline in symbols with explicit visibility and kind rows. On-demand tree-sitter parse; no index rebuild needed. Supported: TypeScript, JavaScript, Python, Rust. Default: false."
+          },
+          "truncate": {
+            "type": "boolean",
+            "description": "When false, bypasses the 10KB MCP response cap and returns the full outline response. Default: true."
           }
         },
         "required": [

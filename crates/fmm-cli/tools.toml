@@ -347,6 +347,11 @@ mcp_description = "When true, add on-demand private members not already indexed 
 cli_help        = "Include private/protected class members and non-exported top-level functions"
 cli_flag        = "--include-private"
 
+[[tools.fmm_file_outline.params]]
+name            = "truncate"
+type            = "boolean"
+mcp_description = "When false, bypasses the 10KB MCP response cap and returns the full outline response. Default: true."
+
 [tools.fmm_search]
 cli_name        = "search"
 mcp_description = "Universal codebase search. Use 'term' for smart search across codebase-defined exports, file paths, import package names, and named-import call sites. The NAMED IMPORTS section shows files that import the term by name from any package — e.g. term: createServerFn finds every file that imports createServerFn from @tanstack/react-start. Use structured filters (export, imports, depends_on, LOC) for precise queries. Combine 'term' with filters to narrow results with AND semantics. Note: depends_on uses transitive matching (full import chain), not direct-only. For direct importers only, use fmm_dependency_graph with depth=1."
