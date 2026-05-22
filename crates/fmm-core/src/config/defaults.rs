@@ -9,6 +9,8 @@ pub(super) fn default_test_path_contains() -> Vec<String> {
         "/e2e/".to_string(),
         "/test/".to_string(),
         "/tests/".to_string(),
+        "/tests.rs".to_string(),
+        "/test.rs".to_string(),
         "/spec/".to_string(),
         "/__tests__/".to_string(),
     ]

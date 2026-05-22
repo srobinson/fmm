@@ -1,4 +1,6 @@
-use super::defaults::{default_languages, default_test_filename_suffixes};
+use super::defaults::{
+    default_languages, default_test_filename_suffixes, default_test_path_contains,
+};
 use super::*;
 use crate::parser::ParserRegistry;
 use std::collections::BTreeSet;
@@ -152,12 +154,33 @@ fn is_test_file_detects_rust_plural_tests_suffix() {
 }
 
 #[test]
+fn is_test_file_detects_bare_rust_test_module_files() {
+    let config = Config::default();
+    assert!(config.is_test_file("crates/fmm-core/src/manifest/private_members/tests.rs"));
+    assert!(config.is_test_file("crates/fmm-core/src/manifest/private_members/test.rs"));
+}
+
+#[test]
+fn is_test_file_does_not_overmatch_bare_rust_test_module_names() {
+    let config = Config::default();
+    assert!(!config.is_test_file("crates/whatever/wrtests.rs"));
+    assert!(!config.is_test_file("crates/whatever/protest.rs"));
+}
+
+#[test]
 fn is_test_file_detects_path_segment() {
     let config = Config::default();
     assert!(config.is_test_file("src/test/helper.ts"));
     assert!(config.is_test_file("packages/core/e2e/app.ts"));
     assert!(config.is_test_file("src/__tests__/utils.ts"));
     assert!(!config.is_test_file("src/contest/result.ts"));
+}
+
+#[test]
+fn default_test_path_contains_includes_bare_rust_module_files() {
+    let path_contains = default_test_path_contains();
+    assert!(path_contains.contains(&"/tests.rs".to_string()));
+    assert!(path_contains.contains(&"/test.rs".to_string()));
 }
 
 #[test]
@@ -386,7 +409,10 @@ fn file_config_partial_deserialization() {
     assert_eq!(config.max_lines, 42);
     assert_eq!(config.languages.len(), 29);
     assert!(config.exclude.is_empty());
-    assert_eq!(config.test_patterns.path_contains.len(), 5);
+    assert_eq!(
+        config.test_patterns.path_contains.len(),
+        default_test_path_contains().len()
+    );
 }
 
 #[test]
@@ -408,7 +434,10 @@ fn three_layer_precedence() {
     assert_eq!(config.languages.len(), 2);
     assert!(config.languages.contains("rs"));
     assert_eq!(config.exclude, vec!["dist/**"]);
-    assert_eq!(config.test_patterns.path_contains.len(), 5);
+    assert_eq!(
+        config.test_patterns.path_contains.len(),
+        default_test_path_contains().len()
+    );
 }
 
 #[test]
