@@ -141,14 +141,3 @@ pub(super) fn signature_text(
         .trim()
         .to_string()
 }
-
-pub(super) fn top_level_ancestor(node: Node) -> Node {
-    let mut current = node;
-    while let Some(parent) = current.parent() {
-        if parent.parent().is_none() {
-            return current;
-        }
-        current = parent;
-    }
-    current
-}

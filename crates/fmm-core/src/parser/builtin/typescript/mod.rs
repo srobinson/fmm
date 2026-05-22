@@ -13,7 +13,7 @@ use anyhow::Result;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
-use super::query_helpers::{compile_query, make_parser};
+use super::query_helpers::{compile_query, make_parser, top_level_ancestor};
 
 use tsconfig::load_tsconfig_paths;
 
@@ -216,9 +216,7 @@ impl TypeScriptParser {
                 continue;
             }
 
-            let node = name_node
-                .map(symbol_metadata::top_level_ancestor)
-                .unwrap_or(root_node);
+            let node = name_node.map(top_level_ancestor).unwrap_or(root_node);
             let declaration_kind = declaration_kind_for_export_query(query_index);
             entries.push(symbol_metadata::ts_entry(
                 name,

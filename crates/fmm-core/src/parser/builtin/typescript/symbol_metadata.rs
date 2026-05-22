@@ -85,10 +85,6 @@ pub(super) fn apply_outline_metadata(
     );
 }
 
-pub(super) fn top_level_ancestor(node: Node) -> Node {
-    shared_metadata::top_level_ancestor(node)
-}
-
 pub(super) fn collect_test_blocks(node: Node, source_bytes: &[u8], entries: &mut Vec<ExportEntry>) {
     if node.kind() == "call_expression"
         && let Some(name) = test_call_name(node, source_bytes)
