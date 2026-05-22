@@ -6,6 +6,7 @@ pub(crate) struct ReadSymbolResult {
     pub(crate) symbol: String,
     pub(crate) file: String,
     pub(crate) lines: ExportLines,
+    pub(crate) symbol_kind: Option<String>,
     pub(crate) content: ReadSymbolContent,
 }
 
@@ -136,6 +137,7 @@ impl ReadSymbolResult {
                 &self.symbol,
                 &self.file,
                 &self.lines,
+                self.symbol_kind.as_deref(),
                 source,
                 line_numbers,
             ),
@@ -193,6 +195,9 @@ pub(crate) fn read_symbol_result(
     }
 
     let symbol_source = source_lines[start..end].join("\n");
+    let symbol_kind = manifest
+        .declaration_kind_for(name, &resolved_file)
+        .map(ToOwned::to_owned);
 
     let is_bare_name = !name.contains('.') && !name.contains(':');
     if is_bare_name
@@ -205,6 +210,7 @@ pub(crate) fn read_symbol_result(
             symbol: name.to_string(),
             file: resolved_file,
             lines,
+            symbol_kind,
             content: ReadSymbolContent::ClassRedirect { methods },
         });
     }
@@ -213,6 +219,7 @@ pub(crate) fn read_symbol_result(
         symbol: name.to_string(),
         file: resolved_file,
         lines,
+        symbol_kind,
         content: ReadSymbolContent::Source(symbol_source),
     })
 }

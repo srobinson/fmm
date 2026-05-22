@@ -111,7 +111,7 @@ serde_json::from_str(r##"{
     },
     {
       "name": "fmm_read_symbol",
-      "description": "Read the source code for a specific exported symbol or uniquely named non-exported top-level function. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Use `path/to/file:helperFunction` notation to disambiguate duplicate exports or duplicate non-exported top-level functions. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.",
+      "description": "Read the source code for a specific exported symbol or uniquely named non-exported top-level function. Returns the exact lines where the function/class/type/member is defined, without reading the entire file. Use `ClassName.member` notation to read a specific public/private method or indexed field: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Use `path/to/file:helperFunction` notation to disambiguate duplicate exports or duplicate non-exported top-level functions. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -257,13 +257,13 @@ serde_json::from_str(r##"{
     },
     {
       "name": "fmm_glossary",
-      "description": "Symbol-level impact analysis. Given a symbol name or pattern, returns all definitions and exactly which files import each one. Three-layer precision: bare name returns named-import filtered callers (Layer 2, default); dotted name (e.g. 'Injector.loadInstance') adds call-site precision; precision: 'call-site' adds Layer 3 tree-sitter to remove dead imports and annotate re-exports. Use before renaming or changing a signature.",
+      "description": "Symbol-level impact analysis. Given a symbol name or pattern, returns all definitions and exactly which files import each one. Three-layer precision: bare name returns named-import filtered callers (Layer 2, default); dotted method names (e.g. 'Injector.loadInstance') add call-site precision; dotted field names report kind: field without implying method callers; precision: 'call-site' adds Layer 3 tree-sitter to remove dead imports and annotate re-exports. Use before renaming or changing a signature.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "pattern": {
             "type": "string",
-            "description": "Required. Case-insensitive substring filter on export name. Bare name (e.g. 'loadInstance') returns named-import filtered used_by (Layer 2). Dotted name (e.g. 'Injector.loadInstance') adds call-site precision, filtered to actual callers."
+            "description": "Required. Case-insensitive substring filter on export name. Bare name (e.g. 'loadInstance') returns named-import filtered used_by (Layer 2). Dotted method name (e.g. 'Injector.loadInstance') adds call-site precision, filtered to actual callers. Dotted field name emits kind: field and does not imply a method call site."
           },
           "limit": {
             "type": "integer",

@@ -1,6 +1,6 @@
 use super::support::{assert_error, test_server, test_server_at, tool_text};
 use fmm_core::manifest::Manifest;
-use fmm_core::parser::{ExportEntry, Metadata};
+use fmm_core::parser::{DeclarationKind, ExportEntry, Metadata, SymbolVisibility};
 use serde_json::json;
 
 #[test]
@@ -48,6 +48,84 @@ fn read_symbol_dotted_notation_returns_method_source() {
     assert!(
         !text.starts_with("ERROR:"),
         "class lookup should succeed, got: {text}",
+    );
+}
+
+#[test]
+fn read_symbol_dotted_notation_reports_indexed_kind_and_omits_private_absence() {
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("service.ts");
+    std::fs::write(
+        &file_path,
+        "class Service {\n  config = \"x\";\n  start() {\n    return this.config;\n  }\n  private helper() {\n    return 1;\n  }\n}\n",
+    )
+    .unwrap();
+
+    let mut manifest = Manifest::new();
+    manifest.add_file(
+        "service.ts",
+        Metadata {
+            exports: vec![
+                ExportEntry {
+                    declaration_kind: Some(DeclarationKind::Struct),
+                    visibility: Some(SymbolVisibility::Public),
+                    ..ExportEntry::new("Service".to_string(), 1, 9)
+                },
+                ExportEntry {
+                    name: "config".to_string(),
+                    start_line: 2,
+                    end_line: 2,
+                    signature: Some("config = \"x\"".to_string()),
+                    visibility: Some(SymbolVisibility::Public),
+                    declaration_kind: Some(DeclarationKind::Field),
+                    parent_class: Some("Service".to_string()),
+                    relationship_kind: None,
+                },
+                ExportEntry {
+                    declaration_kind: Some(DeclarationKind::Method),
+                    visibility: Some(SymbolVisibility::Public),
+                    ..ExportEntry::method("start".to_string(), 3, 5, "Service".to_string())
+                },
+            ],
+            loc: 9,
+            ..Default::default()
+        },
+    );
+
+    let server = test_server_at(manifest, dir.path().to_path_buf());
+
+    let field_text = tool_text(
+        &server,
+        "fmm_read_symbol",
+        json!({"name": "Service.config"}),
+    );
+    assert!(
+        field_text.contains("kind: field"),
+        "field kind missing, got: {field_text}"
+    );
+    assert!(
+        field_text.contains("config = \"x\""),
+        "field source missing, got: {field_text}"
+    );
+
+    let method_text = tool_text(&server, "fmm_read_symbol", json!({"name": "Service.start"}));
+    assert!(
+        method_text.contains("kind: method"),
+        "method kind missing, got: {method_text}"
+    );
+
+    let private_text = tool_text(
+        &server,
+        "fmm_read_symbol",
+        json!({"name": "Service.helper"}),
+    );
+    assert!(
+        !private_text.starts_with("ERROR:"),
+        "private resolver should still work, got: {private_text}"
+    );
+    assert!(
+        !private_text.contains("kind:"),
+        "private resolver has no index metadata and should omit kind, got: {private_text}"
     );
 }
 

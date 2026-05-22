@@ -41,6 +41,33 @@ pub struct ExportLocation {
     pub lines: Option<ExportLines>,
 }
 
+impl Manifest {
+    /// Return the semantic declaration kind for an indexed symbol, when known.
+    ///
+    /// Private members discovered on demand do not have index metadata, so
+    /// callers should omit the kind line when this returns `None`.
+    pub fn declaration_kind_for(&self, symbol: &str, file: &str) -> Option<&str> {
+        let entry = self.files.get(file)?;
+        let symbol = symbol
+            .rsplit_once(':')
+            .map(|(_, symbol)| symbol)
+            .unwrap_or(symbol);
+        if symbol.contains('.') {
+            entry
+                .method_metadata
+                .get(symbol)?
+                .declaration_kind
+                .as_deref()
+        } else {
+            entry
+                .export_metadata
+                .get(symbol)?
+                .declaration_kind
+                .as_deref()
+        }
+    }
+}
+
 /// In-memory index built from the SQLite database.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

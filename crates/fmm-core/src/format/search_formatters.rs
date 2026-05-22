@@ -1,6 +1,6 @@
 //! Search result formatters: bare search, filter search, glossary.
 
-use crate::format::yaml_escape;
+use crate::format::{push_kind_line, yaml_escape};
 use crate::manifest::GlossaryEntry;
 use crate::search::{BareSearchResult, ExportHitCompact, FileSearchResult};
 
@@ -166,6 +166,7 @@ pub fn format_glossary(
                 _ => String::new(),
             };
             lines.push(format!("  - src: {}{}", src.file, loc_str));
+            push_kind_line(&mut lines, 4, src.kind.as_deref());
             let has_any_callers = !src.used_by.is_empty()
                 || !src.namespace_callers.is_empty()
                 || !src.layer2_namespace_callers.is_empty();

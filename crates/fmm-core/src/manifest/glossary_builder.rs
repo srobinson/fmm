@@ -30,6 +30,8 @@ pub struct GlossaryEntry {
 pub struct GlossarySource {
     pub file: String,
     pub lines: Option<ExportLines>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
     pub used_by: Vec<String>,
     /// ALP-865: files that import via a namespace (`import * as ns`) — call-site precision
     /// unavailable for these; they are reported separately with a disclosure note.
@@ -132,6 +134,9 @@ impl Manifest {
                         GlossarySource {
                             file: loc.file.clone(),
                             lines: loc.lines.clone(),
+                            kind: self
+                                .declaration_kind_for(name, &loc.file)
+                                .map(ToOwned::to_owned),
                             used_by,
                             namespace_callers: Vec::new(),
                             layer2_excluded_count: 0,
@@ -180,6 +185,9 @@ impl Manifest {
                 sources: vec![GlossarySource {
                     file: loc.file.clone(),
                     lines: loc.lines.clone(),
+                    kind: self
+                        .declaration_kind_for(dotted_name, &loc.file)
+                        .map(ToOwned::to_owned),
                     used_by,
                     namespace_callers: Vec::new(),
                     layer2_excluded_count: 0,

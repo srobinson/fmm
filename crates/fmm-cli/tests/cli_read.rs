@@ -127,6 +127,16 @@ fn parse_json(output: &Output) -> Value {
 }
 
 #[test]
+fn read_json_preserves_response_kind_and_adds_symbol_kind() {
+    let tmp = setup_read_project();
+    let output = run_fmm(tmp.path(), &["read", "SecretService.run", "--json"]);
+    let json = parse_json(&output);
+
+    assert_eq!(json["kind"], "source", "got: {json:#}");
+    assert_eq!(json["symbol_kind"], "method", "got: {json:#}");
+}
+
+#[test]
 fn read_missing_export_suggests_cli_commands() {
     let tmp = setup_read_project();
     let output = run_fmm(tmp.path(), &["read", "NoSuchSymbol"]);

@@ -307,7 +307,7 @@ fn file_outline_include_private_does_not_duplicate_indexed_private_members() {
 fn read_symbol_line_numbers_false_unchanged() {
     let el = ExportLines { start: 10, end: 12 };
     let source = "fn foo() {\n  bar();\n}";
-    let out = format_read_symbol("foo", "src/x.rs", &el, source, false);
+    let out = format_read_symbol("foo", "src/x.rs", &el, None, source, false);
     assert!(out.contains("fn foo() {"), "source should appear verbatim");
     assert!(!out.contains("10  "), "no line numbers when flag=false");
 }
@@ -316,7 +316,8 @@ fn read_symbol_line_numbers_false_unchanged() {
 fn read_symbol_line_numbers_true_prepends_numbers() {
     let el = ExportLines { start: 10, end: 12 };
     let source = "fn foo() {\n  bar();\n}";
-    let out = format_read_symbol("foo", "src/x.rs", &el, source, true);
+    let out = format_read_symbol("foo", "src/x.rs", &el, Some("fn"), source, true);
+    assert!(out.contains("kind: fn"), "kind missing; got:\n{}", out);
     assert!(
         out.contains("10  fn foo() {"),
         "line 10 missing; got:\n{}",
@@ -338,7 +339,7 @@ fn read_symbol_line_numbers_aligned_to_max_width() {
         end: 101,
     };
     let source = "a\nb\nc";
-    let out = format_read_symbol("x", "f.ts", &el, source, true);
+    let out = format_read_symbol("x", "f.ts", &el, None, source, true);
     assert!(
         out.contains(" 99  a"),
         "line 99 not right-aligned; got:\n{}",

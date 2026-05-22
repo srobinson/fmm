@@ -64,7 +64,7 @@ fmm_file_outline(..., include_private: true)  →  private members and non-expor
 
 ```
 fmm_read_symbol("ClassName")                     →  full class source (capped at 10KB)
-fmm_read_symbol("Class.method")                  →  single method — surgical extraction
+fmm_read_symbol("Class.member")                  →  single method or indexed field; includes kind when known
 fmm_read_symbol("src/foo.ts:helperFn")           →  non-exported top-level function
 fmm_read_symbol("Symbol", line_numbers: true)    →  with absolute line numbers
 fmm_read_symbol("LargeClass", truncate: false)   →  bypass 10KB cap
@@ -127,11 +127,11 @@ First tool to reach for in an unknown codebase. Default sort is `loc` (heaviest 
 ### "Show me the code for X"
 
 ```
-1. fmm_read_symbol(name: "ClassName.methodName") → exact method source — DONE
+1. fmm_read_symbol(name: "ClassName.memberName") → exact method or indexed field source — DONE
    Full class: fmm_read_symbol(name: "ClassName") — truncates at 10KB; add truncate: false for full source
 ```
 
-**Always use `ClassName.method` notation for large classes.** It extracts exactly that method — no class body noise. Reading a 1,000-line class to find an 80-line method wastes ~90% of your token budget.
+**Always use `ClassName.member` notation for large classes.** It extracts exactly that method or indexed field — no class body noise. Reading a 1,000-line class to find an 80-line method wastes ~90% of your token budget.
 
 ### "Find everything named like X"
 
@@ -172,12 +172,14 @@ fmm_search(term: "createServerFn") →
 ### "What would break if I rename/change X?"
 
 ```
-1. fmm_glossary(pattern: "ClassName.method") → actual call sites only — surgical blast radius
+1. fmm_glossary(pattern: "ClassName.method") → actual method call sites only — surgical blast radius
    fmm_glossary(pattern: "ClassName") → file-level: all files importing the class's file
 2. Separate production vs test impact: mode: "source" | "tests" | "all"
 ```
 
 **The dotted pattern is the contract.** `fmm_glossary(pattern: "loadInstance")` returns every file that imports `injector.ts` — a superset. `fmm_glossary(pattern: "Injector.loadInstance")` runs a tree-sitter second pass and returns only files with an actual call site. Use the dotted form for rename safety.
+
+**Dotted fields.** If the dotted member is an indexed field, `fmm_glossary` emits `kind: field` and explains that field access is not a method call site.
 
 **Re-export annotation.** When a file re-exports a symbol without calling it, glossary marks it: `# re-exports only (1 file — rename required but no call site)`. This means a rename must update the re-export chain, but no call-site edits are needed. Distinct from a true caller.
 
@@ -264,7 +266,7 @@ Report strongly connected dependency cycles over the internal graph. Defaults to
 
 ### `fmm_read_symbol`
 
-Read the source code for a specific exported symbol or uniquely named non-exported top-level function. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: "Injector.loadInstance")`. Use `path/to/file:helperFunction` notation to disambiguate duplicate exports or duplicate non-exported top-level functions. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.
+Read the source code for a specific exported symbol or uniquely named non-exported top-level function. Returns the exact lines where the function/class/type/member is defined, without reading the entire file. Use `ClassName.member` notation to read a specific public/private method or indexed field: `fmm_read_symbol(name: "Injector.loadInstance")`. Use `path/to/file:helperFunction` notation to disambiguate duplicate exports or duplicate non-exported top-level functions. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -313,7 +315,7 @@ List all indexed files under a directory prefix. The first tool to reach for whe
 
 ### `fmm_glossary`
 
-Symbol-level impact analysis. Given a symbol name or pattern, returns all definitions and exactly which files import each one. Three-layer precision: bare name returns named-import filtered callers (Layer 2, default); dotted name (e.g. 'Injector.loadInstance') adds call-site precision; precision: 'call-site' adds Layer 3 tree-sitter to remove dead imports and annotate re-exports. Use before renaming or changing a signature.
+Symbol-level impact analysis. Given a symbol name or pattern, returns all definitions and exactly which files import each one. Three-layer precision: bare name returns named-import filtered callers (Layer 2, default); dotted method names (e.g. 'Injector.loadInstance') add call-site precision; dotted field names report kind: field without implying method callers; precision: 'call-site' adds Layer 3 tree-sitter to remove dead imports and annotate re-exports. Use before renaming or changing a signature.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

@@ -157,9 +157,7 @@ fn push_metadata(lines: &mut Vec<String>, indent: usize, metadata: &SymbolMetada
             yaml_escape(visibility)
         ));
     }
-    if let Some(kind) = &metadata.declaration_kind {
-        lines.push(format!("{}kind: {}", spaces(indent), yaml_escape(kind)));
-    }
+    crate::format::push_kind_line(lines, indent, metadata.declaration_kind.as_deref());
 }
 
 fn push_members(
@@ -431,6 +429,7 @@ pub fn format_read_symbol(
     symbol: &str,
     file: &str,
     el: &ExportLines,
+    kind: Option<&str>,
     source: &str,
     line_numbers: bool,
 ) -> String {
@@ -439,6 +438,7 @@ pub fn format_read_symbol(
     lines.push(format!("symbol: {}", yaml_escape(symbol)));
     lines.push(format!("file: {}", yaml_escape(file)));
     lines.push(format!("lines: [{}, {}]", el.start, el.end));
+    crate::format::push_kind_line(&mut lines, 0, kind);
     lines.push("---".to_string());
 
     if line_numbers {

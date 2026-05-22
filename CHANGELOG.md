@@ -3,6 +3,11 @@
 ## [0.2.9](https://github.com/srobinson/fmm/compare/v0.2.8...v0.2.9) (2026-05-01)
 
 
+### Bug Fixes
+
+* surface declaration kinds in read and glossary output
+
+
 ### Features
 
 * add fmm graph identity and SQLite metadata storage ([#137](https://github.com/srobinson/fmm/issues/137)) ([f99a39d](https://github.com/srobinson/fmm/commit/f99a39d28f1797d2585e67d7672687194ef95bd2))

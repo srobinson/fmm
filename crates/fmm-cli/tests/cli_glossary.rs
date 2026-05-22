@@ -228,6 +228,7 @@ fn glossary_json_preserves_precision_annotations() {
         .map(|value| value.as_str().unwrap())
         .collect();
 
+    assert_eq!(source["kind"], "fn", "got: {json:#}");
     assert!(
         used_by.iter().any(|file| file.ends_with("HooksModule.ts")),
         "got: {json:#}"
