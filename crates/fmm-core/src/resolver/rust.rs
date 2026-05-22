@@ -2,7 +2,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use super::ImportResolver;
-use super::rust_path::relative_importer_starts_with_package_dir;
+use super::rust_path::{
+    last_rust_path_segment_looks_like_symbol, relative_importer_starts_with_package_dir,
+    rust_module_name_from_specifier,
+};
 
 #[derive(Debug, Clone)]
 struct RustCrate {
@@ -95,7 +98,25 @@ impl RustImportResolver {
             return resolve_relative_dep(importer, specifier);
         }
 
+        if let Some(resolved) = self.resolve_same_crate_module(importer, specifier) {
+            return Some(resolved);
+        }
+
         self.resolve_cross_crate(importer, specifier)
+    }
+
+    fn resolve_same_crate_module(&self, importer: &Path, specifier: &str) -> Option<PathBuf> {
+        rust_module_name_from_specifier(specifier)?;
+        let segments = split_rust_path(specifier);
+
+        if let Some(base) = current_module_base(importer)
+            && let Some(resolved) = resolve_from_module_base(&base, segments.clone())
+        {
+            return Some(resolved);
+        }
+
+        let importer_crate = self.crate_for_importer(importer)?;
+        self.resolve_from_crate_root(importer_crate, segments)
     }
 
     fn build_dependency_aliases(&mut self) {
@@ -364,7 +385,7 @@ fn resolve_from_base_dir(
         return Some(path);
     }
 
-    if last_segment_looks_like_symbol(segments) {
+    if last_rust_path_segment_looks_like_symbol(segments) {
         return resolve_from_base_dir(base_dir, &segments[..segments.len() - 1], empty_path_file);
     }
 
@@ -380,7 +401,7 @@ fn resolve_from_module_base(base: &Path, segments: Vec<&str>) -> Option<PathBuf>
         return Some(path);
     }
 
-    if last_segment_looks_like_symbol(&segments) {
+    if last_rust_path_segment_looks_like_symbol(&segments) {
         return resolve_from_module_base(base, segments[..segments.len() - 1].to_vec());
     }
 
@@ -411,13 +432,6 @@ fn resolve_module_file(base: &Path) -> Option<PathBuf> {
 
 fn existing_file(path: &Path) -> Option<PathBuf> {
     path.exists().then(|| path.to_path_buf())
-}
-
-fn last_segment_looks_like_symbol(segments: &[&str]) -> bool {
-    segments
-        .last()
-        .and_then(|segment| segment.chars().next())
-        .is_some_and(char::is_uppercase)
 }
 
 fn current_module_base(importer: &Path) -> Option<PathBuf> {

@@ -20,7 +20,7 @@ mod rust_path;
 pub use deno::DenoImportResolver;
 pub use go::GoImportResolver;
 pub use rust::RustImportResolver;
-pub(crate) use rust_path::normal_components;
+pub(crate) use rust_path::{normal_components, rust_module_name_from_specifier};
 
 /// Resolve an import specifier from a source file into an indexed file path.
 ///
