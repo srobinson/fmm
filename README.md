@@ -79,6 +79,20 @@ Use native tooling alongside fmm:
 
 Run `fmm --help` for workflows and examples, or `fmm <command> --help` for detailed per-command help.
 
+CLI commands use short terminal names. MCP tools use descriptive agent names. Long CLI aliases mirror MCP names with the `fmm_` prefix removed and underscores converted for the CLI.
+
+| MCP tool                   | CLI command   | CLI alias                |
+| -------------------------- | ------------- | ------------------------ |
+| `fmm_lookup_export`        | `fmm lookup`  | `fmm lookup-export`      |
+| `fmm_list_exports`         | `fmm exports` | `fmm list-exports`       |
+| `fmm_dependency_graph`     | `fmm deps`    | `fmm dependency-graph`   |
+| `fmm_dependency_cycles`    | `fmm cycles`  | `fmm dependency-cycles`  |
+| `fmm_read_symbol`          | `fmm read`    | `fmm read-symbol`        |
+| `fmm_file_outline`         | `fmm outline` | `fmm file-outline`       |
+| `fmm_search`               | `fmm search`  | none                     |
+| `fmm_list_files`           | `fmm ls`      | `fmm list-files`         |
+| `fmm_glossary`             | `fmm glossary` | none                     |
+
 ## MCP Tools
 
 fmm includes a built-in MCP server with 8 tools. Configure via `fmm init --mcp` or manually:

@@ -394,6 +394,7 @@ pub enum Commands {
 
     /// Find where a symbol is defined — O(1) lookup
     #[command(
+        visible_alias = "lookup-export",
         long_about = generated_help::LOOKUP_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
@@ -414,6 +415,7 @@ pub enum Commands {
     /// Extract exact source for a symbol or method
     #[command(
         name = "read",
+        visible_alias = "read-symbol",
         long_about = generated_help::READ_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
@@ -443,6 +445,7 @@ pub enum Commands {
 
     /// Show dependency graph for a file
     #[command(
+        visible_alias = "dependency-graph",
         long_about = generated_help::DEPS_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
@@ -473,6 +476,7 @@ pub enum Commands {
 
     /// Report dependency cycles
     #[command(
+        visible_alias = "dependency-cycles",
         long_about = generated_help::CYCLES_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
@@ -502,6 +506,7 @@ pub enum Commands {
 
     /// Show file table-of-contents with line ranges and density metadata
     #[command(
+        visible_alias = "file-outline",
         long_about = generated_help::OUTLINE_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
@@ -525,6 +530,7 @@ pub enum Commands {
 
     /// List indexed files under a directory
     #[command(
+        visible_alias = "list-files",
         long_about = generated_help::LS_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
@@ -582,6 +588,7 @@ pub enum Commands {
 
     /// Search exports by pattern (substring or regex, auto-detected)
     #[command(
+        visible_alias = "list-exports",
         long_about = generated_help::EXPORTS_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>

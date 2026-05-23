@@ -199,6 +199,7 @@ A comprehensive evaluation in 5-8 calls and under 5k tokens — faster and more 
 # Tool order matches the MCP tools/list response order — do not reorder.
 [tools.fmm_lookup_export]
 cli_name        = "lookup"
+cli_aliases     = ["lookup-export"]
 mcp_description = "Instant O(1) symbol-to-file lookup. Find where a function, class, type, or variable is defined. Returns the file path plus metadata (exports, imports, dependencies, LOC). Use before Grep."
 cli_about       = "Find which file defines a symbol and show its metadata.\n\nUses the pre-built export index for O(1) lookup. Supports plain exports, re-exports, and dotted ClassName.method notation."
 
@@ -212,6 +213,7 @@ cli_flag        = "name"
 
 [tools.fmm_list_exports]
 cli_name        = "exports"
+cli_aliases     = ["list-exports"]
 mcp_description = "Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Patterns with regex metacharacters (^, $, [, (, \\\\, ., *, +, ?, {) are compiled as regex. Use 'directory' to scope results to a path prefix (e.g. 'packages/core/'). Use 'file' to list a specific file's exports. Default limit: 200. Use offset to page through large result sets."
 cli_about       = "List exports matching a pattern across the indexed codebase.\n\nWithout a pattern, lists all exports grouped by file. Use --dir to scope results to a directory. Includes dotted method names (ClassName.method).\n\nPattern matching is auto-detected: plain strings use case-insensitive substring match; patterns with regex metacharacters (^, $, [, (, \\\\, ., *, +, ?, {) are compiled as regex."
 
@@ -252,6 +254,7 @@ cli_flag        = "--offset"
 
 [tools.fmm_dependency_graph]
 cli_name        = "deps"
+cli_aliases     = ["dependency-graph"]
 mcp_description = "Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius. Add depth>1 for transitive traversal; depth=-1 for full closure. Use filter='source' to exclude test files from downstream, or filter='tests' to see only test coverage."
 cli_about       = "Show a file's dependency graph: local_deps (resolved local imports), external (packages), and downstream (what would break if this file changes).\n\nUse --depth for transitive traversal. depth=-1 computes the full closure.\nUse --filter=source to exclude test files from downstream for production blast-radius analysis."
 
@@ -280,6 +283,7 @@ cli_flag        = "--filter"
 
 [tools.fmm_dependency_cycles]
 cli_name        = "cycles"
+cli_aliases     = ["dependency-cycles"]
 mcp_description = "Report strongly connected dependency cycles over the internal graph. Defaults to runtime edges, excluding TypeScript type-only imports. Use edge_mode='all' to include type-only edges. Optional file scopes output to cycles containing that file. filter='source' excludes tests, filter='tests' shows only test files."
 cli_about       = "Report strongly connected dependency cycles. Defaults to runtime edges and path-based output."
 
@@ -308,6 +312,7 @@ cli_flag        = "--edge-mode"
 
 [tools.fmm_read_symbol]
 cli_name        = "read"
+cli_aliases     = ["read-symbol"]
 mcp_description = "Read the source code for a specific exported symbol or uniquely named non-exported top-level function. Returns the exact lines where the function/class/type/member is defined, without reading the entire file. Use `ClassName.member` notation to read a specific public/private method or indexed field: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Bare Rust module names return the `mod foo;` declaration with `kind: module`; they do not follow into `foo.rs` or `foo/mod.rs`. Use `path/to/file:helperFunction` notation to disambiguate duplicate exports or duplicate non-exported top-level functions. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line."
 cli_about       = "Read the source code of an exported symbol, a specific member, or a non-exported function.\n\nUse plain name for a unique top-level symbol, ClassName.member notation for a specific public/private method or indexed field, or path/to/file:helperFn notation to disambiguate duplicate symbols. Bare Rust module names return the `mod foo;` declaration with `kind: module`; they do not follow into `foo.rs` or `foo/mod.rs`. Truncates at 10KB by default; use --no-truncate for full source."
 
@@ -335,6 +340,7 @@ cli_flag        = "--line-numbers"
 
 [tools.fmm_file_outline]
 cli_name        = "outline"
+cli_aliases     = ["file-outline"]
 mcp_description = "Get a spatial outline of a file: symbols with line ranges, size, signature, visibility, and kind when populated. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. Set include_private: true to add on-demand private members not already indexed plus non-exported top-level declarations inline in symbols. Stale queried files include one inline freshness annotation. Supported: TypeScript, JavaScript, Python, Rust. On-demand tree-sitter parse for private additions; no index rebuild needed."
 cli_about       = "Show symbols in a file with line ranges, size, signature, visibility, and kind when populated.\n\nUse before reading source to identify which symbol to target with 'fmm read'. Stale queried files include one inline freshness annotation."
 
@@ -414,6 +420,7 @@ cli_flag        = "--limit"
 
 [tools.fmm_list_files]
 cli_name        = "ls"
+cli_aliases     = ["list-files"]
 mcp_description = "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC, export count, and downstream dependent count. Default sort: LOC descending (largest files first). sort_by options: loc (default), name/path, exports, downstream (blast-radius sort), modified (most recently changed first). Default limit: 200. Use offset to page through large directories."
 cli_about       = "List all files indexed by fmm under a directory prefix.\n\nShows file paths with LOC and export count.\n\nSort modes (--sort-by):\n- loc (default): heaviest files first\n- name/path: alphabetical file path\n- exports: most exported symbols first\n- downstream: most depended-upon files first (best for pre-refactoring blast radius)\n- modified: most recently changed first\n\nUse --group-by=subdir to collapse into directory buckets.\nUse --filter=source to exclude test files; --filter=tests for test files only.\nTest filtering is path based: Rust inline #[cfg(test)] mod tests blocks inside ordinary source files do not make the containing file a test file."
 

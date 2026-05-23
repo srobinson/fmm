@@ -22,6 +22,8 @@ struct SkillConfig {
 #[derive(Deserialize)]
 struct ToolDef {
     cli_name: String,
+    #[serde(default)]
+    cli_aliases: Vec<String>,
     mcp_description: String,
     cli_about: String,
     #[serde(default)]
@@ -221,6 +223,31 @@ fn rust_escape(s: &str) -> String {
 // SKILL.md generator
 // ---------------------------------------------------------------------------
 
+fn push_cli_mapping(out: &mut String, tools: &IndexMap<String, ToolDef>) {
+    out.push_str("## CLI and MCP Command Mapping\n\n");
+    out.push_str("CLI commands use short terminal names. Aliases mirror MCP tool names with the `fmm_` prefix removed and underscores converted for the CLI.\n\n");
+    out.push_str("| MCP Tool | CLI Command | CLI Alias |\n");
+    out.push_str("| -------- | ----------- | --------- |\n");
+
+    for (tool_name, tool) in tools {
+        let aliases = if tool.cli_aliases.is_empty() {
+            "none".to_string()
+        } else {
+            tool.cli_aliases
+                .iter()
+                .map(|alias| format!("`fmm {alias}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        out.push_str(&format!(
+            "| `{tool_name}` | `fmm {}` | {} |\n",
+            tool.cli_name, aliases
+        ));
+    }
+
+    out.push('\n');
+}
+
 fn generate_skill_md(skill: Option<&SkillConfig>, tools: &IndexMap<String, ToolDef>) -> String {
     let mut out = String::new();
 
@@ -295,6 +322,7 @@ fn generate_skill_md(skill: Option<&SkillConfig>, tools: &IndexMap<String, ToolD
         out.push_str(&format!("| `{tool_name}` | {use_case} | {example} |\n"));
     }
     out.push('\n');
+    push_cli_mapping(&mut out, tools);
 
     // Workflow section.
     if let Some(skill) = skill {

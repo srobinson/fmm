@@ -34,6 +34,22 @@ Reserve `Read` for two cases only: editing a specific symbol, or understanding l
 | `fmm_dependency_graph` | Upstream deps + downstream blast radius. filter: "source" strips test files, filter: "tests" shows only test coverage | `fmm_dependency_graph(file: "src/core/index.ts", filter: "source")` |
 | `fmm_glossary` | Symbol impact — call-site callers or test coverage by method | `fmm_glossary(pattern: "Injector.loadInstance", mode: "source")` |
 
+## CLI and MCP Command Mapping
+
+CLI commands use short terminal names. Aliases mirror MCP tool names with the `fmm_` prefix removed and underscores converted for the CLI.
+
+| MCP Tool | CLI Command | CLI Alias |
+| -------- | ----------- | --------- |
+| `fmm_lookup_export` | `fmm lookup` | `fmm lookup-export` |
+| `fmm_list_exports` | `fmm exports` | `fmm list-exports` |
+| `fmm_dependency_graph` | `fmm deps` | `fmm dependency-graph` |
+| `fmm_dependency_cycles` | `fmm cycles` | `fmm dependency-cycles` |
+| `fmm_read_symbol` | `fmm read` | `fmm read-symbol` |
+| `fmm_file_outline` | `fmm outline` | `fmm file-outline` |
+| `fmm_search` | `fmm search` | none |
+| `fmm_list_files` | `fmm ls` | `fmm list-files` |
+| `fmm_glossary` | `fmm glossary` | none |
+
 ## Navigation Workflow
 
 1. **Orient** — `fmm_list_files(sort_by: "downstream")` — highest blast-radius files first. Start here before touching anything.

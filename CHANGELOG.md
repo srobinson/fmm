@@ -4,6 +4,7 @@
 
 ### Features
 
+* add MCP derived CLI aliases for navigation commands
 * add cross-type hints to `read_symbol` missing member diagnostics
 * render outline `members:` as collision safe list records instead of a map keyed by name
 
