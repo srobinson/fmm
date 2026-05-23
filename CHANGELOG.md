@@ -27,6 +27,17 @@
 * document path based test filtering for Rust inline test modules
 * recommend `fmm generate` as the schema mismatch rebuild path
 
+## [0.3.0](https://github.com/srobinson/fmm/compare/v0.2.9...v0.3.0) (2026-05-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* `fmm_file_outline` default output no longer carries the `# non-exported`, `# private`, `# private field`, or `# closure-state` suffix annotations, and the separate `non_exported:` section is removed. The new default-on fields `signature`, `visibility`, and `kind` appear inline for every populated symbol.
+
+### Features
+
+* outline default density uplift (ALP-2707) + 17 road-test fixes ([#139](https://github.com/srobinson/fmm/issues/139)) ([ab72ec1](https://github.com/srobinson/fmm/commit/ab72ec1c23d105d3c01f056426f7bb28b749406a))
+
 ## [0.2.9](https://github.com/srobinson/fmm/compare/v0.2.8...v0.2.9) (2026-05-01)
 
 
