@@ -1,4 +1,5 @@
 use super::*;
+use fmm_core::parser::{ParseResult, SymbolVisibility};
 
 #[test]
 fn validate_rust_fixture() {
@@ -9,8 +10,18 @@ fn validate_rust_fixture() {
 
     let result = parse_fixture(RustParser::new().unwrap(), source);
 
-    // Expected exports: pub items only (not pub(crate), pub(super), or private)
-    let expected_exports = vec!["Config", "Status", "Pipeline", "Error", "process"];
+    let expected_exports = vec![
+        "Config",
+        "Status",
+        "Pipeline",
+        "Error",
+        "impl fmt::Display for Error",
+        "process",
+        "internal_helper",
+        "parent_visible",
+        "fetch_remote",
+        "private_fn",
+    ];
     assert_eq!(result.metadata.export_names(), expected_exports);
 
     // Expected imports: anyhow, serde, std, tokio (all crates including stdlib)
@@ -74,23 +85,18 @@ fn validate_rust_fixture() {
         "should have exactly 1 async function"
     );
 
-    // Verify pub(crate) and pub(super) items are NOT exported
-    assert!(
-        !result
-            .metadata
-            .export_names()
-            .contains(&"internal_helper".to_string())
-    );
-    assert!(
-        !result
-            .metadata
-            .export_names()
-            .contains(&"parent_visible".to_string())
-    );
-    assert!(
-        !result
-            .metadata
-            .export_names()
-            .contains(&"private_fn".to_string())
-    );
+    assert_visibility(&result, "process", SymbolVisibility::Public);
+    assert_visibility(&result, "internal_helper", SymbolVisibility::Crate);
+    assert_visibility(&result, "parent_visible", SymbolVisibility::Crate);
+    assert_visibility(&result, "private_fn", SymbolVisibility::Private);
+}
+
+fn assert_visibility(result: &ParseResult, name: &str, visibility: SymbolVisibility) {
+    let entry = result
+        .metadata
+        .exports
+        .iter()
+        .find(|entry| entry.name == name)
+        .unwrap_or_else(|| panic!("{name} should be indexed"));
+    assert_eq!(entry.visibility, Some(visibility));
 }

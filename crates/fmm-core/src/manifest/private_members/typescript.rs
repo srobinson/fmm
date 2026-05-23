@@ -200,12 +200,12 @@ fn ts_private_method(node: tree_sitter::Node, source: &[u8]) -> Option<PrivateMe
 
     // ECMAScript #method — private_property_identifier is the name
     if name_kind == "private_property_identifier" {
-        return Some(PrivateMember {
+        return Some(PrivateMember::new(
             name,
-            start: node.start_position().row + 1,
-            end: node.end_position().row + 1,
-            is_method: true,
-        });
+            node.start_position().row + 1,
+            node.end_position().row + 1,
+            true,
+        ));
     }
 
     // TypeScript `private`/`protected` keyword
@@ -220,12 +220,12 @@ fn ts_private_method(node: tree_sitter::Node, source: &[u8]) -> Option<PrivateMe
         return None;
     }
 
-    Some(PrivateMember {
+    Some(PrivateMember::new(
         name,
-        start: node.start_position().row + 1,
-        end: node.end_position().row + 1,
-        is_method: true,
-    })
+        node.start_position().row + 1,
+        node.end_position().row + 1,
+        true,
+    ))
 }
 
 /// Extract a private/protected field declaration. Returns None when public.
@@ -246,12 +246,12 @@ fn ts_private_field(node: tree_sitter::Node, source: &[u8]) -> Option<PrivateMem
 
     // ECMAScript #field — private_property_identifier is the name child
     if name_kind == "private_property_identifier" {
-        return Some(PrivateMember {
+        return Some(PrivateMember::new(
             name,
-            start: node.start_position().row + 1,
-            end: node.end_position().row + 1,
-            is_method: false,
-        });
+            node.start_position().row + 1,
+            node.end_position().row + 1,
+            false,
+        ));
     }
 
     // TypeScript `private`/`protected` keyword
@@ -266,10 +266,10 @@ fn ts_private_field(node: tree_sitter::Node, source: &[u8]) -> Option<PrivateMem
         return None;
     }
 
-    Some(PrivateMember {
+    Some(PrivateMember::new(
         name,
-        start: node.start_position().row + 1,
-        end: node.end_position().row + 1,
-        is_method: false,
-    })
+        node.start_position().row + 1,
+        node.end_position().row + 1,
+        false,
+    ))
 }

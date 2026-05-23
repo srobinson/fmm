@@ -10,7 +10,7 @@ workflow = """
 
 1. **Orient** — `fmm_list_files(sort_by: "downstream")` — highest blast-radius files first. Start here before touching anything.
 2. **Locate** — `fmm_lookup_export("SymbolName")` — O(1) file + line range. Replaces grep.
-3. **Outline** — `fmm_file_outline(file, include_private: true)` — full method inventory including private members.
+3. **Outline** — `fmm_file_outline(file, include_private: true)` — symbol inventory with line ranges, density fields, and private members.
 4. **Read** — `fmm_read_symbol("Class.method", line_numbers: true)` — surgical extraction.
 5. **Impact** — `fmm_glossary("Class.method")` — confirmed callers before renaming or changing a signature.
 
@@ -20,6 +20,7 @@ workflow = """
 fmm_list_files(sort_by: "downstream")   →  highest blast-radius first
 fmm_list_files(group_by: "subdir")      →  directory topology in one call
 fmm_list_files(filter: "source")        →  source files only (no tests)
+fmm_list_files(filter: "tests")         →  test files by path/name; Rust inline #[cfg(test)] modules inside source files are excluded
 fmm_list_files(pattern: "*.ts")         →  filter by filename glob
 ```
 
@@ -28,15 +29,16 @@ fmm_list_files(pattern: "*.ts")         →  filter by filename glob
 ```
 fmm_lookup_export("SymbolName")         →  O(1) file + line range
 fmm_list_exports(pattern: "auth")       →  fuzzy: validateAuth, authMiddleware
-fmm_file_outline(file: "src/foo.ts")    →  all exports with line ranges
-fmm_file_outline(..., include_private: true)  →  private members too
+fmm_file_outline(file: "src/foo.ts")    →  symbols with line ranges, signature, visibility, kind
+fmm_file_outline(..., include_private: true)  →  private members and non-exported top-level declarations too
 ```
 
 ### Reading Code
 
 ```
 fmm_read_symbol("ClassName")                     →  full class source (capped at 10KB)
-fmm_read_symbol("Class.method")                  →  single method — surgical extraction
+fmm_read_symbol("Class.member")                  →  single method or indexed field; includes kind when known
+fmm_read_symbol("module_name")                   →  Rust `mod module_name;` declaration with kind: module
 fmm_read_symbol("src/foo.ts:helperFn")           →  non-exported top-level function
 fmm_read_symbol("Symbol", line_numbers: true)    →  with absolute line numbers
 fmm_read_symbol("LargeClass", truncate: false)   →  bypass 10KB cap
@@ -80,11 +82,11 @@ First tool to reach for in an unknown codebase. Default sort is `loc` (heaviest 
 ### "What's in this file?"
 
 ```
-1. fmm_file_outline(file: "src/foo.ts") → every export + public methods with line ranges
+1. fmm_file_outline(file: "src/foo.ts") → symbols with line ranges, signature, visibility, and kind
 2. Decide WHAT to read before reading anything
 ```
 
-`fmm_file_outline` lists all public methods on classes with exact line ranges. For a 1,000-line class, you see the full table of contents in one call.
+`fmm_file_outline` lists symbols and class members with exact line ranges and populated density fields. For a 1,000-line class, you see the full table of contents in one call.
 
 ### "Where is X defined?"
 
@@ -99,11 +101,11 @@ First tool to reach for in an unknown codebase. Default sort is `loc` (heaviest 
 ### "Show me the code for X"
 
 ```
-1. fmm_read_symbol(name: "ClassName.methodName") → exact method source — DONE
+1. fmm_read_symbol(name: "ClassName.memberName") → exact method or indexed field source — DONE
    Full class: fmm_read_symbol(name: "ClassName") — truncates at 10KB; add truncate: false for full source
 ```
 
-**Always use `ClassName.method` notation for large classes.** It extracts exactly that method — no class body noise. Reading a 1,000-line class to find an 80-line method wastes ~90% of your token budget.
+**Always use `ClassName.member` notation for large classes.** It extracts exactly that method or indexed field — no class body noise. Reading a 1,000-line class to find an 80-line method wastes ~90% of your token budget.
 
 ### "Find everything named like X"
 
@@ -144,12 +146,16 @@ fmm_search(term: "createServerFn") →
 ### "What would break if I rename/change X?"
 
 ```
-1. fmm_glossary(pattern: "ClassName.method") → actual call sites only — surgical blast radius
+1. fmm_glossary(pattern: "ClassName.method") → actual method call sites only — surgical blast radius
    fmm_glossary(pattern: "ClassName") → file-level: all files importing the class's file
 2. Separate production vs test impact: mode: "source" | "tests" | "all"
 ```
 
 **The dotted pattern is the contract.** `fmm_glossary(pattern: "loadInstance")` returns every file that imports `injector.ts` — a superset. `fmm_glossary(pattern: "Injector.loadInstance")` runs a tree-sitter second pass and returns only files with an actual call site. Use the dotted form for rename safety.
+
+**Dotted substring matching.** Dotted glossary patterns narrow to call sites but still match symbols as substrings of the full dotted name. `fmm_glossary(pattern: "Type.foo")` may return both `Type.foo` and `Type.foo_bar`; increase specificity or filter JSON output when you need a single symbol.
+
+**Dotted fields.** If the dotted member is an indexed field, `fmm_glossary` emits `kind: field` and explains that field access is not a method call site.
 
 **Re-export annotation.** When a file re-exports a symbol without calling it, glossary marks it: `# re-exports only (1 file — rename required but no call site)`. This means a rename must update the re-export chain, but no call-site edits are needed. Distinct from a true caller.
 
@@ -193,6 +199,7 @@ A comprehensive evaluation in 5-8 calls and under 5k tokens — faster and more 
 # Tool order matches the MCP tools/list response order — do not reorder.
 [tools.fmm_lookup_export]
 cli_name        = "lookup"
+cli_aliases     = ["lookup-export"]
 mcp_description = "Instant O(1) symbol-to-file lookup. Find where a function, class, type, or variable is defined. Returns the file path plus metadata (exports, imports, dependencies, LOC). Use before Grep."
 cli_about       = "Find which file defines a symbol and show its metadata.\n\nUses the pre-built export index for O(1) lookup. Supports plain exports, re-exports, and dotted ClassName.method notation."
 
@@ -206,6 +213,7 @@ cli_flag        = "name"
 
 [tools.fmm_list_exports]
 cli_name        = "exports"
+cli_aliases     = ["list-exports"]
 mcp_description = "Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Patterns with regex metacharacters (^, $, [, (, \\\\, ., *, +, ?, {) are compiled as regex. Use 'directory' to scope results to a path prefix (e.g. 'packages/core/'). Use 'file' to list a specific file's exports. Default limit: 200. Use offset to page through large result sets."
 cli_about       = "List exports matching a pattern across the indexed codebase.\n\nWithout a pattern, lists all exports grouped by file. Use --dir to scope results to a directory. Includes dotted method names (ClassName.method).\n\nPattern matching is auto-detected: plain strings use case-insensitive substring match; patterns with regex metacharacters (^, $, [, (, \\\\, ., *, +, ?, {) are compiled as regex."
 
@@ -246,6 +254,7 @@ cli_flag        = "--offset"
 
 [tools.fmm_dependency_graph]
 cli_name        = "deps"
+cli_aliases     = ["dependency-graph"]
 mcp_description = "Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius. Add depth>1 for transitive traversal; depth=-1 for full closure. Use filter='source' to exclude test files from downstream, or filter='tests' to see only test coverage."
 cli_about       = "Show a file's dependency graph: local_deps (resolved local imports), external (packages), and downstream (what would break if this file changes).\n\nUse --depth for transitive traversal. depth=-1 computes the full closure.\nUse --filter=source to exclude test files from downstream for production blast-radius analysis."
 
@@ -274,6 +283,7 @@ cli_flag        = "--filter"
 
 [tools.fmm_dependency_cycles]
 cli_name        = "cycles"
+cli_aliases     = ["dependency-cycles"]
 mcp_description = "Report strongly connected dependency cycles over the internal graph. Defaults to runtime edges, excluding TypeScript type-only imports. Use edge_mode='all' to include type-only edges. Optional file scopes output to cycles containing that file. filter='source' excludes tests, filter='tests' shows only test files."
 cli_about       = "Report strongly connected dependency cycles. Defaults to runtime edges and path-based output."
 
@@ -302,8 +312,9 @@ cli_flag        = "--edge-mode"
 
 [tools.fmm_read_symbol]
 cli_name        = "read"
-mcp_description = "Read the source code for a specific exported symbol or uniquely named non-exported top-level function. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Use `path/to/file:helperFunction` notation to disambiguate duplicate exports or duplicate non-exported top-level functions. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line."
-cli_about       = "Read the source code of an exported symbol, a specific method, or a non-exported function.\n\nUse plain name for a unique top-level symbol, ClassName.method notation for a specific public/private method, or path/to/file:helperFn notation to disambiguate duplicate symbols. Truncates at 10KB by default; use --no-truncate for full source."
+cli_aliases     = ["read-symbol"]
+mcp_description = "Read the source code for a specific exported symbol or uniquely named non-exported top-level function. Returns the exact lines where the function/class/type/member is defined, without reading the entire file. Use `ClassName.member` notation to read a specific public/private method or indexed field: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Bare Rust module names return the `mod foo;` declaration with `kind: module`; they do not follow into `foo.rs` or `foo/mod.rs`. Use `path/to/file:helperFunction` notation to disambiguate duplicate exports or duplicate non-exported top-level functions. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line."
+cli_about       = "Read the source code of an exported symbol, a specific member, or a non-exported function.\n\nUse plain name for a unique top-level symbol, ClassName.member notation for a specific public/private method or indexed field, or path/to/file:helperFn notation to disambiguate duplicate symbols. Bare Rust module names return the `mod foo;` declaration with `kind: module`; they do not follow into `foo.rs` or `foo/mod.rs`. Truncates at 10KB by default; use --no-truncate for full source."
 
 [[tools.fmm_read_symbol.params]]
 name            = "name"
@@ -329,23 +340,29 @@ cli_flag        = "--line-numbers"
 
 [tools.fmm_file_outline]
 cli_name        = "outline"
-mcp_description = "Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. Set include_private: true to also show private/protected class members AND non-exported top-level functions (in a 'non_exported:' section). Supported: TypeScript, JavaScript, Python, Rust. On-demand tree-sitter parse — no index rebuild needed."
-cli_about       = "Show all exports in a file with their line ranges.\n\nUse before reading source to identify which symbol to target with 'fmm read'."
+cli_aliases     = ["file-outline"]
+mcp_description = "Get a spatial outline of a file: symbols with line ranges, size, signature, visibility, and kind when populated. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. Set include_private: true to add on-demand private members not already indexed plus non-exported top-level declarations inline in symbols. Stale queried files include one inline freshness annotation. Supported: TypeScript, JavaScript, Python, Rust. On-demand tree-sitter parse for private additions; no index rebuild needed."
+cli_about       = "Show symbols in a file with line ranges, size, signature, visibility, and kind when populated.\n\nUse before reading source to identify which symbol to target with 'fmm read'. Stale queried files include one inline freshness annotation."
 
 [[tools.fmm_file_outline.params]]
 name            = "file"
 type            = "string"
 required        = true
-mcp_description = "File path to outline — returns all exports with line ranges and sizes"
+mcp_description = "File path to outline — returns symbols with line ranges, sizes, signatures, visibility, and kind when populated"
 cli_help        = "Source file path (relative to project root)"
 cli_flag        = "file"
 
 [[tools.fmm_file_outline.params]]
 name            = "include_private"
 type            = "boolean"
-mcp_description = "When true, include private/protected members under each class (annotated '# private') AND non-exported top-level functions in a 'non_exported:' section (annotated '# non-exported'). On-demand tree-sitter parse — no index rebuild needed. Supported: TypeScript, JavaScript, Python, Rust. Default: false."
+mcp_description = "When true, add on-demand private members not already indexed plus non-exported top-level declarations inline in symbols with explicit visibility and kind rows. On-demand tree-sitter parse; no index rebuild needed. Supported: TypeScript, JavaScript, Python, Rust. Default: false."
 cli_help        = "Include private/protected class members and non-exported top-level functions"
 cli_flag        = "--include-private"
+
+[[tools.fmm_file_outline.params]]
+name            = "truncate"
+type            = "boolean"
+mcp_description = "When false, bypasses the 10KB MCP response cap and returns the full outline response. Default: true."
 
 [tools.fmm_search]
 cli_name        = "search"
@@ -403,8 +420,9 @@ cli_flag        = "--limit"
 
 [tools.fmm_list_files]
 cli_name        = "ls"
+cli_aliases     = ["list-files"]
 mcp_description = "List all indexed files under a directory prefix. The first tool to reach for when exploring an unknown module or package. Returns file paths with LOC, export count, and downstream dependent count. Default sort: LOC descending (largest files first). sort_by options: loc (default), name/path, exports, downstream (blast-radius sort), modified (most recently changed first). Default limit: 200. Use offset to page through large directories."
-cli_about       = "List all files indexed by fmm under a directory prefix.\n\nShows file paths with LOC and export count.\n\nSort modes (--sort-by):\n- loc (default): heaviest files first\n- name/path: alphabetical file path\n- exports: most exported symbols first\n- downstream: most depended-upon files first (best for pre-refactoring blast radius)\n- modified: most recently changed first\n\nUse --group-by=subdir to collapse into directory buckets.\nUse --filter=source to exclude test files; --filter=tests for test files only."
+cli_about       = "List all files indexed by fmm under a directory prefix.\n\nShows file paths with LOC and export count.\n\nSort modes (--sort-by):\n- loc (default): heaviest files first\n- name/path: alphabetical file path\n- exports: most exported symbols first\n- downstream: most depended-upon files first (best for pre-refactoring blast radius)\n- modified: most recently changed first\n\nUse --group-by=subdir to collapse into directory buckets.\nUse --filter=source to exclude test files; --filter=tests for test files only.\nTest filtering is path based: Rust inline #[cfg(test)] mod tests blocks inside ordinary source files do not make the containing file a test file."
 
 [[tools.fmm_list_files.params]]
 name            = "directory"
@@ -416,8 +434,8 @@ cli_flag        = "directory"
 [[tools.fmm_list_files.params]]
 name            = "pattern"
 type            = "string"
-mcp_description = "Glob pattern to filter by filename within the directory (e.g. '*.py', '*.rs', 'test_*'). Supports * wildcard."
-cli_help        = "Glob pattern to filter by filename (e.g. '*.ts', '*.rs', 'test_*')"
+mcp_description = "Shell-style glob pattern to filter by filename within the directory (e.g. '*.py', '*test*', 'file?.rs', '[ab]*.ts'). Matches filenames only, not full paths."
+cli_help        = "Shell-style glob pattern to filter by filename (e.g. '*.ts', '*test*', 'file?.rs')"
 cli_flag        = "--pattern"
 
 [[tools.fmm_list_files.params]]
@@ -462,20 +480,20 @@ cli_flag        = "--group-by"
 name            = "filter"
 type            = "string"
 enum            = ["all", "source", "tests"]
-mcp_description = "File type filter. 'all' (default): no filtering. 'source': exclude test files. 'tests': return only test files. Detection heuristic uses path segments (/test/, /e2e/, /__tests__/) and filename suffixes (.spec.ts, .test.ts, _test.go, etc.), configurable via test_patterns in .fmmrc.toml."
-cli_help        = "File type filter: all (default), source (exclude tests), tests (only tests)"
+mcp_description = "File type filter. 'all' (default): no filtering. 'source': exclude test files. 'tests': return only files classified as tests by path or filename. Detection uses path segments (/test/, /e2e/, /__tests__/) and filename suffixes (.spec.ts, .test.ts, _test.go, *_tests.rs, tests.rs, etc.), configurable via test_patterns in .fmmrc.toml. Rust inline #[cfg(test)] mod tests blocks inside ordinary source files do not make the containing file a test file."
+cli_help        = "File type filter: all (default), source (exclude tests), tests (path/name classified tests only)"
 cli_flag        = "--filter"
 
 [tools.fmm_glossary]
 cli_name        = "glossary"
-mcp_description = "Symbol-level impact analysis. Given a symbol name or pattern, returns all definitions and exactly which files import each one. Three-layer precision: bare name returns named-import filtered callers (Layer 2, default); dotted name (e.g. 'Injector.loadInstance') adds call-site precision; precision: 'call-site' adds Layer 3 tree-sitter to remove dead imports and annotate re-exports. Use before renaming or changing a signature."
+mcp_description = "Symbol-level impact analysis. Given a symbol name or pattern, returns all matching definitions and exactly which files import each one. Three-layer precision: bare names return named-import filtered callers (Layer 2, default); dotted method names (e.g. 'Injector.loadInstance') add call-site precision; dotted patterns use the same case-insensitive substring matching, so 'Type.foo' can match both 'Type.foo' and 'Type.foo_bar'. Dotted field names report kind: field without implying method callers; precision: 'call-site' adds Layer 3 tree-sitter verification to remove dead imports and annotate re-exports. Use before renaming or changing a signature."
 cli_about       = "Symbol-level impact analysis.\n\nGiven a symbol name or pattern, shows every definition and exactly which files import it. Use before renaming a function or changing a signature to know precisely what breaks."
 
 [[tools.fmm_glossary.params]]
 name            = "pattern"
 type            = "string"
 required        = true
-mcp_description = "Required. Case-insensitive substring filter on export name. Bare name (e.g. 'loadInstance') returns named-import filtered used_by (Layer 2). Dotted name (e.g. 'Injector.loadInstance') adds call-site precision, filtered to actual callers."
+mcp_description = "Required. Case-insensitive substring filter on export name. Bare name (e.g. 'loadInstance') returns named-import filtered used_by (Layer 2). Dotted method name (e.g. 'Injector.loadInstance') adds call-site precision, filtered to actual callers, and matches on the full dotted name as a substring, so 'Type.foo' can match 'Type.foo' and 'Type.foo_bar'. Dotted field name emits kind: field and does not imply a method call site."
 cli_help        = "Symbol name or substring pattern (case-insensitive)"
 cli_flag        = "pattern"
 

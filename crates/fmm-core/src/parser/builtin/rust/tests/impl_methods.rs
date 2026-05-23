@@ -45,12 +45,12 @@ fn rust_impl_pub_fn_indexed_as_method() {
 }
 
 #[test]
-fn rust_impl_private_fn_not_indexed() {
+fn rust_impl_private_fn_indexed() {
     let source = "pub struct Foo;\nimpl Foo {\n    fn internal() {}\n}";
     let result = parse(source);
     assert!(
-        get_method(&result.metadata.exports, "Foo", "internal").is_none(),
-        "Foo.internal (no pub) should NOT be indexed"
+        get_method(&result.metadata.exports, "Foo", "internal").is_some(),
+        "Foo.internal (no pub) should be indexed"
     );
 }
 
@@ -65,12 +65,12 @@ fn rust_trait_impl_pub_fn_indexed() {
 }
 
 #[test]
-fn rust_impl_non_exported_struct_not_indexed() {
+fn rust_impl_non_exported_struct_method_indexed() {
     let source = "struct Hidden;\nimpl Hidden {\n    pub fn method() {}\n}";
     let result = parse(source);
     assert!(
-        get_method(&result.metadata.exports, "Hidden", "method").is_none(),
-        "methods of non-exported struct should NOT be indexed"
+        get_method(&result.metadata.exports, "Hidden", "method").is_some(),
+        "methods of non-exported struct should be indexed"
     );
 }
 

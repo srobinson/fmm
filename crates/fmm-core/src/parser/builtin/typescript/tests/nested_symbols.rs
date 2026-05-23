@@ -50,7 +50,7 @@ export function outer(): void {
         .iter()
         .find(|e| e.name == "inner")
         .expect("inner not found");
-    assert_eq!(inner_entry.kind.as_deref(), Some("nested-fn"));
+    assert_eq!(inner_entry.relationship_kind.as_deref(), Some("nested-fn"));
     assert_eq!(inner_entry.parent_class.as_deref(), Some("outer"));
 
     let state_entry = result
@@ -59,7 +59,10 @@ export function outer(): void {
         .iter()
         .find(|e| e.name == "state")
         .expect("state (closure-state) not found");
-    assert_eq!(state_entry.kind.as_deref(), Some("closure-state"));
+    assert_eq!(
+        state_entry.relationship_kind.as_deref(),
+        Some("closure-state")
+    );
 }
 
 #[test]

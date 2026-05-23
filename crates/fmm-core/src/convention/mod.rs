@@ -70,7 +70,7 @@ impl ConventionPlugin for FmmTestFileConvention {
 
     fn test_patterns() -> ConventionTestPatterns {
         ConventionTestPatterns {
-            path_contains: &["/tests/", "/test/", "/__tests__/"],
+            path_contains: &["/tests/", "/test/", "/__tests__/", "/tests.rs", "/test.rs"],
             filename_suffixes: &[],
             filename_prefixes: &[],
             test_symbol_prefixes: &[],

@@ -38,7 +38,7 @@ pub const CYCLES_FILTER_HELP: &str = "Filter cycle graph by file type: all (defa
 pub const CYCLES_EDGE_MODE_HELP: &str = "Edge mode: runtime (default, excludes type-only edges) or all";
 
 #[rustfmt::skip]
-pub const READ_ABOUT: &str = "Read the source code of an exported symbol, a specific method, or a non-exported function.\n\nUse plain name for a unique top-level symbol, ClassName.method notation for a specific public/private method, or path/to/file:helperFn notation to disambiguate duplicate symbols. Truncates at 10KB by default; use --no-truncate for full source.";
+pub const READ_ABOUT: &str = "Read the source code of an exported symbol, a specific member, or a non-exported function.\n\nUse plain name for a unique top-level symbol, ClassName.member notation for a specific public/private method or indexed field, or path/to/file:helperFn notation to disambiguate duplicate symbols. Bare Rust module names return the `mod foo;` declaration with `kind: module`; they do not follow into `foo.rs` or `foo/mod.rs`. Truncates at 10KB by default; use --no-truncate for full source.";
 #[rustfmt::skip]
 pub const READ_NAME_HELP: &str = "Symbol name, ClassName.method for a specific method, or path/to/file:fn to disambiguate duplicates";
 #[rustfmt::skip]
@@ -47,7 +47,7 @@ pub const READ_TRUNCATE_HELP: &str = "Return full source, bypassing the 10KB tru
 pub const READ_LINE_NUMBERS_HELP: &str = "Prepend absolute line numbers to each source line";
 
 #[rustfmt::skip]
-pub const OUTLINE_ABOUT: &str = "Show all exports in a file with their line ranges.\n\nUse before reading source to identify which symbol to target with 'fmm read'.";
+pub const OUTLINE_ABOUT: &str = "Show symbols in a file with line ranges, size, signature, visibility, and kind when populated.\n\nUse before reading source to identify which symbol to target with 'fmm read'. Stale queried files include one inline freshness annotation.";
 #[rustfmt::skip]
 pub const OUTLINE_FILE_HELP: &str = "Source file path (relative to project root)";
 #[rustfmt::skip]
@@ -71,11 +71,11 @@ pub const SEARCH_MAX_LOC_HELP: &str = "Maximum lines of code";
 pub const SEARCH_LIMIT_HELP: &str = "Maximum number of fuzzy export results (default: 50)";
 
 #[rustfmt::skip]
-pub const LS_ABOUT: &str = "List all files indexed by fmm under a directory prefix.\n\nShows file paths with LOC and export count.\n\nSort modes (--sort-by):\n- loc (default): heaviest files first\n- name/path: alphabetical file path\n- exports: most exported symbols first\n- downstream: most depended-upon files first (best for pre-refactoring blast radius)\n- modified: most recently changed first\n\nUse --group-by=subdir to collapse into directory buckets.\nUse --filter=source to exclude test files; --filter=tests for test files only.";
+pub const LS_ABOUT: &str = "List all files indexed by fmm under a directory prefix.\n\nShows file paths with LOC and export count.\n\nSort modes (--sort-by):\n- loc (default): heaviest files first\n- name/path: alphabetical file path\n- exports: most exported symbols first\n- downstream: most depended-upon files first (best for pre-refactoring blast radius)\n- modified: most recently changed first\n\nUse --group-by=subdir to collapse into directory buckets.\nUse --filter=source to exclude test files; --filter=tests for test files only.\nTest filtering is path based: Rust inline #[cfg(test)] mod tests blocks inside ordinary source files do not make the containing file a test file.";
 #[rustfmt::skip]
 pub const LS_DIRECTORY_HELP: &str = "Directory prefix to filter (e.g. src/, packages/core/)";
 #[rustfmt::skip]
-pub const LS_PATTERN_HELP: &str = "Glob pattern to filter by filename (e.g. '*.ts', '*.rs', 'test_*')";
+pub const LS_PATTERN_HELP: &str = "Shell-style glob pattern to filter by filename (e.g. '*.ts', '*test*', 'file?.rs')";
 #[rustfmt::skip]
 pub const LS_LIMIT_HELP: &str = "Maximum number of files to return (default: 200)";
 #[rustfmt::skip]
@@ -87,7 +87,7 @@ pub const LS_ORDER_HELP: &str = "Sort order: asc or desc (default depends on sor
 #[rustfmt::skip]
 pub const LS_GROUP_BY_HELP: &str = "Collapse files into directory buckets (subdir: group by immediate subdirectory)";
 #[rustfmt::skip]
-pub const LS_FILTER_HELP: &str = "File type filter: all (default), source (exclude tests), tests (only tests)";
+pub const LS_FILTER_HELP: &str = "File type filter: all (default), source (exclude tests), tests (path/name classified tests only)";
 
 #[rustfmt::skip]
 pub const GLOSSARY_ABOUT: &str = "Symbol-level impact analysis.\n\nGiven a symbol name or pattern, shows every definition and exactly which files import it. Use before renaming a function or changing a signature to know precisely what breaks.";

@@ -2,7 +2,10 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use crate::manifest::{ExportLocation, FileEntry, Manifest};
-use crate::resolver::{RustImportResolver, workspace::WorkspaceEcosystem};
+use crate::resolver::{
+    RustImportResolver, rust_module_name_from_path, rust_module_name_from_specifier,
+    workspace::WorkspaceEcosystem,
+};
 
 use super::{ExportHit, ExportHitCompact, FileSearchResult};
 
@@ -47,13 +50,27 @@ pub(super) fn reverse_deps_resolve_specifier(
     direct_upstream: &[String],
     specifier: &str,
 ) -> bool {
-    !direct_upstream.is_empty()
-        && workspace_specifier_names.iter().any(|name| {
+    if direct_upstream.is_empty() {
+        return false;
+    }
+
+    direct_upstream_resolves_local_rust_module(direct_upstream, specifier)
+        || workspace_specifier_names.iter().any(|name| {
             workspace_package_matches_specifier(name, specifier)
                 && direct_upstream
                     .iter()
                     .any(|target| target_matches_workspace_specifier(target, name, specifier))
         })
+}
+
+fn direct_upstream_resolves_local_rust_module(direct_upstream: &[String], specifier: &str) -> bool {
+    let Some(module_name) = rust_module_name_from_specifier(specifier) else {
+        return false;
+    };
+
+    direct_upstream.iter().any(|target| {
+        rust_module_name_from_path(target).is_some_and(|target_module| target_module == module_name)
+    })
 }
 
 pub(super) fn workspace_specifier_names_for_source(

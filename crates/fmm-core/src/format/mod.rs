@@ -32,3 +32,10 @@ pub fn yaml_escape(s: &str) -> String {
         s.to_string()
     }
 }
+
+/// Emit the canonical YAML token for a declaration kind, when present.
+pub fn push_kind_line(lines: &mut Vec<String>, indent: usize, kind: Option<&str>) {
+    if let Some(kind) = kind {
+        lines.push(format!("{}kind: {}", " ".repeat(indent), yaml_escape(kind)));
+    }
+}

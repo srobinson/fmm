@@ -3,8 +3,10 @@
 //! These tests exercise fmm's public CLI functions end-to-end using real
 //! temp directories with actual source files.
 
+use assert_cmd::cargo::CommandCargoExt;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 use tempfile::TempDir;
 
 /// Create a temp directory with sample source files for testing.
@@ -125,9 +127,9 @@ fn db_reverse_dep_count(base: &Path, target: &str) -> i64 {
 fn create_old_files_table(conn: &rusqlite::Connection) {
     conn.execute_batch(
         "CREATE TABLE files (
-             path TEXT PRIMARY KEY,
-             loc INTEGER NOT NULL,
-             modified TEXT,
+            path TEXT PRIMARY KEY,
+            loc INTEGER NOT NULL,
+            modified TEXT,
              imports TEXT,
              dependencies TEXT,
              named_imports TEXT,
@@ -137,6 +139,39 @@ fn create_old_files_table(conn: &rusqlite::Connection) {
          );",
     )
     .unwrap();
+}
+
+fn create_legacy_db_with_schema_version(base: &Path, schema_version: u32) {
+    let conn = rusqlite::Connection::open(base.join(fmm_store::DB_FILENAME)).unwrap();
+    create_old_files_table(&conn);
+    conn.execute_batch(&format!(
+        "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+         INSERT INTO meta VALUES ('schema_version', '{}');
+         INSERT INTO meta VALUES ('fmm_version', '{}');",
+        schema_version,
+        fmm_core::VERSION
+    ))
+    .unwrap();
+}
+
+fn set_db_schema_version(base: &Path, schema_version: u32) {
+    let conn = rusqlite::Connection::open(base.join(fmm_store::DB_FILENAME)).unwrap();
+    let updated = conn
+        .execute(
+            "UPDATE meta SET value=?1 WHERE key='schema_version'",
+            [schema_version.to_string()],
+        )
+        .unwrap();
+    assert_eq!(updated, 1);
+}
+
+fn run_validate_command(path: &Path) -> std::process::Output {
+    Command::cargo_bin("fmm")
+        .unwrap()
+        .arg("validate")
+        .arg(path)
+        .output()
+        .unwrap()
 }
 
 #[test]
@@ -288,16 +323,7 @@ fn generate_dry_run_preserves_stale_db() {
 #[test]
 fn generate_dry_run_errors_on_stale_schema_version() {
     let tmp = setup_project();
-    let conn = rusqlite::Connection::open(tmp.path().join(fmm_store::DB_FILENAME)).unwrap();
-    create_old_files_table(&conn);
-    conn.execute_batch(&format!(
-        "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-         INSERT INTO meta VALUES ('schema_version', '4');
-         INSERT INTO meta VALUES ('fmm_version', '{}');",
-        fmm_core::VERSION
-    ))
-    .unwrap();
-    drop(conn);
+    create_legacy_db_with_schema_version(tmp.path(), 4);
 
     let path = tmp.path().to_str().unwrap();
     let error = fmm::cli::generate(&[path.to_string()], true, false, true)
@@ -305,7 +331,7 @@ fn generate_dry_run_errors_on_stale_schema_version() {
         .to_string();
 
     assert!(error.contains("schema version"));
-    assert!(error.contains("Run `fmm generate --force`"));
+    assert!(error.contains("Run `fmm generate`"));
     assert!(!error.contains("source_mtime"));
 }
 
@@ -322,7 +348,7 @@ fn generate_dry_run_errors_when_meta_table_missing() {
         .to_string();
 
     assert!(error.contains("missing or unreadable"));
-    assert!(error.contains("Run `fmm generate --force`"));
+    assert!(error.contains("Run `fmm generate`"));
 }
 
 #[test]
@@ -347,6 +373,47 @@ fn validate_passes_after_generate() {
     fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
     let result = fmm::cli::validate(&[path.to_string()]);
     assert!(result.is_ok());
+
+    let output = run_validate_command(tmp.path());
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("All 3 files are indexed and up to date"));
+}
+
+#[test]
+fn validate_errors_on_stale_schema_version() {
+    let tmp = setup_project();
+    let path = tmp.path().to_str().unwrap();
+
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
+    set_db_schema_version(tmp.path(), 4);
+
+    let result = fmm::cli::validate(&[path.to_string()]);
+    let error = result.unwrap_err().to_string();
+    assert!(error.contains("schema version"));
+    assert!(error.contains("Run `fmm generate`"));
+    assert!(!error.contains("files are indexed and up to date"));
+
+    let output = run_validate_command(tmp.path());
+    assert!(!output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stdout.contains("files are indexed and up to date"));
+    assert!(stderr.contains("schema version"));
+    assert!(stderr.contains("Run `fmm generate`"));
+}
+
+#[test]
+fn plain_generate_repairs_stale_schema_for_validate() {
+    let tmp = setup_project();
+    let path = tmp.path().to_str().unwrap();
+
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
+    set_db_schema_version(tmp.path(), 4);
+
+    fmm::cli::generate(&[path.to_string()], false, false, true).unwrap();
+
+    assert!(fmm::cli::validate(&[path.to_string()]).is_ok());
 }
 
 #[test]

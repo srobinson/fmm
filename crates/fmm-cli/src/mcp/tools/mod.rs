@@ -24,6 +24,3 @@ pub(super) use search::tool_search;
 
 // Shared utilities re-exported for mcp/tests and cli/navigate.rs
 pub(crate) use common::{compute_import_specifiers, find_concrete_definition, is_reexport_file};
-// Re-exported for mcp/tests (only visible in test builds, so suppress the lint)
-#[allow(unused_imports)]
-pub(super) use common::glob_filename_matches;

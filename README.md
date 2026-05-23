@@ -79,6 +79,20 @@ Use native tooling alongside fmm:
 
 Run `fmm --help` for workflows and examples, or `fmm <command> --help` for detailed per-command help.
 
+CLI commands use short terminal names. MCP tools use descriptive agent names. Long CLI aliases mirror MCP names with the `fmm_` prefix removed and underscores converted for the CLI.
+
+| MCP tool                   | CLI command   | CLI alias                |
+| -------------------------- | ------------- | ------------------------ |
+| `fmm_lookup_export`        | `fmm lookup`  | `fmm lookup-export`      |
+| `fmm_list_exports`         | `fmm exports` | `fmm list-exports`       |
+| `fmm_dependency_graph`     | `fmm deps`    | `fmm dependency-graph`   |
+| `fmm_dependency_cycles`    | `fmm cycles`  | `fmm dependency-cycles`  |
+| `fmm_read_symbol`          | `fmm read`    | `fmm read-symbol`        |
+| `fmm_file_outline`         | `fmm outline` | `fmm file-outline`       |
+| `fmm_search`               | `fmm search`  | none                     |
+| `fmm_list_files`           | `fmm ls`      | `fmm list-files`         |
+| `fmm_glossary`             | `fmm glossary` | none                     |
+
 ## MCP Tools
 
 fmm includes a built-in MCP server with 8 tools. Configure via `fmm init --mcp` or manually:
@@ -97,13 +111,39 @@ fmm includes a built-in MCP server with 8 tools. Configure via `fmm init --mcp` 
 | Tool                   | Purpose                                                                       |
 | ---------------------- | ----------------------------------------------------------------------------- |
 | `fmm_lookup_export`    | Find which file defines a symbol — O(1)                                       |
-| `fmm_read_symbol`      | Extract exact source; `ClassName.method` for public or private methods; `line_numbers: true` to annotate lines; follows re-export chains |
+| `fmm_read_symbol`      | Extract exact source; `ClassName.member` for methods and indexed fields; `line_numbers: true` to annotate lines; includes declaration `kind` when indexed; follows re-export chains |
 | `fmm_dependency_graph` | Intra-project deps (`local_deps`), external packages, and downstream blast radius. `filter: "source"` excludes test files; `filter: "tests"` shows test coverage |
-| `fmm_file_outline`     | Table of contents with line ranges; `include_private: true` shows private/protected members |
+| `fmm_file_outline`     | Table of contents with line ranges, size, signature, visibility, kind, and inline freshness for stale queried files |
 | `fmm_list_exports`     | Search exports by pattern — substring (case-insensitive) or regex (auto-detected: `^handle`, `Service$`, `^[A-Z]`) |
 | `fmm_search`           | Indexed structural queries across exports, files, imports, and dependencies   |
-| `fmm_list_files`       | List all indexed files under a directory path                                 |
-| `fmm_glossary`         | Symbol-level blast radius — all definitions of X + files that import each one |
+| `fmm_list_files`       | List indexed files under a directory path; `pattern` uses filename globs; `filter: "tests"` is path/name based, so Rust inline `#[cfg(test)] mod tests` blocks in source files are excluded |
+| `fmm_glossary`         | Symbol-level blast radius; dotted members add call-site precision but use case-insensitive substring matching, so `Type.foo` can also match `Type.foo_bar`; includes declaration `kind` |
+
+Bare Rust module names read the `mod foo;` declaration with `kind: module`. They do not follow into `foo.rs` or `foo/mod.rs`.
+
+## fmm_file_outline
+
+Default outline output is structured for orientation before source reads. Each populated symbol can show `signature`, `visibility`, and `kind`; private members and non-exported declarations use explicit rows instead of suffix comments. If the queried file is stale relative to the index, the response includes one `freshness` row for that file.
+
+```yaml
+---
+file: crates/fmm-store/src/writer.rs
+loc: 356
+symbols:
+  upsert_file_data:
+    lines: [112, 230]
+    size: 119
+    signature: pub fn upsert_file_data(...)
+    visibility: public
+    kind: fn
+    members:
+      - name: bind_export
+        lines: [154, 178]
+        size: 25
+        signature: fn bind_export(...)
+        visibility: non_exported
+        kind: fn
+```
 
 ## How it works
 

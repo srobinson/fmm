@@ -1,11 +1,11 @@
 use anyhow::Result;
-use fmm_core::manifest::{ExportLines, ExportLocation, Manifest};
+use fmm_core::manifest::{ExportLines, ExportLocation, Manifest, SymbolMetadata};
 use rusqlite::Connection;
 use std::collections::HashMap;
 
 pub(super) fn load_exports(conn: &Connection, manifest: &mut Manifest) -> Result<()> {
     let mut stmt = conn.prepare(
-        "SELECT name, file_path, start_line, end_line
+        "SELECT name, file_path, start_line, end_line, signature, visibility, declaration_kind
          FROM exports
          ORDER BY file_path, name",
     )?;
@@ -16,14 +16,20 @@ pub(super) fn load_exports(conn: &Connection, manifest: &mut Manifest) -> Result
             row.get::<_, String>(1)?,
             row.get::<_, Option<i64>>(2)?,
             row.get::<_, Option<i64>>(3)?,
+            SymbolMetadata {
+                signature: row.get::<_, Option<String>>(4)?,
+                visibility: row.get::<_, Option<String>>(5)?,
+                declaration_kind: row.get::<_, Option<String>>(6)?,
+            },
         ))
     })?;
 
     // Collect by file so FileEntry.exports + export_lines are built together.
-    let mut by_file: HashMap<String, Vec<(String, Option<ExportLines>)>> = HashMap::new();
+    let mut by_file: HashMap<String, Vec<(String, Option<ExportLines>, SymbolMetadata)>> =
+        HashMap::new();
 
     for row in rows {
-        let (name, file_path, start, end) = row?;
+        let (name, file_path, start, end, metadata) = row?;
         let lines = match (start, end) {
             (Some(s), Some(e)) if s > 0 => Some(ExportLines {
                 start: s as usize,
@@ -31,32 +37,38 @@ pub(super) fn load_exports(conn: &Connection, manifest: &mut Manifest) -> Result
             }),
             _ => None,
         };
-        by_file.entry(file_path).or_default().push((name, lines));
+        by_file
+            .entry(file_path)
+            .or_default()
+            .push((name, lines, metadata));
     }
 
     // Iterate in deterministic order so shadow warnings and index-building
     // are reproducible across runs. HashMap iteration is intentionally randomized.
     #[allow(clippy::type_complexity)]
-    let mut sorted: Vec<(String, Vec<(String, Option<ExportLines>)>)> =
+    let mut sorted: Vec<(String, Vec<(String, Option<ExportLines>, SymbolMetadata)>)> =
         by_file.into_iter().collect();
     sorted.sort_by(|a, b| a.0.cmp(&b.0));
 
     for (file_path, entries) in sorted {
         let mut names: Vec<String> = Vec::with_capacity(entries.len());
         let mut line_ranges: Vec<ExportLines> = Vec::with_capacity(entries.len());
+        let mut metadata_by_name = HashMap::new();
         let mut has_lines = false;
 
-        for (name, lines) in &entries {
+        for (name, lines, metadata) in &entries {
             names.push(name.clone());
             let el = lines.clone().unwrap_or(ExportLines { start: 0, end: 0 });
             if el.start > 0 {
                 has_lines = true;
             }
             line_ranges.push(el);
+            metadata_by_name.insert(name.clone(), metadata.clone());
         }
 
         if let Some(entry) = manifest.files.get_mut(&file_path) {
             entry.exports = names.clone();
+            entry.export_metadata = metadata_by_name;
             if has_lines {
                 entry.export_lines = Some(line_ranges.clone());
             }
@@ -71,11 +83,11 @@ pub(super) fn load_exports(conn: &Connection, manifest: &mut Manifest) -> Result
 fn build_export_indexes(
     manifest: &mut Manifest,
     file_path: &str,
-    entries: &[(String, Option<ExportLines>)],
+    entries: &[(String, Option<ExportLines>, SymbolMetadata)],
     line_ranges: &[ExportLines],
     has_lines: bool,
 ) {
-    for (i, (name, _lines)) in entries.iter().enumerate() {
+    for (i, (name, _lines, _metadata)) in entries.iter().enumerate() {
         let line_range = if has_lines {
             line_ranges
                 .get(i)
@@ -150,8 +162,9 @@ fn build_export_indexes(
 }
 
 pub(super) fn load_methods(conn: &Connection, manifest: &mut Manifest) -> Result<()> {
-    let mut stmt =
-        conn.prepare("SELECT dotted_name, file_path, start_line, end_line, kind FROM methods")?;
+    let mut stmt = conn.prepare(
+        "SELECT dotted_name, file_path, start_line, end_line, relationship_kind, signature, visibility, declaration_kind FROM methods",
+    )?;
 
     let rows = stmt.query_map([], |row| {
         Ok((
@@ -160,11 +173,16 @@ pub(super) fn load_methods(conn: &Connection, manifest: &mut Manifest) -> Result
             row.get::<_, Option<i64>>(2)?,
             row.get::<_, Option<i64>>(3)?,
             row.get::<_, Option<String>>(4)?,
+            SymbolMetadata {
+                signature: row.get::<_, Option<String>>(5)?,
+                visibility: row.get::<_, Option<String>>(6)?,
+                declaration_kind: row.get::<_, Option<String>>(7)?,
+            },
         ))
     })?;
 
     for row in rows {
-        let (dotted_name, file_path, start, end, kind) = row?;
+        let (dotted_name, file_path, start, end, relationship_kind, metadata) = row?;
         let lines = match (start, end) {
             (Some(s), Some(e)) if s > 0 => Some(ExportLines {
                 start: s as usize,
@@ -176,7 +194,9 @@ pub(super) fn load_methods(conn: &Connection, manifest: &mut Manifest) -> Result
         let el = lines.clone().unwrap_or(ExportLines { start: 0, end: 0 });
 
         if let Some(fe) = manifest.files.get_mut(&file_path) {
-            match kind.as_deref() {
+            fe.method_metadata
+                .insert(dotted_name.clone(), metadata.clone());
+            match relationship_kind.as_deref() {
                 Some("nested-fn") => {
                     fe.nested_fns.insert(dotted_name.clone(), el);
                 }

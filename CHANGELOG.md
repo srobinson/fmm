@@ -1,6 +1,38 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+* add MCP derived CLI aliases for navigation commands
+* add cross-type hints to `read_symbol` missing member diagnostics
+* render outline `members:` as collision safe list records instead of a map keyed by name
+
+### BREAKING CHANGES
+
+* `fmm outline` and `fmm_file_outline` now emit `members:` as a list of records. Consumers parsing `members.{name}` must migrate to iterating `members[]` and filtering on `name`, `kind`, and `lines`.
+
+### Tests
+
+* lock `read_symbol` Rust module declaration kind coverage
+* lock validate behavior for schema mismatch failures and plain generate recovery
+
+### Bug Fixes
+
+* clarify cross-type `read_symbol` hint wording
+* clarify `read_symbol` missing member diagnostics
+* clarify `read_symbol` diagnostics for file path inputs
+* clarify `read_symbol` guidance for Rust path syntax
+* clarify dotted glossary substring matching
+* document path based test filtering for Rust inline test modules
+* recommend `fmm generate` as the schema mismatch rebuild path
+
 ## [0.2.9](https://github.com/srobinson/fmm/compare/v0.2.8...v0.2.9) (2026-05-01)
+
+
+### Bug Fixes
+
+* surface declaration kinds in read and glossary output
 
 
 ### Features

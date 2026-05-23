@@ -6,6 +6,7 @@ mod edge_cases;
 mod exports;
 mod named_imports;
 mod nested_symbols;
+mod outline_metadata;
 mod support;
 mod tsconfig_helpers;
 mod tsx;

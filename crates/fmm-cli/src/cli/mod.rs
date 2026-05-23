@@ -9,7 +9,7 @@ mod glossary;
 pub mod init;
 mod resolve;
 mod search;
-mod sidecar;
+pub(crate) mod sidecar;
 mod status;
 mod watch;
 
@@ -394,6 +394,7 @@ pub enum Commands {
 
     /// Find where a symbol is defined — O(1) lookup
     #[command(
+        visible_alias = "lookup-export",
         long_about = generated_help::LOOKUP_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
@@ -414,6 +415,7 @@ pub enum Commands {
     /// Extract exact source for a symbol or method
     #[command(
         name = "read",
+        visible_alias = "read-symbol",
         long_about = generated_help::READ_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
@@ -443,6 +445,7 @@ pub enum Commands {
 
     /// Show dependency graph for a file
     #[command(
+        visible_alias = "dependency-graph",
         long_about = generated_help::DEPS_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
@@ -473,6 +476,7 @@ pub enum Commands {
 
     /// Report dependency cycles
     #[command(
+        visible_alias = "dependency-cycles",
         long_about = generated_help::CYCLES_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
@@ -500,12 +504,13 @@ pub enum Commands {
         json: bool,
     },
 
-    /// Show file table-of-contents with export line ranges
+    /// Show file table-of-contents with line ranges and density metadata
     #[command(
+        visible_alias = "file-outline",
         long_about = generated_help::OUTLINE_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>fmm outline crates/fmm-core/src/parser/mod.rs</bold> <dim># All exports + line ranges</dim>
+  <dim>$</dim> <bold>fmm outline crates/fmm-core/src/parser/mod.rs</bold> <dim># Symbols + signature/visibility/kind</dim>
   <dim>$</dim> <bold>fmm outline crates/fmm-core/src/parser/mod.rs --include-private</bold> <dim># Include private members</dim>
   <dim>$</dim> <bold>fmm outline crates/fmm-core/src/parser/mod.rs --json</bold> <dim># JSON output</dim>"#),
     )]
@@ -525,6 +530,7 @@ pub enum Commands {
 
     /// List indexed files under a directory
     #[command(
+        visible_alias = "list-files",
         long_about = generated_help::LS_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
@@ -582,6 +588,7 @@ pub enum Commands {
 
     /// Search exports by pattern (substring or regex, auto-detected)
     #[command(
+        visible_alias = "list-exports",
         long_about = generated_help::EXPORTS_ABOUT,
         after_help = cstr!(
             r#"<bold><underline>Examples</underline></bold>
@@ -633,7 +640,7 @@ pub enum Commands {
   <bold>fmm_lookup_export</bold>    Find which file defines a symbol — O(1)
   <bold>fmm_read_symbol</bold>      Extract exact source; use ClassName.method for methods
   <bold>fmm_dependency_graph</bold>  local_deps, external packages, and downstream blast radius
-  <bold>fmm_file_outline</bold>     Table of contents with line ranges
+  <bold>fmm_file_outline</bold>     Table of contents with signatures, visibility, and kind
   <bold>fmm_list_exports</bold>     Search exports by pattern (fuzzy)
   <bold>fmm_search</bold>           Multi-criteria AND queries with relevance scoring
   <bold>fmm_list_files</bold>       List all indexed files under a directory path

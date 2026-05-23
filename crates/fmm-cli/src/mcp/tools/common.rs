@@ -216,32 +216,6 @@ pub(crate) fn compute_import_specifiers(
     specifiers
 }
 
-/// Match a glob pattern against a filename (last path component).
-/// Supports `*` as a wildcard within the filename. Does not match path separators.
-/// Examples: `*.py`, `test_*`, `*_test.rs`, `*`
-pub(in crate::mcp) fn glob_filename_matches(pattern: &str, filename: &str) -> bool {
-    if pattern == "*" {
-        return true;
-    }
-    if !pattern.contains('*') {
-        return filename == pattern;
-    }
-    // Split on the first `*` and check prefix + suffix
-    let (prefix, rest) = pattern.split_once('*').unwrap();
-    if !filename.starts_with(prefix) {
-        return false;
-    }
-    let after_prefix = &filename[prefix.len()..];
-    // Handle remaining pattern segments (multiple `*`)
-    if rest.contains('*') {
-        // Recursively match the remainder
-        glob_filename_matches(rest, after_prefix)
-    } else {
-        // Single `*` — remainder is a literal suffix
-        after_prefix.ends_with(rest) && after_prefix.len() >= rest.len()
-    }
-}
-
 /// Compute directory rollup for group_by="subdir" and format the result.
 pub(in crate::mcp) fn build_rollup(
     entries: Vec<(&str, usize, usize)>,

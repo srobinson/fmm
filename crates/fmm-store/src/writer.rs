@@ -12,7 +12,8 @@ use fmm_core::parser::ParseResult;
 
 // Re-export domain types from fmm-core for backward compatibility.
 pub use fmm_core::types::{
-    ExportRecord, MethodRecord, PreserializedRow, extract_function_names, serialize_file_data,
+    ExportRecord, MethodRecord, PreserializedRow, disambiguate_export_name, duplicate_export_names,
+    extract_function_names, serialize_file_data,
 };
 
 pub(crate) const NEXT_FILE_ID_KEY: &str = "next_file_id";
@@ -171,25 +172,37 @@ pub fn upsert_preserialized_with_file_id(
 
     {
         let sql = if plain_insert {
-            "INSERT INTO exports (name, file_path, start_line, end_line)
-             VALUES (?1, ?2, ?3, ?4)"
+            "INSERT INTO exports
+             (name, file_path, start_line, end_line, signature, visibility, declaration_kind)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
         } else {
-            "INSERT OR REPLACE INTO exports (name, file_path, start_line, end_line)
-             VALUES (?1, ?2, ?3, ?4)"
+            "INSERT OR REPLACE INTO exports
+             (name, file_path, start_line, end_line, signature, visibility, declaration_kind)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
         };
         let mut stmt = tx.prepare_cached(sql)?;
         for e in &row.exports {
-            stmt.execute(params![e.name, row.rel_path, e.start_line, e.end_line])?;
+            stmt.execute(params![
+                e.name,
+                row.rel_path,
+                e.start_line,
+                e.end_line,
+                e.signature,
+                e.visibility.map(|visibility| visibility.as_str()),
+                e.declaration_kind.map(|kind| kind.as_str()),
+            ])?;
         }
     }
 
     {
         let sql = if plain_insert {
-            "INSERT INTO methods (dotted_name, file_path, start_line, end_line, kind)
-             VALUES (?1, ?2, ?3, ?4, ?5)"
+            "INSERT INTO methods
+             (dotted_name, file_path, start_line, end_line, relationship_kind, signature, visibility, declaration_kind)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
         } else {
-            "INSERT OR REPLACE INTO methods (dotted_name, file_path, start_line, end_line, kind)
-             VALUES (?1, ?2, ?3, ?4, ?5)"
+            "INSERT OR REPLACE INTO methods
+             (dotted_name, file_path, start_line, end_line, relationship_kind, signature, visibility, declaration_kind)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
         };
         let mut stmt = tx.prepare_cached(sql)?;
         for m in &row.methods {
@@ -198,7 +211,10 @@ pub fn upsert_preserialized_with_file_id(
                 row.rel_path,
                 m.start_line,
                 m.end_line,
-                m.kind,
+                m.relationship_kind,
+                m.signature,
+                m.visibility.map(|visibility| visibility.as_str()),
+                m.declaration_kind.map(|kind| kind.as_str()),
             ])?;
         }
     }
@@ -266,16 +282,31 @@ pub fn upsert_file_data(
     // Exports (top-level only)
     {
         let mut stmt = tx.prepare_cached(
-            "INSERT OR REPLACE INTO exports (name, file_path, start_line, end_line)
-             VALUES (?1, ?2, ?3, ?4)",
+            "INSERT OR REPLACE INTO exports
+             (name, file_path, start_line, end_line, signature, visibility, declaration_kind)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         )?;
+        let duplicate_export_names = duplicate_export_names(
+            meta.exports
+                .iter()
+                .filter(|entry| entry.parent_class.is_none())
+                .map(|entry| entry.name.clone()),
+        );
         for entry in &meta.exports {
             if entry.parent_class.is_none() {
+                let name = disambiguate_export_name(
+                    &entry.name,
+                    entry.start_line as i64,
+                    &duplicate_export_names,
+                );
                 stmt.execute(params![
-                    entry.name,
+                    name,
                     rel_path,
                     entry.start_line as i64,
                     entry.end_line as i64,
+                    entry.signature,
+                    entry.visibility.map(|visibility| visibility.as_str()),
+                    entry.declaration_kind.map(|kind| kind.as_str()),
                 ])?;
             }
         }
@@ -284,8 +315,9 @@ pub fn upsert_file_data(
     // Methods (deduplicated by dotted name)
     {
         let mut stmt = tx.prepare_cached(
-            "INSERT OR REPLACE INTO methods (dotted_name, file_path, start_line, end_line, kind)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT OR REPLACE INTO methods
+             (dotted_name, file_path, start_line, end_line, relationship_kind, signature, visibility, declaration_kind)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         )?;
         let mut seen = std::collections::HashSet::new();
         for entry in &meta.exports {
@@ -297,7 +329,10 @@ pub fn upsert_file_data(
                         rel_path,
                         entry.start_line as i64,
                         entry.end_line as i64,
-                        entry.kind,
+                        entry.relationship_kind,
+                        entry.signature,
+                        entry.visibility.map(|visibility| visibility.as_str()),
+                        entry.declaration_kind.map(|kind| kind.as_str()),
                     ])?;
                 }
             }

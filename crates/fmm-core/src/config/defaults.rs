@@ -9,6 +9,8 @@ pub(super) fn default_test_path_contains() -> Vec<String> {
         "/e2e/".to_string(),
         "/test/".to_string(),
         "/tests/".to_string(),
+        "/tests.rs".to_string(),
+        "/test.rs".to_string(),
         "/spec/".to_string(),
         "/__tests__/".to_string(),
     ]
@@ -23,6 +25,7 @@ pub(super) fn default_test_filename_suffixes() -> Vec<String> {
         ".test.js".to_string(),
         "_test.go".to_string(),
         "_test.rs".to_string(),
+        "_tests.rs".to_string(),
         ".spec.tsx".to_string(),
         ".test.tsx".to_string(),
     ]

@@ -3,6 +3,9 @@ use serde_json::Value;
 use std::process::{Command, Output};
 use tempfile::TempDir;
 
+#[path = "cli_read/member_errors.rs"]
+mod member_errors;
+
 fn write_file(root: &std::path::Path, rel: &str, content: &str) {
     let path = root.join(rel);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -32,6 +35,22 @@ fn setup_read_project() -> TempDir {
         "src/internal.ts",
         "function normalizeSeed(seed: string): string {\n  return seed.trim();\n}\n",
     );
+
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
+    tmp
+}
+
+fn setup_module_decl_project() -> TempDir {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    write_file(
+        root,
+        "src/lib.rs",
+        "pub mod public_api;\nmod internal_api;\n\npub fn build() -> &'static str {\n    \"ok\"\n}\n",
+    );
+    write_file(root, "src/public_api.rs", "pub fn backing_public() {}\n");
+    write_file(root, "src/internal_api.rs", "pub fn backing_private() {}\n");
 
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
     tmp
@@ -127,6 +146,77 @@ fn parse_json(output: &Output) -> Value {
 }
 
 #[test]
+fn read_rust_module_declarations_report_module_kind_without_following_backing_file() {
+    let tmp = setup_module_decl_project();
+
+    let public_output = run_fmm(tmp.path(), &["read", "public_api", "--line-numbers"]);
+    assert!(
+        public_output.status.success(),
+        "fmm read public_api failed: {}",
+        String::from_utf8_lossy(&public_output.stderr)
+    );
+    let public_stdout = String::from_utf8_lossy(&public_output.stdout);
+    assert!(
+        public_stdout.contains("kind: module"),
+        "public module kind missing, got: {public_stdout}"
+    );
+    assert!(
+        public_stdout.contains("pub mod public_api;"),
+        "public module declaration missing, got: {public_stdout}"
+    );
+    assert!(
+        !public_stdout.contains("backing_public"),
+        "read should not follow the backing public module file, got: {public_stdout}"
+    );
+
+    let private_output = run_fmm(tmp.path(), &["read", "internal_api", "--line-numbers"]);
+    assert!(
+        private_output.status.success(),
+        "fmm read internal_api failed: {}",
+        String::from_utf8_lossy(&private_output.stderr)
+    );
+    let private_stdout = String::from_utf8_lossy(&private_output.stdout);
+    assert!(
+        private_stdout.contains("kind: module"),
+        "private module kind missing, got: {private_stdout}"
+    );
+    assert!(
+        private_stdout.contains("mod internal_api;"),
+        "private module declaration missing, got: {private_stdout}"
+    );
+    assert!(
+        !private_stdout.contains("backing_private"),
+        "read should not follow the backing private module file, got: {private_stdout}"
+    );
+
+    let function_output = run_fmm(tmp.path(), &["read", "build", "--line-numbers"]);
+    assert!(
+        function_output.status.success(),
+        "fmm read build failed: {}",
+        String::from_utf8_lossy(&function_output.stderr)
+    );
+    let function_stdout = String::from_utf8_lossy(&function_output.stdout);
+    assert!(
+        function_stdout.contains("kind: fn"),
+        "function kind missing, got: {function_stdout}"
+    );
+    assert!(
+        !function_stdout.contains("kind: module"),
+        "function should not be misclassified as module, got: {function_stdout}"
+    );
+}
+
+#[test]
+fn read_json_preserves_response_kind_and_adds_symbol_kind() {
+    let tmp = setup_read_project();
+    let output = run_fmm(tmp.path(), &["read", "SecretService.run", "--json"]);
+    let json = parse_json(&output);
+
+    assert_eq!(json["kind"], "source", "got: {json:#}");
+    assert_eq!(json["symbol_kind"], "method", "got: {json:#}");
+}
+
+#[test]
 fn read_missing_export_suggests_cli_commands() {
     let tmp = setup_read_project();
     let output = run_fmm(tmp.path(), &["read", "NoSuchSymbol"]);
@@ -161,14 +251,109 @@ fn read_missing_method_suggests_cli_outline() {
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert!(
-        stderr.contains("Method 'SecretService.missing' not found"),
+        stderr.contains("Member 'SecretService.missing' not found"),
         "got: {stderr}"
     );
     assert!(
-        stderr.contains("Use fmm outline src/service.ts --include-private"),
+        stderr.contains("use fmm outline src/service.ts --include-private for full list"),
+        "got: {stderr}"
+    );
+    assert!(
+        stderr.contains("Methods: computeSecret, run"),
         "got: {stderr}"
     );
     assert!(!stderr.contains("fmm_file_outline"), "got: {stderr}");
+}
+
+#[test]
+fn read_source_file_path_suggests_outline_not_method_notation() {
+    let tmp = setup_read_project();
+    let output = run_fmm(tmp.path(), &["read", "src/service.ts"]);
+
+    assert!(
+        !output.status.success(),
+        "fmm read should fail for a file path"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        stderr.contains("'src/service.ts' looks like a file path"),
+        "got: {stderr}"
+    );
+    assert!(
+        stderr.contains("Use fmm outline src/service.ts"),
+        "got: {stderr}"
+    );
+    assert!(
+        !stderr.contains("Class 'src/service'"),
+        "got misleading class guidance: {stderr}"
+    );
+}
+
+#[test]
+fn read_config_file_path_suggests_outline_not_method_notation() {
+    let tmp = setup_read_project();
+    let output = run_fmm(tmp.path(), &["read", "config.toml"]);
+
+    assert!(
+        !output.status.success(),
+        "fmm read should fail for a config file path"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        stderr.contains("'config.toml' looks like a file path"),
+        "got: {stderr}"
+    );
+    assert!(
+        !stderr.contains("Class 'config'"),
+        "got misleading class guidance: {stderr}"
+    );
+}
+
+#[test]
+fn read_rust_path_suggests_dotted_method_not_file_symbol() {
+    let tmp = setup_read_project();
+    let output = run_fmm(tmp.path(), &["read", "SecretService::run"]);
+
+    assert!(
+        !output.status.success(),
+        "fmm read should fail for Rust path syntax"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        stderr.contains("Rust path syntax 'SecretService::run' is not supported by read_symbol"),
+        "got: {stderr}"
+    );
+    assert!(
+        stderr.contains("For Rust paths, use the dotted form: 'Type.method'"),
+        "got: {stderr}"
+    );
+    assert!(stderr.contains("e.g. 'ServerState.new'"), "got: {stderr}");
+    assert!(
+        !stderr.contains("For file:symbol notation"),
+        "got: {stderr}"
+    );
+}
+
+#[test]
+fn read_ambiguous_colon_name_keeps_file_symbol_guidance() {
+    let tmp = setup_read_project();
+    let output = run_fmm(tmp.path(), &["read", "SecretService:run"]);
+
+    assert!(
+        !output.status.success(),
+        "fmm read should fail for ambiguous colon syntax"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        stderr.contains("Ambiguous name 'SecretService:run'"),
+        "got: {stderr}"
+    );
+    assert!(stderr.contains("For file:symbol notation"), "got: {stderr}");
+    assert!(!stderr.contains("Rust path syntax"), "got: {stderr}");
 }
 
 #[test]
@@ -280,9 +465,7 @@ fn read_duplicate_non_exported_top_level_symbol_requires_file_qualified_symbol()
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert!(
-        stderr.contains(
-            "Symbol 'helper' is ambiguous: 2 non-exported top-level declarations use this name"
-        ),
+        stderr.contains("Symbol 'helper' is ambiguous: 2 indexed exports use this name"),
         "got: {stderr}"
     );
     assert!(

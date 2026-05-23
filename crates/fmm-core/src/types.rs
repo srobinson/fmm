@@ -9,7 +9,7 @@ use chrono::Utc;
 use std::collections::{HashMap, HashSet};
 
 use crate::identity::Fingerprint;
-use crate::parser::ParseResult;
+use crate::parser::{DeclarationKind, ParseResult, SymbolVisibility};
 
 /// Pre-serialized file data ready for batch insertion into a store.
 ///
@@ -36,6 +36,9 @@ pub struct ExportRecord {
     pub name: String,
     pub start_line: i64,
     pub end_line: i64,
+    pub signature: Option<String>,
+    pub visibility: Option<SymbolVisibility>,
+    pub declaration_kind: Option<DeclarationKind>,
 }
 
 /// A flattened method entry ready for direct store insertion.
@@ -44,7 +47,10 @@ pub struct MethodRecord {
     pub start_line: i64,
     pub end_line: i64,
     /// ALP-922: NULL = class method, "nested-fn", "closure-state".
-    pub kind: Option<String>,
+    pub relationship_kind: Option<String>,
+    pub signature: Option<String>,
+    pub visibility: Option<SymbolVisibility>,
+    pub declaration_kind: Option<DeclarationKind>,
 }
 
 /// Serialize all JSON fields for a parsed file. CPU-bound work safe to run in rayon.
@@ -81,14 +87,24 @@ fn serialize_file_data_inner(
     let meta = &result.metadata;
     let function_names = extract_function_names(result.custom_fields.as_ref());
 
+    let duplicate_export_names = duplicate_export_names(
+        meta.exports
+            .iter()
+            .filter(|e| e.parent_class.is_none())
+            .map(|e| e.name.clone()),
+    );
+
     let exports: Vec<ExportRecord> = meta
         .exports
         .iter()
         .filter(|e| e.parent_class.is_none())
         .map(|e| ExportRecord {
-            name: e.name.clone(),
+            name: disambiguate_export_name(&e.name, e.start_line as i64, &duplicate_export_names),
             start_line: e.start_line as i64,
             end_line: e.end_line as i64,
+            signature: e.signature.clone(),
+            visibility: e.visibility,
+            declaration_kind: e.declaration_kind,
         })
         .collect();
 
@@ -104,7 +120,10 @@ fn serialize_file_data_inner(
                         dotted_name: key,
                         start_line: e.start_line as i64,
                         end_line: e.end_line as i64,
-                        kind: e.kind.clone(),
+                        relationship_kind: e.relationship_kind.clone(),
+                        signature: e.signature.clone(),
+                        visibility: e.visibility,
+                        declaration_kind: e.declaration_kind,
                     })
                 } else {
                     None
@@ -132,6 +151,31 @@ fn serialize_file_data_inner(
         exports,
         methods,
     })
+}
+
+pub fn duplicate_export_names(names: impl IntoIterator<Item = String>) -> HashSet<String> {
+    let mut seen = HashSet::new();
+    let mut duplicates = HashSet::new();
+
+    for name in names {
+        if !seen.insert(name.clone()) {
+            duplicates.insert(name);
+        }
+    }
+
+    duplicates
+}
+
+pub fn disambiguate_export_name(
+    name: &str,
+    start_line: i64,
+    duplicate_names: &HashSet<String>,
+) -> String {
+    if duplicate_names.contains(name) {
+        format!("{name} @ line {start_line}")
+    } else {
+        name.to_string()
+    }
 }
 
 pub fn extract_function_names(

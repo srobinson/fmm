@@ -91,6 +91,7 @@ fn make_row(
     deps: Vec<String>,
     imports: Vec<String>,
 ) -> PreserializedRow {
+    use fmm_core::parser::{DeclarationKind, SymbolVisibility};
     use fmm_core::types::{ExportRecord, MethodRecord};
 
     let named_imports: HashMap<String, Vec<String>> = HashMap::new();
@@ -119,6 +120,9 @@ fn make_row(
                 name: name.to_string(),
                 start_line: start,
                 end_line: end,
+                signature: (name == "Server").then(|| "class Server".to_string()),
+                visibility: (name == "Server").then_some(SymbolVisibility::Public),
+                declaration_kind: (name == "Server").then_some(DeclarationKind::Struct),
             })
             .collect(),
         methods: methods
@@ -127,7 +131,16 @@ fn make_row(
                 dotted_name: name.to_string(),
                 start_line: start,
                 end_line: end,
-                kind: kind.map(String::from),
+                relationship_kind: kind.map(String::from),
+                signature: name
+                    .starts_with("Server.")
+                    .then(|| format!("{}()", name.rsplit('.').next().unwrap_or(name))),
+                visibility: name
+                    .starts_with("Server.")
+                    .then_some(SymbolVisibility::Public),
+                declaration_kind: name
+                    .starts_with("Server.")
+                    .then_some(DeclarationKind::Method),
             })
             .collect(),
     }
@@ -170,6 +183,18 @@ fn snapshot_fmm_list_files_grouped() {
         .call_tool("fmm_list_files", serde_json::json!({"group_by": "subdir"}))
         .unwrap();
     insta::assert_snapshot!("fmm_list_files_grouped", extract_text(&response));
+}
+
+#[test]
+fn snapshot_fmm_list_files_with_pattern() {
+    let server = snapshot_server();
+    let response = server
+        .call_tool(
+            "fmm_list_files",
+            serde_json::json!({"pattern": "*test*", "sort_by": "name"}),
+        )
+        .unwrap();
+    insta::assert_snapshot!("fmm_list_files_pattern", extract_text(&response));
 }
 
 #[test]
@@ -281,6 +306,18 @@ fn snapshot_fmm_read_symbol_not_found() {
         )
         .unwrap();
     insta::assert_snapshot!("fmm_read_symbol_not_found", extract_text(&response));
+}
+
+#[test]
+fn snapshot_fmm_read_symbol_file_path_name() {
+    let server = snapshot_server();
+    let response = server
+        .call_tool(
+            "fmm_read_symbol",
+            serde_json::json!({"name": "src/service.ts"}),
+        )
+        .unwrap();
+    insta::assert_snapshot!("fmm_read_symbol_file_path_name", extract_text(&response));
 }
 
 #[test]

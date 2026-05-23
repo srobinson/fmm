@@ -305,6 +305,11 @@ fn normalize_glossary_text(text: &str) -> Value {
                 source.insert("used_by".to_string(), Value::Array(callers));
             }
             in_used_by = true;
+        } else if let Some(kind) = line.trim_start().strip_prefix("kind: ") {
+            if let Some(source) = &mut current_source {
+                source.insert("kind".to_string(), Value::String(kind.to_string()));
+            }
+            in_used_by = false;
         } else if in_used_by
             && let Some(caller) = line.trim_start().strip_prefix("- ")
             && let Some(source) = &mut current_source
@@ -341,11 +346,18 @@ fn normalize_glossary_json(value: &Value) -> Value {
                                 .expect("sources should be an array")
                                 .iter()
                                 .map(|source| {
-                                    object([
-                                        ("file", source["file"].clone()),
-                                        ("lines", glossary_lines_to_array(&source["lines"])),
-                                        ("used_by", source["used_by"].clone()),
-                                    ])
+                                    let mut normalized = Map::from_iter([
+                                        ("file".to_string(), source["file"].clone()),
+                                        (
+                                            "lines".to_string(),
+                                            glossary_lines_to_array(&source["lines"]),
+                                        ),
+                                        ("used_by".to_string(), source["used_by"].clone()),
+                                    ]);
+                                    if let Some(kind) = source.get("kind") {
+                                        normalized.insert("kind".to_string(), kind.clone());
+                                    }
+                                    Value::Object(normalized)
                                 })
                                 .collect(),
                         ),

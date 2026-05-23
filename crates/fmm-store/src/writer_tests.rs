@@ -1,7 +1,11 @@
 use super::*;
 use crate::connection::open_or_create;
 use fmm_core::identity::{Fingerprint, PARSER_CACHE_VERSION};
-use fmm_core::parser::{ExportEntry, Metadata};
+use fmm_core::parser::builtin::python::PythonParser;
+use fmm_core::parser::builtin::typescript::TypeScriptParser;
+use fmm_core::parser::{
+    DeclarationKind, ExportEntry, Metadata, ParseResult, Parser, SymbolVisibility,
+};
 
 use tempfile::TempDir;
 
@@ -29,6 +33,28 @@ fn fingerprint(mtime: &str, size: u64, hash: &str) -> Fingerprint {
         content_hash: hash.to_string(),
         parser_cache_version: PARSER_CACHE_VERSION,
     }
+}
+
+fn export_names(conn: &rusqlite::Connection, file_path: &str) -> Vec<String> {
+    let mut stmt = conn
+        .prepare("SELECT name FROM exports WHERE file_path = ?1 ORDER BY start_line")
+        .unwrap();
+    stmt.query_map([file_path], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<Vec<String>, _>>()
+        .unwrap()
+}
+
+fn export_kinds(conn: &rusqlite::Connection, file_path: &str) -> Vec<(String, String)> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT name, declaration_kind FROM exports WHERE file_path = ?1 ORDER BY start_line",
+        )
+        .unwrap();
+    stmt.query_map([file_path], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<Result<Vec<(String, String)>, _>>()
+        .unwrap()
 }
 
 #[test]
@@ -120,6 +146,53 @@ fn exports_inserted_and_cascaded_on_replace() {
 }
 
 #[test]
+fn duplicate_top_level_export_names_are_disambiguated() {
+    let dir = TempDir::new().unwrap();
+    let mut conn = open_or_create(dir.path()).unwrap();
+
+    let result = make_parse_result(
+        vec![
+            ExportEntry::new("same".into(), 3, 3),
+            ExportEntry::new("same".into(), 7, 7),
+        ],
+        vec![],
+        vec![],
+    );
+
+    {
+        let tx = conn.transaction().unwrap();
+        upsert_file_data(&tx, "src/mod.rs", &result, None).unwrap();
+        tx.commit().unwrap();
+    }
+
+    let names = export_names(&conn, "src/mod.rs");
+    assert_eq!(names, vec!["same @ line 3", "same @ line 7"]);
+}
+
+#[test]
+fn preserialized_duplicate_top_level_export_names_are_disambiguated() {
+    let result = make_parse_result(
+        vec![
+            ExportEntry::new("impl TypeScriptParser".into(), 9, 100),
+            ExportEntry::new("impl TypeScriptParser".into(), 110, 140),
+        ],
+        vec![],
+        vec![],
+    );
+
+    let row = serialize_file_data("src/parser.rs", &result, None).unwrap();
+    let names: Vec<String> = row.exports.iter().map(|entry| entry.name.clone()).collect();
+
+    assert_eq!(
+        names,
+        vec![
+            "impl TypeScriptParser @ line 9",
+            "impl TypeScriptParser @ line 110"
+        ]
+    );
+}
+
+#[test]
 fn methods_inserted_with_dedup() {
     let dir = TempDir::new().unwrap();
     let mut conn = open_or_create(dir.path()).unwrap();
@@ -149,6 +222,188 @@ fn methods_inserted_with_dedup() {
         .unwrap();
     // Only first occurrence inserted (dedup)
     assert_eq!(count, 1);
+}
+
+#[test]
+fn symbol_density_fields_are_stored_without_changing_relationship_kind() {
+    let dir = TempDir::new().unwrap();
+    let mut conn = open_or_create(dir.path()).unwrap();
+    let mut export = ExportEntry::new("makeServer".into(), 1, 5);
+    export.signature = Some("fn makeServer() -> Server".into());
+    export.visibility = Some(SymbolVisibility::Public);
+    export.declaration_kind = Some(DeclarationKind::Fn);
+
+    let mut method = ExportEntry::method("run".into(), 7, 12, "Server".into());
+    method.signature = Some("run(options: RunOptions): void".into());
+    method.visibility = Some(SymbolVisibility::Private);
+    method.declaration_kind = Some(DeclarationKind::Method);
+    method.relationship_kind = Some("nested-fn".into());
+
+    let result = make_parse_result(vec![export, method], vec![], vec![]);
+
+    {
+        let tx = conn.transaction().unwrap();
+        upsert_file_data(&tx, "src/server.ts", &result, None).unwrap();
+        tx.commit().unwrap();
+    }
+
+    let export_row: (String, String, String) = conn
+        .query_row(
+            "SELECT signature, visibility, declaration_kind FROM exports WHERE name='makeServer'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        export_row,
+        (
+            "fn makeServer() -> Server".into(),
+            "public".into(),
+            "fn".into()
+        )
+    );
+
+    let method_row: (String, String, String, String) = conn
+        .query_row(
+            "SELECT relationship_kind, signature, visibility, declaration_kind FROM methods WHERE dotted_name='Server.run'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        method_row,
+        (
+            "nested-fn".into(),
+            "run(options: RunOptions): void".into(),
+            "private".into(),
+            "method".into()
+        )
+    );
+
+    let manifest = crate::reader::load_manifest_from_db(&conn, dir.path()).unwrap();
+    let file = manifest.files.get("src/server.ts").unwrap();
+    assert_eq!(
+        file.export_metadata
+            .get("makeServer")
+            .unwrap()
+            .declaration_kind
+            .as_deref(),
+        Some("fn")
+    );
+    assert_eq!(
+        file.method_metadata
+            .get("Server.run")
+            .unwrap()
+            .visibility
+            .as_deref(),
+        Some("private")
+    );
+}
+
+#[test]
+fn symbol_density_columns_reject_unknown_taxonomy_values() {
+    let dir = TempDir::new().unwrap();
+    let conn = open_or_create(dir.path()).unwrap();
+
+    conn.execute(
+        "INSERT INTO files (path, loc, indexed_at) VALUES ('src/a.ts', 1, 'now')",
+        [],
+    )
+    .unwrap();
+
+    let bad_visibility = conn.execute(
+        "INSERT INTO exports (name, file_path, visibility) VALUES ('a', 'src/a.ts', 'package')",
+        [],
+    );
+    assert!(bad_visibility.is_err());
+
+    let bad_kind = conn.execute(
+        "INSERT INTO methods (dotted_name, file_path, declaration_kind) VALUES ('A.a', 'src/a.ts', 'class')",
+        [],
+    );
+    assert!(bad_kind.is_err());
+}
+
+#[test]
+fn stored_typescript_exports_do_not_use_forbidden_outline_kinds() {
+    let dir = TempDir::new().unwrap();
+    let mut conn = open_or_create(dir.path()).unwrap();
+    let mut parser = TypeScriptParser::new().unwrap();
+    let result = parser
+        .parse(
+            r#"
+export namespace Foo { export const x = 1; }
+export module Bar {}
+export * as ns from './other';
+export class S {}
+"#,
+        )
+        .unwrap();
+
+    {
+        let tx = conn.transaction().unwrap();
+        upsert_file_data(&tx, "src/test.ts", &result, None).unwrap();
+        tx.commit().unwrap();
+    }
+
+    let forbidden_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM exports
+             WHERE file_path='src/test.ts'
+               AND declaration_kind IN ('module', 'impl', 'macro', 'variant')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(forbidden_count, 0);
+
+    let rows = export_kinds(&conn, "src/test.ts");
+    assert_eq!(
+        rows,
+        vec![
+            ("x".into(), "const".into()),
+            ("Foo".into(), "const".into()),
+            ("Bar".into(), "const".into()),
+            ("ns".into(), "const".into()),
+            ("S".into(), "struct".into()),
+        ]
+    );
+}
+
+#[test]
+fn stored_python_camelcase_assignments_keep_const_kind() {
+    let dir = TempDir::new().unwrap();
+    let mut conn = open_or_create(dir.path()).unwrap();
+    let mut parser = PythonParser::new().unwrap();
+    let result = parser
+        .parse(
+            r#"
+Foo = MyClass()
+Bar = some_function()
+CONST_VAL = 42
+
+def some_function():
+    pass
+"#,
+        )
+        .unwrap();
+
+    {
+        let tx = conn.transaction().unwrap();
+        upsert_file_data(&tx, "t.py", &result, None).unwrap();
+        tx.commit().unwrap();
+    }
+
+    let rows = export_kinds(&conn, "t.py");
+    assert_eq!(
+        rows,
+        vec![
+            ("Foo".into(), "const".into()),
+            ("Bar".into(), "const".into()),
+            ("CONST_VAL".into(), "const".into()),
+            ("some_function".into(), "fn".into()),
+        ]
+    );
 }
 
 #[test]

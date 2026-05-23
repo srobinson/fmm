@@ -7,5 +7,6 @@ mod types;
 
 pub use registry::ParserRegistry;
 pub use types::{
-    ExportEntry, LanguageTestPatterns, Metadata, ParseResult, Parser, RegisteredLanguage,
+    DeclarationKind, ExportEntry, LanguageTestPatterns, Metadata, ParseResult, Parser,
+    RegisteredLanguage, SymbolVisibility,
 };

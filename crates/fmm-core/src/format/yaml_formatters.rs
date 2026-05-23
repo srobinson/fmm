@@ -4,11 +4,12 @@ use std::collections::{HashMap, HashSet};
 
 use crate::format::yaml_escape;
 use crate::manifest::private_members::{PrivateMember, TopLevelFunction};
-use crate::manifest::{ExportLines, FileEntry, OutlineReExport};
+use crate::manifest::{ExportLines, FileEntry, OutlineReExport, SymbolMetadata};
+use crate::resolver::is_direct_rust_mod_relative;
 
 use super::helpers::{push_exports_map, push_inline_list};
 
-/// Format file outline: sidecar YAML with symbol sizes and method sub-entries.
+/// Format file outline: sidecar YAML with symbol sizes and density metadata.
 ///
 /// `reexports` lists names that this file surfaces from other modules.
 /// When non-empty, those names are hidden from the `symbols:` block and
@@ -16,215 +17,275 @@ use super::helpers::{push_exports_map, push_inline_list};
 /// origin file + line range.
 ///
 /// `private_by_class` is populated only when `include_private: true` is requested.
-/// When `Some`, private members are merged with public methods and annotated `# private`.
+/// When `Some`, private members are merged with indexed class members.
 /// `top_level_fns` is also populated when `include_private: true` and contains
-/// non-exported top-level functions and classes, appended after the `symbols:` block.
+/// non-exported top-level functions and classes merged into the `symbols:` block.
 pub fn format_file_outline(
     file: &str,
     entry: &FileEntry,
     reexports: &[OutlineReExport],
     private_by_class: Option<&HashMap<String, Vec<PrivateMember>>>,
     top_level_fns: Option<&[TopLevelFunction]>,
+    freshness: Option<&str>,
 ) -> String {
     let mut lines = Vec::new();
     lines.push("---".to_string());
     lines.push(format!("file: {}", yaml_escape(file)));
+    if let Some(freshness) = freshness {
+        lines.push(format!("freshness: {}", yaml_escape(freshness)));
+    }
     lines.push(format!("loc: {}", entry.loc));
     push_inline_list(&mut lines, "imports", &entry.imports);
     push_inline_list(&mut lines, "dependencies", &entry.dependencies);
 
-    // Names surfaced via `re-exports:` are hidden from `symbols:` so the two
-    // sections stay disjoint (local defs vs re-exports).
-    let reexport_names: HashSet<&str> = reexports.iter().map(|r| r.name.as_str()).collect();
-    let has_local_def = entry
-        .exports
-        .iter()
-        .any(|n| !reexport_names.contains(n.as_str()));
+    let reexport_names = reexport_names(reexports);
+    let has_local_def = has_local_symbols(entry, &reexport_names)
+        || has_extra_top_level_symbols(entry, top_level_fns);
 
     if has_local_def {
         lines.push("symbols:".to_string());
-        for (i, name) in entry.exports.iter().enumerate() {
-            if reexport_names.contains(name.as_str()) {
-                continue;
-            }
-            let prefix = format!("{}.", name);
-
-            // Collect public methods belonging to this class (prefix "ClassName.")
-            let class_methods: Vec<_> = entry
-                .methods
-                .as_ref()
-                .map(|m| {
-                    let mut v: Vec<_> = m
-                        .iter()
-                        .filter(|(k, _)| k.starts_with(&prefix))
-                        .map(|(k, v)| (k.trim_start_matches(&prefix).to_string(), v))
-                        .collect();
-                    v.sort_by(|a, b| {
-                        let a_size = a.1.end.saturating_sub(a.1.start);
-                        let b_size = b.1.end.saturating_sub(b.1.start);
-                        b_size.cmp(&a_size)
-                    });
-                    v
-                })
-                .unwrap_or_default();
-
-            // ALP-922: nested function declarations (depth-1) under this function
-            let mut nested_fn_list: Vec<_> = entry
-                .nested_fns
-                .iter()
-                .filter(|(k, _)| k.starts_with(&prefix))
-                .map(|(k, v)| (k.trim_start_matches(&prefix).to_string(), v))
-                .collect();
-            nested_fn_list.sort_by_key(|(_, el)| el.start);
-
-            // ALP-922: closure-state vars — only when include_private requested
-            let include_private_flag = private_by_class.is_some();
-            let mut closure_state_list: Vec<_> = if include_private_flag {
-                entry
-                    .closure_state
-                    .iter()
-                    .filter(|(k, _)| k.starts_with(&prefix))
-                    .map(|(k, v)| (k.trim_start_matches(&prefix).to_string(), v))
-                    .collect()
-            } else {
-                Vec::new()
-            };
-            closure_state_list.sort_by_key(|(_, el)| el.start);
-
-            // Private members for this class (only when include_private requested)
-            let private_members: &[PrivateMember] = private_by_class
-                .and_then(|m| m.get(name.as_str()))
-                .map(|v| v.as_slice())
-                .unwrap_or(&[]);
-
-            if let Some(el) = entry.export_lines.as_ref().and_then(|els| els.get(i)) {
-                let size = el.end.saturating_sub(el.start) + 1;
-                let private_count = private_members.len();
-                let nested_fn_count = nested_fn_list.len();
-                let closure_state_count = closure_state_list.len();
-
-                // Build annotation: summarize what sub-entries are present.
-                let mut annotation_parts: Vec<String> = Vec::new();
-                if !class_methods.is_empty() {
-                    annotation_parts.push(format!("{} public methods", class_methods.len()));
-                }
-                if nested_fn_count > 0 {
-                    annotation_parts.push(format!("{} nested functions", nested_fn_count));
-                }
-                if private_count > 0 {
-                    let pm_count = private_members.iter().filter(|m| m.is_method).count();
-                    let pf_count = private_count - pm_count;
-                    if pm_count > 0 {
-                        annotation_parts.push(format!("{} private methods", pm_count));
-                    }
-                    if pf_count > 0 {
-                        annotation_parts.push(format!("{} private fields", pf_count));
-                    }
-                }
-                if include_private_flag && closure_state_count > 0 {
-                    annotation_parts.push(format!("{} closure-state", closure_state_count));
-                }
-
-                let annotation = if annotation_parts.is_empty() {
-                    format!(
-                        "  {}: [{}, {}]  # {} lines",
-                        yaml_escape(name),
-                        el.start,
-                        el.end,
-                        size
-                    )
-                } else {
-                    format!(
-                        "  {}: [{}, {}]  # {} lines, {}",
-                        yaml_escape(name),
-                        el.start,
-                        el.end,
-                        size,
-                        annotation_parts.join(", ")
-                    )
-                };
-                lines.push(annotation);
-
-                // Sub-entries: build combined list sorted by start line.
-                // (start, short_name, end, suffix)
-                let mut sub_entries: Vec<(usize, String, usize, &'static str)> = Vec::new();
-
-                // Determine whether interleaving by start line is needed:
-                // only when private or nested items are present alongside class methods.
-                let needs_start_sort = !private_members.is_empty()
-                    || !nested_fn_list.is_empty()
-                    || !closure_state_list.is_empty();
-
-                if needs_start_sort {
-                    // Mixed sub-entries: sort class methods by start line for interleaving.
-                    let mut public_sorted = class_methods.clone();
-                    public_sorted.sort_by_key(|(_, el)| el.start);
-                    for (method_name, method_lines) in &public_sorted {
-                        sub_entries.push((
-                            method_lines.start,
-                            method_name.clone(),
-                            method_lines.end,
-                            "",
-                        ));
-                    }
-                } else {
-                    // Class methods only: preserve size-descending order (original behaviour).
-                    for (method_name, method_lines) in &class_methods {
-                        sub_entries.push((
-                            method_lines.start,
-                            method_name.clone(),
-                            method_lines.end,
-                            "",
-                        ));
-                    }
-                }
-
-                // Nested functions
-                for (fn_name, fn_lines) in &nested_fn_list {
-                    sub_entries.push((fn_lines.start, fn_name.clone(), fn_lines.end, ""));
-                }
-
-                // Private class members
-                for pm in private_members {
-                    let suffix = if pm.is_method {
-                        "  # private"
-                    } else {
-                        "  # private field"
-                    };
-                    sub_entries.push((pm.start, pm.name.clone(), pm.end, suffix));
-                }
-
-                // Closure-state vars (only with include_private)
-                for (var_name, var_lines) in &closure_state_list {
-                    sub_entries.push((
-                        var_lines.start,
-                        var_name.clone(),
-                        var_lines.end,
-                        "  # closure-state",
-                    ));
-                }
-
-                if needs_start_sort {
-                    sub_entries.sort_by_key(|(start, _, _, _)| *start);
-                }
-
-                for (start, sub_name, end, suffix) in &sub_entries {
-                    lines.push(format!(
-                        "    {}: [{}, {}]{}",
-                        yaml_escape(sub_name),
-                        start,
-                        end,
-                        suffix
-                    ));
-                }
-            } else {
-                lines.push(format!("  {}", yaml_escape(name)));
-            }
-        }
+        push_indexed_symbols(&mut lines, entry, private_by_class, &reexport_names);
+        push_extra_top_level_symbols(&mut lines, entry, top_level_fns);
     }
 
-    // Render re-exports dereferenced to their origin definitions. Entries
-    // arrive alphabetically sorted from `Manifest::reexports_in_file`.
+    push_reexports(&mut lines, reexports);
+    lines.join("\n")
+}
+
+fn reexport_names(reexports: &[OutlineReExport]) -> HashSet<&str> {
+    reexports.iter().map(|r| r.name.as_str()).collect()
+}
+
+fn has_local_symbols(entry: &FileEntry, reexport_names: &HashSet<&str>) -> bool {
+    entry
+        .exports
+        .iter()
+        .any(|name| !reexport_names.contains(name.as_str()))
+}
+
+fn has_extra_top_level_symbols(
+    entry: &FileEntry,
+    top_level_fns: Option<&[TopLevelFunction]>,
+) -> bool {
+    top_level_fns
+        .map(|fns| {
+            fns.iter()
+                .any(|f| !entry.exports.iter().any(|name| name == &f.name))
+        })
+        .unwrap_or(false)
+}
+
+fn push_indexed_symbols(
+    lines: &mut Vec<String>,
+    entry: &FileEntry,
+    private_by_class: Option<&HashMap<String, Vec<PrivateMember>>>,
+    reexport_names: &HashSet<&str>,
+) {
+    for (i, name) in entry.exports.iter().enumerate() {
+        if reexport_names.contains(name.as_str()) {
+            continue;
+        }
+        let symbol_lines = entry.export_lines.as_ref().and_then(|els| els.get(i));
+        let metadata = entry.export_metadata.get(name);
+        push_symbol_entry(lines, 2, name, symbol_lines, metadata);
+        push_members(lines, entry, name, private_by_class);
+    }
+}
+
+fn push_extra_top_level_symbols(
+    lines: &mut Vec<String>,
+    entry: &FileEntry,
+    top_level_fns: Option<&[TopLevelFunction]>,
+) {
+    let Some(fns) = top_level_fns else {
+        return;
+    };
+    for f in fns {
+        if entry.exports.iter().any(|name| name == &f.name) {
+            continue;
+        }
+        let line_range = ExportLines {
+            start: f.start,
+            end: f.end,
+        };
+        let metadata = SymbolMetadata {
+            signature: None,
+            visibility: Some("non_exported".to_string()),
+            declaration_kind: Some("fn".to_string()),
+        };
+        push_symbol_entry(lines, 2, &f.name, Some(&line_range), Some(&metadata));
+    }
+}
+
+fn push_symbol_entry(
+    lines: &mut Vec<String>,
+    indent: usize,
+    name: &str,
+    line_range: Option<&ExportLines>,
+    metadata: Option<&SymbolMetadata>,
+) {
+    lines.push(format!("{}{}:", spaces(indent), yaml_escape(name)));
+    push_symbol_body(lines, indent + 2, line_range, metadata);
+}
+
+fn push_member_entry(
+    lines: &mut Vec<String>,
+    indent: usize,
+    name: &str,
+    line_range: Option<&ExportLines>,
+    metadata: Option<&SymbolMetadata>,
+) {
+    lines.push(format!("{}- name: {}", spaces(indent), yaml_escape(name)));
+    push_symbol_body(lines, indent + 2, line_range, metadata);
+}
+
+fn push_symbol_body(
+    lines: &mut Vec<String>,
+    indent: usize,
+    line_range: Option<&ExportLines>,
+    metadata: Option<&SymbolMetadata>,
+) {
+    if let Some(el) = line_range {
+        lines.push(format!(
+            "{}lines: [{}, {}]",
+            spaces(indent),
+            el.start,
+            el.end
+        ));
+        lines.push(format!(
+            "{}size: {}",
+            spaces(indent),
+            el.end.saturating_sub(el.start) + 1
+        ));
+    }
+    if let Some(metadata) = metadata {
+        push_metadata(lines, indent, metadata);
+    }
+}
+
+fn push_metadata(lines: &mut Vec<String>, indent: usize, metadata: &SymbolMetadata) {
+    if let Some(signature) = &metadata.signature {
+        lines.push(format!(
+            "{}signature: {}",
+            spaces(indent),
+            yaml_escape(signature)
+        ));
+    }
+    if let Some(visibility) = &metadata.visibility {
+        lines.push(format!(
+            "{}visibility: {}",
+            spaces(indent),
+            yaml_escape(visibility)
+        ));
+    }
+    crate::format::push_kind_line(lines, indent, metadata.declaration_kind.as_deref());
+}
+
+fn push_members(
+    lines: &mut Vec<String>,
+    entry: &FileEntry,
+    parent_name: &str,
+    private_by_class: Option<&HashMap<String, Vec<PrivateMember>>>,
+) {
+    let mut members = collect_members(entry, parent_name, private_by_class);
+    if members.is_empty() {
+        return;
+    }
+
+    members.sort_by_key(|member| member.start);
+    lines.push(format!("{}members:", spaces(4)));
+    for member in members {
+        let line_range = ExportLines {
+            start: member.start,
+            end: member.end,
+        };
+        push_member_entry(
+            lines,
+            6,
+            &member.name,
+            Some(&line_range),
+            Some(&member.metadata),
+        );
+    }
+}
+
+fn collect_members(
+    entry: &FileEntry,
+    parent_name: &str,
+    private_by_class: Option<&HashMap<String, Vec<PrivateMember>>>,
+) -> Vec<OutlineMember> {
+    let prefix = format!("{}.", parent_name);
+    let mut members = Vec::new();
+    collect_indexed_members(&mut members, entry.methods.as_ref(), entry, &prefix);
+    collect_indexed_members(&mut members, Some(&entry.nested_fns), entry, &prefix);
+    if private_by_class.is_some() {
+        collect_indexed_members(&mut members, Some(&entry.closure_state), entry, &prefix);
+    }
+    collect_private_members(&mut members, parent_name, private_by_class);
+    members
+}
+
+fn collect_indexed_members(
+    members: &mut Vec<OutlineMember>,
+    source: Option<&HashMap<String, ExportLines>>,
+    entry: &FileEntry,
+    prefix: &str,
+) {
+    let Some(source) = source else {
+        return;
+    };
+    for (dotted_name, lines) in source {
+        if !dotted_name.starts_with(prefix) {
+            continue;
+        }
+        members.push(OutlineMember {
+            name: dotted_name.trim_start_matches(prefix).to_string(),
+            start: lines.start,
+            end: lines.end,
+            metadata: entry
+                .method_metadata
+                .get(dotted_name)
+                .cloned()
+                .unwrap_or_default(),
+        });
+    }
+}
+
+fn collect_private_members(
+    members: &mut Vec<OutlineMember>,
+    parent_name: &str,
+    private_by_class: Option<&HashMap<String, Vec<PrivateMember>>>,
+) {
+    let private_members = private_by_class
+        .and_then(|m| m.get(parent_name))
+        .map(|v| v.as_slice())
+        .unwrap_or(&[]);
+    for member in private_members {
+        if members.iter().any(|existing| {
+            existing.name == member.name
+                && existing.start == member.start
+                && existing.end == member.end
+        }) {
+            continue;
+        }
+        let mut metadata = member.metadata.clone();
+        if metadata.visibility.is_none() {
+            metadata.visibility = Some("private".to_string());
+        }
+        if metadata.declaration_kind.is_none() {
+            metadata.declaration_kind =
+                Some(if member.is_method { "method" } else { "field" }.to_string());
+        }
+        members.push(OutlineMember {
+            name: member.name.clone(),
+            start: member.start,
+            end: member.end,
+            metadata,
+        });
+    }
+}
+
+fn push_reexports(lines: &mut Vec<String>, reexports: &[OutlineReExport]) {
     if !reexports.is_empty() {
         lines.push("re-exports:".to_string());
         for r in reexports {
@@ -237,25 +298,18 @@ pub fn format_file_outline(
             ));
         }
     }
+}
 
-    // ALP-910: Render non-exported top-level functions after the symbols block.
-    if let Some(fns) = top_level_fns
-        && !fns.is_empty()
-    {
-        lines.push("non_exported:".to_string());
-        for f in fns {
-            let size = f.end.saturating_sub(f.start) + 1;
-            lines.push(format!(
-                "  {}: [{}, {}]  # {} lines  # non-exported",
-                yaml_escape(&f.name),
-                f.start,
-                f.end,
-                size
-            ));
-        }
-    }
+fn spaces(count: usize) -> String {
+    " ".repeat(count)
+}
 
-    lines.join("\n")
+#[derive(Debug)]
+struct OutlineMember {
+    name: String,
+    start: usize,
+    end: usize,
+    metadata: SymbolMetadata,
 }
 
 /// Format lookup export: sidecar YAML with the found symbol highlighted.
@@ -286,6 +340,14 @@ pub fn format_lookup_export(
 
 /// Format dependency graph as YAML.
 /// `local` contains resolved intra-project file paths; `external` contains package names.
+fn circular_annotation(file: &str, dep: &str) -> &'static str {
+    if is_direct_rust_mod_relative(file, dep) {
+        "# mod-hierarchy"
+    } else {
+        "# circular"
+    }
+}
+
 pub fn format_dependency_graph(
     file: &str,
     entry: &FileEntry,
@@ -312,7 +374,11 @@ pub fn format_dependency_graph(
         lines.push("downstream:".to_string());
         for dep in downstream {
             if local_set.contains(dep.as_str()) {
-                lines.push(format!("  - {}  # circular", yaml_escape(dep)));
+                lines.push(format!(
+                    "  - {}  {}",
+                    yaml_escape(dep),
+                    circular_annotation(file, dep)
+                ));
             } else {
                 lines.push(format!("  - {}", yaml_escape(dep)));
             }
@@ -363,9 +429,10 @@ pub fn format_dependency_graph_transitive(
         for (path, d) in downstream {
             if upstream_set.contains(path.as_str()) {
                 lines.push(format!(
-                    "  - file: {}  depth: {}  # circular",
+                    "  - file: {}  depth: {}  {}",
                     yaml_escape(path),
-                    d
+                    d,
+                    circular_annotation(file, path)
                 ));
             } else {
                 lines.push(format!("  - file: {}  depth: {}", yaml_escape(path), d));
@@ -398,6 +465,7 @@ pub fn format_read_symbol(
     symbol: &str,
     file: &str,
     el: &ExportLines,
+    kind: Option<&str>,
     source: &str,
     line_numbers: bool,
 ) -> String {
@@ -406,6 +474,7 @@ pub fn format_read_symbol(
     lines.push(format!("symbol: {}", yaml_escape(symbol)));
     lines.push(format!("file: {}", yaml_escape(file)));
     lines.push(format!("lines: [{}, {}]", el.start, el.end));
+    crate::format::push_kind_line(&mut lines, 0, kind);
     lines.push("---".to_string());
 
     if line_numbers {

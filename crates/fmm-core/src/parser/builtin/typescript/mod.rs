@@ -1,5 +1,6 @@
 mod extract_classes;
 mod extract_imports;
+mod symbol_metadata;
 #[cfg(test)]
 mod tests;
 pub(crate) mod tsconfig;
@@ -7,12 +8,12 @@ pub(crate) mod tsconfig;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use crate::parser::{ExportEntry, Metadata, ParseResult, Parser};
+use crate::parser::{DeclarationKind, ExportEntry, Metadata, ParseResult, Parser};
 use anyhow::Result;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Parser as TSParser, Query, QueryCursor};
 
-use super::query_helpers::{collect_matches_with_lines, compile_query, make_parser};
+use super::query_helpers::{compile_query, make_parser, top_level_ancestor};
 
 use tsconfig::load_tsconfig_paths;
 
@@ -167,7 +168,7 @@ impl TypeScriptParser {
         let mut function_names: Vec<String> = Vec::new();
 
         for (qi, query) in self.export_queries.iter().enumerate() {
-            for entry in collect_matches_with_lines(query, root_node, source_bytes) {
+            for entry in self.collect_export_entries(query, root_node, source_bytes, qi) {
                 if seen.insert(entry.name.clone()) {
                     // Query index 0 matches `export function foo()` — confirmed function decls.
                     if qi == 0 {
@@ -180,6 +181,61 @@ impl TypeScriptParser {
 
         exports.sort_by_key(|e| e.start_line);
         (exports, function_names)
+    }
+
+    fn collect_export_entries(
+        &self,
+        query: &Query,
+        root_node: tree_sitter::Node,
+        source_bytes: &[u8],
+        query_index: usize,
+    ) -> Vec<ExportEntry> {
+        let name_idx = query.capture_index_for_name("name").unwrap_or(0);
+        let mut seen = HashSet::new();
+        let mut entries = Vec::new();
+        let mut cursor = QueryCursor::new();
+        let mut iter = cursor.matches(query, root_node, source_bytes);
+
+        while let Some(m) = iter.next() {
+            let mut name = None;
+            let mut name_node = None;
+
+            for cap in m.captures {
+                if cap.index == name_idx
+                    && let Ok(text) = cap.node.utf8_text(source_bytes)
+                {
+                    name = Some(text.to_string());
+                    name_node = Some(cap.node);
+                }
+            }
+
+            let Some(name) = name else {
+                continue;
+            };
+            if !seen.insert(name.clone()) {
+                continue;
+            }
+
+            let node = name_node.map(top_level_ancestor).unwrap_or(root_node);
+            let declaration_kind = declaration_kind_for_export_query(query_index);
+            entries.push(symbol_metadata::ts_entry(
+                name,
+                node,
+                source_bytes,
+                crate::parser::SymbolVisibility::Public,
+                declaration_kind,
+            ));
+        }
+
+        entries.sort_by_key(|e| e.start_line);
+        entries
+    }
+
+    fn extract_test_blocks(source: &str, root_node: tree_sitter::Node) -> Vec<ExportEntry> {
+        let mut entries = Vec::new();
+        symbol_metadata::collect_test_blocks(root_node, source.as_bytes(), &mut entries);
+        entries.sort_by_key(|e| e.start_line);
+        entries
     }
 
     /// ALP-754: extract unique decorator names from the file.
@@ -277,6 +333,10 @@ impl TypeScriptParser {
         let nested = Self::extract_nested_symbols(source, root_node);
         exports.extend(nested);
 
+        let test_blocks = Self::extract_test_blocks(source, root_node);
+        exports.extend(test_blocks);
+
+        dedupe_export_entries(&mut exports);
         exports.sort_by_key(|e| e.start_line);
 
         let decorators = self.extract_decorators(source, root_node);
@@ -324,6 +384,30 @@ impl TypeScriptParser {
             custom_fields,
         })
     }
+}
+
+fn declaration_kind_for_export_query(query_index: usize) -> DeclarationKind {
+    match query_index {
+        0 => DeclarationKind::Fn,
+        1 | 4 | 5 | 7 => DeclarationKind::Const,
+        2 => DeclarationKind::Struct,
+        3 => DeclarationKind::Trait,
+        6 => DeclarationKind::Type,
+        8 => DeclarationKind::Enum,
+        9..=11 => DeclarationKind::Const,
+        _ => DeclarationKind::Const,
+    }
+}
+
+fn dedupe_export_entries(exports: &mut Vec<ExportEntry>) {
+    let mut seen = HashSet::new();
+    exports.retain(|entry| {
+        seen.insert((
+            entry.parent_class.clone(),
+            entry.relationship_kind.clone(),
+            entry.name.clone(),
+        ))
+    });
 }
 
 pub(crate) const TS_DESCRIPTOR: crate::parser::RegisteredLanguage =

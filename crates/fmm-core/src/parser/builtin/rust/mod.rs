@@ -2,6 +2,8 @@ mod extract_exports;
 mod extract_imports;
 mod extract_macros;
 mod metadata;
+mod symbol_metadata;
+pub(crate) use symbol_metadata::rust_method_entry;
 
 #[cfg(test)]
 mod tests;
@@ -75,14 +77,14 @@ impl RustParser {
         let export_query_strs = [
             // Anchored to source_file so that pub fn inside impl blocks are NOT captured here.
             // impl block methods are extracted separately with parent_class set (ALP-770).
-            "(source_file (function_item (visibility_modifier) @vis name: (identifier) @name))",
-            "(struct_item (visibility_modifier) @vis name: (type_identifier) @name)",
-            "(enum_item (visibility_modifier) @vis name: (type_identifier) @name)",
-            "(trait_item (visibility_modifier) @vis name: (type_identifier) @name)",
-            "(type_item (visibility_modifier) @vis name: (type_identifier) @name)",
-            "(const_item (visibility_modifier) @vis name: (identifier) @name)",
-            "(static_item (visibility_modifier) @vis name: (identifier) @name)",
-            "(mod_item (visibility_modifier) @vis name: (identifier) @name)",
+            "(source_file (function_item name: (identifier) @name))",
+            "(struct_item name: (type_identifier) @name)",
+            "(enum_item name: (type_identifier) @name)",
+            "(trait_item name: (type_identifier) @name)",
+            "(type_item name: (type_identifier) @name)",
+            "(const_item name: (identifier) @name)",
+            "(static_item name: (identifier) @name)",
+            "(mod_item name: (identifier) @name)",
         ];
 
         let export_queries: Vec<Query> = export_query_strs
@@ -160,12 +162,12 @@ impl RustParser {
         let mut exports = self.extract_exports(source, root_node, binary_crate);
         let imports = self.extract_imports(source, root_node);
 
-        // ALP-770: extract pub fn from impl blocks of exported types (library crates only).
+        // ALP-770: extract methods from impl blocks of indexed types (library crates only).
         // Binary crates use all_item_queries which already capture impl methods as flat entries.
         if !binary_crate {
             let exported_types: HashSet<String> = exports
                 .iter()
-                .filter(|e| e.parent_class.is_none())
+                .filter(|e| e.parent_class.is_none() && e.declaration_kind.is_some())
                 .map(|e| e.name.clone())
                 .collect();
             let methods = self.extract_impl_methods(source, root_node, &exported_types);
@@ -302,7 +304,7 @@ pub(crate) const DESCRIPTOR: crate::parser::RegisteredLanguage =
         extensions: &["rs"],
         reexport_filenames: &["mod.rs"],
         test_patterns: crate::parser::LanguageTestPatterns {
-            filename_suffixes: &["_test.rs"],
+            filename_suffixes: &["_test.rs", "_tests.rs"],
             filename_prefixes: &[],
             test_symbol_prefixes: &[],
         },

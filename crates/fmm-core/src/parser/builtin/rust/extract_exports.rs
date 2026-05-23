@@ -1,6 +1,7 @@
 use super::RustParser;
-use crate::parser::ExportEntry;
+use super::symbol_metadata::{declaration_kind, rust_entry, rust_method_entry, visibility_for};
 use crate::parser::builtin::query_helpers::extract_field_text;
+use crate::parser::{DeclarationKind, ExportEntry};
 use std::collections::HashSet;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node, QueryCursor};
@@ -27,19 +28,6 @@ impl RustParser {
             let mut cursor = QueryCursor::new();
             let mut iter = cursor.matches(query, root_node, source_bytes);
             while let Some(m) = iter.next() {
-                if !binary_crate {
-                    let vis_capture = m.captures.iter().find(|c| {
-                        let idx = c.index as usize;
-                        idx < capture_names.len() && capture_names[idx] == "vis"
-                    });
-                    if let Some(vis) = vis_capture
-                        && let Ok(vis_text) = vis.node.utf8_text(source_bytes)
-                        && vis_text != "pub"
-                    {
-                        continue;
-                    }
-                }
-
                 let name_capture = m.captures.iter().find(|c| {
                     let idx = c.index as usize;
                     idx < capture_names.len() && capture_names[idx] == "name"
@@ -49,22 +37,27 @@ impl RustParser {
                     && let Ok(text) = name.node.utf8_text(source_bytes)
                 {
                     let name_str = text.to_string();
-                    if seen.insert(name_str.clone()) {
-                        let decl = name.node.parent().unwrap_or(name.node);
-                        exports.push(ExportEntry::new(
-                            name_str,
-                            decl.start_position().row + 1,
-                            decl.end_position().row + 1,
-                        ));
+                    let decl = name.node.parent().unwrap_or(name.node);
+                    if seen.insert(symbol_key_for_node(None, &name_str, decl))
+                        && let Some(kind) = declaration_kind(decl, source_bytes)
+                    {
+                        exports.push(rust_entry(name_str, decl, source_bytes, kind));
                     }
                 }
             }
         }
 
+        self.extract_nested_declarations(root_node, source_bytes, &mut seen, &mut exports);
+
         // Collect pub use re-exports (always, regardless of binary_crate)
         let pub_use_exports = self.extract_pub_use_names(source, root_node);
         for entry in pub_use_exports {
-            if seen.insert(entry.name.clone()) {
+            if seen.insert(symbol_key(
+                entry.parent_class.as_deref(),
+                &entry.name,
+                entry.start_line,
+                entry.end_line,
+            )) {
                 exports.push(entry);
             }
         }
@@ -72,13 +65,17 @@ impl RustParser {
         // Collect #[macro_export] declarative macros and proc-macro functions
         let macro_exports = self.extract_macro_exports(source, root_node);
         for entry in macro_exports {
-            if seen.insert(entry.name.clone()) {
+            if seen.insert(symbol_key(
+                entry.parent_class.as_deref(),
+                &entry.name,
+                entry.start_line,
+                entry.end_line,
+            )) {
                 exports.push(entry);
             }
         }
 
         exports.sort_by_key(|e| e.start_line);
-        exports.dedup_by(|a, b| a.name == b.name && a.parent_class == b.parent_class);
         exports
     }
 
@@ -143,23 +140,11 @@ impl RustParser {
                         continue;
                     }
 
-                    // Check for `pub` visibility modifier
-                    let is_pub = (0..child.child_count()).any(|j| {
-                        child
-                            .child(j as u32)
-                            .filter(|c| c.kind() == "visibility_modifier")
-                            .and_then(|c| c.utf8_text(source_bytes).ok())
-                            .is_some_and(|t| t == "pub")
-                    });
-                    if !is_pub {
-                        continue;
-                    }
-
                     if let Some(method_name) = extract_field_text(&child, source_bytes, "name") {
-                        entries.push(ExportEntry::method(
+                        entries.push(rust_method_entry(
                             method_name,
-                            child.start_position().row + 1,
-                            child.end_position().row + 1,
+                            child,
+                            source_bytes,
                             type_name.clone(),
                         ));
                     }
@@ -181,18 +166,14 @@ impl RustParser {
                 continue;
             }
 
-            let mut is_pub = false;
+            let mut visibility = None;
             let mut content_node: Option<Node> = None;
 
             let mut child_cursor = child.walk();
             for sub in child.children(&mut child_cursor) {
                 match sub.kind() {
                     "visibility_modifier" => {
-                        if let Ok(text) = sub.utf8_text(source_bytes)
-                            && text == "pub"
-                        {
-                            is_pub = true;
-                        }
+                        visibility = Some(visibility_for(child, source_bytes));
                     }
                     "scoped_identifier" | "use_as_clause" | "scoped_use_list" | "identifier" => {
                         content_node = Some(sub);
@@ -201,13 +182,13 @@ impl RustParser {
                 }
             }
 
-            if !is_pub {
+            if visibility.is_none() {
                 continue;
             }
 
             if let Some(node) = content_node {
                 let line = child.start_position().row + 1;
-                Self::collect_use_names(source_bytes, node, line, &mut results);
+                Self::collect_use_names(source_bytes, node, line, visibility, &mut results);
             }
         }
 
@@ -219,19 +200,20 @@ impl RustParser {
         source_bytes: &[u8],
         node: Node,
         line: usize,
+        visibility: Option<crate::parser::SymbolVisibility>,
         results: &mut Vec<ExportEntry>,
     ) {
         match node.kind() {
             "scoped_identifier" => {
                 // `crate::path::Name` -- the `name` field is the rightmost identifier
                 if let Some(name) = extract_field_text(&node, source_bytes, "name") {
-                    results.push(ExportEntry::new(name, line, line));
+                    results.push(Self::use_entry(name, line, visibility));
                 }
             }
             "use_as_clause" => {
                 // `crate::X as Alias` -- use the alias field
                 if let Some(name) = extract_field_text(&node, source_bytes, "alias") {
-                    results.push(ExportEntry::new(name, line, line));
+                    results.push(Self::use_entry(name, line, visibility));
                 }
             }
             "scoped_use_list" => {
@@ -239,7 +221,7 @@ impl RustParser {
                 if let Some(list_node) = node.child_by_field_name("list") {
                     let mut cursor = list_node.walk();
                     for item in list_node.children(&mut cursor) {
-                        Self::collect_use_names(source_bytes, item, line, results);
+                        Self::collect_use_names(source_bytes, item, line, visibility, results);
                     }
                 }
             }
@@ -247,7 +229,7 @@ impl RustParser {
                 // Bare `{A, B}` -- recurse into items
                 let mut cursor = node.walk();
                 for item in node.children(&mut cursor) {
-                    Self::collect_use_names(source_bytes, item, line, results);
+                    Self::collect_use_names(source_bytes, item, line, visibility, results);
                 }
             }
             "identifier" => {
@@ -255,11 +237,183 @@ impl RustParser {
                 if let Ok(name) = node.utf8_text(source_bytes)
                     && !matches!(name, "self" | "crate" | "super")
                 {
-                    results.push(ExportEntry::new(name.to_string(), line, line));
+                    results.push(Self::use_entry(name.to_string(), line, visibility));
                 }
             }
             // "use_wildcard", "{", "}", ",", ";", etc. -- skip
             _ => {}
         }
+    }
+
+    fn extract_nested_declarations(
+        &self,
+        root_node: Node,
+        source_bytes: &[u8],
+        seen: &mut HashSet<String>,
+        exports: &mut Vec<ExportEntry>,
+    ) {
+        let mut cursor = root_node.walk();
+        for child in root_node.children(&mut cursor) {
+            Self::collect_child_declarations(child, source_bytes, seen, exports);
+        }
+    }
+
+    fn collect_child_declarations(
+        node: Node,
+        source_bytes: &[u8],
+        seen: &mut HashSet<String>,
+        exports: &mut Vec<ExportEntry>,
+    ) {
+        Self::collect_named_declaration(node, source_bytes, seen, exports);
+
+        match node.kind() {
+            "struct_item" => Self::collect_struct_fields(node, source_bytes, seen, exports),
+            "enum_item" => Self::collect_enum_variants(node, source_bytes, seen, exports),
+            "impl_item" => {
+                if let Some(name) = Self::impl_name(node, source_bytes)
+                    && seen.insert(symbol_key_for_node(None, &name, node))
+                {
+                    exports.push(rust_entry(name, node, source_bytes, DeclarationKind::Impl));
+                }
+            }
+            "mod_item" => {
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    if child.kind() == "declaration_list" {
+                        Self::collect_child_declarations(child, source_bytes, seen, exports);
+                    }
+                }
+            }
+            "declaration_list" => {
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    Self::collect_child_declarations(child, source_bytes, seen, exports);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn collect_named_declaration(
+        node: Node,
+        source_bytes: &[u8],
+        seen: &mut HashSet<String>,
+        exports: &mut Vec<ExportEntry>,
+    ) {
+        let Some(kind) = declaration_kind(node, source_bytes) else {
+            return;
+        };
+        let Some(name) = Self::declaration_name(node, source_bytes) else {
+            return;
+        };
+        if seen.insert(symbol_key_for_node(None, &name, node)) {
+            exports.push(rust_entry(name, node, source_bytes, kind));
+        }
+    }
+
+    fn declaration_name(node: Node, source_bytes: &[u8]) -> Option<String> {
+        match node.kind() {
+            "function_item" | "const_item" | "static_item" | "mod_item" => {
+                extract_field_text(&node, source_bytes, "name")
+            }
+            "struct_item" | "enum_item" | "trait_item" | "type_item" => {
+                extract_field_text(&node, source_bytes, "name")
+            }
+            _ => None,
+        }
+    }
+
+    fn collect_struct_fields(
+        node: Node,
+        source_bytes: &[u8],
+        seen: &mut HashSet<String>,
+        exports: &mut Vec<ExportEntry>,
+    ) {
+        let Some(parent_name) = extract_field_text(&node, source_bytes, "name") else {
+            return;
+        };
+        let Some(body) = node.child_by_field_name("body") else {
+            return;
+        };
+        let mut cursor = body.walk();
+        for child in body.children(&mut cursor) {
+            if child.kind() != "field_declaration" {
+                continue;
+            }
+            if let Some(field_name) = extract_field_text(&child, source_bytes, "name") {
+                let key = symbol_key_for_node(Some(&parent_name), &field_name, child);
+                if seen.insert(key) {
+                    let mut entry =
+                        rust_entry(field_name, child, source_bytes, DeclarationKind::Field);
+                    entry.parent_class = Some(parent_name.clone());
+                    exports.push(entry);
+                }
+            }
+        }
+    }
+
+    fn collect_enum_variants(
+        node: Node,
+        source_bytes: &[u8],
+        seen: &mut HashSet<String>,
+        exports: &mut Vec<ExportEntry>,
+    ) {
+        let Some(parent_name) = extract_field_text(&node, source_bytes, "name") else {
+            return;
+        };
+        let Some(body) = node.child_by_field_name("body") else {
+            return;
+        };
+        let mut cursor = body.walk();
+        for child in body.children(&mut cursor) {
+            if child.kind() != "enum_variant" {
+                continue;
+            }
+            if let Some(variant_name) = extract_field_text(&child, source_bytes, "name") {
+                let key = symbol_key_for_node(Some(&parent_name), &variant_name, child);
+                if seen.insert(key) {
+                    let mut entry =
+                        rust_entry(variant_name, child, source_bytes, DeclarationKind::Variant);
+                    entry.parent_class = Some(parent_name.clone());
+                    exports.push(entry);
+                }
+            }
+        }
+    }
+
+    fn impl_name(node: Node, source_bytes: &[u8]) -> Option<String> {
+        let type_name = node
+            .child_by_field_name("type")
+            .and_then(|type_node| Self::impl_type_name(type_node, source_bytes))?;
+        let trait_name = node
+            .child_by_field_name("trait")
+            .and_then(|trait_node| trait_node.utf8_text(source_bytes).ok());
+        Some(match trait_name {
+            Some(trait_name) => format!("impl {} for {}", trait_name, type_name),
+            None => format!("impl {}", type_name),
+        })
+    }
+
+    fn use_entry(
+        name: String,
+        line: usize,
+        visibility: Option<crate::parser::SymbolVisibility>,
+    ) -> ExportEntry {
+        let mut entry = ExportEntry::new(name, line, line);
+        entry.visibility = visibility;
+        entry.signature = Some(entry.name.clone());
+        entry.declaration_kind = Some(DeclarationKind::Module);
+        entry
+    }
+}
+
+fn symbol_key_for_node(parent: Option<&str>, name: &str, node: Node) -> String {
+    symbol_key(parent, name, node.start_byte(), node.end_byte())
+}
+
+fn symbol_key(parent: Option<&str>, name: &str, start: usize, end: usize) -> String {
+    match parent {
+        Some(parent) => format!("{parent}::{name}@{start}:{end}"),
+        None => format!("{name}@{start}:{end}"),
     }
 }

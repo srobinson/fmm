@@ -94,6 +94,56 @@ fn crate_path_resolves_from_importing_crate_root() {
 }
 
 #[test]
+fn bare_module_path_resolves_from_importing_crate_root() {
+    let tmp = TempDir::new().unwrap();
+    write_workspace(&tmp);
+    let importer = write_file(
+        tmp.path(),
+        "crates/cm-core/src/lib.rs",
+        "pub mod proto; pub use proto::RuntimeRpc;",
+    );
+    let target = write_file(
+        tmp.path(),
+        "crates/cm-core/src/proto.rs",
+        "pub struct RuntimeRpc;",
+    );
+    let resolver = RustImportResolver::new(&workspace_packages(&tmp));
+
+    assert_eq!(resolver.resolve(&importer, "proto"), Some(target.clone()));
+    assert_eq!(
+        resolver.resolve(&importer, "proto::RuntimeRpc"),
+        Some(target)
+    );
+}
+
+#[test]
+fn child_module_path_resolves_from_importing_module_scope() {
+    let tmp = TempDir::new().unwrap();
+    write_workspace(&tmp);
+    write_file(tmp.path(), "crates/cm-core/src/lib.rs", "pub mod types;");
+    let importer = write_file(
+        tmp.path(),
+        "crates/cm-core/src/types.rs",
+        "mod lifecycle; pub use lifecycle::Lifecycle;",
+    );
+    let target = write_file(
+        tmp.path(),
+        "crates/cm-core/src/types/lifecycle.rs",
+        "pub struct Lifecycle;",
+    );
+    let resolver = RustImportResolver::new(&workspace_packages(&tmp));
+
+    assert_eq!(
+        resolver.resolve(&importer, "lifecycle"),
+        Some(target.clone())
+    );
+    assert_eq!(
+        resolver.resolve(&importer, "lifecycle::Lifecycle"),
+        Some(target)
+    );
+}
+
+#[test]
 fn super_path_resolves_from_parent_module() {
     let tmp = TempDir::new().unwrap();
     write_workspace(&tmp);

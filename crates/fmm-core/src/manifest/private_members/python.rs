@@ -120,12 +120,12 @@ fn collect_py_private_members(body: tree_sitter::Node, source: &[u8]) -> Vec<Pri
             && let Ok(name) = name_node.utf8_text(source)
             && is_py_private(name)
         {
-            members.push(PrivateMember {
-                name: name.to_string(),
-                start: child.start_position().row + 1,
-                end: child.end_position().row + 1,
-                is_method: true,
-            });
+            members.push(PrivateMember::new(
+                name,
+                child.start_position().row + 1,
+                child.end_position().row + 1,
+                true,
+            ));
         }
     }
 

@@ -183,7 +183,7 @@ fn builtin_convention_registry_registers_fmm_test_file_convention() {
         .expect("fmm test file convention plugin");
     assert_eq!(
         plugin.test_patterns.path_contains,
-        &["/tests/", "/test/", "/__tests__/"]
+        &["/tests/", "/test/", "/__tests__/", "/tests.rs", "/test.rs"]
     );
     assert!(registry.is_test_file("tests/helpers.py"));
 }
@@ -221,6 +221,10 @@ fn convention_registry_test_file_classification_preserves_directory_heuristics()
     assert!(registry.is_test_file("src/tests/helpers.py"));
     assert!(registry.is_test_file("src/test/fixtures.ts"));
     assert!(registry.is_test_file("src/__tests__/utils.ts"));
+    assert!(registry.is_test_file("src/tests.rs"));
+    assert!(registry.is_test_file("src/test.rs"));
     assert!(!registry.is_test_file("src/contest/result.ts"));
     assert!(!registry.is_test_file("attest/helpers.py"));
+    assert!(!registry.is_test_file("src/wrtests.rs"));
+    assert!(!registry.is_test_file("src/protest.rs"));
 }

@@ -9,6 +9,8 @@ use crate::read_symbol::{
 #[derive(serde::Serialize)]
 struct ReadSymbolJson {
     kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    symbol_kind: Option<String>,
     symbol: String,
     file: String,
     lines: [usize; 2],
@@ -87,6 +89,7 @@ fn to_json(result: &crate::read_symbol::ReadSymbolResult) -> ReadSymbolJson {
     match &result.content {
         ReadSymbolContent::Source(source) => ReadSymbolJson {
             kind: "source",
+            symbol_kind: result.symbol_kind.clone(),
             symbol: result.symbol.clone(),
             file: result.file.clone(),
             lines: export_lines_array(&result.lines),
@@ -95,6 +98,7 @@ fn to_json(result: &crate::read_symbol::ReadSymbolResult) -> ReadSymbolJson {
         },
         ReadSymbolContent::ClassRedirect { methods } => ReadSymbolJson {
             kind: "class_redirect",
+            symbol_kind: result.symbol_kind.clone(),
             symbol: result.symbol.clone(),
             file: result.file.clone(),
             lines: export_lines_array(&result.lines),

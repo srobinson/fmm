@@ -159,6 +159,10 @@ impl RustParser {
             for cap in m.captures {
                 if cap.index == name_idx
                     && let Ok(text) = cap.node.utf8_text(source_bytes)
+                    && cap
+                        .node
+                        .parent()
+                        .is_some_and(|node| has_plain_pub_visibility(node, source_bytes))
                 {
                     names.push(text.to_string());
                 }
@@ -167,4 +171,15 @@ impl RustParser {
 
         names
     }
+}
+
+fn has_plain_pub_visibility(node: tree_sitter::Node, source_bytes: &[u8]) -> bool {
+    let mut cursor = node.walk();
+    node.children(&mut cursor).any(|child| {
+        child.kind() == "visibility_modifier"
+            && child
+                .utf8_text(source_bytes)
+                .map(|text| text == "pub")
+                .unwrap_or(false)
+    })
 }

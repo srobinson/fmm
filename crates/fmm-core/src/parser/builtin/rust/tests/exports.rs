@@ -17,7 +17,7 @@ fn parse_rust_pub_functions() {
             .contains(&"world".to_string())
     );
     assert!(
-        !result
+        result
             .metadata
             .export_names()
             .contains(&"private".to_string())
@@ -31,7 +31,7 @@ fn parse_rust_pub_structs_and_enums() {
     assert!(result.metadata.export_names().contains(&"Foo".to_string()));
     assert!(result.metadata.export_names().contains(&"Bar".to_string()));
     assert!(
-        !result
+        result
             .metadata
             .export_names()
             .contains(&"Private".to_string())
@@ -49,13 +49,13 @@ fn parse_rust_pub_crate_excluded() {
             .contains(&"visible".to_string())
     );
     assert!(
-        !result
+        result
             .metadata
             .export_names()
             .contains(&"internal".to_string())
     );
     assert!(
-        !result
+        result
             .metadata
             .export_names()
             .contains(&"parent_only".to_string())

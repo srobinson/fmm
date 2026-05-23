@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 
-pub const SCHEMA_VERSION: u32 = 5;
+pub const SCHEMA_VERSION: u32 = 6;
 
 pub fn ensure_schema(conn: &Connection) -> Result<()> {
     let version = read_schema_version(conn)?;
@@ -121,24 +121,30 @@ CREATE TABLE IF NOT EXISTS file_paths (
 
 -- Export locations. Replaces export_index, export_locations, export_all.
 CREATE TABLE IF NOT EXISTS exports (
-    name       TEXT NOT NULL,
-    file_path  TEXT NOT NULL REFERENCES files(path) ON DELETE CASCADE,
-    start_line INTEGER,
-    end_line   INTEGER,
+    name             TEXT NOT NULL,
+    file_path        TEXT NOT NULL REFERENCES files(path) ON DELETE CASCADE,
+    start_line       INTEGER,
+    end_line         INTEGER,
+    signature        TEXT,
+    visibility       TEXT CHECK (visibility IS NULL OR visibility IN ('public', 'crate', 'protected', 'private', 'non_exported')),
+    declaration_kind TEXT CHECK (declaration_kind IS NULL OR declaration_kind IN ('fn', 'method', 'field', 'const', 'test', 'struct', 'trait', 'impl', 'enum', 'variant', 'module', 'macro', 'type')),
     PRIMARY KEY (name, file_path)
 );
 CREATE INDEX IF NOT EXISTS idx_exports_name ON exports(name);
 CREATE INDEX IF NOT EXISTS idx_exports_file ON exports(file_path);
 
 -- Class/interface methods and nested function symbols for dotted-name lookups.
--- kind: NULL = class method, 'nested-fn' = depth-1 nested function (ALP-922),
---        'closure-state' = depth-1 non-trivial prologue var (ALP-922).
+-- relationship_kind: NULL = class method, 'nested-fn' = depth-1 nested function (ALP-922),
+--                    'closure-state' = depth-1 non-trivial prologue var (ALP-922).
 CREATE TABLE IF NOT EXISTS methods (
-    dotted_name TEXT NOT NULL,
-    file_path   TEXT NOT NULL REFERENCES files(path) ON DELETE CASCADE,
-    start_line  INTEGER,
-    end_line    INTEGER,
-    kind        TEXT,
+    dotted_name      TEXT NOT NULL,
+    file_path        TEXT NOT NULL REFERENCES files(path) ON DELETE CASCADE,
+    start_line       INTEGER,
+    end_line         INTEGER,
+    relationship_kind TEXT,
+    signature        TEXT,
+    visibility       TEXT CHECK (visibility IS NULL OR visibility IN ('public', 'crate', 'protected', 'private', 'non_exported')),
+    declaration_kind TEXT CHECK (declaration_kind IS NULL OR declaration_kind IN ('fn', 'method', 'field', 'const', 'test', 'struct', 'trait', 'impl', 'enum', 'variant', 'module', 'macro', 'type')),
     PRIMARY KEY (dotted_name, file_path)
 );
 CREATE INDEX IF NOT EXISTS idx_methods_name ON methods(dotted_name);

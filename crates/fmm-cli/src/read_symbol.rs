@@ -1,11 +1,23 @@
 use fmm_core::manifest::{ExportLines, ExportLocation, Manifest};
-use std::path::Path;
+use fmm_core::parser::ParserRegistry;
+use std::{collections::HashSet, path::Path, sync::LazyLock};
+
+mod member_error;
+
+const CONFIG_FILE_EXTENSIONS: &[&str] = &["toml"];
+
+static FILE_PATH_EXTENSIONS: LazyLock<HashSet<String>> = LazyLock::new(|| {
+    let mut extensions = ParserRegistry::with_builtins().source_extensions().clone();
+    extensions.extend(CONFIG_FILE_EXTENSIONS.iter().map(|ext| ext.to_string()));
+    extensions
+});
 
 #[derive(Debug, Clone)]
 pub(crate) struct ReadSymbolResult {
     pub(crate) symbol: String,
     pub(crate) file: String,
     pub(crate) lines: ExportLines,
+    pub(crate) symbol_kind: Option<String>,
     pub(crate) content: ReadSymbolContent,
 }
 
@@ -34,6 +46,19 @@ pub(crate) enum ReadSymbolGuidance {
 }
 
 impl ReadSymbolGuidance {
+    fn file_path_symbol(self, name: &str) -> String {
+        match self {
+            Self::Cli => format!(
+                "'{}' looks like a file path, not a Class.method symbol. Use fmm outline {} to inspect an indexed source file, or pass a symbol name without a file extension.",
+                name, name
+            ),
+            Self::Mcp => format!(
+                "'{}' looks like a file path, not a Class.method symbol. Use fmm_file_outline(file: \"{}\") to inspect an indexed source file, or pass a symbol name without a file extension.",
+                name, name
+            ),
+        }
+    }
+
     fn empty_symbol(self) -> &'static str {
         match self {
             Self::Cli => {
@@ -67,19 +92,6 @@ impl ReadSymbolGuidance {
             Self::Mcp => format!(
                 "Method '{}' not found. Class '{}' is not a known export. Use fmm_file_outline to inspect the file.",
                 name, class_name
-            ),
-        }
-    }
-
-    fn missing_method(self, name: &str, method_name: &str, class_name: &str, file: &str) -> String {
-        match self {
-            Self::Cli => format!(
-                "Method '{}' not found. '{}' is not a public or private method of '{}'. Use fmm outline {} --include-private to see all members.",
-                name, method_name, class_name, file
-            ),
-            Self::Mcp => format!(
-                "Method '{}' not found. '{}' is not a public or private method of '{}'. Use fmm_file_outline(include_private: true) to see all members.",
-                name, method_name, class_name
             ),
         }
     }
@@ -127,6 +139,45 @@ impl ReadSymbolGuidance {
             .collect::<Vec<_>>()
             .join("\n")
     }
+
+    fn short_missing_member(
+        self,
+        name: &str,
+        member_name: &str,
+        class_name: &str,
+        file: &str,
+    ) -> String {
+        match self {
+            Self::Cli => format!(
+                "Member '{}' not found. '{}' is not a member of '{}'. Use fmm outline {} --include-private to see all members.",
+                name, member_name, class_name, file
+            ),
+            Self::Mcp => format!(
+                "Member '{}' not found. '{}' is not a member of '{}'. Use fmm_file_outline(file: \"{}\", include_private: true) to see all members.",
+                name, member_name, class_name, file
+            ),
+        }
+    }
+
+    fn missing_member(
+        self,
+        manifest: &Manifest,
+        root: &Path,
+        name: &str,
+        member_name: &str,
+        class_name: &str,
+        file: &str,
+    ) -> String {
+        member_error::format_missing_member(
+            manifest,
+            root,
+            self,
+            name,
+            member_name,
+            class_name,
+            file,
+        )
+    }
 }
 
 impl ReadSymbolResult {
@@ -136,6 +187,7 @@ impl ReadSymbolResult {
                 &self.symbol,
                 &self.file,
                 &self.lines,
+                self.symbol_kind.as_deref(),
                 source,
                 line_numbers,
             ),
@@ -193,6 +245,9 @@ pub(crate) fn read_symbol_result(
     }
 
     let symbol_source = source_lines[start..end].join("\n");
+    let symbol_kind = manifest
+        .declaration_kind_for(name, &resolved_file)
+        .map(ToOwned::to_owned);
 
     let is_bare_name = !name.contains('.') && !name.contains(':');
     if is_bare_name
@@ -205,6 +260,7 @@ pub(crate) fn read_symbol_result(
             symbol: name.to_string(),
             file: resolved_file,
             lines,
+            symbol_kind,
             content: ReadSymbolContent::ClassRedirect { methods },
         });
     }
@@ -213,6 +269,7 @@ pub(crate) fn read_symbol_result(
         symbol: name.to_string(),
         file: resolved_file,
         lines,
+        symbol_kind,
         content: ReadSymbolContent::Source(symbol_source),
     })
 }
@@ -223,6 +280,10 @@ fn resolve_symbol_location(
     name: &str,
     guidance: ReadSymbolGuidance,
 ) -> Result<(String, Option<ExportLines>), String> {
+    if name.contains("::") {
+        return Err(rust_path_notation(name));
+    }
+
     if let Some(colon_pos) = name.find(':') {
         resolve_colon_notation(manifest, root, name, colon_pos, guidance)
     } else if name.contains('.') {
@@ -230,6 +291,13 @@ fn resolve_symbol_location(
     } else {
         resolve_bare_symbol(manifest, root, name, guidance)
     }
+}
+
+fn rust_path_notation(name: &str) -> String {
+    format!(
+        "Rust path syntax '{}' is not supported by read_symbol. For Rust paths, use the dotted form: 'Type.method' (e.g. 'ServerState.new').",
+        name
+    )
 }
 
 fn resolve_colon_notation(
@@ -305,7 +373,9 @@ fn resolve_file_qualified_method(
         class_name,
         method_name,
     )
-    .ok_or_else(|| guidance.missing_method(name, method_name, class_name, file_part))?;
+    .ok_or_else(|| {
+        guidance.missing_member(manifest, root, name, method_name, class_name, file_part)
+    })?;
 
     Ok((
         file_part.to_string(),
@@ -439,6 +509,10 @@ fn resolve_dotted_notation(
         return Ok((loc.file.clone(), loc.lines.clone()));
     }
 
+    if looks_like_file_path(name) {
+        return Err(guidance.file_path_symbol(name));
+    }
+
     let dot = name.rfind('.').expect("name contains dot");
     let class_name = &name[..dot];
     let method_name = &name[dot + 1..];
@@ -465,7 +539,15 @@ fn resolve_dotted_notation(
     let class_file = class_files
         .first()
         .expect("class_files is not empty after guard");
-    Err(guidance.missing_method(name, method_name, class_name, class_file))
+    Err(guidance.missing_member(manifest, root, name, method_name, class_name, class_file))
+}
+
+fn looks_like_file_path(name: &str) -> bool {
+    let Some(ext) = Path::new(name).extension().and_then(|ext| ext.to_str()) else {
+        return false;
+    };
+    let ext = ext.to_ascii_lowercase();
+    FILE_PATH_EXTENSIONS.contains(ext.as_str())
 }
 
 fn resolve_export(

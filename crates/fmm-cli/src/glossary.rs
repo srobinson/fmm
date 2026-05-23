@@ -166,21 +166,45 @@ fn format_empty_call_site_message(
         lines.push(format!("{}:", fmm_core::format::yaml_escape(&entry.name)));
         for (source, &importer_count) in entry.sources.iter().zip(src_counts.iter()) {
             let basename = source.file.rsplit('/').next().unwrap_or(&source.file);
-            lines.push(format!("  (no external {} callers)", mode_label));
-            lines.push(format!(
-                "  # {} {} import {}, none call {} directly",
-                importer_count,
-                if importer_count == 1 { "file" } else { "files" },
-                basename,
-                method_name
-            ));
+            fmm_core::format::push_kind_line(&mut lines, 2, source.kind.as_deref());
+            if source.kind.as_deref() == Some("field") {
+                lines.push(format!(
+                    "  (field; no external {} callers expected)",
+                    mode_label
+                ));
+                lines.push(format!(
+                    "  # {} {} import {}; field access is not a method call site",
+                    importer_count,
+                    if importer_count == 1 { "file" } else { "files" },
+                    basename
+                ));
+            } else {
+                lines.push(format!("  (no external {} callers)", mode_label));
+                lines.push(format!(
+                    "  # {} {} import {}, none call {} directly",
+                    importer_count,
+                    if importer_count == 1 { "file" } else { "files" },
+                    basename,
+                    method_name
+                ));
+            }
             if matches!(mode, GlossaryMode::Source) {
                 let test_count = manifest.count_test_dependents(&source.file);
                 if test_count > 0 {
                     lines.push(format!(
                         "  # {} test {} found (rerun with mode: tests)",
                         test_count,
-                        if test_count == 1 { "caller" } else { "callers" }
+                        if source.kind.as_deref() == Some("field") {
+                            if test_count == 1 {
+                                "importer"
+                            } else {
+                                "importers"
+                            }
+                        } else if test_count == 1 {
+                            "caller"
+                        } else {
+                            "callers"
+                        }
                     ));
                 }
             }
@@ -318,6 +342,8 @@ impl From<&GlossaryEntry> for GlossaryJsonEntry {
 struct GlossaryJsonSource {
     file: String,
     lines: Option<ExportLines>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kind: Option<String>,
     used_by: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     namespace_callers: Vec<NamespaceCaller>,
@@ -334,6 +360,7 @@ impl From<&fmm_core::manifest::GlossarySource> for GlossaryJsonSource {
         Self {
             file: source.file.clone(),
             lines: source.lines.clone(),
+            kind: source.kind.clone(),
             used_by: source.used_by.clone(),
             namespace_callers: source
                 .namespace_callers

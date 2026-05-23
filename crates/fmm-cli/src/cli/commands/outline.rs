@@ -2,6 +2,8 @@ use anyhow::Result;
 use colored::Colorize;
 use fmm_core::manifest::OutlineReExport;
 
+use crate::outline_freshness;
+
 use super::{load_manifest, missing_file_diagnostic, warn_no_sidecars};
 
 #[derive(serde::Serialize)]
@@ -119,6 +121,7 @@ pub fn outline(file: &str, include_private: bool, json_output: bool) -> Result<(
         } else {
             None
         };
+        let freshness = outline_freshness::outline_freshness(&root, file);
         println!(
             "{}",
             fmm_core::format::format_file_outline(
@@ -127,6 +130,7 @@ pub fn outline(file: &str, include_private: bool, json_output: bool) -> Result<(
                 &reexports,
                 private_by_class.as_ref(),
                 top_level_fns.as_deref(),
+                freshness.as_deref(),
             )
         );
     }

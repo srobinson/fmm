@@ -17,17 +17,29 @@ fn class_public_method_indexed() {
 }
 
 #[test]
-fn class_private_method_not_indexed() {
+fn class_private_method_indexed() {
     let source = "export class Foo {\n  private baz(): void {}\n}\n";
     let result = parse(source);
-    assert!(!result.metadata.exports.iter().any(|e| e.name == "baz"));
+    let method = result
+        .metadata
+        .exports
+        .iter()
+        .find(|e| e.name == "baz")
+        .expect("private method should be indexed");
+    assert_eq!(method.parent_class.as_deref(), Some("Foo"));
 }
 
 #[test]
-fn class_protected_method_not_indexed() {
+fn class_protected_method_indexed() {
     let source = "export class Foo {\n  protected qux(): void {}\n}\n";
     let result = parse(source);
-    assert!(!result.metadata.exports.iter().any(|e| e.name == "qux"));
+    let method = result
+        .metadata
+        .exports
+        .iter()
+        .find(|e| e.name == "qux")
+        .expect("protected method should be indexed");
+    assert_eq!(method.parent_class.as_deref(), Some("Foo"));
 }
 
 #[test]

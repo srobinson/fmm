@@ -111,7 +111,7 @@ serde_json::from_str(r##"{
     },
     {
       "name": "fmm_read_symbol",
-      "description": "Read the source code for a specific exported symbol or uniquely named non-exported top-level function. Returns the exact lines where the function/class/type is defined, without reading the entire file. Use `ClassName.method` notation to read a specific public or private method: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Use `path/to/file:helperFunction` notation to disambiguate duplicate exports or duplicate non-exported top-level functions. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.",
+      "description": "Read the source code for a specific exported symbol or uniquely named non-exported top-level function. Returns the exact lines where the function/class/type/member is defined, without reading the entire file. Use `ClassName.member` notation to read a specific public/private method or indexed field: `fmm_read_symbol(name: \"Injector.loadInstance\")`. Bare Rust module names return the `mod foo;` declaration with `kind: module`; they do not follow into `foo.rs` or `foo/mod.rs`. Use `path/to/file:helperFunction` notation to disambiguate duplicate exports or duplicate non-exported top-level functions. Private methods discovered via fmm_file_outline(include_private: true) are accessible using the same dotted notation. For large symbols (>10KB) use truncate: false to get the full source. Use line_numbers: true to prepend absolute line numbers to each source line.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -135,17 +135,21 @@ serde_json::from_str(r##"{
     },
     {
       "name": "fmm_file_outline",
-      "description": "Get a spatial outline of a file: every exported symbol with its line range and size. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. Set include_private: true to also show private/protected class members AND non-exported top-level functions (in a 'non_exported:' section). Supported: TypeScript, JavaScript, Python, Rust. On-demand tree-sitter parse — no index rebuild needed.",
+      "description": "Get a spatial outline of a file: symbols with line ranges, size, signature, visibility, and kind when populated. Like a table-of-contents for the file. Use to understand file structure before reading specific symbols. Set include_private: true to add on-demand private members not already indexed plus non-exported top-level declarations inline in symbols. Stale queried files include one inline freshness annotation. Supported: TypeScript, JavaScript, Python, Rust. On-demand tree-sitter parse for private additions; no index rebuild needed.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "file": {
             "type": "string",
-            "description": "File path to outline — returns all exports with line ranges and sizes"
+            "description": "File path to outline — returns symbols with line ranges, sizes, signatures, visibility, and kind when populated"
           },
           "include_private": {
             "type": "boolean",
-            "description": "When true, include private/protected members under each class (annotated '# private') AND non-exported top-level functions in a 'non_exported:' section (annotated '# non-exported'). On-demand tree-sitter parse — no index rebuild needed. Supported: TypeScript, JavaScript, Python, Rust. Default: false."
+            "description": "When true, add on-demand private members not already indexed plus non-exported top-level declarations inline in symbols with explicit visibility and kind rows. On-demand tree-sitter parse; no index rebuild needed. Supported: TypeScript, JavaScript, Python, Rust. Default: false."
+          },
+          "truncate": {
+            "type": "boolean",
+            "description": "When false, bypasses the 10KB MCP response cap and returns the full outline response. Default: true."
           }
         },
         "required": [
@@ -202,7 +206,7 @@ serde_json::from_str(r##"{
           },
           "pattern": {
             "type": "string",
-            "description": "Glob pattern to filter by filename within the directory (e.g. '*.py', '*.rs', 'test_*'). Supports * wildcard."
+            "description": "Shell-style glob pattern to filter by filename within the directory (e.g. '*.py', '*test*', 'file?.rs', '[ab]*.ts'). Matches filenames only, not full paths."
           },
           "limit": {
             "type": "integer",
@@ -241,7 +245,7 @@ serde_json::from_str(r##"{
           },
           "filter": {
             "type": "string",
-            "description": "File type filter. 'all' (default): no filtering. 'source': exclude test files. 'tests': return only test files. Detection heuristic uses path segments (/test/, /e2e/, /__tests__/) and filename suffixes (.spec.ts, .test.ts, _test.go, etc.), configurable via test_patterns in .fmmrc.toml.",
+            "description": "File type filter. 'all' (default): no filtering. 'source': exclude test files. 'tests': return only files classified as tests by path or filename. Detection uses path segments (/test/, /e2e/, /__tests__/) and filename suffixes (.spec.ts, .test.ts, _test.go, *_tests.rs, tests.rs, etc.), configurable via test_patterns in .fmmrc.toml. Rust inline #[cfg(test)] mod tests blocks inside ordinary source files do not make the containing file a test file.",
             "enum": [
               "all",
               "source",
@@ -253,13 +257,13 @@ serde_json::from_str(r##"{
     },
     {
       "name": "fmm_glossary",
-      "description": "Symbol-level impact analysis. Given a symbol name or pattern, returns all definitions and exactly which files import each one. Three-layer precision: bare name returns named-import filtered callers (Layer 2, default); dotted name (e.g. 'Injector.loadInstance') adds call-site precision; precision: 'call-site' adds Layer 3 tree-sitter to remove dead imports and annotate re-exports. Use before renaming or changing a signature.",
+      "description": "Symbol-level impact analysis. Given a symbol name or pattern, returns all matching definitions and exactly which files import each one. Three-layer precision: bare names return named-import filtered callers (Layer 2, default); dotted method names (e.g. 'Injector.loadInstance') add call-site precision; dotted patterns use the same case-insensitive substring matching, so 'Type.foo' can match both 'Type.foo' and 'Type.foo_bar'. Dotted field names report kind: field without implying method callers; precision: 'call-site' adds Layer 3 tree-sitter verification to remove dead imports and annotate re-exports. Use before renaming or changing a signature.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "pattern": {
             "type": "string",
-            "description": "Required. Case-insensitive substring filter on export name. Bare name (e.g. 'loadInstance') returns named-import filtered used_by (Layer 2). Dotted name (e.g. 'Injector.loadInstance') adds call-site precision, filtered to actual callers."
+            "description": "Required. Case-insensitive substring filter on export name. Bare name (e.g. 'loadInstance') returns named-import filtered used_by (Layer 2). Dotted method name (e.g. 'Injector.loadInstance') adds call-site precision, filtered to actual callers, and matches on the full dotted name as a substring, so 'Type.foo' can match 'Type.foo' and 'Type.foo_bar'. Dotted field name emits kind: field and does not imply a method call site."
           },
           "limit": {
             "type": "integer",

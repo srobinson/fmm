@@ -159,6 +159,18 @@ fn mcp_protocol_tools_list() {
             "tools/list missing {name}; got: {tool_names:?}"
         );
     }
+
+    let outline_tool = tools
+        .iter()
+        .find(|tool| tool["name"] == "fmm_file_outline")
+        .expect("fmm_file_outline schema must be listed");
+    let outline_properties = outline_tool["inputSchema"]["properties"]
+        .as_object()
+        .expect("fmm_file_outline properties must be an object");
+    assert!(
+        outline_properties.contains_key("truncate"),
+        "fmm_file_outline must expose truncate so its truncation hint is valid"
+    );
 }
 
 #[test]

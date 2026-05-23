@@ -3,7 +3,7 @@
 //! These verify that clap accepts the flags and that the corresponding
 //! code paths produce meaningful output or side effects.
 
-use clap::{CommandFactory, Parser};
+use clap::{CommandFactory, Parser, error::ErrorKind};
 use fmm::cli::{Cli, Commands};
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -230,6 +230,8 @@ struct ToolsToml {
 struct ToolDoc {
     cli_name: String,
     #[serde(default)]
+    cli_aliases: Vec<String>,
+    #[serde(default)]
     params: Vec<ParamDoc>,
 }
 
@@ -258,8 +260,8 @@ fn tools_toml_cli_flags_are_exposed_by_clap_commands() {
 
         let rendered_help = subcommand.clone().render_long_help().to_string();
 
-        for param in tool.params {
-            let Some(cli_flag) = param.cli_flag else {
+        for param in &tool.params {
+            let Some(cli_flag) = param.cli_flag.as_deref() else {
                 continue;
             };
 
@@ -273,7 +275,7 @@ fn tools_toml_cli_flags_are_exposed_by_clap_commands() {
                     tool.cli_name
                 );
                 assert!(
-                    rendered_help.contains(&cli_flag),
+                    rendered_help.contains(cli_flag),
                     "fmm {} help should document {cli_flag}; got:\n{rendered_help}",
                     tool.cli_name
                 );
@@ -287,6 +289,42 @@ fn tools_toml_cli_flags_are_exposed_by_clap_commands() {
                     tool.cli_name,
                     parse_result.err()
                 );
+            }
+        }
+
+        let positional_value_needed = tool.params.iter().any(|param| {
+            param
+                .cli_flag
+                .as_deref()
+                .is_some_and(|flag| !flag.starts_with("--"))
+        });
+
+        for alias in &tool.cli_aliases {
+            assert!(
+                subcommand
+                    .get_visible_aliases()
+                    .any(|visible_alias| visible_alias == alias),
+                "{tool_name} declares alias {alias:?}, but clap does not expose it as a visible alias"
+            );
+
+            let mut args = vec!["fmm", alias.as_str()];
+            if positional_value_needed {
+                args.push("__fmm_contract_value__");
+            }
+
+            let parse_result = Cli::try_parse_from(args);
+            assert!(
+                parse_result.is_ok(),
+                "{tool_name} declares alias {alias:?}, but clap rejected it: {:?}",
+                parse_result.err()
+            );
+
+            match Cli::try_parse_from(["fmm", alias.as_str(), "--help"]) {
+                Err(error) if error.kind() == ErrorKind::DisplayHelp => {}
+                Err(error) => {
+                    panic!("{tool_name} alias {alias:?} should render help, but got: {error}")
+                }
+                Ok(_) => panic!("{tool_name} alias {alias:?} should render help and exit"),
             }
         }
     }

@@ -75,7 +75,7 @@ fn check_version_match(conn: &Connection) -> Result<()> {
         && v != running
     {
         anyhow::bail!(
-            "Index was built with fmm v{} but you are running v{}. Run `fmm generate --force` to rebuild.",
+            "Index was built with fmm v{} but you are running v{}. Run `fmm generate` to rebuild.",
             v,
             running
         );
@@ -88,12 +88,12 @@ fn check_schema_version_match(conn: &Connection) -> Result<()> {
     match stored {
         Some(schema::SCHEMA_VERSION) => Ok(()),
         Some(version) => anyhow::bail!(
-            "Index schema version {} does not match fmm schema version {}. Run `fmm generate --force` to rebuild.",
+            "Index schema version {} does not match fmm schema version {}. Run `fmm generate` to rebuild.",
             version,
             schema::SCHEMA_VERSION
         ),
         None => anyhow::bail!(
-            "Index schema version is missing or unreadable. Run `fmm generate --force` to rebuild."
+            "Index schema version is missing or unreadable. Run `fmm generate` to rebuild."
         ),
     }
 }
@@ -275,8 +275,9 @@ mod tests {
         create_old_files_table(&conn);
         conn.execute_batch(&format!(
             "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-             INSERT INTO meta VALUES ('schema_version', '4');
+             INSERT INTO meta VALUES ('schema_version', '{}');
              INSERT INTO meta VALUES ('fmm_version', '{}');",
+            SCHEMA_VERSION - 1,
             fmm_core::VERSION
         ))
         .unwrap();
@@ -285,7 +286,7 @@ mod tests {
         let error = open_db(dir.path()).unwrap_err().to_string();
 
         assert!(error.contains("schema version"));
-        assert!(error.contains("Run `fmm generate --force`"));
+        assert!(error.contains("Run `fmm generate`"));
         assert!(!error.contains("source_mtime"));
     }
 
@@ -299,7 +300,7 @@ mod tests {
         let error = open_db(dir.path()).unwrap_err().to_string();
 
         assert!(error.contains("missing or unreadable"));
-        assert!(error.contains("Run `fmm generate --force`"));
+        assert!(error.contains("Run `fmm generate`"));
     }
 
     #[test]
