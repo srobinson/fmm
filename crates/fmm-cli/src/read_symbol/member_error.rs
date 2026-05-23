@@ -6,6 +6,7 @@ use std::path::Path;
 
 const DISPLAY_CAP: usize = 20;
 const SUGGESTION_CAP: usize = 3;
+const CROSS_TYPE_CAP: usize = 2;
 const WRAP_WIDTH: usize = 88;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -27,6 +28,15 @@ struct MemberCatalog {
     members: Vec<MemberSummary>,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct CrossTypeSuggestion {
+    owner: String,
+    member: String,
+    kind: MemberKind,
+    relationship_hint: String,
+    owner_in_query_file: bool,
+}
+
 pub(super) fn format_missing_member(
     manifest: &Manifest,
     root: &Path,
@@ -37,6 +47,7 @@ pub(super) fn format_missing_member(
     file: &str,
 ) -> String {
     format_missing_member_with_catalog(
+        manifest,
         guidance,
         name,
         member_name,
@@ -47,6 +58,7 @@ pub(super) fn format_missing_member(
 }
 
 fn format_missing_member_with_catalog(
+    manifest: &Manifest,
     guidance: ReadSymbolGuidance,
     name: &str,
     member_name: &str,
@@ -66,6 +78,15 @@ fn format_missing_member_with_catalog(
     let suggestions = suggest_members(member_name, &catalog.members);
     if !suggestions.is_empty() {
         lines.push(format!("Did you mean: {}?", suggestions.join(", ")));
+    }
+
+    if let Some(cross_type) = format_cross_type_suggestions(&cross_type_suggestions(
+        manifest,
+        member_name,
+        class_name,
+        file,
+    )) {
+        lines.push(cross_type);
     }
 
     if let Some(fields) = format_member_group("Fields", catalog.by_kind(MemberKind::Field)) {
@@ -197,6 +218,105 @@ impl MemberCatalog {
             .filter(|member| member.kind == kind)
             .collect()
     }
+}
+
+impl MemberKind {
+    fn article_label(self) -> &'static str {
+        match self {
+            Self::Field => "a field",
+            Self::Method => "a method",
+        }
+    }
+}
+
+fn cross_type_suggestions(
+    manifest: &Manifest,
+    member_name: &str,
+    class_name: &str,
+    file: &str,
+) -> Vec<CrossTypeSuggestion> {
+    let mut suggestions = Vec::new();
+    let mut seen = HashSet::new();
+
+    for (entry_file, entry) in &manifest.files {
+        for (dotted_name, metadata) in &entry.method_metadata {
+            if metadata.declaration_kind.as_deref() != Some("field") {
+                continue;
+            }
+
+            let Some((owner, member)) = split_member_name(dotted_name) else {
+                continue;
+            };
+            if owner == class_name || member != member_name {
+                continue;
+            }
+
+            let Some(signature) = metadata.signature.as_deref() else {
+                continue;
+            };
+            if !signature_mentions_type(signature, class_name) {
+                continue;
+            }
+
+            let key = format!("{entry_file}:{owner}.{member}");
+            if seen.insert(key) {
+                suggestions.push(CrossTypeSuggestion {
+                    owner: owner.to_string(),
+                    member: member.to_string(),
+                    kind: MemberKind::Field,
+                    relationship_hint: format!("type {class_name}"),
+                    owner_in_query_file: entry_file == file,
+                });
+            }
+        }
+    }
+
+    // Prefer owner fields in the queried type's file, then use stable names.
+    suggestions.sort_by(|a, b| {
+        b.owner_in_query_file
+            .cmp(&a.owner_in_query_file)
+            .then(a.owner.cmp(&b.owner))
+            .then(a.member.cmp(&b.member))
+            .then(a.relationship_hint.cmp(&b.relationship_hint))
+    });
+    suggestions.truncate(CROSS_TYPE_CAP);
+    suggestions
+}
+
+fn split_member_name(dotted_name: &str) -> Option<(&str, &str)> {
+    dotted_name.rsplit_once('.')
+}
+
+fn signature_mentions_type(signature: &str, class_name: &str) -> bool {
+    let type_name = class_name
+        .rsplit(['.', ':'])
+        .find(|part| !part.is_empty())
+        .unwrap_or(class_name);
+
+    signature
+        .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '$'))
+        .any(|token| token == type_name)
+}
+
+fn format_cross_type_suggestions(suggestions: &[CrossTypeSuggestion]) -> Option<String> {
+    if suggestions.is_empty() {
+        return None;
+    }
+
+    let notes = suggestions
+        .iter()
+        .map(|suggestion| {
+            format!(
+                "'{}' is {} on {} ({})",
+                suggestion.member,
+                suggestion.kind.article_label(),
+                suggestion.owner,
+                suggestion.relationship_hint
+            )
+        })
+        .collect::<Vec<_>>();
+
+    Some(format!("Cross-type: {}.", notes.join("; ")))
 }
 
 fn suggest_members(member_name: &str, members: &[MemberSummary]) -> Vec<String> {
@@ -381,7 +501,9 @@ mod tests {
 
     #[test]
     fn missing_member_falls_back_without_catalog() {
+        let manifest = Manifest::new();
         let text = format_missing_member_with_catalog(
+            &manifest,
             ReadSymbolGuidance::Mcp,
             "Pool.clien",
             "clien",
@@ -394,6 +516,42 @@ mod tests {
             text,
             "Member 'Pool.clien' not found. 'clien' is not a member of 'Pool'. Use fmm_file_outline(file: \"src/db/pool.ts\", include_private: true) to see all members."
         );
+    }
+
+    #[test]
+    fn signature_type_matching_uses_token_boundaries() {
+        assert!(signature_mentions_type(
+            "spawn: SpawnCoordinator",
+            "SpawnCoordinator"
+        ));
+        assert!(signature_mentions_type(
+            "spawn: Arc<SpawnCoordinator>",
+            "SpawnCoordinator",
+        ));
+        assert!(signature_mentions_type(
+            "spawn: Option<SpawnCoordinator>",
+            "SpawnCoordinator",
+        ));
+        assert!(signature_mentions_type(
+            "spawn: Vec<SpawnCoordinator>",
+            "SpawnCoordinator",
+        ));
+        assert!(signature_mentions_type(
+            "spawn: SpawnCoordinator<T>",
+            "SpawnCoordinator",
+        ));
+        assert!(signature_mentions_type(
+            "spawn: crate::runtime::SpawnCoordinator",
+            "runtime.SpawnCoordinator",
+        ));
+        assert!(!signature_mentions_type(
+            "spawn: SpawnCoordinatorHandle",
+            "SpawnCoordinator",
+        ));
+        assert!(!signature_mentions_type(
+            "spawn: SpawnCoordinatorFactory",
+            "SpawnCoordinator",
+        ));
     }
 
     #[test]

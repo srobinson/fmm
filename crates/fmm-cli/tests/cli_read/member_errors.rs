@@ -2,14 +2,21 @@ use super::{run_fmm, setup_large_class_project, setup_scopepath_collision_projec
 use tempfile::TempDir;
 
 fn setup_member_error_project() -> TempDir {
+    setup_member_error_project_with("")
+}
+
+fn setup_member_error_project_with(extra_classes: &str) -> TempDir {
+    let source = format!(
+        "export class SpawnCoordinator {{\n  private pending_launches: Map<string, string> = new Map();\n  private pending_ready: Map<string, string> = new Map();\n\n  begin_spawn(): void {{}}\n  validate_spawn_target(): void {{}}\n  validate_target_request(): void {{}}\n  validate_target(): void {{}}\n  begin_ready_wait(): void {{}}\n  cancel_spawn(): void {{}}\n  take_launch_spec(): void {{}}\n  complete_shim_ready(): void {{}}\n  record_running(): void {{}}\n  record_reconnected_ready(): void {{}}\n  pending_shim_socket_count(): number {{ return 0; }}\n}}\n\nexport class ServerState {{\n  spawn: SpawnCoordinator;\n}}\n\nexport class FieldOnly {{\n  private client: string = '';\n}}\n\nexport class MethodOnly {{\n  run(): void {{}}\n  reset(): void {{}}\n}}\n{extra_classes}\n"
+    );
+    setup_member_error_source(&source)
+}
+
+fn setup_member_error_source(source: &str) -> TempDir {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();
 
-    write_file(
-        root,
-        "src/members.ts",
-        "export class SpawnCoordinator {\n  private pending_launches: Map<string, string> = new Map();\n  private pending_ready: Map<string, string> = new Map();\n\n  begin_spawn(): void {}\n  validate_spawn_target(): void {}\n  validate_target_request(): void {}\n  validate_target(): void {}\n  begin_ready_wait(): void {}\n  cancel_spawn(): void {}\n  take_launch_spec(): void {}\n  complete_shim_ready(): void {}\n  record_running(): void {}\n  record_reconnected_ready(): void {}\n  pending_shim_socket_count(): number { return 0; }\n}\n\nexport class FieldOnly {\n  private client: string = '';\n}\n\nexport class MethodOnly {\n  run(): void {}\n  reset(): void {}\n}\n",
-    );
+    write_file(root, "src/members.ts", source);
 
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
     tmp
@@ -36,6 +43,10 @@ fn missing_member_lists_fields_methods_and_substring_suggestions() {
     );
     assert!(
         stderr.contains("Did you mean: begin_spawn, cancel_spawn, validate_spawn_target?"),
+        "got: {stderr}"
+    );
+    assert!(
+        stderr.contains("Cross-type: 'spawn' is a field on ServerState (type SpawnCoordinator)."),
         "got: {stderr}"
     );
     assert!(
@@ -75,6 +86,7 @@ fn missing_member_field_only_omits_methods_and_uses_distance_suggestion() {
     assert!(stderr.contains("Did you mean: client?"), "got: {stderr}");
     assert!(stderr.contains("Fields: client"), "got: {stderr}");
     assert!(!stderr.contains("Methods:"), "got: {stderr}");
+    assert!(!stderr.contains("Cross-type:"), "got: {stderr}");
     assert!(
         stderr.contains(
             "(1 member total; use fmm outline src/members.ts --include-private for full list.)"
@@ -97,6 +109,48 @@ fn missing_member_method_only_omits_fields() {
     assert!(stderr.contains("Did you mean: run?"), "got: {stderr}");
     assert!(stderr.contains("Methods: run, reset"), "got: {stderr}");
     assert!(!stderr.contains("Fields:"), "got: {stderr}");
+}
+
+#[test]
+fn missing_member_cross_type_suggestions_are_capped() {
+    let tmp = setup_member_error_project_with(
+        "export class AlphaState {\n  spawn: SpawnCoordinator;\n}\n\nexport class BetaState {\n  spawn: SpawnCoordinator;\n}\n\nexport class GammaState {\n  spawn: SpawnCoordinator;\n}\n",
+    );
+    let output = run_fmm(tmp.path(), &["read", "SpawnCoordinator.spawn"]);
+
+    assert!(
+        !output.status.success(),
+        "fmm read should fail for a missing member"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        stderr.contains("Cross-type: 'spawn' is a field on AlphaState (type SpawnCoordinator)"),
+        "got: {stderr}"
+    );
+    assert!(
+        stderr.contains("'spawn' is a field on BetaState"),
+        "got: {stderr}"
+    );
+    assert!(!stderr.contains("GammaState"), "got: {stderr}");
+    assert!(!stderr.contains("ServerState"), "got: {stderr}");
+}
+
+#[test]
+fn missing_member_cross_type_ignores_type_prefix_collisions() {
+    let tmp = setup_member_error_source(
+        "export class SpawnCoordinator {\n  begin_spawn(): void {}\n  cancel_spawn(): void {}\n}\n\nexport class SpawnCoordinatorFactory {}\n\nexport class FactoryState {\n  spawn: SpawnCoordinatorFactory;\n}\n",
+    );
+    let output = run_fmm(tmp.path(), &["read", "SpawnCoordinator.spawn"]);
+
+    assert!(
+        !output.status.success(),
+        "fmm read should fail for a missing member"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!stderr.contains("Cross-type:"), "got: {stderr}");
+    assert!(!stderr.contains("FactoryState"), "got: {stderr}");
 }
 
 #[test]
