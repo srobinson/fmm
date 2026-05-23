@@ -16,7 +16,7 @@ pub enum StoreError {
     /// The stored fmm version does not match the running binary.
     #[error(
         "index was built with fmm v{stored} but you are running v{running}. \
-         Run `fmm generate --force` to rebuild."
+         Run `fmm generate` to rebuild."
     )]
     VersionMismatch { stored: String, running: String },
 

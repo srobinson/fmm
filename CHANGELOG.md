@@ -13,6 +13,7 @@
 ### Tests
 
 * lock `read_symbol` Rust module declaration kind coverage
+* lock validate behavior for schema mismatch failures and plain generate recovery
 
 ### Bug Fixes
 
@@ -20,6 +21,7 @@
 * clarify `read_symbol` guidance for Rust path syntax
 * clarify dotted glossary substring matching
 * document path based test filtering for Rust inline test modules
+* recommend `fmm generate` as the schema mismatch rebuild path
 
 ## [0.2.9](https://github.com/srobinson/fmm/compare/v0.2.8...v0.2.9) (2026-05-01)
 
