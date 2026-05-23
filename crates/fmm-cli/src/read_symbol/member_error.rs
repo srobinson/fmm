@@ -221,10 +221,10 @@ impl MemberCatalog {
 }
 
 impl MemberKind {
-    fn article_label(self) -> &'static str {
+    fn noun_label(self) -> &'static str {
         match self {
-            Self::Field => "a field",
-            Self::Method => "a method",
+            Self::Field => "field",
+            Self::Method => "method",
         }
     }
 }
@@ -307,10 +307,10 @@ fn format_cross_type_suggestions(suggestions: &[CrossTypeSuggestion]) -> Option<
         .iter()
         .map(|suggestion| {
             format!(
-                "'{}' is {} on {} ({})",
-                suggestion.member,
-                suggestion.kind.article_label(),
+                "{}.{} ({} of {})",
                 suggestion.owner,
+                suggestion.member,
+                suggestion.kind.noun_label(),
                 suggestion.relationship_hint
             )
         })

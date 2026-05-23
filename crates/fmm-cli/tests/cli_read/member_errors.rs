@@ -46,7 +46,7 @@ fn missing_member_lists_fields_methods_and_substring_suggestions() {
         "got: {stderr}"
     );
     assert!(
-        stderr.contains("Cross-type: 'spawn' is a field on ServerState (type SpawnCoordinator)."),
+        stderr.contains("Cross-type: ServerState.spawn (field of type SpawnCoordinator)."),
         "got: {stderr}"
     );
     assert!(
@@ -125,11 +125,11 @@ fn missing_member_cross_type_suggestions_are_capped() {
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert!(
-        stderr.contains("Cross-type: 'spawn' is a field on AlphaState (type SpawnCoordinator)"),
+        stderr.contains("Cross-type: AlphaState.spawn (field of type SpawnCoordinator)"),
         "got: {stderr}"
     );
     assert!(
-        stderr.contains("'spawn' is a field on BetaState"),
+        stderr.contains("BetaState.spawn (field of type SpawnCoordinator)"),
         "got: {stderr}"
     );
     assert!(!stderr.contains("GammaState"), "got: {stderr}");

@@ -1,6 +1,6 @@
 use crate::support::{
     call_tool_expect_error, call_tool_text, setup_collision_server, setup_large_class_server,
-    setup_mcp_server,
+    setup_mcp_server, write_file,
 };
 use fmm_core::store::FmmStore;
 use serde_json::json;
@@ -55,6 +55,34 @@ fn read_symbol_missing_member_uses_mcp_outline_guidance() {
         "got: {text}"
     );
     assert!(!text.contains("Use fmm outline"), "got: {text}");
+}
+
+#[test]
+fn read_symbol_cross_type_hint_uses_owner_member_wording() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path();
+    write_file(
+        root,
+        "src/members.ts",
+        "export class SpawnCoordinator {\n  begin_spawn(): void {}\n}\n\nexport class ServerState {\n  spawn: SpawnCoordinator;\n}\n",
+    );
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
+    let server = fmm::mcp::SqliteMcpServer::with_root(root.to_path_buf());
+
+    let text = call_tool_expect_error(
+        &server,
+        "fmm_read_symbol",
+        json!({"name": "SpawnCoordinator.spawn"}),
+    );
+
+    assert!(
+        text.contains("Cross-type: ServerState.spawn (field of type SpawnCoordinator)."),
+        "got: {text}"
+    );
+    assert!(
+        !text.contains("'spawn' is a field on ServerState (type SpawnCoordinator)"),
+        "got: {text}"
+    );
 }
 
 #[test]

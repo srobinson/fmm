@@ -19,6 +19,7 @@
 
 ### Bug Fixes
 
+* clarify cross-type `read_symbol` hint wording
 * clarify `read_symbol` missing member diagnostics
 * clarify `read_symbol` diagnostics for file path inputs
 * clarify `read_symbol` guidance for Rust path syntax
