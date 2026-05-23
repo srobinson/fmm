@@ -3,6 +3,9 @@ use serde_json::Value;
 use std::process::{Command, Output};
 use tempfile::TempDir;
 
+#[path = "cli_read/member_errors.rs"]
+mod member_errors;
+
 fn write_file(root: &std::path::Path, rel: &str, content: &str) {
     let path = root.join(rel);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -248,11 +251,15 @@ fn read_missing_method_suggests_cli_outline() {
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert!(
-        stderr.contains("Method 'SecretService.missing' not found"),
+        stderr.contains("Member 'SecretService.missing' not found"),
         "got: {stderr}"
     );
     assert!(
-        stderr.contains("Use fmm outline src/service.ts --include-private"),
+        stderr.contains("use fmm outline src/service.ts --include-private for full list"),
+        "got: {stderr}"
+    );
+    assert!(
+        stderr.contains("Methods: computeSecret, run"),
         "got: {stderr}"
     );
     assert!(!stderr.contains("fmm_file_outline"), "got: {stderr}");

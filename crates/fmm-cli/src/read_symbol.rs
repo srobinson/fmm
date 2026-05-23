@@ -2,6 +2,8 @@ use fmm_core::manifest::{ExportLines, ExportLocation, Manifest};
 use fmm_core::parser::ParserRegistry;
 use std::{collections::HashSet, path::Path, sync::LazyLock};
 
+mod member_error;
+
 const CONFIG_FILE_EXTENSIONS: &[&str] = &["toml"];
 
 static FILE_PATH_EXTENSIONS: LazyLock<HashSet<String>> = LazyLock::new(|| {
@@ -94,19 +96,6 @@ impl ReadSymbolGuidance {
         }
     }
 
-    fn missing_method(self, name: &str, method_name: &str, class_name: &str, file: &str) -> String {
-        match self {
-            Self::Cli => format!(
-                "Method '{}' not found. '{}' is not a public or private method of '{}'. Use fmm outline {} --include-private to see all members.",
-                name, method_name, class_name, file
-            ),
-            Self::Mcp => format!(
-                "Method '{}' not found. '{}' is not a public or private method of '{}'. Use fmm_file_outline(include_private: true) to see all members.",
-                name, method_name, class_name
-            ),
-        }
-    }
-
     fn missing_export(self, name: &str) -> String {
         match self {
             Self::Cli => format!(
@@ -149,6 +138,45 @@ impl ReadSymbolGuidance {
             })
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    fn short_missing_member(
+        self,
+        name: &str,
+        member_name: &str,
+        class_name: &str,
+        file: &str,
+    ) -> String {
+        match self {
+            Self::Cli => format!(
+                "Member '{}' not found. '{}' is not a member of '{}'. Use fmm outline {} --include-private to see all members.",
+                name, member_name, class_name, file
+            ),
+            Self::Mcp => format!(
+                "Member '{}' not found. '{}' is not a member of '{}'. Use fmm_file_outline(file: \"{}\", include_private: true) to see all members.",
+                name, member_name, class_name, file
+            ),
+        }
+    }
+
+    fn missing_member(
+        self,
+        manifest: &Manifest,
+        root: &Path,
+        name: &str,
+        member_name: &str,
+        class_name: &str,
+        file: &str,
+    ) -> String {
+        member_error::format_missing_member(
+            manifest,
+            root,
+            self,
+            name,
+            member_name,
+            class_name,
+            file,
+        )
     }
 }
 
@@ -345,7 +373,9 @@ fn resolve_file_qualified_method(
         class_name,
         method_name,
     )
-    .ok_or_else(|| guidance.missing_method(name, method_name, class_name, file_part))?;
+    .ok_or_else(|| {
+        guidance.missing_member(manifest, root, name, method_name, class_name, file_part)
+    })?;
 
     Ok((
         file_part.to_string(),
@@ -509,7 +539,7 @@ fn resolve_dotted_notation(
     let class_file = class_files
         .first()
         .expect("class_files is not empty after guard");
-    Err(guidance.missing_method(name, method_name, class_name, class_file))
+    Err(guidance.missing_member(manifest, root, name, method_name, class_name, class_file))
 }
 
 fn looks_like_file_path(name: &str) -> bool {

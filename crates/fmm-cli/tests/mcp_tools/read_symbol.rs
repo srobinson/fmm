@@ -33,6 +33,31 @@ fn read_symbol_not_found() {
 }
 
 #[test]
+fn read_symbol_missing_member_uses_mcp_outline_guidance() {
+    let (_tmp, server) = setup_mcp_server();
+    let text = call_tool_expect_error(&server, "fmm_read_symbol", json!({"name": "Pool.clint"}));
+
+    assert!(
+        text.contains("Member 'Pool.clint' not found"),
+        "got: {text}"
+    );
+    assert!(
+        text.contains("'clint' is not a member of 'Pool'"),
+        "got: {text}"
+    );
+    assert!(text.contains("Did you mean: client?"), "got: {text}");
+    assert!(text.contains("Fields: client"), "got: {text}");
+    assert!(!text.contains("Methods:"), "got: {text}");
+    assert!(
+        text.contains(
+            "use fmm_file_outline(file: \"src/db/pool.ts\", include_private: true) for full list"
+        ),
+        "got: {text}"
+    );
+    assert!(!text.contains("Use fmm outline"), "got: {text}");
+}
+
+#[test]
 fn read_symbol_rust_path_suggests_dotted_method_not_file_symbol() {
     let (_tmp, server) = setup_mcp_server();
     let text = call_tool_expect_error(
