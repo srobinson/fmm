@@ -27,6 +27,13 @@
 * document path based test filtering for Rust inline test modules
 * recommend `fmm generate` as the schema mismatch rebuild path
 
+## [0.3.2](https://github.com/srobinson/fmm/compare/v0.3.1...v0.3.2) (2026-05-28)
+
+
+### Features
+
+* find similar symbols to prevent duplication ([#143](https://github.com/srobinson/fmm/issues/143)) ([21d2b66](https://github.com/srobinson/fmm/commit/21d2b669d4f1079722b700780b45715a7dd636f4))
+
 ## [0.3.1](https://github.com/srobinson/fmm/compare/v0.3.0...v0.3.1) (2026-05-28)
 
 
