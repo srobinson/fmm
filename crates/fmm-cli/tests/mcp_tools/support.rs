@@ -119,6 +119,33 @@ pub(crate) fn setup_collision_server() -> (tempfile::TempDir, fmm::mcp::SqliteMc
     (tmp, server)
 }
 
+/// Fixture for similarity tests: a real clone pair (shared name token + same
+/// shape) plus a coincidental same-shape-different-job pair.
+pub(crate) fn setup_similarity_server() -> (tempfile::TempDir, fmm::mcp::SqliteMcpServer) {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path();
+
+    write_file(
+        root,
+        "src/a.ts",
+        "export function extractImports(src: string): string[] {\n  return [];\n}\n",
+    );
+    write_file(
+        root,
+        "src/b.ts",
+        "export function collectImports(src: string): string[] {\n  return [];\n}\n",
+    );
+    write_file(
+        root,
+        "src/c.ts",
+        "export function isReady(flag: string): boolean {\n  return false;\n}\n\nexport function isDone(flag: string): boolean {\n  return false;\n}\n",
+    );
+
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
+    let server = fmm::mcp::SqliteMcpServer::with_root(root.to_path_buf());
+    (tmp, server)
+}
+
 pub(crate) fn call_tool_text(
     server: &fmm::mcp::SqliteMcpServer,
     tool: &str,

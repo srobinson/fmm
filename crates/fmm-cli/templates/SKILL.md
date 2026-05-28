@@ -49,6 +49,7 @@ CLI commands use short terminal names. Aliases mirror MCP tool names with the `f
 | `fmm_search` | `fmm search` | none |
 | `fmm_list_files` | `fmm ls` | `fmm list-files` |
 | `fmm_glossary` | `fmm glossary` | none |
+| `fmm_find_similar` | `fmm similar` | none |
 
 ## Navigation Workflow
 
@@ -57,6 +58,7 @@ CLI commands use short terminal names. Aliases mirror MCP tool names with the `f
 3. **Outline** — `fmm_file_outline(file, include_private: true)` — symbol inventory with line ranges, density fields, and private members.
 4. **Read** — `fmm_read_symbol("Class.method", line_numbers: true)` — surgical extraction.
 5. **Impact** — `fmm_glossary("Class.method")` — confirmed callers before renaming or changing a signature.
+6. **Reuse check** — `fmm_find_similar(name)` or `fmm_find_similar(signature, kind)` — before authoring a new function or type, probe for an existing one. Reuse the match instead of duplicating.
 
 ### Discovering Code Structure
 
@@ -344,6 +346,19 @@ Symbol-level impact analysis. Given a symbol name or pattern, returns all matchi
 | `mode` | enum: source \| tests \| all | no | source (default): excludes test symbols and test files. tests: only test exports. all: unfiltered. |
 | `precision` | enum: named \| call-site | no | named (default): Layer 2 only, fast index lookup with no file reads. call-site: adds Layer 3 tree-sitter verification... |
 | `truncate` | boolean | no | Whether to apply the 10KB response cap (default: true). Set to false to return the full glossary for symbols with man... |
+
+### `fmm_find_similar`
+
+Find existing functions or types structurally similar to a probe, before writing new code, to prevent duplication. Probe by an existing symbol name, or supply a signature + kind for a symbol you are about to write. Deterministic: ranks by name-token overlap, signature shape, declaration kind, and shared-dependency neighborhood — no embeddings. Results are threshold-gated, so a probe with one real match returns one row. Use before authoring a new symbol to reuse instead of duplicate.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | yes | Probe symbol name. In by-symbol mode this is an existing symbol whose signature and kind seed the probe; in pre-write... |
+| `signature` | string | no | Explicit signature for the symbol you are about to write, e.g. '(Path) -> Config'. Overrides the looked-up signature ... |
+| `kind` | string | no | Declaration kind to match: fn, method, struct, trait, enum, type, const. |
+| `directory` | string | no | Path prefix to scope candidates (e.g. 'crates/fmm-core/'). |
+| `limit` | integer | no | Maximum matches to return (default: 10). Results are threshold-gated, so fewer may return. |
+| `include_tests` | boolean | no | Include test functions and modules as candidates (default: false). |
 
 ## Rules
 

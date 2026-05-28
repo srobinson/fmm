@@ -12,12 +12,20 @@ pub use list_formatters::{
     compute_rollup_buckets, format_list_exports_all, format_list_exports_file,
     format_list_exports_pattern, format_list_files, format_list_files_rollup,
 };
-pub use search_formatters::{format_bare_search, format_filter_search, format_glossary};
+pub use search_formatters::{
+    format_bare_search, format_filter_search, format_glossary, format_similar,
+};
 pub use yaml_formatters::{
     format_class_redirect, format_dependency_cycles, format_dependency_graph,
     format_dependency_graph_transitive, format_file_outline, format_lookup_export,
     format_read_symbol,
 };
+
+/// Collapse all runs of whitespace (incl. newlines) to single spaces and trim.
+/// Used to render multi-line stored signatures on a single line.
+pub fn collapse_ws(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
 
 /// Escape a string for safe inclusion in YAML output.
 ///

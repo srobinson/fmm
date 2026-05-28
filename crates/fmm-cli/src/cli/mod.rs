@@ -23,7 +23,7 @@ use help_text::{HELP_TEMPLATE, LONG_ABOUT, LONG_HELP, SHORT_HELP};
 
 mod generated_help;
 
-pub use commands::{cycles, deps, exports, lookup, ls, outline, read_symbol};
+pub use commands::{cycles, deps, exports, lookup, ls, outline, read_symbol, similar};
 pub use glossary::glossary;
 pub use init::init;
 pub use search::{SearchOptions, search};
@@ -406,6 +406,46 @@ pub enum Commands {
         /// Symbol name to look up (exact match; use 'fmm exports <term>' for fuzzy)
         #[arg(value_name = "SYMBOL")]
         symbol: String,
+
+        /// Output as JSON
+        #[arg(short = 'j', long = "json")]
+        json: bool,
+    },
+
+    /// Find existing symbols similar to a probe — prevent duplication
+    #[command(
+        visible_alias = "find-similar",
+        long_about = generated_help::SIMILAR_ABOUT,
+        after_help = cstr!(
+            r#"<bold><underline>Examples</underline></bold>
+  <dim>$</dim> <bold>fmm similar load_config</bold>                          <dim># Symbols like an existing one</dim>
+  <dim>$</dim> <bold>fmm similar parse --signature "(Path) -> Config"</bold>  <dim># Pre-write probe</dim>
+  <dim>$</dim> <bold>fmm similar load_config --limit 5 --json</bold>          <dim># JSON output</dim>"#),
+    )]
+    Similar {
+        /// Probe symbol name
+        #[arg(value_name = "NAME")]
+        name: String,
+
+        /// Explicit signature to match (pre-write mode), e.g. '(Path) -> Config'
+        #[arg(long)]
+        signature: Option<String>,
+
+        /// Declaration kind to match (fn, struct, trait, ...)
+        #[arg(long)]
+        kind: Option<String>,
+
+        /// Scope candidates to a directory prefix
+        #[arg(long)]
+        directory: Option<String>,
+
+        /// Maximum matches returned (default: 10)
+        #[arg(long)]
+        limit: Option<usize>,
+
+        /// Include test symbols as candidates
+        #[arg(long)]
+        include_tests: bool,
 
         /// Output as JSON
         #[arg(short = 'j', long = "json")]

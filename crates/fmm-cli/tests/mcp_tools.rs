@@ -30,5 +30,7 @@ mod search_filters;
 mod search_multi_filters;
 #[path = "mcp_tools/search_terms.rs"]
 mod search_terms;
+#[path = "mcp_tools/similar.rs"]
+mod similar;
 #[path = "mcp_tools/support.rs"]
 mod support;

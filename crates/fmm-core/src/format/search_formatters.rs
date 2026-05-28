@@ -1,8 +1,56 @@
 //! Search result formatters: bare search, filter search, glossary.
 
-use crate::format::{push_kind_line, yaml_escape};
+use crate::format::{collapse_ws, push_kind_line, yaml_escape};
 use crate::manifest::GlossaryEntry;
 use crate::search::{BareSearchResult, ExportHitCompact, FileSearchResult};
+use crate::similarity::{Signals, SimilarMatch};
+
+/// Format symbol similarity matches as text (shared by CLI and MCP). Matches are
+/// threshold-gated upstream, so an empty slice means nothing cleared the bar.
+pub fn format_similar(query: &str, matches: &[SimilarMatch]) -> String {
+    if matches.is_empty() {
+        return format!("No similar symbols found for '{query}'.");
+    }
+    let plural = if matches.len() == 1 { "" } else { "es" };
+    let mut lines = vec![format!(
+        "Similar to '{query}' ({} match{plural}):",
+        matches.len()
+    )];
+    for m in matches {
+        // Stored signatures may span multiple source lines; collapse to one.
+        let sig = m.signature.as_deref().map(collapse_ws).unwrap_or_default();
+        let kind = m.kind.as_deref().unwrap_or("?");
+        lines.push(format!(
+            "  {:.2}  {}  {}:{}-{}  {}  {}  [{}]",
+            m.score,
+            m.name,
+            m.file,
+            m.start_line,
+            m.end_line,
+            kind,
+            sig,
+            signals_note(&m.signals)
+        ));
+    }
+    lines.join("\n")
+}
+
+fn signals_note(s: &Signals) -> String {
+    let mut parts = Vec::new();
+    if s.name > 0.0 {
+        parts.push(format!("name {:.2}", s.name));
+    }
+    if s.shape > 0.0 {
+        parts.push(format!("shape {:.2}", s.shape));
+    }
+    if s.kind > 0.0 {
+        parts.push(format!("kind {:.2}", s.kind));
+    }
+    if s.neighborhood > 0.0 {
+        parts.push(format!("nbhd {:.2}", s.neighborhood));
+    }
+    parts.join(", ")
+}
 
 /// Format bare search result as CLI grouped text.
 /// When `colored` is true, uses ANSI escape codes (for terminal).

@@ -10,6 +10,7 @@ mod lookup;
 mod outline;
 mod read;
 mod search;
+mod similar;
 
 // Tool dispatch — re-exported for use from mcp/mod.rs
 pub(super) use cycles::tool_dependency_cycles;
@@ -21,6 +22,7 @@ pub(super) use lookup::tool_lookup_export;
 pub(super) use outline::tool_file_outline;
 pub(super) use read::tool_read_symbol;
 pub(super) use search::tool_search;
+pub(super) use similar::tool_find_similar;
 
 // Shared utilities re-exported for mcp/tests and cli/navigate.rs
 pub(crate) use common::{compute_import_specifiers, find_concrete_definition, is_reexport_file};
