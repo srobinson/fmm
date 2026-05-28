@@ -2,4 +2,4 @@
 source: crates/fmm-cli/src/mcp/snapshot_tests.rs
 expression: extract_text(&response)
 ---
-ERROR: Export 'NonExistent' not found
+ERROR: Export 'NonExistent' not found. Use fmm_glossary(pattern: "NonExistent") or fmm_search(export: "NonExistent") to find close matches.
