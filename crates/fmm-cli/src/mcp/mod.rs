@@ -323,6 +323,7 @@ impl<S: FmmStore> McpServer<S> {
             "fmm_file_outline" => tools::tool_file_outline(manifest, &self.root, &arguments),
             "fmm_list_files" => tools::tool_list_files(manifest, &self.root, &arguments),
             "fmm_glossary" => tools::tool_glossary(manifest, &self.root, &arguments),
+            "fmm_find_similar" => tools::tool_find_similar(manifest, &self.root, &arguments),
             _ => Err(format!("Unknown tool: {}", tool_name)),
         };
 

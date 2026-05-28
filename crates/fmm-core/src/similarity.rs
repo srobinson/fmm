@@ -146,6 +146,47 @@ pub fn find_similar(
     out
 }
 
+/// Build a probe from a symbol name, with explicit overrides. When `name`
+/// resolves to an indexed symbol, its file seeds the neighborhood signal and
+/// its signature/kind seed the probe unless overridden. Shared by the MCP tool
+/// and the CLI command so both behave identically.
+pub fn probe_for(
+    manifest: &Manifest,
+    name: &str,
+    signature: Option<String>,
+    kind: Option<String>,
+) -> SymbolProbe {
+    let seed = lookup_symbol(manifest, name);
+    SymbolProbe {
+        name: name.to_string(),
+        signature: signature.or_else(|| seed.as_ref().and_then(|s| s.signature.clone())),
+        kind: kind.or_else(|| seed.as_ref().and_then(|s| s.kind.clone())),
+        file: seed.map(|s| s.file),
+    }
+}
+
+/// Resolve a name to an indexed symbol via export/method locations.
+fn lookup_symbol(manifest: &Manifest, name: &str) -> Option<Candidate> {
+    let loc = manifest
+        .export_locations
+        .get(name)
+        .or_else(|| manifest.method_index.get(name))?;
+    let entry = manifest.files.get(&loc.file)?;
+    let meta = if name.contains('.') {
+        entry.method_metadata.get(name)
+    } else {
+        entry.export_metadata.get(name)
+    };
+    Some(Candidate {
+        name: name.to_string(),
+        file: loc.file.clone(),
+        start: loc.lines.as_ref().map(|l| l.start).unwrap_or(0),
+        end: loc.lines.as_ref().map(|l| l.end).unwrap_or(0),
+        signature: meta.and_then(|m| m.signature.clone()),
+        kind: meta.and_then(|m| m.declaration_kind.clone()),
+    })
+}
+
 /// Split a symbol name into lowercased tokens on `_ - . : / space` and
 /// camelCase / acronym / letter-digit boundaries. `HTTPServer` → {http, server}.
 pub fn tokenize_name(name: &str) -> BTreeSet<String> {

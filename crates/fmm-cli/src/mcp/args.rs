@@ -94,3 +94,14 @@ pub(super) struct GlossaryArgs {
     #[allow(dead_code)]
     pub(super) truncate: Option<bool>,
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct FindSimilarArgs {
+    pub(super) name: String,
+    pub(super) signature: Option<String>,
+    pub(super) kind: Option<String>,
+    pub(super) directory: Option<String>,
+    pub(super) limit: Option<usize>,
+    pub(super) include_tests: Option<bool>,
+}
