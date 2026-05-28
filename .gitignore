@@ -46,3 +46,6 @@ Thumbs.db
 # Experiment test artifacts (cloned repos)
 experiments/*/control/
 experiments/*/fmm/
+
+# Brainstorming specs (local design notes, not tracked)
+docs/superpowers/
