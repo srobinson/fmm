@@ -1,6 +1,6 @@
 //! Search result formatters: bare search, filter search, glossary.
 
-use crate::format::{push_kind_line, yaml_escape};
+use crate::format::{collapse_ws, push_kind_line, yaml_escape};
 use crate::manifest::GlossaryEntry;
 use crate::search::{BareSearchResult, ExportHitCompact, FileSearchResult};
 use crate::similarity::{Signals, SimilarMatch};
@@ -18,11 +18,7 @@ pub fn format_similar(query: &str, matches: &[SimilarMatch]) -> String {
     )];
     for m in matches {
         // Stored signatures may span multiple source lines; collapse to one.
-        let sig = m
-            .signature
-            .as_deref()
-            .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "))
-            .unwrap_or_default();
+        let sig = m.signature.as_deref().map(collapse_ws).unwrap_or_default();
         let kind = m.kind.as_deref().unwrap_or("?");
         lines.push(format!(
             "  {:.2}  {}  {}:{}-{}  {}  {}  [{}]",

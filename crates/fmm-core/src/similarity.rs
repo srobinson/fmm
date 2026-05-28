@@ -14,12 +14,18 @@ use std::collections::BTreeSet;
 
 use crate::manifest::Manifest;
 
-/// Signal weights. When the neighborhood signal is unavailable (pre-write probe
-/// with no originating file) the remaining three are renormalized to sum to 1.
+/// Signal weights. When the neighborhood signal is unavailable (pre-write probe,
+/// same-file candidate, or a file with no dependency edges) the remaining three
+/// are renormalized to sum to 1.
 const W_NAME: f64 = 0.50;
 const W_SHAPE: f64 = 0.25;
 const W_KIND: f64 = 0.10;
 const W_NEIGHBORHOOD: f64 = 0.15;
+
+/// Default match cap (tunable down as we calibrate).
+pub const DEFAULT_LIMIT: usize = 10;
+/// Default surface threshold — the real precision lever.
+pub const DEFAULT_THRESHOLD: f64 = 0.30;
 
 /// What we search for.
 #[derive(Debug, Clone)]
@@ -45,10 +51,24 @@ pub struct SimilarOptions {
 impl Default for SimilarOptions {
     fn default() -> Self {
         Self {
-            limit: 10,
-            threshold: 0.30,
+            limit: DEFAULT_LIMIT,
+            threshold: DEFAULT_THRESHOLD,
             directory: None,
             include_tests: false,
+        }
+    }
+}
+
+impl SimilarOptions {
+    /// Build options from tool/CLI arguments, applying `DEFAULT_LIMIT` when
+    /// `limit` is absent. Shared by the MCP tool and the CLI command so the
+    /// default lives in exactly one place.
+    pub fn from_args(limit: Option<usize>, directory: Option<String>, include_tests: bool) -> Self {
+        Self {
+            limit: limit.unwrap_or(DEFAULT_LIMIT),
+            directory,
+            include_tests,
+            ..Self::default()
         }
     }
 }
@@ -90,6 +110,9 @@ pub fn find_similar(
         .as_deref()
         .map(signature_shape)
         .unwrap_or_default();
+    // Computed once: the probe file's dependency-neighbor set is constant across
+    // all candidates.
+    let probe_neighbors = probe.file.as_deref().map(|pf| file_neighbors(manifest, pf));
 
     let mut out: Vec<SimilarMatch> = Vec::new();
     for cand in collect_candidates(manifest) {
@@ -105,10 +128,10 @@ pub fn find_similar(
             continue;
         }
 
-        let neighborhood = probe
-            .file
-            .as_deref()
-            .map(|pf| neighborhood_score(manifest, pf, &cand.file));
+        let neighborhood = match (probe.file.as_deref(), &probe_neighbors) {
+            (Some(pf), Some(pn)) => neighborhood_score(pn, manifest, pf, &cand.file),
+            _ => None,
+        };
 
         let (score, signals) = score_against(
             &probe_tokens,
@@ -165,13 +188,20 @@ pub fn probe_for(
     }
 }
 
-/// Resolve a name to an indexed symbol via export/method locations.
+/// Resolve a name to an indexed symbol, mirroring `fmm_lookup_export`'s
+/// precedence: full export location, then dotted method, then the backward-compat
+/// export index (file only). Seeds the probe's file so the neighborhood signal
+/// works even for symbols without stored line ranges.
 fn lookup_symbol(manifest: &Manifest, name: &str) -> Option<Candidate> {
-    let loc = manifest
-        .export_locations
-        .get(name)
-        .or_else(|| manifest.method_index.get(name))?;
-    let entry = manifest.files.get(&loc.file)?;
+    let (file, lines) = if let Some(loc) = manifest.export_locations.get(name) {
+        (loc.file.clone(), loc.lines.clone())
+    } else if let Some(loc) = manifest.method_index.get(name) {
+        (loc.file.clone(), loc.lines.clone())
+    } else {
+        (manifest.export_index.get(name)?.clone(), None)
+    };
+
+    let entry = manifest.files.get(&file)?;
     let meta = if name.contains('.') {
         entry.method_metadata.get(name)
     } else {
@@ -179,9 +209,9 @@ fn lookup_symbol(manifest: &Manifest, name: &str) -> Option<Candidate> {
     };
     Some(Candidate {
         name: name.to_string(),
-        file: loc.file.clone(),
-        start: loc.lines.as_ref().map(|l| l.start).unwrap_or(0),
-        end: loc.lines.as_ref().map(|l| l.end).unwrap_or(0),
+        file,
+        start: lines.as_ref().map(|l| l.start).unwrap_or(0),
+        end: lines.as_ref().map(|l| l.end).unwrap_or(0),
         signature: meta.and_then(|m| m.signature.clone()),
         kind: meta.and_then(|m| m.declaration_kind.clone()),
     })
@@ -330,13 +360,23 @@ fn jaccard(a: &BTreeSet<String>, b: &BTreeSet<String>) -> f64 {
     inter / union
 }
 
-fn neighborhood_score(manifest: &Manifest, probe_file: &str, cand_file: &str) -> f64 {
-    if probe_file == cand_file {
-        return 0.0;
+/// Dependency-neighbor overlap between the probe's file and a candidate's file.
+/// Returns `None` (renormalize, don't penalize) when the signal is
+/// uninformative: same file, or either side has no dependency edges to compare.
+fn neighborhood_score(
+    probe_neighbors: &BTreeSet<String>,
+    manifest: &Manifest,
+    probe_file: &str,
+    cand_file: &str,
+) -> Option<f64> {
+    if probe_file == cand_file || probe_neighbors.is_empty() {
+        return None;
     }
-    let a = file_neighbors(manifest, probe_file);
-    let b = file_neighbors(manifest, cand_file);
-    jaccard(&a, &b)
+    let cand_neighbors = file_neighbors(manifest, cand_file);
+    if cand_neighbors.is_empty() {
+        return None;
+    }
+    Some(jaccard(probe_neighbors, &cand_neighbors))
 }
 
 fn file_neighbors(manifest: &Manifest, file: &str) -> BTreeSet<String> {
@@ -487,11 +527,11 @@ mod tests {
             "clone {clone} must beat coincidence {coincidence}"
         );
         assert!(
-            clone >= 0.30,
+            clone >= DEFAULT_THRESHOLD,
             "clone {clone} must clear the default threshold"
         );
         assert!(
-            coincidence < 0.30,
+            coincidence < DEFAULT_THRESHOLD,
             "coincidence {coincidence} must be gated out"
         );
     }

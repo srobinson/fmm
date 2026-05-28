@@ -21,6 +21,12 @@ pub use yaml_formatters::{
     format_read_symbol,
 };
 
+/// Collapse all runs of whitespace (incl. newlines) to single spaces and trim.
+/// Used to render multi-line stored signatures on a single line.
+pub fn collapse_ws(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// Escape a string for safe inclusion in YAML output.
 ///
 /// Wraps strings that contain YAML special characters in single quotes.

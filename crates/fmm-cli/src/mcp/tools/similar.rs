@@ -15,12 +15,11 @@ pub(in crate::mcp) fn tool_find_similar(
         serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
     let probe = probe_for(manifest, &args.name, args.signature, args.kind);
-    let opts = SimilarOptions {
-        limit: args.limit.unwrap_or(10),
-        directory: args.directory,
-        include_tests: args.include_tests.unwrap_or(false),
-        ..Default::default()
-    };
+    let opts = SimilarOptions::from_args(
+        args.limit,
+        args.directory,
+        args.include_tests.unwrap_or(false),
+    );
 
     let matches = find_similar(manifest, &probe, &opts);
     Ok(format_similar(&args.name, &matches))

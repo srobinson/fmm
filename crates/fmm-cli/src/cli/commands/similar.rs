@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use fmm_core::format::format_similar;
+use fmm_core::format::{collapse_ws, format_similar};
 use fmm_core::similarity::{SimilarMatch, SimilarOptions, find_similar, probe_for};
 
 use super::{load_manifest, warn_no_sidecars};
@@ -35,12 +35,7 @@ pub fn similar(
     }
 
     let probe = probe_for(&manifest, name, signature, kind);
-    let opts = SimilarOptions {
-        limit: limit.unwrap_or(10),
-        directory,
-        include_tests,
-        ..Default::default()
-    };
+    let opts = SimilarOptions::from_args(limit, directory, include_tests);
     let matches = find_similar(&manifest, &probe, &opts);
 
     if json_output {
@@ -57,7 +52,7 @@ fn to_json(m: &SimilarMatch) -> SimilarMatchJson {
         name: m.name.clone(),
         file: m.file.clone(),
         lines: [m.start_line, m.end_line],
-        signature: m.signature.clone(),
+        signature: m.signature.as_deref().map(collapse_ws),
         kind: m.kind.clone(),
         score: (m.score * 100.0).round() / 100.0,
     }
