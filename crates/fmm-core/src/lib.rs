@@ -9,6 +9,7 @@ pub mod manifest;
 pub mod parser;
 pub mod resolver;
 pub mod search;
+pub mod similarity;
 pub mod store;
 pub mod types;
 
