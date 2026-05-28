@@ -12,6 +12,7 @@ mod lookup;
 mod ls;
 mod outline;
 mod read;
+mod similar;
 
 pub use cycles::cycles;
 pub use deps::deps;
@@ -19,6 +20,7 @@ pub use exports::exports;
 pub use lookup::lookup;
 pub use ls::ls;
 pub use outline::outline;
+pub use similar::similar;
 pub use read::read_symbol;
 
 fn load_manifest() -> Result<(std::path::PathBuf, Manifest)> {

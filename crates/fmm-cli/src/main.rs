@@ -138,6 +138,17 @@ fn run_command(command: Commands) -> anyhow::Result<()> {
         Commands::Lookup { symbol, json } => {
             cli::lookup(&symbol, json)?;
         }
+        Commands::Similar {
+            name,
+            signature,
+            kind,
+            directory,
+            limit,
+            include_tests,
+            json,
+        } => {
+            cli::similar(&name, signature, kind, directory, limit, include_tests, json)?;
+        }
         Commands::Read {
             symbol,
             no_truncate,

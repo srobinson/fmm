@@ -17,7 +17,12 @@ pub fn format_similar(query: &str, matches: &[SimilarMatch]) -> String {
         matches.len()
     )];
     for m in matches {
-        let sig = m.signature.as_deref().unwrap_or("");
+        // Stored signatures may span multiple source lines; collapse to one.
+        let sig = m
+            .signature
+            .as_deref()
+            .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "))
+            .unwrap_or_default();
         let kind = m.kind.as_deref().unwrap_or("?");
         lines.push(format!(
             "  {:.2}  {}  {}:{}-{}  {}  {}  [{}]",
