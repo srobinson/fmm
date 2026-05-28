@@ -72,4 +72,8 @@ fn lookup_export_unknown_dotted_name_returns_error() {
     );
 
     assert_error(&text);
+    assert!(
+        text.contains("Export 'MyClass.ghostMethod' not found. Use fmm_glossary(pattern: \"MyClass.ghostMethod\") or fmm_search(export: \"MyClass.ghostMethod\") to find close matches."),
+        "should suggest close-match tools, got: {text}",
+    );
 }

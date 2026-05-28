@@ -23,7 +23,10 @@ pub(in crate::mcp) fn tool_lookup_export(
     } else if let Some(loc) = manifest.method_index.get(&args.name) {
         (loc.file.clone(), loc.lines.clone())
     } else {
-        return Err(format!("Export '{}' not found", args.name));
+        return Err(format!(
+            "Export '{}' not found. Use fmm_glossary(pattern: \"{0}\") or fmm_search(export: \"{0}\") to find close matches.",
+            args.name
+        ));
     };
 
     let entry = manifest

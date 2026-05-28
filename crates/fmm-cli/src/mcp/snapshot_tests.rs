@@ -255,7 +255,7 @@ fn snapshot_fmm_list_exports_pattern() {
 fn snapshot_fmm_search() {
     let server = snapshot_server();
     let response = server
-        .call_tool("fmm_search", serde_json::json!({"query": "config"}))
+        .call_tool("fmm_search", serde_json::json!({}))
         .unwrap();
     insta::assert_snapshot!("fmm_search", extract_text(&response));
 }

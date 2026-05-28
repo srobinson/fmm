@@ -1,11 +1,13 @@
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct LookupExportArgs {
     pub(super) name: String,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct ListExportsArgs {
     pub(super) pattern: Option<String>,
     pub(super) file: Option<String>,
@@ -15,6 +17,7 @@ pub(super) struct ListExportsArgs {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct DependencyGraphArgs {
     pub(super) file: String,
     pub(super) depth: Option<i32>,
@@ -23,6 +26,7 @@ pub(super) struct DependencyGraphArgs {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct DependencyCyclesArgs {
     pub(super) file: Option<String>,
     /// source / tests / all (default)
@@ -32,6 +36,7 @@ pub(super) struct DependencyCyclesArgs {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct SearchArgs {
     pub(super) term: Option<String>,
     pub(super) export: Option<String>,
@@ -43,6 +48,7 @@ pub(super) struct SearchArgs {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct ReadSymbolArgs {
     pub(super) name: String,
     /// When false, bypasses the 10KB response cap (default: true).
@@ -52,6 +58,7 @@ pub(super) struct ReadSymbolArgs {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct FileOutlineArgs {
     pub(super) file: String,
     /// When true, add on-demand private members and non-exported top-level declarations.
@@ -62,6 +69,7 @@ pub(super) struct FileOutlineArgs {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct ListFilesArgs {
     pub(super) directory: Option<String>,
     pub(super) pattern: Option<String>,
@@ -74,6 +82,7 @@ pub(super) struct ListFilesArgs {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct GlossaryArgs {
     pub(super) pattern: Option<String>,
     pub(super) limit: Option<usize>,
