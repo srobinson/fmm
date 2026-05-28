@@ -37,3 +37,23 @@ fn file_outline_directory_path_returns_helpful_error() {
         "should suggest fmm_list_files, got: {text}",
     );
 }
+
+#[test]
+fn search_unknown_field_returns_invalid_arguments() {
+    let server = test_server(Manifest::new());
+    let text = tool_text(&server, "fmm_search", json!({"symbol": "Logger"}));
+
+    assert_error(&text);
+    assert!(text.contains("Invalid arguments"), "got: {text}");
+    assert!(text.contains("unknown field `symbol`"), "got: {text}");
+}
+
+#[test]
+fn list_files_unknown_field_returns_invalid_arguments() {
+    let server = test_server(Manifest::new());
+    let text = tool_text(&server, "fmm_list_files", json!({"symbol": "Logger"}));
+
+    assert_error(&text);
+    assert!(text.contains("Invalid arguments"), "got: {text}");
+    assert!(text.contains("unknown field `symbol`"), "got: {text}");
+}
