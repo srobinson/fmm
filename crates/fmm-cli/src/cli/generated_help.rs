@@ -101,3 +101,18 @@ pub const GLOSSARY_MODE_HELP: &str = "Filter mode: source (default, no tests), t
 pub const GLOSSARY_PRECISION_HELP: &str = "Precision level: named (default, fast) or call-site (tree-sitter verification)";
 #[rustfmt::skip]
 pub const GLOSSARY_TRUNCATE_HELP: &str = "Return full glossary output, bypassing the 10KB response cap";
+
+#[rustfmt::skip]
+pub const SIMILAR_ABOUT: &str = "Find existing symbols similar to a probe to avoid duplication.\n\nProbe by an existing symbol name, or pass --signature and --kind for code you are about to write. Deterministic structural ranking; results are threshold-gated.";
+#[rustfmt::skip]
+pub const SIMILAR_NAME_HELP: &str = "Probe symbol name";
+#[rustfmt::skip]
+pub const SIMILAR_SIGNATURE_HELP: &str = "Explicit signature to match (pre-write mode)";
+#[rustfmt::skip]
+pub const SIMILAR_KIND_HELP: &str = "Declaration kind to match (fn, struct, trait, ...)";
+#[rustfmt::skip]
+pub const SIMILAR_DIRECTORY_HELP: &str = "Scope candidates to a directory prefix";
+#[rustfmt::skip]
+pub const SIMILAR_LIMIT_HELP: &str = "Maximum matches returned (default: 10)";
+#[rustfmt::skip]
+pub const SIMILAR_INCLUDE_TESTS_HELP: &str = "Include test symbols as candidates";

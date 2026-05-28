@@ -526,3 +526,51 @@ type            = "boolean"
 mcp_description = "Whether to apply the 10KB response cap (default: true). Set to false to return the full glossary for symbols with many callers."
 cli_help        = "Return full glossary output, bypassing the 10KB response cap"
 cli_flag        = "--no-truncate"
+
+[tools.fmm_find_similar]
+cli_name        = "similar"
+mcp_description = "Find existing functions or types structurally similar to a probe, before writing new code, to prevent duplication. Probe by an existing symbol name, or supply a signature + kind for a symbol you are about to write. Deterministic: ranks by name-token overlap, signature shape, declaration kind, and shared-dependency neighborhood — no embeddings. Results are threshold-gated, so a probe with one real match returns one row. Use before authoring a new symbol to reuse instead of duplicate."
+cli_about       = "Find existing symbols similar to a probe to avoid duplication.\n\nProbe by an existing symbol name, or pass --signature and --kind for code you are about to write. Deterministic structural ranking; results are threshold-gated."
+
+[[tools.fmm_find_similar.params]]
+name            = "name"
+type            = "string"
+required        = true
+mcp_description = "Probe symbol name. In by-symbol mode this is an existing symbol whose signature and kind seed the probe; in pre-write mode it is the name you intend to use."
+cli_help        = "Probe symbol name"
+cli_flag        = "name"
+
+[[tools.fmm_find_similar.params]]
+name            = "signature"
+type            = "string"
+mcp_description = "Explicit signature for the symbol you are about to write, e.g. '(Path) -> Config'. Overrides the looked-up signature when probing by an existing name."
+cli_help        = "Explicit signature to match (pre-write mode)"
+cli_flag        = "--signature"
+
+[[tools.fmm_find_similar.params]]
+name            = "kind"
+type            = "string"
+mcp_description = "Declaration kind to match: fn, method, struct, trait, enum, type, const."
+cli_help        = "Declaration kind to match (fn, struct, trait, ...)"
+cli_flag        = "--kind"
+
+[[tools.fmm_find_similar.params]]
+name            = "directory"
+type            = "string"
+mcp_description = "Path prefix to scope candidates (e.g. 'crates/fmm-core/')."
+cli_help        = "Scope candidates to a directory prefix"
+cli_flag        = "--directory"
+
+[[tools.fmm_find_similar.params]]
+name            = "limit"
+type            = "integer"
+mcp_description = "Maximum matches to return (default: 10). Results are threshold-gated, so fewer may return."
+cli_help        = "Maximum matches returned (default: 10)"
+cli_flag        = "--limit"
+
+[[tools.fmm_find_similar.params]]
+name            = "include_tests"
+type            = "boolean"
+mcp_description = "Include test functions and modules as candidates (default: false)."
+cli_help        = "Include test symbols as candidates"
+cli_flag        = "--include-tests"

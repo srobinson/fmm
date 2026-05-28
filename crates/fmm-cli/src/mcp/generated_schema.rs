@@ -295,6 +295,42 @@ serde_json::from_str(r##"{
           "pattern"
         ]
       }
+    },
+    {
+      "name": "fmm_find_similar",
+      "description": "Find existing functions or types structurally similar to a probe, before writing new code, to prevent duplication. Probe by an existing symbol name, or supply a signature + kind for a symbol you are about to write. Deterministic: ranks by name-token overlap, signature shape, declaration kind, and shared-dependency neighborhood — no embeddings. Results are threshold-gated, so a probe with one real match returns one row. Use before authoring a new symbol to reuse instead of duplicate.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Probe symbol name. In by-symbol mode this is an existing symbol whose signature and kind seed the probe; in pre-write mode it is the name you intend to use."
+          },
+          "signature": {
+            "type": "string",
+            "description": "Explicit signature for the symbol you are about to write, e.g. '(Path) -> Config'. Overrides the looked-up signature when probing by an existing name."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Declaration kind to match: fn, method, struct, trait, enum, type, const."
+          },
+          "directory": {
+            "type": "string",
+            "description": "Path prefix to scope candidates (e.g. 'crates/fmm-core/')."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum matches to return (default: 10). Results are threshold-gated, so fewer may return."
+          },
+          "include_tests": {
+            "type": "boolean",
+            "description": "Include test functions and modules as candidates (default: false)."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
     }
   ]
 }"##).expect("generated tool list is valid JSON")
