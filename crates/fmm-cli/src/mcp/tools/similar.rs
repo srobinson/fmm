@@ -3,7 +3,7 @@
 use crate::mcp::args::FindSimilarArgs;
 use fmm_core::format::format_similar;
 use fmm_core::manifest::Manifest;
-use fmm_core::similarity::{find_similar, probe_for, SimilarOptions};
+use fmm_core::similarity::{SimilarOptions, find_similar, probe_for};
 use serde_json::Value;
 
 pub(in crate::mcp) fn tool_find_similar(

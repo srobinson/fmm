@@ -20,8 +20,8 @@ pub use exports::exports;
 pub use lookup::lookup;
 pub use ls::ls;
 pub use outline::outline;
-pub use similar::similar;
 pub use read::read_symbol;
+pub use similar::similar;
 
 fn load_manifest() -> Result<(std::path::PathBuf, Manifest)> {
     let root = std::env::current_dir().context("Failed to get current directory")?;

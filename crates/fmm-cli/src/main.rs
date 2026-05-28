@@ -147,7 +147,15 @@ fn run_command(command: Commands) -> anyhow::Result<()> {
             include_tests,
             json,
         } => {
-            cli::similar(&name, signature, kind, directory, limit, include_tests, json)?;
+            cli::similar(
+                &name,
+                signature,
+                kind,
+                directory,
+                limit,
+                include_tests,
+                json,
+            )?;
         }
         Commands::Read {
             symbol,

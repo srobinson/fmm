@@ -9,7 +9,11 @@ use serde_json::json;
 fn find_similar_surfaces_clone_not_coincidence() {
     let (_tmp, server) = setup_similarity_server();
 
-    let text = call_tool_text(&server, "fmm_find_similar", json!({"name": "extractImports"}));
+    let text = call_tool_text(
+        &server,
+        "fmm_find_similar",
+        json!({"name": "extractImports"}),
+    );
 
     assert!(
         text.contains("collectImports"),

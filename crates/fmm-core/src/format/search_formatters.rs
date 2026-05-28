@@ -3,7 +3,7 @@
 use crate::format::{push_kind_line, yaml_escape};
 use crate::manifest::GlossaryEntry;
 use crate::search::{BareSearchResult, ExportHitCompact, FileSearchResult};
-use crate::similarity::{SimilarMatch, Signals};
+use crate::similarity::{Signals, SimilarMatch};
 
 /// Format symbol similarity matches as text (shared by CLI and MCP). Matches are
 /// threshold-gated upstream, so an empty slice means nothing cleared the bar.

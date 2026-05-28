@@ -1,7 +1,7 @@
 use anyhow::Result;
 
 use fmm_core::format::format_similar;
-use fmm_core::similarity::{find_similar, probe_for, SimilarMatch, SimilarOptions};
+use fmm_core::similarity::{SimilarMatch, SimilarOptions, find_similar, probe_for};
 
 use super::{load_manifest, warn_no_sidecars};
 

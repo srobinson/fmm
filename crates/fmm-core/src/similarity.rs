@@ -486,7 +486,10 @@ mod tests {
             clone > coincidence,
             "clone {clone} must beat coincidence {coincidence}"
         );
-        assert!(clone >= 0.30, "clone {clone} must clear the default threshold");
+        assert!(
+            clone >= 0.30,
+            "clone {clone} must clear the default threshold"
+        );
         assert!(
             coincidence < 0.30,
             "coincidence {coincidence} must be gated out"
@@ -500,7 +503,10 @@ mod tests {
         assert_eq!(extract_arity("(a: A, b: B) -> C"), Some(2));
         // commas inside generics are not counted
         assert_eq!(extract_arity("(x: HashMap<K, V>) -> bool"), Some(1));
-        assert_eq!(extract_return("fn f(x: A) -> Vec<String>"), Some("Vec<String>".to_string()));
+        assert_eq!(
+            extract_return("fn f(x: A) -> Vec<String>"),
+            Some("Vec<String>".to_string())
+        );
         assert_eq!(
             extract_return("createSession(u: User): string"),
             Some("string".to_string())
