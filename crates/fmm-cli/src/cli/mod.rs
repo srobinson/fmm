@@ -669,10 +669,10 @@ pub enum Commands {
         json: bool,
     },
 
-    /// Start MCP server — 8 tools for LLM code navigation
+    /// Start MCP server — 10 tools for LLM code navigation
     #[command(
         long_about = "Start the Model Context Protocol (MCP) server over stdio.\n\n\
-            Exposes 8 tools that LLM agents (Claude, GPT, etc.) can call for O(1) \
+            Exposes 10 tools that LLM agents (Claude, GPT, etc.) can call for O(1) \
             symbol lookup, dependency graphs, and surgical source reads — all without \
             reading entire files.",
         after_long_help = cstr!(
