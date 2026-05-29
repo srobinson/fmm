@@ -13,7 +13,7 @@ workflow = """
 3. **Outline** — `fmm_file_outline(file, include_private: true)` — symbol inventory with line ranges, density fields, and private members.
 4. **Read** — `fmm_read_symbol("Class.method", line_numbers: true)` — surgical extraction.
 5. **Impact** — `fmm_glossary("Class.method")` — confirmed callers before renaming or changing a signature.
-6. **Reuse check** — `fmm_find_similar(name)` or `fmm_find_similar(signature, kind)` — before authoring a new function or type, probe for an existing one. Reuse the match instead of duplicating.
+6. **Reuse check** — `fmm_find_similar(name: "loadConfig")` or `fmm_find_similar(name: "loadConfig", signature: "(Path) -> Config", kind: "fn")` — before authoring a new function or type, probe for an existing one. Reuse the match instead of duplicating.
 
 ### Discovering Code Structure
 

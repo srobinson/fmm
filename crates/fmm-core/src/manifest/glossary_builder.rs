@@ -3,7 +3,7 @@ use serde::Serialize;
 use super::dependency_matcher::{
     builtin_source_extensions, dep_matches, dotted_dep_matches, python_dep_matches,
 };
-use super::{ExportLines, Manifest};
+use super::{ExportLines, Manifest, is_test_export, is_test_file};
 
 /// Controls which exports are included when building the glossary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -51,49 +51,6 @@ pub struct GlossarySource {
     pub reexport_files: Vec<String>,
 }
 
-/// Return a reference to the lazily-initialised `ParserRegistry` used by
-/// glossary convention adapters.
-fn builtin_registry() -> &'static crate::parser::ParserRegistry {
-    use std::sync::OnceLock;
-    static REGISTRY: OnceLock<crate::parser::ParserRegistry> = OnceLock::new();
-    REGISTRY.get_or_init(crate::parser::ParserRegistry::with_builtins)
-}
-
-/// Return the lazily-initialised convention registry used for glossary test classification.
-fn builtin_convention_registry() -> &'static crate::convention::ConventionRegistry<'static> {
-    use std::sync::OnceLock;
-    static REGISTRY: OnceLock<crate::convention::ConventionRegistry<'static>> = OnceLock::new();
-    REGISTRY.get_or_init(|| {
-        crate::convention::ConventionRegistry::with_builtin_conventions(builtin_registry())
-    })
-}
-
-/// Returns true if a file path is a test file (by path conventions only, ignoring symbol name).
-///
-/// Two layers of detection:
-/// 1. Language-specific filename suffixes and prefixes from parser descriptors.
-/// 2. fmm-owned directory conventions from `FmmTestFileConvention`.
-fn is_test_file(file: &str) -> bool {
-    builtin_convention_registry().is_test_file(file)
-}
-
-/// Returns true if an export should be classified as a test artifact.
-///
-/// Checks symbol name conventions (from registry `test_symbol_prefixes`)
-/// and file path conventions (see `is_test_file`).
-fn is_test_export(name: &str, file: &str) -> bool {
-    // Check symbol name against language descriptor test symbol prefixes.
-    let registry = builtin_convention_registry();
-    for patterns in registry.language_test_patterns() {
-        for prefix in patterns.test_symbol_prefixes {
-            if name.starts_with(prefix) {
-                return true;
-            }
-        }
-    }
-    is_test_file(file)
-}
-
 impl Manifest {
     /// Build the glossary: for each export name matching `pattern` (case-insensitive
     /// substring), collect all definitions and their dependents.
@@ -113,9 +70,11 @@ impl Manifest {
                 let sources: Vec<GlossarySource> = locations
                     .iter()
                     .filter(|loc| match mode {
-                        GlossaryMode::Source | GlossaryMode::Tests => {
-                            !is_test_export(name, &loc.file)
-                        }
+                        GlossaryMode::Source | GlossaryMode::Tests => !is_test_export(
+                            name,
+                            &loc.file,
+                            self.declaration_kind_for(name, &loc.file),
+                        ),
                         GlossaryMode::All => true,
                     })
                     .map(|loc| {
@@ -163,8 +122,13 @@ impl Manifest {
             if !lower.contains(&pat_lower) {
                 continue;
             }
-            // For Source/Tests modes, skip methods defined in test files.
-            if matches!(mode, GlossaryMode::Source | GlossaryMode::Tests) && is_test_file(&loc.file)
+            // For Source/Tests modes, skip methods classified as test artifacts.
+            if matches!(mode, GlossaryMode::Source | GlossaryMode::Tests)
+                && is_test_export(
+                    dotted_name,
+                    &loc.file,
+                    self.declaration_kind_for(dotted_name, &loc.file),
+                )
             {
                 continue;
             }
@@ -436,27 +400,6 @@ mod tests {
         assert!(names_all.contains(&"test_run_dispatch"));
         assert!(names_all.contains(&"TestRunDispatch"));
         assert!(names_all.contains(&"helper_fixture"));
-    }
-
-    #[test]
-    fn is_test_export_covers_all_conventions() {
-        // Symbol name prefix
-        assert!(is_test_export("test_foo", "src/agent.py"));
-        assert!(is_test_export("TestFoo", "agent.go"));
-        assert!(!is_test_export("Config", "src/config.ts"));
-        // Go test file
-        assert!(is_test_export("anything", "agent_test.go"));
-        assert!(!is_test_export("anything", "agent.go"));
-        // Python test files
-        assert!(is_test_export("foo", "test_agent.py"));
-        assert!(is_test_export("foo", "agent_test.py"));
-        assert!(!is_test_export("foo", "agent.py"));
-        // Test directories
-        assert!(is_test_export("foo", "tests/helpers.py"));
-        assert!(is_test_export("foo", "test/fixtures.ts"));
-        assert!(is_test_export("foo", "__tests__/utils.ts"));
-        assert!(is_test_export("foo", "src/tests/helpers.py"));
-        assert!(!is_test_export("foo", "src/config.ts"));
     }
 
     #[test]

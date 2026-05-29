@@ -16,6 +16,7 @@ mod file_entry;
 mod glossary_builder;
 mod reexports;
 mod reverse_index;
+mod test_classification;
 
 // Re-export public API consumed by other modules.
 pub(crate) use dependency_matcher::{
@@ -26,6 +27,7 @@ pub use file_entry::{FileEntry, SymbolMetadata};
 pub use glossary_builder::{GlossaryEntry, GlossaryMode, GlossarySource};
 pub use reexports::OutlineReExport;
 pub use reverse_index::ReverseDeps;
+pub(crate) use test_classification::{is_test_export, is_test_file};
 
 /// Line range for an export symbol.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
