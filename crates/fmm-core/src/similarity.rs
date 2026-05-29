@@ -12,7 +12,7 @@
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 
-use crate::manifest::Manifest;
+use crate::manifest::{Manifest, is_test_export};
 
 /// Signal weights. When the neighborhood signal is unavailable (pre-write probe,
 /// same-file candidate, or a file with no dependency edges) the remaining three
@@ -124,7 +124,7 @@ pub fn find_similar(
         {
             continue;
         }
-        if !opts.include_tests && is_test_symbol(&cand) {
+        if !opts.include_tests && is_test_export(&cand.name, &cand.file, cand.kind.as_deref()) {
             continue;
         }
 
@@ -467,18 +467,20 @@ fn collect_candidates(manifest: &Manifest) -> Vec<Candidate> {
     out
 }
 
-fn is_test_symbol(cand: &Candidate) -> bool {
-    matches!(cand.kind.as_deref(), Some("test"))
-        || cand.name == "tests"
-        || cand.name.starts_with("test_")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser::{DeclarationKind, ExportEntry, Metadata};
 
     fn set<const N: usize>(items: [&str; N]) -> BTreeSet<String> {
         items.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn export_with_kind(name: &str, kind: DeclarationKind) -> ExportEntry {
+        let mut entry = ExportEntry::new(name.to_string(), 1, 3);
+        entry.signature = Some("(&str) -> Vec<String>".to_string());
+        entry.declaration_kind = Some(kind);
+        entry
     }
 
     #[test]
@@ -533,6 +535,48 @@ mod tests {
         assert!(
             coincidence < DEFAULT_THRESHOLD,
             "coincidence {coincidence} must be gated out"
+        );
+    }
+
+    #[test]
+    fn find_similar_excludes_test_kind_by_default() {
+        let mut manifest = Manifest::new();
+        manifest.add_file(
+            "src/a.rs",
+            Metadata {
+                exports: vec![export_with_kind("extract_imports", DeclarationKind::Fn)],
+                ..Default::default()
+            },
+        );
+        manifest.add_file(
+            "src/lib.rs",
+            Metadata {
+                exports: vec![export_with_kind("collect_imports", DeclarationKind::Test)],
+                ..Default::default()
+            },
+        );
+
+        let probe = SymbolProbe {
+            name: "extract_imports".to_string(),
+            signature: Some("(&str) -> Vec<String>".to_string()),
+            kind: Some("fn".to_string()),
+            file: Some("src/a.rs".to_string()),
+        };
+
+        let default_matches = find_similar(&manifest, &probe, &SimilarOptions::default());
+        assert!(
+            default_matches.is_empty(),
+            "test-kind candidates should be excluded by default"
+        );
+
+        let with_tests = find_similar(
+            &manifest,
+            &probe,
+            &SimilarOptions::from_args(None, None, true),
+        );
+        assert!(
+            with_tests.iter().any(|m| m.name == "collect_imports"),
+            "test-kind candidates should surface when include_tests is true"
         );
     }
 

@@ -27,6 +27,18 @@ fn find_similar_surfaces_clone_not_coincidence() {
         !text.contains("isDone"),
         "coincidental shape must be gated, got: {text}"
     );
+    assert!(
+        !text.contains("collectImportsFromSpec"),
+        "spec file clone must be excluded by default, got: {text}"
+    );
+    assert!(
+        !text.contains("gatherImports"),
+        "tests directory clone must be excluded by default, got: {text}"
+    );
+    assert!(
+        !text.contains("read_imports"),
+        "Rust _tests.rs clone must be excluded by default, got: {text}"
+    );
 }
 
 /// Unknown probe name returns the no-match line, not an error.
@@ -43,5 +55,29 @@ fn find_similar_unknown_probe_reports_no_match() {
     assert!(
         text.contains("No similar symbols found"),
         "expected no-match line, got: {text}"
+    );
+}
+
+#[test]
+fn find_similar_include_tests_restores_test_path_candidates() {
+    let (_tmp, server) = setup_similarity_server();
+
+    let text = call_tool_text(
+        &server,
+        "fmm_find_similar",
+        json!({"name": "extractImports", "include_tests": true}),
+    );
+
+    assert!(
+        text.contains("collectImportsFromSpec"),
+        "spec file clone should surface with include_tests, got: {text}"
+    );
+    assert!(
+        text.contains("gatherImports"),
+        "tests directory clone should surface with include_tests, got: {text}"
+    );
+    assert!(
+        text.contains("read_imports"),
+        "Rust _tests.rs clone should surface with include_tests, got: {text}"
     );
 }

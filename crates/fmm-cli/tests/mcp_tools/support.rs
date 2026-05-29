@@ -140,6 +140,21 @@ pub(crate) fn setup_similarity_server() -> (tempfile::TempDir, fmm::mcp::SqliteM
         "src/c.ts",
         "export function isReady(flag: string): boolean {\n  return false;\n}\n\nexport function isDone(flag: string): boolean {\n  return false;\n}\n",
     );
+    write_file(
+        root,
+        "src/extractImports.spec.ts",
+        "export function collectImportsFromSpec(src: string): string[] {\n  return [];\n}\n",
+    );
+    write_file(
+        root,
+        "tests/imports_helper.ts",
+        "export function gatherImports(src: string): string[] {\n  return [];\n}\n",
+    );
+    write_file(
+        root,
+        "src/parser_tests.rs",
+        "pub fn read_imports(src: &str) -> Vec<String> {\n  Vec::new()\n}\n",
+    );
 
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
     let server = fmm::mcp::SqliteMcpServer::with_root(root.to_path_buf());
