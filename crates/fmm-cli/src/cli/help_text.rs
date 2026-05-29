@@ -14,13 +14,14 @@ pub const SHORT_HELP: &str = cstr!(
   <bold>exports</bold>       Search exports by pattern
   <bold>search</bold>        Smart search — exports, files, imports (just works)
   <bold>glossary</bold>      Symbol-level impact analysis — who uses this export?
+  <bold>similar</bold>       Find existing symbols like a probe — avoid duplication
 
 <bold><underline>Project</underline></bold>
   <bold>init</bold>          Set up config, Claude skill, and MCP server
   <bold>generate</bold>      Index source files into the SQLite database (exports, imports, deps, LOC)
   <bold>watch</bold>         Watch source files and update the index on change
   <bold>validate</bold>      Check the index is current (CI-friendly, exit 1 if stale)
-  <bold>mcp</bold>           Start MCP server (8 tools for LLM navigation)
+  <bold>mcp</bold>           Start MCP server (10 tools for LLM navigation)
   <bold>status</bold>        Show config and workspace stats
   <bold>clean</bold>         Clear the fmm index database
 
@@ -39,13 +40,14 @@ pub const LONG_HELP: &str = cstr!(
   <bold>deps</bold> FILE           Imports, downstream dependents, and transitive blast radius
   <bold>search</bold> [TERM]       Smart search across exports, files, imports, and LOC filters
   <bold>glossary</bold> PATTERN    Impact analysis: definitions, importers, and call sites
+  <bold>similar</bold> NAME        Find existing symbols similar to a probe — prevent duplication
 
 <bold><underline>Project Commands</underline></bold>
   <bold>init</bold>          Set up config, Claude skill, and MCP server
   <bold>generate</bold>      Index source files into the SQLite database (exports, imports, deps, LOC)
   <bold>watch</bold>         Watch source files and update the index on change
   <bold>validate</bold>      Check the index is current (CI-friendly, exit 1 if stale)
-  <bold>mcp</bold>           Start MCP server (8 tools for LLM navigation)
+  <bold>mcp</bold>           Start MCP server (10 tools for LLM navigation)
   <bold>status</bold>        Show config and workspace stats
   <bold>clean</bold>         Clear the fmm index database
 
@@ -63,6 +65,8 @@ pub const LONG_HELP: &str = cstr!(
   <dim>$</dim> <bold>fmm search parser</bold>                             <dim># Smart search across indexed metadata</dim>
   <dim>$</dim> <bold>fmm search --imports anyhow --min-loc 100</bold>     <dim># Files importing anyhow with size filter</dim>
   <dim>$</dim> <bold>fmm search parser --limit 5</bold>                   <dim># Cap fuzzy export results</dim>
+  <dim>$</dim> <bold>fmm similar ParserRegistry</bold>                    <dim># Existing symbols like this one — reuse, don't duplicate</dim>
+  <dim>$</dim> <bold>fmm similar parse --signature "(Path) -> Config"</bold> <dim># Pre-write probe before authoring</dim>
 
 <bold><underline>Impact and Output</underline></bold>
   <dim>$</dim> <bold>fmm glossary ParserRegistry</bold>                   <dim># Files importing the defining module</dim>

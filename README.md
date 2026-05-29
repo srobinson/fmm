@@ -73,7 +73,8 @@ Use native tooling alongside fmm:
 | `fmm validate [path]` | Check the index is current (CI-friendly, exit 1 if stale)          |
 | `fmm search`          | Query indexed structure: exports, imports, dependencies, LOC, and file-level matches |
 | `fmm glossary`        | Symbol-level impact analysis — who imports this export?            |
-| `fmm mcp`             | Start MCP server (8 tools for LLM navigation)                      |
+| `fmm similar`         | Find existing symbols similar to a probe — reuse instead of duplicate |
+| `fmm mcp`             | Start MCP server (10 tools for LLM navigation)                     |
 | `fmm status`          | Show config and workspace stats                                    |
 | `fmm clean [path]`    | Clear the fmm index database                                       |
 
@@ -92,10 +93,11 @@ CLI commands use short terminal names. MCP tools use descriptive agent names. Lo
 | `fmm_search`               | `fmm search`  | none                     |
 | `fmm_list_files`           | `fmm ls`      | `fmm list-files`         |
 | `fmm_glossary`             | `fmm glossary` | none                     |
+| `fmm_find_similar`         | `fmm similar` | `fmm find-similar`       |
 
 ## MCP Tools
 
-fmm includes a built-in MCP server with 8 tools. Configure via `fmm init --mcp` or manually:
+fmm includes a built-in MCP server with 10 tools. Configure via `fmm init --mcp` or manually:
 
 ```json
 {
@@ -118,6 +120,7 @@ fmm includes a built-in MCP server with 8 tools. Configure via `fmm init --mcp` 
 | `fmm_search`           | Indexed structural queries across exports, files, imports, and dependencies   |
 | `fmm_list_files`       | List indexed files under a directory path; `pattern` uses filename globs; `filter: "tests"` is path/name based, so Rust inline `#[cfg(test)] mod tests` blocks in source files are excluded |
 | `fmm_glossary`         | Symbol-level blast radius; dotted members add call-site precision but use case-insensitive substring matching, so `Type.foo` can also match `Type.foo_bar`; includes declaration `kind` |
+| `fmm_find_similar`     | Find existing symbols structurally similar to a probe (name + signature shape + kind + shared dependencies); probe by an existing name or an explicit `signature`/`kind` before writing new code — reuse instead of duplicate |
 
 Bare Rust module names read the `mod foo;` declaration with `kind: module`. They do not follow into `foo.rs` or `foo/mod.rs`.
 
