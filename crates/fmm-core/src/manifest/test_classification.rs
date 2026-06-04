@@ -1,20 +1,8 @@
-use std::sync::OnceLock;
-
-fn builtin_registry() -> &'static crate::parser::ParserRegistry {
-    static REGISTRY: OnceLock<crate::parser::ParserRegistry> = OnceLock::new();
-    REGISTRY.get_or_init(crate::parser::ParserRegistry::with_builtins)
-}
-
-fn builtin_convention_registry() -> &'static crate::convention::ConventionRegistry<'static> {
-    static REGISTRY: OnceLock<crate::convention::ConventionRegistry<'static>> = OnceLock::new();
-    REGISTRY.get_or_init(|| {
-        crate::convention::ConventionRegistry::with_builtin_conventions(builtin_registry())
-    })
-}
+use crate::convention::{builtin_convention_registry, builtin_is_test_file};
 
 /// Returns true if a file path is a test file by path conventions only.
 pub(crate) fn is_test_file(file: &str) -> bool {
-    builtin_convention_registry().is_test_file(file)
+    builtin_is_test_file(file)
 }
 
 /// Returns true if an export should be classified as a test artifact.

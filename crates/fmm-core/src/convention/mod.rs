@@ -1,5 +1,6 @@
 use crate::parser::{LanguageTestPatterns, ParserRegistry, RegisteredLanguage};
 use std::collections::{BTreeMap, HashSet};
+use std::sync::OnceLock;
 
 /// Static test file and test symbol conventions supplied by a convention plugin.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -180,6 +181,26 @@ impl<'a> ConventionRegistry<'a> {
             .iter()
             .map(|desc| &desc.test_patterns)
     }
+}
+
+fn builtin_parser_registry() -> &'static ParserRegistry {
+    static REGISTRY: OnceLock<ParserRegistry> = OnceLock::new();
+    REGISTRY.get_or_init(ParserRegistry::with_builtins)
+}
+
+/// Process-wide built-in convention registry (language parsers + fmm conventions).
+///
+/// Single source of truth for built-in classification so every caller agrees on
+/// what counts as a test file or test export.
+pub fn builtin_convention_registry() -> &'static ConventionRegistry<'static> {
+    static REGISTRY: OnceLock<ConventionRegistry<'static>> = OnceLock::new();
+    REGISTRY.get_or_init(|| ConventionRegistry::with_builtin_conventions(builtin_parser_registry()))
+}
+
+/// Returns true if `path` is a test file by built-in (language + fmm) path
+/// conventions, independent of user configuration.
+pub fn builtin_is_test_file(path: &str) -> bool {
+    builtin_convention_registry().is_test_file(path)
 }
 
 fn test_patterns_match_file(file_path: &str, patterns: &ConventionTestPatterns) -> bool {

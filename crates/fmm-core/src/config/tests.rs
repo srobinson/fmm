@@ -177,6 +177,19 @@ fn is_test_file_detects_path_segment() {
 }
 
 #[test]
+fn is_test_file_detects_language_filename_prefix() {
+    let config = Config::default();
+    // pytest convention: `test_*.py` is a test file even outside a tests/ dir.
+    assert!(config.is_test_file("api/src/transport_matters/test_exchange_recorder.py"));
+    assert!(config.is_test_file("pkg/test_utils.py"));
+    // Same-named source file (no prefix) stays source.
+    assert!(!config.is_test_file("api/src/transport_matters/exchange_recorder.py"));
+    // The `test_` prefix is language-scoped: TypeScript uses suffix conventions,
+    // so a `test_`-prefixed `.ts` file is not a test.
+    assert!(!config.is_test_file("src/test_helper.ts"));
+}
+
+#[test]
 fn default_test_path_contains_includes_bare_rust_module_files() {
     let path_contains = default_test_path_contains();
     assert!(path_contains.contains(&"/tests.rs".to_string()));
@@ -306,6 +319,9 @@ filename_suffixes = [".myspec.ts"]
     assert!(config.is_test_file("src/bar.myspec.ts"));
     assert!(!config.is_test_file("src/auth.spec.ts"));
     assert!(!config.is_test_file("src/test/foo.ts"));
+    // Overriding `[test_patterns]` also suppresses built-in language conventions,
+    // so the user's patterns stay authoritative (pytest `test_*.py` is not forced).
+    assert!(!config.is_test_file("src/test_helper.py"));
 }
 
 #[test]
