@@ -4,7 +4,7 @@ use fmm_core::store::FmmStore;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::io::{self, BufRead, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 mod args;
 mod schema;
@@ -19,6 +19,8 @@ const PROTOCOL_VERSION: &str = "2024-11-05";
 /// Cap MCP tool responses to prevent context bombs.
 /// Large responses get truncated to disk by Claude, defeating the purpose.
 pub(crate) const MAX_RESPONSE_BYTES: usize = 10_240;
+
+type StoreLoader<S> = fn(&Path) -> Result<S, String>;
 
 fn cap_response(text: String, truncate: bool, accepts_truncate: bool) -> String {
     if !truncate || text.len() <= MAX_RESPONSE_BYTES {
@@ -79,13 +81,14 @@ pub struct JsonRpcError {
 /// - Production: `from_store(store, root)` provides a concrete store for live reload.
 /// - Testing: direct struct construction with `store: None` and an injected manifest.
 ///
-/// When `store` is `None`, `reload()` is a no-op and the server uses whatever
-/// manifest was set at construction time.
+/// When `store` is `None`, `reload()` tries `store_loader` if one was supplied.
+/// Tests can omit the loader and use an injected manifest.
 pub struct McpServer<S: FmmStore> {
     pub(crate) store: Option<S>,
     pub(crate) manifest: Option<Manifest>,
     pub(crate) load_error: Option<String>,
     pub(crate) root: PathBuf,
+    pub(crate) store_loader: Option<StoreLoader<S>>,
 }
 
 /// Type alias for the SQLite-backed MCP server (production default).
@@ -113,16 +116,25 @@ impl McpServer<fmm_store::SqliteStore> {
     /// Attempts to open an existing SQLite store. If the database does not exist,
     /// the server starts without a store and reports the error on tool calls.
     pub fn with_root(root: PathBuf) -> Self {
-        match fmm_store::SqliteStore::open(&root) {
-            Ok(store) => Self::from_store(store, root),
+        match open_sqlite_store(&root) {
+            Ok(store) => {
+                let mut server = Self::from_store(store, root);
+                server.store_loader = Some(open_sqlite_store);
+                server
+            }
             Err(e) => Self {
                 store: None,
                 manifest: None,
-                load_error: Some(e.to_string()),
+                load_error: Some(e),
                 root,
+                store_loader: Some(open_sqlite_store),
             },
         }
     }
+}
+
+fn open_sqlite_store(root: &Path) -> Result<fmm_store::SqliteStore, String> {
+    fmm_store::SqliteStore::open(root).map_err(|e| e.to_string())
 }
 
 // --- Generic implementation (works with any FmmStore backend) ---
@@ -142,10 +154,26 @@ impl<S: FmmStore> McpServer<S> {
             manifest,
             load_error,
             root,
+            store_loader: None,
         }
     }
 
     fn reload(&mut self) {
+        if self.store.is_none()
+            && let Some(store_loader) = self.store_loader
+        {
+            match store_loader(&self.root) {
+                Ok(store) => {
+                    self.store = Some(store);
+                }
+                Err(e) => {
+                    self.manifest = None;
+                    self.load_error = Some(e);
+                    return;
+                }
+            }
+        }
+
         if let Some(store) = &self.store {
             match store.load_manifest() {
                 Ok(m) => {

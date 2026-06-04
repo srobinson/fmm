@@ -75,6 +75,7 @@ pub(super) fn test_server_at(manifest: Manifest, root: PathBuf) -> TestServer {
         manifest: Some(manifest),
         load_error: None,
         root,
+        store_loader: None,
     }
 }
 
