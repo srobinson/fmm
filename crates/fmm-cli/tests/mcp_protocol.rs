@@ -6,7 +6,7 @@
 
 use assert_cmd::cargo::CommandCargoExt;
 use serde_json::{Value, json};
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 
 // ---------------------------------------------------------------------------
@@ -19,11 +19,7 @@ fn write_file(root: &std::path::Path, rel: &str, content: &str) {
     std::fs::write(p, content).unwrap();
 }
 
-/// Create a temp dir with source files and a generated `.fmm.db`.
-fn setup_fixture() -> tempfile::TempDir {
-    let tmp = tempfile::TempDir::new().unwrap();
-    let root = tmp.path();
-
+fn write_fixture_sources(root: &std::path::Path) {
     write_file(
         root,
         "src/app.ts",
@@ -34,8 +30,9 @@ fn setup_fixture() -> tempfile::TempDir {
         "src/utils.ts",
         "export function formatDate(d: Date): string {\n  return d.toISOString();\n}\n",
     );
+}
 
-    // Run `fmm generate` to build the index
+fn generate_index(root: &std::path::Path) {
     let output = Command::cargo_bin("fmm")
         .unwrap()
         .arg("generate")
@@ -47,6 +44,15 @@ fn setup_fixture() -> tempfile::TempDir {
         "fmm generate failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+/// Create a temp dir with source files and a generated `.fmm.db`.
+fn setup_fixture() -> tempfile::TempDir {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path();
+
+    write_fixture_sources(root);
+    generate_index(root);
 
     tmp
 }
@@ -84,6 +90,14 @@ fn run_mcp_session(root: &std::path::Path, requests: &[Value]) -> Vec<Value> {
         .filter(|line| !line.is_empty())
         .map(|line| serde_json::from_str(line).expect("invalid JSON in response"))
         .collect()
+}
+
+fn read_mcp_response(stdout: &mut BufReader<std::process::ChildStdout>) -> Value {
+    let mut line = String::new();
+    stdout
+        .read_line(&mut line)
+        .expect("failed to read response");
+    serde_json::from_str(line.trim_end()).expect("invalid JSON in response")
 }
 
 // ---------------------------------------------------------------------------
@@ -202,6 +216,70 @@ fn mcp_protocol_tools_call() {
     assert!(
         text.contains("src/app.ts"),
         "list_files must include src/app.ts; got:\n{text}"
+    );
+}
+
+#[test]
+fn mcp_server_recovers_when_index_is_created_after_startup() {
+    let fixture = tempfile::TempDir::new().unwrap();
+    let root = fixture.path();
+    write_fixture_sources(root);
+
+    let mut child = Command::cargo_bin("fmm")
+        .unwrap()
+        .arg("serve")
+        .current_dir(root)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("failed to spawn fmm serve");
+
+    let mut stdin = child.stdin.take().expect("stdin not piped");
+    let mut stdout = BufReader::new(child.stdout.take().expect("stdout not piped"));
+    let request = |id| {
+        json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "tools/call",
+            "params": {
+                "name": "fmm_lookup_export",
+                "arguments": {"name": "createApp"}
+            }
+        })
+    };
+
+    writeln!(stdin, "{}", serde_json::to_string(&request(1)).unwrap()).unwrap();
+    let before_generate = read_mcp_response(&mut stdout);
+    let before_text = before_generate["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or("");
+    assert!(
+        before_text.contains("ERROR:"),
+        "first call must prove the server started without an index; got:\n{before_text}"
+    );
+
+    generate_index(root);
+
+    writeln!(stdin, "{}", serde_json::to_string(&request(2)).unwrap()).unwrap();
+    drop(stdin);
+
+    let after_generate = read_mcp_response(&mut stdout);
+    let output = child
+        .wait_with_output()
+        .expect("failed to wait on fmm serve");
+    assert!(
+        output.status.success(),
+        "fmm serve exited unsuccessfully: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let after_text = after_generate["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or("");
+    assert!(
+        after_text.contains("createApp") && after_text.contains("src/app.ts"),
+        "server must reopen the database after fmm generate; got:\n{after_text}"
     );
 }
 
