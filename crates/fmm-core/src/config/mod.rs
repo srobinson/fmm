@@ -28,6 +28,11 @@ pub struct TestPatterns {
     /// Filename suffix patterns that indicate a test file, for example ".spec.ts".
     #[serde(default = "default_test_filename_suffixes")]
     pub filename_suffixes: Vec<String>,
+    /// Set when the user supplies a `[test_patterns]` table. Their patterns then
+    /// replace the built-in language/fmm conventions instead of extending them,
+    /// preserving the ability to narrow classification.
+    #[serde(skip)]
+    user_overridden: bool,
 }
 
 impl Default for TestPatterns {
@@ -35,6 +40,7 @@ impl Default for TestPatterns {
         Self {
             path_contains: default_test_path_contains(),
             filename_suffixes: default_test_filename_suffixes(),
+            user_overridden: false,
         }
     }
 }
@@ -153,6 +159,14 @@ impl Config {
             }
         }
 
-        false
+        // Fall back to built-in language and fmm conventions (prefix-aware, e.g.
+        // pytest `test_*.py`) so config-driven surfaces classify tests the same
+        // way as glossary and similarity, which consult these conventions directly.
+        // Skipped when the user overrides `[test_patterns]`, keeping their patterns
+        // authoritative so they can narrow as well as extend classification.
+        if tp.user_overridden {
+            return false;
+        }
+        crate::convention::builtin_is_test_file(path)
     }
 }

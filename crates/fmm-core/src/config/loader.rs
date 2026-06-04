@@ -36,6 +36,9 @@ pub(super) fn apply_file_config(config: &mut Config, file_config: FileConfig) {
         config.exclude = exclude;
     }
     if let Some(test_patterns) = file_config.test_patterns {
+        // The user took explicit control of test classification: their patterns
+        // replace built-in conventions rather than extending them.
+        config.test_patterns.user_overridden = true;
         if let Some(path_contains) = test_patterns.path_contains {
             config.test_patterns.path_contains = path_contains;
         }
