@@ -27,6 +27,13 @@
 * document path based test filtering for Rust inline test modules
 * recommend `fmm generate` as the schema mismatch rebuild path
 
+## [0.3.6](https://github.com/srobinson/fmm/compare/v0.3.5...v0.3.6) (2026-06-04)
+
+
+### Bug Fixes
+
+* classify language test-file prefixes (pytest test_*.py) in filters ([#151](https://github.com/srobinson/fmm/issues/151)) ([46fe37f](https://github.com/srobinson/fmm/commit/46fe37f40263647c777f8074f4d37f0d4149c0f7))
+
 ## [0.3.5](https://github.com/srobinson/fmm/compare/v0.3.4...v0.3.5) (2026-06-04)
 
 
