@@ -27,6 +27,13 @@
 * document path based test filtering for Rust inline test modules
 * recommend `fmm generate` as the schema mismatch rebuild path
 
+## [0.3.5](https://github.com/srobinson/fmm/compare/v0.3.4...v0.3.5) (2026-06-04)
+
+
+### Bug Fixes
+
+* **mcp:** recover store when index is created after server startup ([#149](https://github.com/srobinson/fmm/issues/149)) ([5c06445](https://github.com/srobinson/fmm/commit/5c06445c9aaccc210646aa5528f3bef5a159a734))
+
 ## [0.3.4](https://github.com/srobinson/fmm/compare/v0.3.3...v0.3.4) (2026-05-29)
 
 
