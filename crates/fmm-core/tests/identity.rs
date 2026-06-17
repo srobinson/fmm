@@ -51,4 +51,11 @@ fn fingerprint_carries_cache_identity_fields() {
 #[test]
 fn edge_kind_distinguishes_runtime_from_type_only_edges() {
     assert_ne!(EdgeKind::Runtime, EdgeKind::TypeOnly);
+    assert!(EdgeKind::ModuleHierarchy.is_runtime());
+    assert!(EdgeKind::ModuleHierarchy.is_module_hierarchy());
+    assert!(EdgeKind::TypeOnlyModuleHierarchy.is_module_hierarchy());
+    assert_eq!(
+        EdgeKind::ModuleHierarchy.merge(EdgeKind::Runtime),
+        EdgeKind::Runtime
+    );
 }

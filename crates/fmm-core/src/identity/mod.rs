@@ -122,14 +122,57 @@ pub struct Fingerprint {
 
 /// Dependency edge classification used by graph storage and cycle diagnostics.
 ///
-/// `Runtime` edges affect runtime dependency traversal. `TypeOnly` edges are
+/// Runtime edges affect runtime dependency traversal. Type-only edges are
 /// preserved for structural queries but may be skipped by runtime cycle reports.
+/// Module-hierarchy edges connect a module facade to its direct child module.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum EdgeKind {
     /// Runtime dependency edge.
     Runtime,
+    /// Runtime module-hierarchy edge.
+    ModuleHierarchy,
     /// Type-only dependency edge, for example TypeScript `import type`.
     TypeOnly,
+    /// Type-only module-hierarchy edge.
+    TypeOnlyModuleHierarchy,
+}
+
+impl EdgeKind {
+    pub fn is_runtime(self) -> bool {
+        matches!(self, Self::Runtime | Self::ModuleHierarchy)
+    }
+
+    pub fn is_module_hierarchy(self) -> bool {
+        matches!(self, Self::ModuleHierarchy | Self::TypeOnlyModuleHierarchy)
+    }
+
+    pub fn with_module_hierarchy(self) -> Self {
+        match self {
+            Self::Runtime | Self::ModuleHierarchy => Self::ModuleHierarchy,
+            Self::TypeOnly | Self::TypeOnlyModuleHierarchy => Self::TypeOnlyModuleHierarchy,
+        }
+    }
+
+    pub fn merge(self, other: Self) -> Self {
+        match (
+            self.is_runtime() || other.is_runtime(),
+            self.is_module_hierarchy() && other.is_module_hierarchy(),
+        ) {
+            (true, true) => Self::ModuleHierarchy,
+            (true, false) => Self::Runtime,
+            (false, true) => Self::TypeOnlyModuleHierarchy,
+            (false, false) => Self::TypeOnly,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Runtime => "runtime",
+            Self::ModuleHierarchy => "mod-hierarchy",
+            Self::TypeOnly => "type-only",
+            Self::TypeOnlyModuleHierarchy => "type-only mod-hierarchy",
+        }
+    }
 }
 
 /// Bidirectional mapping between fmm path keys and dense internal file ids.

@@ -18,6 +18,14 @@ pub struct CyclesCommandArgs {
     #[arg(long = "edge-mode", default_value = "runtime", value_parser = ["runtime", "all"])]
     pub edge_mode: String,
 
+    /// Include module-hierarchy facade edges
+    #[arg(long = "include-mod-hierarchy")]
+    pub include_mod_hierarchy: bool,
+
+    /// Include edges that keep each SCC connected
+    #[arg(long = "explain", alias = "edges")]
+    pub explain: bool,
+
     /// Output as JSON
     #[arg(short = 'j', long = "json")]
     pub json: bool,
@@ -25,10 +33,31 @@ pub struct CyclesCommandArgs {
 
 #[derive(serde::Serialize)]
 struct CyclesJson {
-    cycles: Vec<Vec<String>>,
+    cycles: Vec<CycleJson>,
 }
 
-pub fn cycles(file: Option<&str>, filter: &str, edge_mode: &str, json_output: bool) -> Result<()> {
+#[derive(serde::Serialize)]
+struct CycleJson {
+    files: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    edges: Option<Vec<CycleEdgeJson>>,
+}
+
+#[derive(serde::Serialize)]
+struct CycleEdgeJson {
+    source: String,
+    target: String,
+    kind: &'static str,
+}
+
+pub fn cycles(
+    file: Option<&str>,
+    filter: &str,
+    edge_mode: &str,
+    include_mod_hierarchy: bool,
+    explain: bool,
+    json_output: bool,
+) -> Result<()> {
     let (root, manifest) = load_manifest()?;
 
     if manifest.files.is_empty() {
@@ -53,16 +82,44 @@ pub fn cycles(file: Option<&str>, filter: &str, edge_mode: &str, json_output: bo
         crate::cycle_report::parse_edge_mode(Some(edge_mode)).map_err(anyhow::Error::msg)?;
     let file_filter =
         crate::cycle_report::CycleFileFilter::parse(filter).map_err(anyhow::Error::msg)?;
+    let options =
+        fmm_core::search::CycleOptions::new(edge_mode).include_mod_hierarchy(include_mod_hierarchy);
     let config = fmm_core::config::Config::load_from_dir(&root).unwrap_or_default();
-    let cycles =
-        fmm_core::search::dependency_cycles_with_path_filter(&manifest, file, edge_mode, |path| {
-            file_filter.keeps(path, |candidate| config.is_test_file(candidate))
-        })?;
+    let cycles = fmm_core::search::dependency_cycle_reports_with_path_filter(
+        &manifest,
+        file,
+        options,
+        |path| file_filter.keeps(path, |candidate| config.is_test_file(candidate)),
+    )?;
 
     if json_output {
-        println!("{}", serde_json::to_string_pretty(&CyclesJson { cycles })?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&CyclesJson {
+                cycles: cycles
+                    .iter()
+                    .map(|cycle| CycleJson {
+                        files: cycle.files.clone(),
+                        edges: explain.then(|| {
+                            cycle
+                                .edges
+                                .iter()
+                                .map(|edge| CycleEdgeJson {
+                                    source: edge.source.clone(),
+                                    target: edge.target.clone(),
+                                    kind: edge.kind.as_str(),
+                                })
+                                .collect()
+                        }),
+                    })
+                    .collect(),
+            })?
+        );
     } else {
-        println!("{}", fmm_core::format::format_dependency_cycles(&cycles));
+        println!(
+            "{}",
+            fmm_core::format::format_dependency_cycle_reports(&cycles, explain)
+        );
     }
 
     Ok(())

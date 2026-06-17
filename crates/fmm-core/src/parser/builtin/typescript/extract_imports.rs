@@ -226,11 +226,7 @@ fn insert_dependency_kind(
 ) {
     kinds
         .entry(dependency)
-        .and_modify(|existing| {
-            if kind == EdgeKind::Runtime {
-                *existing = EdgeKind::Runtime;
-            }
-        })
+        .and_modify(|existing| *existing = existing.merge(kind))
         .or_insert(kind);
 }
 

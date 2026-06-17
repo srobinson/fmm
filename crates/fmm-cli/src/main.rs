@@ -148,6 +148,8 @@ fn run_command(command: Commands) -> anyhow::Result<()> {
                 args.file.as_deref(),
                 &args.filter,
                 &args.edge_mode,
+                args.include_mod_hierarchy,
+                args.explain,
                 args.json,
             )?;
         }

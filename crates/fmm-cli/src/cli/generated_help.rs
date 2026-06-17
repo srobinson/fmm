@@ -29,13 +29,17 @@ pub const DEPS_DEPTH_HELP: &str = "Traversal depth (1 = direct deps only, -1 = f
 pub const DEPS_FILTER_HELP: &str = "Filter upstream/downstream by file type: all (default), source (exclude tests), tests (only tests)";
 
 #[rustfmt::skip]
-pub const CYCLES_ABOUT: &str = "Report strongly connected dependency cycles. Defaults to runtime edges and path-based output.";
+pub const CYCLES_ABOUT: &str = "Report strongly connected dependency cycles. Defaults to runtime edges and hides module-hierarchy facades.";
 #[rustfmt::skip]
 pub const CYCLES_FILE_HELP: &str = "Optional source file path to scope cycle reports";
 #[rustfmt::skip]
 pub const CYCLES_FILTER_HELP: &str = "Filter cycle graph by file type: all (default), source (exclude tests), tests (only tests)";
 #[rustfmt::skip]
 pub const CYCLES_EDGE_MODE_HELP: &str = "Edge mode: runtime (default, excludes type-only edges) or all";
+#[rustfmt::skip]
+pub const CYCLES_INCLUDE_MOD_HIERARCHY_HELP: &str = "Include module-hierarchy facade edges";
+#[rustfmt::skip]
+pub const CYCLES_EXPLAIN_HELP: &str = "Include edges that keep each SCC connected";
 
 #[rustfmt::skip]
 pub const READ_ABOUT: &str = "Read the source code of an exported symbol, a specific member, or a non-exported function.\n\nUse plain name for a unique top-level symbol, ClassName.member notation for a specific public/private method or indexed field, or path/to/file:helperFn notation to disambiguate duplicate symbols. Bare Rust module names return the `mod foo;` declaration with `kind: module`; they do not follow into `foo.rs` or `foo/mod.rs`. Truncates at 10KB by default; use --no-truncate for full source.";

@@ -278,13 +278,15 @@ Get a file's dependency graph: upstream dependencies (what it imports) and downs
 
 ### `fmm_dependency_cycles`
 
-Report strongly connected dependency cycles over the internal graph. Defaults to runtime edges, excluding TypeScript type-only imports. Use edge_mode='all' to include type-only edges. Optional file scopes output to cycles containing that file. filter='source' excludes tests, filter='tests' shows only test files.
+Report strongly connected dependency cycles over the internal graph. Defaults to runtime edges, excluding TypeScript type-only imports and module-hierarchy facade edges. Use edge_mode='all' to include type-only edges. Set include_mod_hierarchy=true to restore facade edges. Set explain=true to include the edges that keep each SCC connected. Optional file scopes output to cycles containing that file. filter='source' excludes tests, filter='tests' shows only test files.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `file` | string | no | Optional file path to scope cycle reports to SCCs containing that file. |
 | `filter` | enum: all \| source \| tests | no | Filter the cycle graph by file type before SCC detection. 'all' (default): no filtering. 'source': exclude test files... |
 | `edge_mode` | enum: runtime \| all | no | Edge mode for cycle reporting. 'runtime' (default) excludes TypeScript type-only edges. 'all' includes type-only edges. |
+| `include_mod_hierarchy` | boolean | no | When true, include module-hierarchy facade edges. Default false hides barrel, __init__, and Rust module facade cycles. |
+| `explain` | boolean | no | When true, include the resolved edges that keep each reported strongly connected component connected, with edge kind. |
 
 ### `fmm_read_symbol`
 

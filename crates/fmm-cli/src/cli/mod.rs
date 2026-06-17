@@ -342,6 +342,8 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm cycles</bold>                                      <dim># Runtime dependency cycles</dim>
   <dim>$</dim> <bold>fmm cycles src/app.ts</bold>                           <dim># Cycles containing one file</dim>
   <dim>$</dim> <bold>fmm cycles --edge-mode all</bold>                      <dim># Include type-only edges</dim>
+  <dim>$</dim> <bold>fmm cycles --include-mod-hierarchy</bold>              <dim># Include module hierarchy edges</dim>
+  <dim>$</dim> <bold>fmm cycles --explain</bold>                            <dim># Include closing edges</dim>
   <dim>$</dim> <bold>fmm cycles --filter source</bold>                      <dim># Exclude test files</dim>
   <dim>$</dim> <bold>fmm cycles --json</bold>                               <dim># JSON output</dim>"#),
     )]
