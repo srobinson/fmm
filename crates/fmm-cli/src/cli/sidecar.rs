@@ -4,7 +4,7 @@ use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use fmm_core::store::FmmStore;
+use fmm_core::store::{FmmStore, GitMeta};
 use fmm_core::types::{PreserializedRow, serialize_file_data_with_fingerprint};
 use fmm_store::SqliteStore;
 
@@ -27,6 +27,17 @@ use output::{
 const PROGRESS_THRESHOLD: usize = 10;
 
 pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Result<()> {
+    generate_with_git(paths, dry_run, force, quiet, None, false)
+}
+
+pub fn generate_with_git(
+    paths: &[String],
+    dry_run: bool,
+    force: bool,
+    quiet: bool,
+    sha_override: Option<&str>,
+    no_git: bool,
+) -> Result<()> {
     let total_start = Instant::now();
     let config = Config::load().unwrap_or_default();
 
@@ -47,6 +58,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
         return Ok(());
     }
 
+    let git_meta = crate::git::probe(&root, sha_override, no_git)?;
     let store = SqliteStore::open_or_create(&root)?;
     let workspace_info = resolver::workspace::discover(&root);
     store.upsert_workspace_packages(&workspace_info.packages)?;
@@ -64,6 +76,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
             finish_removed_only_update(
                 &store,
                 &root,
+                git_meta.as_ref(),
                 total_start,
                 scan.elapsed,
                 quiet,
@@ -71,7 +84,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
             )?;
         } else {
             print_all_up_to_date(files.len() + skipped, skipped, total_start.elapsed());
-            store.write_meta()?;
+            store.write_meta(git_meta.as_ref())?;
         }
         return Ok(());
     }
@@ -114,7 +127,7 @@ pub fn generate(paths: &[String], dry_run: bool, force: bool, quiet: bool) -> Re
     )?;
     let phase4_elapsed = phase4_start.elapsed();
 
-    store.write_meta()?;
+    store.write_meta(git_meta.as_ref())?;
     let total_elapsed = total_start.elapsed();
 
     println!(
@@ -151,6 +164,7 @@ fn delete_removed_files(store: &SqliteStore, removed_paths: &[String]) -> Result
 fn finish_removed_only_update(
     store: &SqliteStore,
     root: &Path,
+    git_meta: Option<&GitMeta>,
     total_start: Instant,
     phase1_elapsed: Duration,
     quiet: bool,
@@ -168,7 +182,7 @@ fn finish_removed_only_update(
     )?;
     let phase4_elapsed = phase4_start.elapsed();
 
-    store.write_meta()?;
+    store.write_meta(git_meta)?;
     let total_elapsed = total_start.elapsed();
     println!(
         "{} {} file(s) pruned in {:.1}s",

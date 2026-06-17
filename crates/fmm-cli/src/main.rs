@@ -72,7 +72,14 @@ fn run() -> anyhow::Result<()> {
 fn run_command(command: Commands) -> anyhow::Result<()> {
     match command {
         Commands::Generate(args) => {
-            cli::generate(&args.paths, args.dry_run, args.force, args.quiet)?;
+            cli::generate_with_git(
+                &args.paths,
+                args.dry_run,
+                args.force,
+                args.quiet,
+                args.sha.as_deref(),
+                args.no_git,
+            )?;
         }
         Commands::Validate(args) => {
             println!("{}", "Validating index...".green().bold());

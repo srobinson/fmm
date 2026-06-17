@@ -552,6 +552,12 @@ pub fn write_meta(conn: &Connection, key: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn delete_meta(conn: &Connection, key: &str) -> Result<()> {
+    conn.execute("DELETE FROM meta WHERE key = ?1", params![key])
+        .context("Failed to delete meta")?;
+    Ok(())
+}
+
 #[cfg(test)]
 #[path = "writer_tests.rs"]
 mod tests;

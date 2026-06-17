@@ -19,7 +19,7 @@ use std::sync::Mutex;
 
 use fmm_core::identity::Fingerprint;
 use fmm_core::manifest::Manifest;
-use fmm_core::store::FmmStore;
+use fmm_core::store::{FmmStore, GitMeta};
 use fmm_core::types::PreserializedRow;
 
 use state::InnerState;
@@ -173,7 +173,7 @@ impl FmmStore for InMemoryStore {
         Ok(())
     }
 
-    fn write_meta(&self) -> Result<(), Self::Error> {
+    fn write_meta(&self, _git_meta: Option<&GitMeta>) -> Result<(), Self::Error> {
         Ok(())
     }
 }

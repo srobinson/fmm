@@ -9,7 +9,9 @@ use rusqlite::{Connection, params};
 
 use fmm_core::identity::Fingerprint;
 use fmm_core::manifest::Manifest;
-use fmm_core::store::FmmStore;
+use fmm_core::store::{
+    FmmStore, GIT_BRANCH_META_KEY, GIT_DIRTY_META_KEY, GIT_META_KEYS, GIT_SHA_META_KEY, GitMeta,
+};
 use fmm_core::types::PreserializedRow;
 
 use crate::error::StoreError;
@@ -203,11 +205,25 @@ impl FmmStore for SqliteStore {
         writer::upsert_workspace_packages(&conn, packages).map_err(StoreError::Other)
     }
 
-    fn write_meta(&self) -> Result<(), Self::Error> {
+    fn write_meta(&self, git_meta: Option<&GitMeta>) -> Result<(), Self::Error> {
         let conn = self.conn.borrow();
         writer::write_meta(&conn, "fmm_version", fmm_core::VERSION).map_err(StoreError::Other)?;
         writer::write_meta(&conn, "generated_at", &Utc::now().to_rfc3339())
             .map_err(StoreError::Other)?;
+        for key in GIT_META_KEYS {
+            writer::delete_meta(&conn, key).map_err(StoreError::Other)?;
+        }
+        if let Some(meta) = git_meta {
+            writer::write_meta(&conn, GIT_SHA_META_KEY, &meta.sha).map_err(StoreError::Other)?;
+            writer::write_meta(
+                &conn,
+                GIT_BRANCH_META_KEY,
+                meta.branch.as_deref().unwrap_or(""),
+            )
+            .map_err(StoreError::Other)?;
+            writer::write_meta(&conn, GIT_DIRTY_META_KEY, &meta.dirty.to_string())
+                .map_err(StoreError::Other)?;
+        }
         Ok(())
     }
 }
@@ -330,7 +346,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let store = SqliteStore::open_or_create(dir.path()).unwrap();
 
-        store.write_meta().unwrap();
+        store.write_meta(None).unwrap();
 
         let conn = store.conn.borrow();
         let version: String = conn
@@ -346,6 +362,55 @@ mod tests {
             })
             .unwrap();
         assert!(!generated.is_empty());
+    }
+
+    #[test]
+    fn sqlite_store_write_meta_persists_git_metadata() {
+        let dir = TempDir::new().unwrap();
+        let store = SqliteStore::open_or_create(dir.path()).unwrap();
+        let git_meta = GitMeta {
+            sha: "0123456789abcdef0123456789abcdef01234567".to_owned(),
+            branch: Some("main".to_owned()),
+            dirty: true,
+        };
+
+        store.write_meta(Some(&git_meta)).unwrap();
+        drop(store);
+
+        let store = SqliteStore::open(dir.path()).unwrap();
+        let conn = store.conn.borrow();
+        let sha = crate::connection::read_meta(&conn, GIT_SHA_META_KEY)
+            .unwrap()
+            .unwrap();
+        let branch = crate::connection::read_meta(&conn, GIT_BRANCH_META_KEY)
+            .unwrap()
+            .unwrap();
+        let dirty = crate::connection::read_meta(&conn, GIT_DIRTY_META_KEY)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(sha, git_meta.sha);
+        assert_eq!(branch, "main");
+        assert_eq!(dirty, "true");
+    }
+
+    #[test]
+    fn sqlite_store_write_meta_clears_git_metadata_when_absent() {
+        let dir = TempDir::new().unwrap();
+        let store = SqliteStore::open_or_create(dir.path()).unwrap();
+        let git_meta = GitMeta {
+            sha: "0123456789abcdef0123456789abcdef01234567".to_owned(),
+            branch: None,
+            dirty: false,
+        };
+
+        store.write_meta(Some(&git_meta)).unwrap();
+        store.write_meta(None).unwrap();
+
+        let conn = store.conn.borrow();
+        for key in GIT_META_KEYS {
+            assert_eq!(crate::connection::read_meta(&conn, key).unwrap(), None);
+        }
     }
 
     #[test]
