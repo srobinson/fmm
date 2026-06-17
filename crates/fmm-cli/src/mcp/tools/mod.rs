@@ -2,6 +2,7 @@
 
 pub(super) mod common;
 mod cycles;
+mod dupes;
 mod exports;
 mod glossary;
 mod graph;
@@ -14,6 +15,7 @@ mod similar;
 
 // Tool dispatch — re-exported for use from mcp/mod.rs
 pub(super) use cycles::tool_dependency_cycles;
+pub(super) use dupes::tool_dupe_clusters;
 pub(super) use exports::tool_list_exports;
 pub(super) use glossary::tool_glossary;
 pub(super) use graph::tool_dependency_graph;

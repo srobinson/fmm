@@ -1,9 +1,12 @@
 //! Search result formatters: bare search, filter search, glossary.
 
+use crate::dupes::DupeClustersResult;
 use crate::format::{collapse_ws, push_kind_line, yaml_escape};
 use crate::manifest::GlossaryEntry;
 use crate::search::{BareSearchResult, ExportHitCompact, FileSearchResult};
 use crate::similarity::{Signals, SimilarMatch};
+
+const DUPE_TEXT_MEMBER_LIMIT: usize = 12;
 
 /// Format symbol similarity matches as text (shared by CLI and MCP). Matches are
 /// threshold-gated upstream, so an empty slice means nothing cleared the bar.
@@ -32,6 +35,62 @@ pub fn format_similar(query: &str, matches: &[SimilarMatch]) -> String {
             signals_note(&m.signals)
         ));
     }
+    lines.join("\n")
+}
+
+/// Format repo wide duplicate candidate clusters as compact text.
+pub fn format_dupe_clusters(result: &DupeClustersResult) -> String {
+    let mut lines = vec![format!(
+        "Duplicate candidates ({} cluster{}):",
+        result.clusters.len(),
+        if result.clusters.len() == 1 { "" } else { "s" }
+    )];
+    lines.push(format!(
+        "stats: candidates={} blocks={} comparisons={} clusters={}",
+        result.stats.candidates,
+        result.stats.blocks,
+        result.stats.comparisons,
+        result.stats.clusters
+    ));
+
+    if result.clusters.is_empty() {
+        lines.push("No duplicate candidate clusters found.".to_string());
+    }
+
+    for (index, cluster) in result.clusters.iter().enumerate() {
+        lines.push(format!(
+            "{}. score {:.2} ({} members)",
+            index + 1,
+            cluster.score,
+            cluster.members.len()
+        ));
+        for member in cluster.members.iter().take(DUPE_TEXT_MEMBER_LIMIT) {
+            let signature = member
+                .signature
+                .as_deref()
+                .map(collapse_ws)
+                .unwrap_or_default();
+            let kind = member.kind.as_deref().unwrap_or("?");
+            lines.push(format!(
+                "  {}  {}:{}-{}  {}  {}",
+                member.name, member.file, member.lines[0], member.lines[1], kind, signature
+            ));
+        }
+        if cluster.members.len() > DUPE_TEXT_MEMBER_LIMIT {
+            lines.push(format!(
+                "  ... {} more members",
+                cluster.members.len() - DUPE_TEXT_MEMBER_LIMIT
+            ));
+        }
+    }
+
+    for diagnostic in &result.diagnostics {
+        lines.push(format!(
+            "warning [{}]: {}",
+            diagnostic.code, diagnostic.message
+        ));
+    }
+
     lines.join("\n")
 }
 

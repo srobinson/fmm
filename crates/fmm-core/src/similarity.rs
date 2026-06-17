@@ -426,16 +426,55 @@ fn score_against(
 }
 
 /// Flattened view of one indexed symbol.
-struct Candidate {
-    name: String,
-    file: String,
-    start: usize,
-    end: usize,
-    signature: Option<String>,
-    kind: Option<String>,
+#[derive(Debug, Clone)]
+pub(crate) struct Candidate {
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+    pub(crate) signature: Option<String>,
+    pub(crate) kind: Option<String>,
 }
 
-fn collect_candidates(manifest: &Manifest) -> Vec<Candidate> {
+pub(crate) fn score_candidates(
+    manifest: &Manifest,
+    left: &Candidate,
+    right: &Candidate,
+) -> (f64, Signals) {
+    let left_neighbors = file_neighbors(manifest, &left.file);
+    let neighborhood = neighborhood_score(&left_neighbors, manifest, &left.file, &right.file);
+    score_against(
+        &tokenize_name(&left.name),
+        &left
+            .signature
+            .as_deref()
+            .map(signature_shape)
+            .unwrap_or_default(),
+        left.kind.as_deref(),
+        &right.name,
+        right.signature.as_deref(),
+        right.kind.as_deref(),
+        neighborhood,
+    )
+}
+
+pub(crate) fn candidate_shape_key(candidate: &Candidate) -> String {
+    let shape = candidate
+        .signature
+        .as_deref()
+        .map(signature_shape)
+        .unwrap_or_default();
+    format!(
+        "arity={};ret={}",
+        shape
+            .arity
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "?".to_string()),
+        shape.ret.as_deref().unwrap_or("?")
+    )
+}
+
+pub(crate) fn collect_candidates(manifest: &Manifest) -> Vec<Candidate> {
     let mut out = Vec::new();
     for (file, entry) in &manifest.files {
         for (i, name) in entry.exports.iter().enumerate() {

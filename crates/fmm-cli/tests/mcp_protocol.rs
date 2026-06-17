@@ -166,6 +166,7 @@ fn mcp_protocol_tools_list() {
         "fmm_file_outline",
         "fmm_list_files",
         "fmm_glossary",
+        "fmm_dupe_clusters",
     ];
     for name in &expected {
         assert!(
@@ -185,6 +186,20 @@ fn mcp_protocol_tools_list() {
         outline_properties.contains_key("truncate"),
         "fmm_file_outline must expose truncate so its truncation hint is valid"
     );
+
+    let dupe_tool = tools
+        .iter()
+        .find(|tool| tool["name"] == "fmm_dupe_clusters")
+        .expect("fmm_dupe_clusters schema must be listed");
+    let dupe_properties = dupe_tool["inputSchema"]["properties"]
+        .as_object()
+        .expect("fmm_dupe_clusters properties must be an object");
+    for property in ["directory", "kind", "min_score", "limit", "include_tests"] {
+        assert!(
+            dupe_properties.contains_key(property),
+            "fmm_dupe_clusters must expose {property}; got {dupe_properties:?}"
+        );
+    }
 }
 
 #[test]

@@ -128,3 +128,16 @@ pub const SIMILAR_DIRECTORY_HELP: &str = "Scope candidates to a directory prefix
 pub const SIMILAR_LIMIT_HELP: &str = "Maximum matches returned (default: 10)";
 #[rustfmt::skip]
 pub const SIMILAR_INCLUDE_TESTS_HELP: &str = "Include test symbols as candidates";
+
+#[rustfmt::skip]
+pub const DUPES_ABOUT: &str = "Find repo wide structural duplicate candidate clusters.\n\nReuses the existing similar scorer in batch mode. Blocks candidates by declaration kind, rare name tokens, and signature shape to avoid all-pairs scans, then clusters accepted pairs deterministically.";
+#[rustfmt::skip]
+pub const DUPES_DIRECTORY_HELP: &str = "Scope candidates to a directory prefix";
+#[rustfmt::skip]
+pub const DUPES_KIND_HELP: &str = "Restrict candidates to a declaration kind; repeat to include several kinds";
+#[rustfmt::skip]
+pub const DUPES_MIN_SCORE_HELP: &str = "Minimum pair score required to join a cluster (default: 0.90)";
+#[rustfmt::skip]
+pub const DUPES_LIMIT_HELP: &str = "Maximum clusters returned (default: 10)";
+#[rustfmt::skip]
+pub const DUPES_INCLUDE_TESTS_HELP: &str = "Include test symbols as candidates";

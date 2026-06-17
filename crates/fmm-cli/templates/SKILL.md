@@ -50,6 +50,7 @@ CLI commands use short terminal names. Aliases mirror MCP tool names with the `f
 | `fmm_list_files` | `fmm ls` | `fmm list-files` |
 | `fmm_glossary` | `fmm glossary` | none |
 | `fmm_find_similar` | `fmm similar` | none |
+| `fmm_dupe_clusters` | `fmm dupes` | none |
 
 ## Navigation Workflow
 
@@ -366,6 +367,18 @@ Find existing functions or types structurally similar to a probe, before writing
 | `kind` | string | no | Declaration kind to match: fn, method, struct, trait, enum, type, const. |
 | `directory` | string | no | Path prefix to scope candidates (e.g. 'crates/fmm-core/'). |
 | `limit` | integer | no | Maximum matches to return (default: 10). Results are threshold-gated, so fewer may return. |
+| `include_tests` | boolean | no | Include test functions and modules as candidates (default: false). |
+
+### `fmm_dupe_clusters`
+
+Find repo wide structural duplicate candidate clusters by reusing the find similar ranker in batch mode. Deterministic: blocks candidates by declaration kind, rare name tokens, and signature shape, scores unique unordered pairs with the existing structural scorer, then union-finds accepted pairs into clusters.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `directory` | string | no | Path prefix to scope candidates (e.g. 'crates/fmm-core/'). |
+| `kind` | array | no | Declaration kinds to include. Repeat --kind in the CLI. Typical values: fn, method, struct, trait, enum, type, const. |
+| `min_score` | number | no | Minimum pair score required to join a cluster. Defaults to 0.90, calibrated separately from fmm similar for repo-wide... |
+| `limit` | integer | no | Maximum clusters to return (default: 10). |
 | `include_tests` | boolean | no | Include test functions and modules as candidates (default: false). |
 
 ## Rules
