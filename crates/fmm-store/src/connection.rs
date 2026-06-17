@@ -1,7 +1,7 @@
 //! SQLite connection management for fmm databases.
 
 use anyhow::{Context, Result};
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use std::path::Path;
 
 use crate::schema;
@@ -62,14 +62,16 @@ pub fn open_db_unchecked(root: &Path) -> Result<Connection> {
     Ok(conn)
 }
 
+pub fn read_meta(conn: &Connection, key: &str) -> Result<Option<String>> {
+    conn.query_row("SELECT value FROM meta WHERE key=?1", [key], |row| {
+        row.get(0)
+    })
+    .optional()
+    .with_context(|| format!("Failed to read meta key {key}"))
+}
+
 fn check_version_match(conn: &Connection) -> Result<()> {
-    let stored: Option<String> = conn
-        .query_row(
-            "SELECT value FROM meta WHERE key='fmm_version'",
-            [],
-            |row| row.get(0),
-        )
-        .ok();
+    let stored = read_meta(conn, "fmm_version")?;
     let running = fmm_core::VERSION;
     if let Some(ref v) = stored
         && v != running

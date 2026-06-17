@@ -32,7 +32,7 @@ pub use commands::{
 pub use glossary::glossary;
 pub use init::init;
 pub use search::{SearchOptions, search};
-pub use sidecar::{clean, generate, validate};
+pub use sidecar::{clean, generate, generate_with_git, validate};
 pub use status::status;
 pub use watch::watch;
 

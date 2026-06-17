@@ -11,6 +11,18 @@ use crate::identity::Fingerprint;
 use crate::manifest::Manifest;
 use crate::types::PreserializedRow;
 
+pub const GIT_SHA_META_KEY: &str = "git_sha";
+pub const GIT_BRANCH_META_KEY: &str = "git_branch";
+pub const GIT_DIRTY_META_KEY: &str = "git_dirty";
+pub const GIT_META_KEYS: [&str; 3] = [GIT_SHA_META_KEY, GIT_BRANCH_META_KEY, GIT_DIRTY_META_KEY];
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GitMeta {
+    pub sha: String,
+    pub branch: Option<String>,
+    pub dirty: bool,
+}
+
 /// Persistence port for the fmm index.
 ///
 /// Implementors provide storage for the parsed file index, export metadata,
@@ -113,13 +125,15 @@ pub trait FmmStore {
         packages: &HashMap<String, PathBuf>,
     ) -> Result<(), Self::Error>;
 
-    /// Write store metadata (fmm version, timestamp).
+    /// Write store metadata (fmm version, timestamp, optional git metadata).
     ///
     /// Reads the version from `fmm_core::VERSION` and computes the current
-    /// timestamp. Implementations store these as key-value pairs.
+    /// timestamp. Implementations store these as key-value pairs. When
+    /// `git_meta` is absent, implementations remove git-specific keys so stale
+    /// values are not reported.
     ///
     /// # Errors
     ///
     /// Returns an error if the metadata write fails.
-    fn write_meta(&self) -> Result<(), Self::Error>;
+    fn write_meta(&self, git_meta: Option<&GitMeta>) -> Result<(), Self::Error>;
 }

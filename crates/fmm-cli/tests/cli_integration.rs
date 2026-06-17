@@ -496,11 +496,12 @@ fn respects_gitignore() {
     let path = tmp.path().to_str().unwrap();
 
     // The ignore crate only respects .gitignore inside a git repo
-    std::process::Command::new("git")
-        .args(["init"])
+    let output = Command::new("git")
+        .arg("init")
         .current_dir(tmp.path())
         .output()
         .expect("git init failed");
+    assert!(output.status.success());
 
     // Create .gitignore that ignores utils.py
     fs::write(tmp.path().join(".gitignore"), "src/utils.py\n").unwrap();

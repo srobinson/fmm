@@ -1,7 +1,7 @@
 use super::super::McpServer;
 use fmm_core::identity::Fingerprint;
 use fmm_core::manifest::Manifest;
-use fmm_core::store::FmmStore;
+use fmm_core::store::{FmmStore, GitMeta};
 use fmm_core::types::PreserializedRow;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -60,7 +60,7 @@ impl FmmStore for NullStore {
         unimplemented!("NullStore")
     }
 
-    fn write_meta(&self) -> Result<(), Self::Error> {
+    fn write_meta(&self, _git_meta: Option<&GitMeta>) -> Result<(), Self::Error> {
         unimplemented!("NullStore")
     }
 }
