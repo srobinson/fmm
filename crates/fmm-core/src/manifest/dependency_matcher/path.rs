@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use crate::manifest::Manifest;
-use crate::resolver::workspace::WorkspaceEcosystem;
+use crate::resolver::{relative_importer_starts_with_package_dir, workspace::WorkspaceEcosystem};
 
 const JS_TS_SOURCE_EXTENSIONS: &[&str] = &["ts", "tsx", "js", "jsx", "mjs", "cjs"];
 const RUST_SOURCE_EXTENSIONS: &[&str] = &["rs"];
@@ -32,7 +32,10 @@ pub(super) fn is_cargo_workspace_source(path: &Path, manifest: &Manifest) -> boo
         && manifest
             .workspace_packages_for(WorkspaceEcosystem::Rust)
             .values()
-            .any(|dir| path.starts_with(dir) && dir.join("Cargo.toml").exists())
+            .any(|dir| {
+                (path.starts_with(dir) || relative_importer_starts_with_package_dir(path, dir))
+                    && dir.join("Cargo.toml").exists()
+            })
 }
 
 /// Return a reference to the lazily initialised set of source file extensions

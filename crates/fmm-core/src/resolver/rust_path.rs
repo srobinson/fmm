@@ -1,6 +1,6 @@
 use std::path::{Component, Path};
 
-pub(super) fn relative_importer_starts_with_package_dir(
+pub(crate) fn relative_importer_starts_with_package_dir(
     importer: &Path,
     package_dir: &Path,
 ) -> bool {
