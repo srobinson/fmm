@@ -23,7 +23,8 @@ pub use go::GoImportResolver;
 pub(crate) use module_hierarchy::is_direct_module_hierarchy_relative;
 pub use rust::RustImportResolver;
 pub(crate) use rust_path::{
-    normal_components, rust_module_name_from_path, rust_module_name_from_specifier,
+    normal_components, relative_importer_starts_with_package_dir, rust_module_name_from_path,
+    rust_module_name_from_specifier,
 };
 
 /// Resolve an import specifier from a source file into an indexed file path.

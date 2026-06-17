@@ -206,3 +206,89 @@ rtm-core = { path = "../rtm-core" }
     );
     assert!(lib_importers.contains(&cli_main_key), "{lib_importers:?}");
 }
+
+#[test]
+fn rust_crate_import_with_relative_manifest_keys_stays_in_importer_crate() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_file(
+        tmp.path(),
+        "crates/fmm-core/Cargo.toml",
+        r#"
+[package]
+name = "fmm-core"
+version = "0.1.0"
+edition = "2024"
+"#,
+    );
+    write_file(
+        tmp.path(),
+        "crates/fmm-cli/Cargo.toml",
+        r#"
+[package]
+name = "fmm-cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+fmm-core = { path = "../fmm-core" }
+"#,
+    );
+    write_file(tmp.path(), "crates/fmm-core/src/lib.rs", "pub mod dupes;");
+    write_file(
+        tmp.path(),
+        "crates/fmm-core/src/dupes.rs",
+        "pub struct DupeClustersResult;",
+    );
+    write_file(
+        tmp.path(),
+        "crates/fmm-core/src/format/search_formatters.rs",
+        "use crate::dupes::DupeClustersResult;",
+    );
+    write_file(
+        tmp.path(),
+        "crates/fmm-cli/src/cli/commands/dupes.rs",
+        "pub fn dupes() {}",
+    );
+
+    let core_dupes_key = "crates/fmm-core/src/dupes.rs".to_string();
+    let search_formatters_key = "crates/fmm-core/src/format/search_formatters.rs".to_string();
+    let cli_dupes_key = "crates/fmm-cli/src/cli/commands/dupes.rs".to_string();
+    let mut manifest = Manifest::new();
+    manifest.workspace_packages = HashMap::from([
+        ("fmm_core".to_string(), tmp.path().join("crates/fmm-core")),
+        ("fmm_cli".to_string(), tmp.path().join("crates/fmm-cli")),
+    ]);
+    manifest.files.insert(
+        core_dupes_key.clone(),
+        crate::manifest::FileEntry::default(),
+    );
+    manifest.files.insert(
+        search_formatters_key.clone(),
+        crate::manifest::FileEntry {
+            dependencies: vec!["crate::dupes".to_string()],
+            ..Default::default()
+        },
+    );
+    manifest
+        .files
+        .insert(cli_dupes_key.clone(), crate::manifest::FileEntry::default());
+
+    let reverse_deps = build_reverse_deps(&manifest);
+    let core_dupes_importers = reverse_deps
+        .get(&core_dupes_key)
+        .cloned()
+        .unwrap_or_default();
+    let cli_dupes_importers = reverse_deps
+        .get(&cli_dupes_key)
+        .cloned()
+        .unwrap_or_default();
+
+    assert!(
+        core_dupes_importers.contains(&search_formatters_key),
+        "{core_dupes_importers:?}"
+    );
+    assert!(
+        !cli_dupes_importers.contains(&search_formatters_key),
+        "{cli_dupes_importers:?}"
+    );
+}
