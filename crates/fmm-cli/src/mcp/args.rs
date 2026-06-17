@@ -12,6 +12,7 @@ pub(super) struct ListExportsArgs {
     pub(super) pattern: Option<String>,
     pub(super) file: Option<String>,
     pub(super) directory: Option<String>,
+    pub(super) filter: Option<String>,
     pub(super) limit: Option<usize>,
     pub(super) offset: Option<usize>,
 }

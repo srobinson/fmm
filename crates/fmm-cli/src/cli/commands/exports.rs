@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::Args;
 use colored::Colorize;
+use fmm_core::config::{Config, FileTypeFilter};
 use fmm_core::manifest::{FileEntry, Manifest};
 
 use super::{load_manifest, missing_file_diagnostic, warn_no_sidecars};
@@ -19,6 +20,10 @@ pub struct ExportsCommandArgs {
     #[arg(long = "dir")]
     pub dir: Option<String>,
 
+    /// File type filter: all (default), source (exclude tests), tests (only tests)
+    #[arg(long, default_value = "all", value_parser = ["all", "source", "tests"])]
+    pub filter: String,
+
     /// Maximum number of results (default: 200)
     #[arg(long)]
     pub limit: Option<usize>,
@@ -35,6 +40,29 @@ pub struct ExportsCommandArgs {
 type ExportMatch = (String, String, Option<[usize; 2]>);
 type ExportMatcher = Box<dyn Fn(&str) -> bool>;
 
+struct ExportFileFilter<'a> {
+    directory: Option<&'a str>,
+    file_type: FileTypeFilter,
+    config: &'a Config,
+}
+
+impl ExportFileFilter<'_> {
+    fn matches_path(&self, path: &str) -> bool {
+        path_matches_directory(path, self.directory)
+    }
+
+    fn matches_export(&self, manifest: &Manifest, name: &str, path: &str) -> bool {
+        self.matches_path(path)
+            && manifest.export_matches_filter(name, path, self.file_type, self.config)
+    }
+
+    fn filtered_entry(&self, manifest: &Manifest, file: &str) -> Option<FileEntry> {
+        self.matches_path(file)
+            .then(|| manifest.filtered_file_entry(file, self.file_type, self.config))
+            .flatten()
+    }
+}
+
 #[derive(serde::Serialize)]
 struct ExportJson {
     name: String,
@@ -47,6 +75,7 @@ pub fn exports(
     pattern: Option<&str>,
     file: Option<&str>,
     directory: Option<&str>,
+    filter: &str,
     limit: Option<usize>,
     offset: usize,
     json_output: bool,
@@ -56,6 +85,13 @@ pub fn exports(
     }
 
     let (root, manifest) = load_manifest()?;
+    let config = Config::load_from_dir(&root).unwrap_or_default();
+    let file_filter = FileTypeFilter::parse(filter).unwrap_or(FileTypeFilter::All);
+    let export_filter = ExportFileFilter {
+        directory,
+        file_type: file_filter,
+        config: &config,
+    };
 
     if manifest.files.is_empty() {
         warn_no_sidecars();
@@ -63,11 +99,11 @@ pub fn exports(
     }
 
     if let Some(file_path) = file {
-        print_file_exports(&root, &manifest, file_path, json_output)?;
+        print_file_exports(&root, &manifest, file_path, &export_filter, json_output)?;
     } else if let Some(pat) = pattern {
-        print_pattern_exports(&manifest, pat, directory, limit, offset, json_output)?;
+        print_pattern_exports(&manifest, pat, &export_filter, limit, offset, json_output)?;
     } else {
-        print_all_exports(&manifest, directory, limit, offset, json_output)?;
+        print_all_exports(&manifest, &export_filter, limit, offset, json_output)?;
     }
 
     Ok(())
@@ -87,23 +123,26 @@ fn print_file_exports(
     root: &std::path::Path,
     manifest: &Manifest,
     file_path: &str,
+    filter: &ExportFileFilter<'_>,
     json_output: bool,
 ) -> Result<()> {
-    let entry = manifest
-        .files
-        .get(file_path)
-        .ok_or_else(|| anyhow::anyhow!(missing_file_diagnostic(root, file_path)))?;
+    if !manifest.files.contains_key(file_path) {
+        anyhow::bail!(missing_file_diagnostic(root, file_path));
+    }
+    let entry = filter
+        .filtered_entry(manifest, file_path)
+        .unwrap_or_default();
 
     if json_output {
         let json = FileExportsJson {
             file: file_path.to_string(),
-            exports: entry_exports_json(file_path, entry),
+            exports: entry_exports_json(file_path, &entry),
         };
         println!("{}", serde_json::to_string_pretty(&json)?);
     } else {
         println!(
             "{}",
-            fmm_core::format::format_list_exports_file(file_path, entry)
+            fmm_core::format::format_list_exports_file(file_path, &entry)
         );
     }
 
@@ -113,13 +152,13 @@ fn print_file_exports(
 fn print_pattern_exports(
     manifest: &Manifest,
     pattern: &str,
-    directory: Option<&str>,
+    filter: &ExportFileFilter<'_>,
     limit: Option<usize>,
     offset: usize,
     json_output: bool,
 ) -> Result<()> {
     let matcher = export_matcher(pattern)?;
-    let mut matches = collect_pattern_matches(manifest, directory, &*matcher);
+    let mut matches = collect_pattern_matches(manifest, filter, &*matcher);
     matches.sort_by_key(|a| a.0.to_lowercase());
     let total = matches.len();
     let (page_start, page_end) = page_bounds(total, limit, offset);
@@ -168,13 +207,13 @@ fn export_matcher(pattern: &str) -> Result<ExportMatcher> {
 
 fn collect_pattern_matches(
     manifest: &Manifest,
-    directory: Option<&str>,
+    filter: &ExportFileFilter<'_>,
     matcher: &dyn Fn(&str) -> bool,
 ) -> Vec<ExportMatch> {
     let mut matches: Vec<ExportMatch> = manifest
         .export_index
         .iter()
-        .filter(|(name, path)| path_matches_directory(path, directory) && matcher(name))
+        .filter(|(name, path)| filter.matches_export(manifest, name, path) && matcher(name))
         .map(|(name, path)| {
             let lines = manifest
                 .export_locations
@@ -186,7 +225,7 @@ fn collect_pattern_matches(
         .collect();
 
     for (dotted_name, loc) in &manifest.method_index {
-        if matcher(dotted_name) && path_matches_directory(&loc.file, directory) {
+        if matcher(dotted_name) && filter.matches_export(manifest, dotted_name, &loc.file) {
             let lines = loc.lines.as_ref().map(|l| [l.start, l.end]);
             matches.push((dotted_name.clone(), loc.file.clone(), lines));
         }
@@ -197,26 +236,30 @@ fn collect_pattern_matches(
 
 fn print_all_exports(
     manifest: &Manifest,
-    directory: Option<&str>,
+    filter: &ExportFileFilter<'_>,
     limit: Option<usize>,
     offset: usize,
     json_output: bool,
 ) -> Result<()> {
-    let mut by_file: Vec<(&str, &FileEntry)> = manifest
+    let mut by_file: Vec<(String, FileEntry)> = manifest
         .files
-        .iter()
-        .filter(|(path, entry)| {
-            path_matches_directory(path, directory) && !entry.exports.is_empty()
+        .keys()
+        .filter_map(|path| {
+            let entry = filter.filtered_entry(manifest, path)?;
+            (!entry.exports.is_empty()).then(|| (path.clone(), entry))
         })
-        .map(|(path, entry)| (path.as_str(), entry))
         .collect();
     by_file.sort_by_key(|(path, _)| path.to_lowercase());
     let total = by_file.len();
     let (page_start, page_end) = page_bounds(total, limit, offset);
     let by_file = &by_file[page_start..page_end];
+    let by_file_refs: Vec<(&str, &FileEntry)> = by_file
+        .iter()
+        .map(|(file, entry)| (file.as_str(), entry))
+        .collect();
 
     if json_output {
-        let json: Vec<FileExportsJson> = by_file
+        let json: Vec<FileExportsJson> = by_file_refs
             .iter()
             .map(|(file, entry)| FileExportsJson {
                 file: file.to_string(),
@@ -227,7 +270,7 @@ fn print_all_exports(
     } else {
         println!(
             "{}",
-            fmm_core::format::format_list_exports_all(by_file, total, page_start)
+            fmm_core::format::format_list_exports_all(&by_file_refs, total, page_start)
         );
     }
 

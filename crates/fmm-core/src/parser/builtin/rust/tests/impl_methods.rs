@@ -1,4 +1,5 @@
 use super::support::{get_method, parse};
+use crate::parser::{DeclarationKind, SymbolVisibility};
 
 #[test]
 fn rust_impl_methods_get_own_line_ranges() {
@@ -61,6 +62,44 @@ fn rust_trait_impl_pub_fn_indexed() {
     assert!(
         get_method(&result.metadata.exports, "Foo", "method").is_some(),
         "Foo.method from trait impl should be indexed"
+    );
+}
+
+#[test]
+fn rust_trait_method_signatures_indexed_as_members() {
+    let source = "\
+pub trait Store {
+    fn load_manifest(&self) -> Result<Manifest>;
+
+    fn write_meta(&mut self) {
+        todo!()
+    }
+}";
+    let result = parse(source);
+
+    let load_manifest = get_method(&result.metadata.exports, "Store", "load_manifest")
+        .expect("Store.load_manifest trait signature should be indexed");
+    assert_eq!(load_manifest.parent_class.as_deref(), Some("Store"));
+    assert_eq!(
+        load_manifest.declaration_kind,
+        Some(DeclarationKind::Method)
+    );
+    assert_eq!(load_manifest.visibility, Some(SymbolVisibility::Public));
+    assert_eq!(
+        load_manifest.signature.as_deref(),
+        Some("fn load_manifest(&self) -> Result<Manifest>")
+    );
+
+    let write_meta = get_method(&result.metadata.exports, "Store", "write_meta")
+        .expect("Store.write_meta default method should be indexed");
+    assert_eq!(write_meta.declaration_kind, Some(DeclarationKind::Method));
+    assert_eq!(
+        write_meta.signature.as_deref(),
+        Some("fn write_meta(&mut self)")
+    );
+    assert!(
+        !write_meta.signature.as_deref().unwrap().contains("todo!"),
+        "default method body must not be included in the outline signature"
     );
 }
 

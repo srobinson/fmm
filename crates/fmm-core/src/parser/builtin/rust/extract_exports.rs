@@ -269,6 +269,7 @@ impl RustParser {
         match node.kind() {
             "struct_item" => Self::collect_struct_fields(node, source_bytes, seen, exports),
             "enum_item" => Self::collect_enum_variants(node, source_bytes, seen, exports),
+            "trait_item" => Self::collect_trait_methods(node, source_bytes, seen, exports),
             "impl_item" => {
                 if let Some(name) = Self::impl_name(node, source_bytes)
                     && seen.insert(symbol_key_for_node(None, &name, node))
@@ -320,6 +321,36 @@ impl RustParser {
                 extract_field_text(&node, source_bytes, "name")
             }
             _ => None,
+        }
+    }
+
+    fn collect_trait_methods(
+        node: Node,
+        source_bytes: &[u8],
+        seen: &mut HashSet<String>,
+        exports: &mut Vec<ExportEntry>,
+    ) {
+        let Some(parent_name) = extract_field_text(&node, source_bytes, "name") else {
+            return;
+        };
+        let Some(body) = node.child_by_field_name("body") else {
+            return;
+        };
+        let parent_visibility = visibility_for(node, source_bytes);
+        let mut cursor = body.walk();
+        for child in body.children(&mut cursor) {
+            if !matches!(child.kind(), "function_signature_item" | "function_item") {
+                continue;
+            }
+            if let Some(method_name) = extract_field_text(&child, source_bytes, "name") {
+                let key = symbol_key_for_node(Some(&parent_name), &method_name, child);
+                if seen.insert(key) {
+                    let mut entry =
+                        rust_method_entry(method_name, child, source_bytes, parent_name.clone());
+                    entry.visibility = Some(parent_visibility);
+                    exports.push(entry);
+                }
+            }
         }
     }
 

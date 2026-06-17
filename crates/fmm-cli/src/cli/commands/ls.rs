@@ -1,6 +1,7 @@
 use crate::filename_glob::FilenameGlob;
 use anyhow::Result;
 use clap::Args;
+use fmm_core::config::FileTypeFilter;
 use fmm_core::search::DependencyGraphQuery;
 
 use super::{load_manifest, warn_no_sidecars};
@@ -108,7 +109,14 @@ pub fn ls(
         })
         .transpose()?;
 
-    let mut entries = collect_entries(&manifest, directory, glob_pattern.as_ref(), filter, &config);
+    let file_filter = FileTypeFilter::parse(filter).unwrap_or(FileTypeFilter::All);
+    let mut entries = collect_entries(
+        &manifest,
+        directory,
+        glob_pattern.as_ref(),
+        file_filter,
+        &config,
+    );
 
     // Rollup mode: group by immediate subdirectory.
     if group_by == Some("subdir") {
@@ -173,7 +181,7 @@ fn collect_entries<'a>(
     manifest: &'a fmm_core::manifest::Manifest,
     directory: Option<&str>,
     glob_pattern: Option<&FilenameGlob>,
-    filter: &str,
+    filter: FileTypeFilter,
     config: &fmm_core::config::Config,
 ) -> Vec<ListEntry<'a>> {
     let graph_query = DependencyGraphQuery::new(manifest).ok();
@@ -196,11 +204,7 @@ fn collect_entries<'a>(
                     return false;
                 }
             }
-            match filter {
-                "tests" => config.is_test_file(path),
-                "source" => !config.is_test_file(path),
-                _ => true,
-            }
+            filter.matches(path, config)
         })
         .map(|(path, entry)| {
             let downstream = graph_query

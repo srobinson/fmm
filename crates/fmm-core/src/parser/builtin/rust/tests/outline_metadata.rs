@@ -204,6 +204,48 @@ fn rust_impl_method_private_visibility_is_indexed() {
 }
 
 #[test]
+fn rust_inline_test_module_exports_are_test_kind() {
+    let source = r#"
+pub fn source_api() {}
+
+#[cfg(test)]
+mod integration_support {
+    pub fn wal_mode_is_active() {}
+}
+
+mod tests {
+    pub struct Fixture;
+}
+"#;
+    let result = parse(source);
+
+    assert_entry(
+        &result.metadata.exports,
+        "source_api",
+        SymbolVisibility::Public,
+        DeclarationKind::Fn,
+    );
+    assert_entry(
+        &result.metadata.exports,
+        "integration_support",
+        SymbolVisibility::Private,
+        DeclarationKind::Test,
+    );
+    assert_entry(
+        &result.metadata.exports,
+        "wal_mode_is_active",
+        SymbolVisibility::NonExported,
+        DeclarationKind::Test,
+    );
+    assert_entry(
+        &result.metadata.exports,
+        "Fixture",
+        SymbolVisibility::NonExported,
+        DeclarationKind::Test,
+    );
+}
+
+#[test]
 fn rust_duplicate_nested_names_are_not_collapsed() {
     let source = r#"
 pub mod first {

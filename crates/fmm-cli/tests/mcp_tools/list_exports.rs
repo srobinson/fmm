@@ -1,5 +1,29 @@
-use crate::support::{call_tool_text, setup_mcp_server};
+use crate::support::{call_tool_text, setup_mcp_server, write_file};
 use serde_json::json;
+
+fn setup_export_filter_server() -> (tempfile::TempDir, fmm::mcp::SqliteMcpServer) {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path();
+    write_file(
+        root,
+        "src/helpers.ts",
+        "export function loadHelper() {\n  return {};\n}\n",
+    );
+    write_file(
+        root,
+        "src/helpers.test.ts",
+        "export function testHelper() {\n  return {};\n}\n",
+    );
+    write_file(
+        root,
+        "src/inline.rs",
+        "pub fn source_api() {}\n\n#[cfg(test)]\nmod integration_support {\n    pub fn wal_mode_is_active() {}\n}\n",
+    );
+
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
+    let server = fmm::mcp::SqliteMcpServer::with_root(root.to_path_buf());
+    (tmp, server)
+}
 
 #[test]
 fn list_exports_by_file() {
@@ -68,6 +92,70 @@ fn list_exports_directory_filter_all() {
         !text.contains("createSession"),
         "createSession from src/auth/ should not appear; got: {text}"
     );
+}
+
+#[test]
+fn list_exports_filter_source_excludes_test_exports() {
+    let (_tmp, server) = setup_export_filter_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_list_exports",
+        json!({"pattern": "Helper", "filter": "source"}),
+    );
+
+    assert!(text.contains("loadHelper"), "got: {text}");
+    assert!(!text.contains("testHelper"), "got: {text}");
+}
+
+#[test]
+fn list_exports_filter_tests_includes_only_test_exports() {
+    let (_tmp, server) = setup_export_filter_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_list_exports",
+        json!({"pattern": "Helper", "filter": "tests"}),
+    );
+
+    assert!(text.contains("testHelper"), "got: {text}");
+    assert!(!text.contains("loadHelper"), "got: {text}");
+}
+
+#[test]
+fn list_exports_filter_source_excludes_inline_test_module_exports() {
+    let (_tmp, server) = setup_export_filter_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_list_exports",
+        json!({"pattern": "wal_mode_is_active", "filter": "source"}),
+    );
+
+    assert!(!text.contains("wal_mode_is_active"), "got: {text}");
+}
+
+#[test]
+fn list_exports_filter_tests_includes_inline_test_module_exports() {
+    let (_tmp, server) = setup_export_filter_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_list_exports",
+        json!({"pattern": "wal_mode_is_active", "filter": "tests"}),
+    );
+
+    assert!(text.contains("wal_mode_is_active"), "got: {text}");
+    assert!(text.contains("src/inline.rs"), "got: {text}");
+}
+
+#[test]
+fn list_exports_filter_source_excludes_inline_test_module_exports_in_all_mode() {
+    let (_tmp, server) = setup_export_filter_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_list_exports",
+        json!({"directory": "src/", "filter": "source"}),
+    );
+
+    assert!(text.contains("source_api"), "got: {text}");
+    assert!(!text.contains("wal_mode_is_active"), "got: {text}");
 }
 
 #[test]

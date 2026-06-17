@@ -1,7 +1,8 @@
 //! `fmm_list_exports` tool implementation.
 
 use crate::mcp::args::ListExportsArgs;
-use fmm_core::manifest::Manifest;
+use fmm_core::config::{Config, FileTypeFilter};
+use fmm_core::manifest::{FileEntry, Manifest};
 use serde_json::Value;
 
 use super::common::missing_file_diagnostic;
@@ -17,15 +18,36 @@ pub(in crate::mcp) fn tool_list_exports(
         serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
 
     let dir = args.directory.as_deref();
+    let filter = args.filter.as_deref().unwrap_or("all");
     let limit = args.limit.unwrap_or(DEFAULT_LIMIT);
     let offset = args.offset.unwrap_or(0);
+    if !matches!(filter, "all" | "source" | "tests") {
+        return Err(format!(
+            "Invalid filter '{}'. Valid values: all, source, tests.",
+            filter
+        ));
+    }
+    let config = Config::load_from_dir(root).unwrap_or_default();
+    let file_filter = FileTypeFilter::parse(filter).unwrap_or(FileTypeFilter::All);
+    let path_matches_dir = |path: &str| dir.is_none_or(|d| path.starts_with(d));
+    let export_matches = |name: &str, path: &str| {
+        path_matches_dir(path) && manifest.export_matches_filter(name, path, file_filter, &config)
+    };
 
     if let Some(ref file_path) = args.file {
-        let entry = manifest
-            .files
-            .get(file_path)
-            .ok_or_else(|| missing_file_diagnostic(root, file_path))?;
-        Ok(fmm_core::format::format_list_exports_file(file_path, entry))
+        if !manifest.files.contains_key(file_path) {
+            return Err(missing_file_diagnostic(root, file_path));
+        }
+        let entry = if path_matches_dir(file_path) {
+            manifest
+                .filtered_file_entry(file_path, file_filter, &config)
+                .unwrap_or_default()
+        } else {
+            FileEntry::default()
+        };
+        Ok(fmm_core::format::format_list_exports_file(
+            file_path, &entry,
+        ))
     } else if let Some(ref pat) = args.pattern {
         // Auto-detect regex: if the pattern contains any metacharacter, compile
         // it as a case-sensitive regex.  Plain patterns keep the existing
@@ -45,14 +67,7 @@ pub(in crate::mcp) fn tool_list_exports(
         let mut matches: Vec<(String, String, Option<[usize; 2]>)> = manifest
             .export_index
             .iter()
-            .filter(|(name, path)| {
-                if let Some(d) = dir
-                    && !path.starts_with(d)
-                {
-                    return false;
-                }
-                matcher(name)
-            })
+            .filter(|(name, path)| export_matches(name, path) && matcher(name))
             .map(|(name, path)| {
                 let lines = manifest
                     .export_locations
@@ -67,9 +82,7 @@ pub(in crate::mcp) fn tool_list_exports(
             if !matcher(dotted_name) {
                 continue;
             }
-            if let Some(d) = dir
-                && !loc.file.starts_with(d)
-            {
+            if !export_matches(dotted_name, &loc.file) {
                 continue;
             }
             let lines = loc.lines.as_ref().map(|l| [l.start, l.end]);
@@ -83,25 +96,26 @@ pub(in crate::mcp) fn tool_list_exports(
             &page, total, offset,
         ))
     } else {
-        let mut by_file: Vec<(&str, &fmm_core::manifest::FileEntry)> = manifest
+        let mut by_file: Vec<(String, FileEntry)> = manifest
             .files
-            .iter()
-            .filter(|(path, entry)| {
-                if let Some(d) = dir
-                    && !path.starts_with(d)
-                {
-                    return false;
+            .keys()
+            .filter_map(|path| {
+                if !path_matches_dir(path) {
+                    return None;
                 }
-                !entry.exports.is_empty()
+                let entry = manifest.filtered_file_entry(path, file_filter, &config)?;
+                (!entry.exports.is_empty()).then(|| (path.clone(), entry))
             })
-            .map(|(path, entry)| (path.as_str(), entry))
             .collect();
         by_file.sort_by_key(|(path, _)| path.to_lowercase());
         let total = by_file.len();
-        let page: Vec<(&str, &fmm_core::manifest::FileEntry)> =
-            by_file.into_iter().skip(offset).take(limit).collect();
+        let page: Vec<(String, FileEntry)> = by_file.into_iter().skip(offset).take(limit).collect();
+        let page_refs: Vec<(&str, &FileEntry)> = page
+            .iter()
+            .map(|(file, entry)| (file.as_str(), entry))
+            .collect();
         Ok(fmm_core::format::format_list_exports_all(
-            &page, total, offset,
+            &page_refs, total, offset,
         ))
     }
 }

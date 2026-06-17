@@ -60,6 +60,42 @@ fn file_outline_shows_all_exports() {
 }
 
 #[test]
+fn file_outline_lists_rust_trait_method_signatures() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path();
+    write_file(
+        root,
+        "src/store.rs",
+        "pub trait FmmStore {\n    fn load_manifest(&self) -> Result<Manifest>;\n\n    fn write_meta(&mut self) {\n        todo!()\n    }\n}\n",
+    );
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
+    let server = fmm::mcp::SqliteMcpServer::with_root(root.to_path_buf());
+
+    let text = call_tool_text(
+        &server,
+        "fmm_file_outline",
+        json!({"file": "src/store.rs", "include_private": true}),
+    );
+
+    assert!(text.contains("FmmStore:"), "got: {text}");
+    assert!(text.contains("members:"), "got: {text}");
+    assert!(text.contains("- name: load_manifest"), "got: {text}");
+    assert!(
+        text.contains("signature: 'fn load_manifest(&self) -> Result<Manifest>'"),
+        "got: {text}"
+    );
+    assert!(text.contains("- name: write_meta"), "got: {text}");
+    assert!(
+        text.contains("signature: 'fn write_meta(&mut self)'"),
+        "got: {text}"
+    );
+    assert!(
+        !text.contains("todo!"),
+        "default method body must stay out of outline signatures; got: {text}"
+    );
+}
+
+#[test]
 fn file_outline_returns_symbols() {
     let (_tmp, server) = setup_mcp_server();
     let text = call_tool_text(
