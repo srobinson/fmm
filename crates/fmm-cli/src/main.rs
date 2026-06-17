@@ -137,6 +137,16 @@ fn run_command(command: Commands) -> anyhow::Result<()> {
                 args.json,
             )?;
         }
+        Commands::Dupes(args) => {
+            cli::dupes(
+                args.directory,
+                args.kind,
+                args.min_score,
+                args.limit,
+                args.include_tests,
+                args.json,
+            )?;
+        }
         Commands::Read(args) => {
             cli::read_symbol(&args.symbol, args.no_truncate, args.line_numbers, args.json)?;
         }

@@ -348,6 +348,35 @@ serde_json::from_str(r##"{
           "name"
         ]
       }
+    },
+    {
+      "name": "fmm_dupe_clusters",
+      "description": "Find repo wide structural duplicate candidate clusters by reusing the find similar ranker in batch mode. Deterministic: blocks candidates by declaration kind, rare name tokens, and signature shape, scores unique unordered pairs with the existing structural scorer, then union-finds accepted pairs into clusters.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "directory": {
+            "type": "string",
+            "description": "Path prefix to scope candidates (e.g. 'crates/fmm-core/')."
+          },
+          "kind": {
+            "type": "array",
+            "description": "Declaration kinds to include. Repeat --kind in the CLI. Typical values: fn, method, struct, trait, enum, type, const."
+          },
+          "min_score": {
+            "type": "number",
+            "description": "Minimum pair score required to join a cluster. Defaults to the same threshold as fmm similar."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum clusters to return (default: 10)."
+          },
+          "include_tests": {
+            "type": "boolean",
+            "description": "Include test functions and modules as candidates (default: false)."
+          }
+        }
+      }
     }
   ]
 }"##).expect("generated tool list is valid JSON")

@@ -6,6 +6,8 @@
 
 #[path = "mcp_tools/dependency_graph.rs"]
 mod dependency_graph;
+#[path = "mcp_tools/dupes.rs"]
+mod dupes;
 #[path = "mcp_tools/file_outline.rs"]
 mod file_outline;
 #[path = "mcp_tools/glossary.rs"]

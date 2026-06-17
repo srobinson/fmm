@@ -597,3 +597,43 @@ type            = "boolean"
 mcp_description = "Include test functions and modules as candidates (default: false)."
 cli_help        = "Include test symbols as candidates"
 cli_flag        = "--include-tests"
+
+[tools.fmm_dupe_clusters]
+cli_name        = "dupes"
+mcp_description = "Find repo wide structural duplicate candidate clusters by reusing the find similar ranker in batch mode. Deterministic: blocks candidates by declaration kind, rare name tokens, and signature shape, scores unique unordered pairs with the existing structural scorer, then union-finds accepted pairs into clusters."
+cli_about       = "Find repo wide structural duplicate candidate clusters.\n\nReuses the existing similar scorer in batch mode. Blocks candidates by declaration kind, rare name tokens, and signature shape to avoid all-pairs scans, then clusters accepted pairs deterministically."
+
+[[tools.fmm_dupe_clusters.params]]
+name            = "directory"
+type            = "string"
+mcp_description = "Path prefix to scope candidates (e.g. 'crates/fmm-core/')."
+cli_help        = "Scope candidates to a directory prefix"
+cli_flag        = "--dir"
+
+[[tools.fmm_dupe_clusters.params]]
+name            = "kind"
+type            = "array"
+mcp_description = "Declaration kinds to include. Repeat --kind in the CLI. Typical values: fn, method, struct, trait, enum, type, const."
+cli_help        = "Restrict candidates to a declaration kind; repeat to include several kinds"
+cli_flag        = "--kind"
+
+[[tools.fmm_dupe_clusters.params]]
+name            = "min_score"
+type            = "number"
+mcp_description = "Minimum pair score required to join a cluster. Defaults to the same threshold as fmm similar."
+cli_help        = "Minimum pair score required to join a cluster"
+cli_flag        = "--min-score"
+
+[[tools.fmm_dupe_clusters.params]]
+name            = "limit"
+type            = "integer"
+mcp_description = "Maximum clusters to return (default: 10)."
+cli_help        = "Maximum clusters returned (default: 10)"
+cli_flag        = "--limit"
+
+[[tools.fmm_dupe_clusters.params]]
+name            = "include_tests"
+type            = "boolean"
+mcp_description = "Include test functions and modules as candidates (default: false)."
+cli_help        = "Include test symbols as candidates"
+cli_flag        = "--include-tests"

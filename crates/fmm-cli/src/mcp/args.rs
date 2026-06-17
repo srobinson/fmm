@@ -110,3 +110,12 @@ pub(super) struct FindSimilarArgs {
     pub(super) limit: Option<usize>,
     pub(super) include_tests: Option<bool>,
 }
+
+#[derive(Deserialize)]
+pub(super) struct DupeClustersArgs {
+    pub(super) directory: Option<String>,
+    pub(super) kind: Option<Vec<String>>,
+    pub(super) min_score: Option<f64>,
+    pub(super) limit: Option<usize>,
+    pub(super) include_tests: Option<bool>,
+}
