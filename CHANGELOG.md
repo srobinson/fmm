@@ -27,6 +27,13 @@
 * document path based test filtering for Rust inline test modules
 * recommend `fmm generate` as the schema mismatch rebuild path
 
+## [0.3.7](https://github.com/srobinson/fmm/compare/v0.3.6...v0.3.7) (2026-06-17)
+
+
+### Features
+
+* **index:** record git sha/branch/dirty in index meta ([#154](https://github.com/srobinson/fmm/issues/154)) ([805ae4c](https://github.com/srobinson/fmm/commit/805ae4c414fe6dcf939c0bcb9b49f8ae46783ef8))
+
 ## [0.3.6](https://github.com/srobinson/fmm/compare/v0.3.5...v0.3.6) (2026-06-04)
 
 
