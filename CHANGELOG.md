@@ -27,6 +27,13 @@
 * document path based test filtering for Rust inline test modules
 * recommend `fmm generate` as the schema mismatch rebuild path
 
+## [0.3.12](https://github.com/srobinson/fmm/compare/v0.3.11...v0.3.12) (2026-06-17)
+
+
+### Bug Fixes
+
+* resolve rust crate import phantom edges ([#166](https://github.com/srobinson/fmm/issues/166)) ([cd577f2](https://github.com/srobinson/fmm/commit/cd577f2acd77bb2628b94ba8ea433fd82f186235))
+
 ## [0.3.11](https://github.com/srobinson/fmm/compare/v0.3.10...v0.3.11) (2026-06-17)
 
 
