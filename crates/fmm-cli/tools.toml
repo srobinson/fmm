@@ -293,8 +293,8 @@ cli_flag        = "--filter"
 [tools.fmm_dependency_cycles]
 cli_name        = "cycles"
 cli_aliases     = ["dependency-cycles"]
-mcp_description = "Report strongly connected dependency cycles over the internal graph. Defaults to runtime edges, excluding TypeScript type-only imports. Use edge_mode='all' to include type-only edges. Optional file scopes output to cycles containing that file. filter='source' excludes tests, filter='tests' shows only test files."
-cli_about       = "Report strongly connected dependency cycles. Defaults to runtime edges and path-based output."
+mcp_description = "Report strongly connected dependency cycles over the internal graph. Defaults to runtime edges, excluding TypeScript type-only imports and module-hierarchy facade edges. Use edge_mode='all' to include type-only edges. Set include_mod_hierarchy=true to restore facade edges. Set explain=true to include the edges that keep each SCC connected. Optional file scopes output to cycles containing that file. filter='source' excludes tests, filter='tests' shows only test files."
+cli_about       = "Report strongly connected dependency cycles. Defaults to runtime edges and hides module-hierarchy facades."
 
 [[tools.fmm_dependency_cycles.params]]
 name            = "file"
@@ -318,6 +318,20 @@ enum            = ["runtime", "all"]
 mcp_description = "Edge mode for cycle reporting. 'runtime' (default) excludes TypeScript type-only edges. 'all' includes type-only edges."
 cli_help        = "Edge mode: runtime (default, excludes type-only edges) or all"
 cli_flag        = "--edge-mode"
+
+[[tools.fmm_dependency_cycles.params]]
+name            = "include_mod_hierarchy"
+type            = "boolean"
+mcp_description = "When true, include module-hierarchy facade edges. Default false hides barrel, __init__, and Rust module facade cycles."
+cli_help        = "Include module-hierarchy facade edges"
+cli_flag        = "--include-mod-hierarchy"
+
+[[tools.fmm_dependency_cycles.params]]
+name            = "explain"
+type            = "boolean"
+mcp_description = "When true, include the resolved edges that keep each reported strongly connected component connected, with edge kind."
+cli_help        = "Include edges that keep each SCC connected"
+cli_flag        = "--explain"
 
 [tools.fmm_read_symbol]
 cli_name        = "read"

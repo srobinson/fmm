@@ -7,7 +7,7 @@ use crate::manifest::{Manifest, build_dependency_edges};
 mod cycles;
 
 pub(crate) use cycles::dependency_cycles_with_node_filter;
-pub use cycles::{CycleEdgeMode, dependency_cycles};
+pub use cycles::{CycleEdgeMode, CycleOptions, dependency_cycles, dependency_cycles_with_options};
 
 /// Dense graph node identity used inside `GraphIndex`.
 #[repr(transparent)]

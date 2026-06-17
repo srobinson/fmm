@@ -80,6 +80,18 @@ fn cycle_server() -> TestServer {
         vec!["./bridge-a"],
         HashMap::new(),
     );
+    add_file(
+        &mut manifest,
+        "src/index.ts",
+        vec!["./widget"],
+        HashMap::new(),
+    );
+    add_file(
+        &mut manifest,
+        "src/widget.ts",
+        vec!["./index"],
+        HashMap::new(),
+    );
     manifest.rebuild_file_identity().unwrap();
     test_server(manifest)
 }
@@ -93,6 +105,8 @@ fn dependency_cycles_reports_runtime_cycles_by_default() {
     assert!(text.contains("src/a.ts"));
     assert!(text.contains("src/b.ts"));
     assert!(!text.contains("src/types-a.ts"), "got:\n{text}");
+    assert!(!text.contains("src/index.ts"), "got:\n{text}");
+    assert!(!text.contains("src/widget.ts"), "got:\n{text}");
 }
 
 #[test]
@@ -106,6 +120,35 @@ fn dependency_cycles_all_edge_mode_includes_type_only_cycles() {
 
     assert!(text.contains("src/types-a.ts"), "got:\n{text}");
     assert!(text.contains("src/types-b.ts"), "got:\n{text}");
+}
+
+#[test]
+fn dependency_cycles_include_mod_hierarchy_restores_facade_cycles() {
+    let server = cycle_server();
+    let text = tool_text(
+        &server,
+        "fmm_dependency_cycles",
+        json!({"include_mod_hierarchy": true}),
+    );
+
+    assert!(text.contains("src/index.ts"), "got:\n{text}");
+    assert!(text.contains("src/widget.ts"), "got:\n{text}");
+}
+
+#[test]
+fn dependency_cycles_explain_prints_closing_edges_with_kind() {
+    let server = cycle_server();
+    let text = tool_text(&server, "fmm_dependency_cycles", json!({"explain": true}));
+
+    assert!(text.contains("edges:"), "got:\n{text}");
+    assert!(
+        text.contains("src/a.ts -> src/b.ts  # runtime"),
+        "got:\n{text}"
+    );
+    assert!(
+        text.contains("src/b.ts -> src/a.ts  # runtime"),
+        "got:\n{text}"
+    );
 }
 
 #[test]

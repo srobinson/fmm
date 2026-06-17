@@ -34,6 +34,10 @@ pub(super) struct DependencyCyclesArgs {
     pub(super) filter: Option<String>,
     /// runtime / all (default: runtime)
     pub(super) edge_mode: Option<String>,
+    /// Include module-hierarchy facade edges.
+    pub(super) include_mod_hierarchy: Option<bool>,
+    /// Include edges that keep each SCC connected.
+    pub(super) explain: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
