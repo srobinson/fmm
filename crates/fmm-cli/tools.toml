@@ -54,6 +54,7 @@ fmm_glossary("Symbol", truncate: false)         →  bypass 10KB cap for large c
 fmm_dependency_graph(file: "src/injector.ts")   →  upstream deps + downstream blast radius
 fmm_dependency_graph(..., filter: "source")     →  production blast radius (no tests)
 fmm_dependency_graph(..., depth: -1)            →  full transitive closure
+fmm_dependency_graph(..., reverse: true, transitive: true) → reverse dependent closure
 ```
 
 ### Searching
@@ -154,7 +155,7 @@ fmm_search(term: "createServerFn") →
 
 **The dotted pattern is the contract.** `fmm_glossary(pattern: "loadInstance")` returns every file that imports `injector.ts` — a superset. `fmm_glossary(pattern: "Injector.loadInstance")` runs a tree-sitter second pass and returns only files with an actual call site. Use the dotted form for rename safety.
 
-**Dotted substring matching.** Dotted glossary patterns narrow to call sites but still match symbols as substrings of the full dotted name. `fmm_glossary(pattern: "Type.foo")` may return both `Type.foo` and `Type.foo_bar`; increase specificity or filter JSON output when you need a single symbol.
+**Dotted substring matching.** Dotted glossary patterns narrow to call sites but still match symbols as substrings of the full dotted name. `fmm_glossary(pattern: "Type.foo")` may return both `Type.foo` and `Type.foo_bar`; pass `exact: true` when you need exactly one full symbol name.
 
 **Dotted fields.** If the dotted member is an indexed field, `fmm_glossary` emits `kind: field` and explains that field access is not a method call site.
 
@@ -182,6 +183,7 @@ fmm_search(term: "createServerFn") →
    - external: third-party packages
    - downstream: files that import this file (complete and reliable)
 2. Transitive: fmm_dependency_graph(file: "...", depth: 3) or depth: -1 for full closure
+3. Reverse only: fmm_dependency_graph(file: "...", reverse: true, transitive: true)
 ```
 
 ### "Evaluate or audit this codebase"
@@ -264,8 +266,8 @@ cli_flag        = "--offset"
 [tools.fmm_dependency_graph]
 cli_name        = "deps"
 cli_aliases     = ["dependency-graph"]
-mcp_description = "Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius. Add depth>1 for transitive traversal; depth=-1 for full closure. Use filter='source' to exclude test files from downstream, or filter='tests' to see only test coverage."
-cli_about       = "Show a file's dependency graph: local_deps (resolved local imports), external (packages), and downstream (what would break if this file changes).\n\nUse --depth for transitive traversal. depth=-1 computes the full closure.\nUse --filter=source to exclude test files from downstream for production blast-radius analysis."
+mcp_description = "Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius. Add depth>1 for transitive traversal; depth=-1 for full closure. Set reverse=true to return only reverse dependents, and transitive=true for the full reverse-dependent closure with a count. Use filter='source' to exclude test files from downstream, or filter='tests' to see only test coverage."
+cli_about       = "Show a file's dependency graph: local_deps (resolved local imports), external (packages), and downstream (what would break if this file changes).\n\nUse --depth for transitive traversal. depth=-1 computes the full closure.\nUse --reverse --transitive for reverse dependents only, including the full closure and count.\nUse --filter=source to exclude test files from downstream for production blast-radius analysis."
 
 [[tools.fmm_dependency_graph.params]]
 name            = "file"
@@ -289,6 +291,20 @@ enum            = ["all", "source", "tests"]
 mcp_description = "Filter upstream and downstream lists by file type. 'all' (default): no filtering. 'source': exclude test files (*.spec.ts, *.test.ts, /test/, etc.) — use for production blast-radius analysis. 'tests': show only test files — use for test coverage analysis."
 cli_help        = "Filter upstream/downstream by file type: all (default), source (exclude tests), tests (only tests)"
 cli_flag        = "--filter"
+
+[[tools.fmm_dependency_graph.params]]
+name            = "reverse"
+type            = "boolean"
+mcp_description = "When true, return reverse dependents only instead of the combined upstream/downstream graph. Use with transitive=true for the full reverse-dependent closure."
+cli_help        = "Show reverse dependents only"
+cli_flag        = "--reverse"
+
+[[tools.fmm_dependency_graph.params]]
+name            = "transitive"
+type            = "boolean"
+mcp_description = "Return the full transitive closure. For reverse=true, this returns all transitive reverse dependents with reverse_deps_count. Equivalent to depth=-1."
+cli_help        = "Return the full transitive closure, equivalent to --depth -1"
+cli_flag        = "--transitive"
 
 [tools.fmm_dependency_cycles]
 cli_name        = "cycles"
@@ -509,15 +525,15 @@ cli_flag        = "--filter"
 
 [tools.fmm_glossary]
 cli_name        = "glossary"
-mcp_description = "Symbol-level impact analysis. Given a symbol name or pattern, returns all matching definitions and exactly which files import each one. Three-layer precision: bare names return named-import filtered callers (Layer 2, default); dotted method names (e.g. 'Injector.loadInstance') add call-site precision; dotted patterns use the same case-insensitive substring matching, so 'Type.foo' can match both 'Type.foo' and 'Type.foo_bar'. Dotted field names report kind: field without implying method callers; precision: 'call-site' adds Layer 3 tree-sitter verification to remove dead imports and annotate re-exports. Use before renaming or changing a signature."
+mcp_description = "Symbol-level impact analysis. Given a symbol name or pattern, returns all matching definitions and exactly which files import each one. Three-layer precision: bare names return named-import filtered callers (Layer 2, default); dotted method names (e.g. 'Injector.loadInstance') add call-site precision; dotted patterns use the same case-insensitive substring matching, so 'Type.foo' can match both 'Type.foo' and 'Type.foo_bar'. Set exact=true to match only the exact full export name. Dotted field names report kind: field without implying method callers; precision: 'call-site' adds Layer 3 tree-sitter verification to remove dead imports and annotate re-exports. Use before renaming or changing a signature."
 cli_about       = "Symbol-level impact analysis.\n\nGiven a symbol name or pattern, shows every definition and exactly which files import it. Use before renaming a function or changing a signature to know precisely what breaks."
 
 [[tools.fmm_glossary.params]]
 name            = "pattern"
 type            = "string"
 required        = true
-mcp_description = "Required. Case-insensitive substring filter on export name. Bare name (e.g. 'loadInstance') returns named-import filtered used_by (Layer 2). Dotted method name (e.g. 'Injector.loadInstance') adds call-site precision, filtered to actual callers, and matches on the full dotted name as a substring, so 'Type.foo' can match 'Type.foo' and 'Type.foo_bar'. Dotted field name emits kind: field and does not imply a method call site."
-cli_help        = "Symbol name or substring pattern (case-insensitive)"
+mcp_description = "Required. Case-insensitive substring filter on export name unless exact=true. Bare name (e.g. 'loadInstance') returns named-import filtered used_by (Layer 2). Dotted method name (e.g. 'Injector.loadInstance') adds call-site precision, filtered to actual callers, and matches on the full dotted name as a substring, so 'Type.foo' can match 'Type.foo' and 'Type.foo_bar'. Dotted field name emits kind: field and does not imply a method call site."
+cli_help        = "Symbol name or substring pattern (case-insensitive unless --exact is set)"
 cli_flag        = "pattern"
 
 [[tools.fmm_glossary.params]]
@@ -542,6 +558,13 @@ enum            = ["named", "call-site"]
 mcp_description = "named (default): Layer 2 only, fast index lookup with no file reads. call-site: adds Layer 3 tree-sitter verification to remove dead imports and annotate re-export-only files."
 cli_help        = "Precision level: named (default, fast) or call-site (tree-sitter verification)"
 cli_flag        = "--precision"
+
+[[tools.fmm_glossary.params]]
+name            = "exact"
+type            = "boolean"
+mcp_description = "When true, match only the exact full export name instead of case-insensitive substring matching. Useful for symbols whose names are substrings of many others."
+cli_help        = "Match only the exact export name instead of a substring"
+cli_flag        = "--exact"
 
 [[tools.fmm_glossary.params]]
 name            = "truncate"

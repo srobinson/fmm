@@ -108,6 +108,20 @@ fn setup_large_glossary_project() -> TempDir {
     tmp
 }
 
+fn setup_manifest_glossary_project() -> TempDir {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    write_file(
+        root,
+        "src/manifest.ts",
+        "export interface Manifest { version: string; }\nexport function build_manifest() {}\nexport function candidate_manifest_paths() { return []; }\nexport function crate_name_from_cargo_manifest() { return 'fmm'; }\n",
+    );
+
+    fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
+    tmp
+}
+
 #[test]
 fn glossary_named_precision_filters_to_named_importers() {
     let tmp = setup_precision_project();
@@ -196,6 +210,35 @@ fn glossary_no_truncate_bypasses_cli_response_cap() {
 }
 
 #[test]
+fn glossary_exact_returns_manifest_without_substring_matches() {
+    let tmp = setup_manifest_glossary_project();
+
+    let fuzzy = stdout(&run_fmm(
+        tmp.path(),
+        &["glossary", "Manifest", "--mode", "all"],
+    ));
+    assert!(fuzzy.contains("Manifest"), "got:\n{fuzzy}");
+    assert!(fuzzy.contains("build_manifest"), "got:\n{fuzzy}");
+    assert!(fuzzy.contains("candidate_manifest_paths"), "got:\n{fuzzy}");
+    assert!(
+        fuzzy.contains("crate_name_from_cargo_manifest"),
+        "got:\n{fuzzy}"
+    );
+
+    let exact = stdout(&run_fmm(
+        tmp.path(),
+        &["glossary", "Manifest", "--mode", "all", "--exact"],
+    ));
+    assert!(exact.contains("Manifest"), "got:\n{exact}");
+    assert!(!exact.contains("build_manifest"), "got:\n{exact}");
+    assert!(!exact.contains("candidate_manifest_paths"), "got:\n{exact}");
+    assert!(
+        !exact.contains("crate_name_from_cargo_manifest"),
+        "got:\n{exact}"
+    );
+}
+
+#[test]
 fn glossary_json_preserves_precision_annotations() {
     let tmp = setup_precision_project();
     let output = run_fmm(
@@ -273,5 +316,6 @@ fn glossary_help_documents_precision_and_truncation() {
     let text = String::from_utf8_lossy(&output.stdout);
     assert!(text.contains("--precision <PRECISION>"), "got: {text}");
     assert!(text.contains("call-site"), "got: {text}");
+    assert!(text.contains("--exact"), "got: {text}");
     assert!(text.contains("--no-truncate"), "got: {text}");
 }

@@ -27,6 +27,13 @@
 * document path based test filtering for Rust inline test modules
 * recommend `fmm generate` as the schema mismatch rebuild path
 
+## [0.3.10](https://github.com/srobinson/fmm/compare/v0.3.9...v0.3.10) (2026-06-17)
+
+
+### Features
+
+* add exact glossary and reverse transitive deps ([#161](https://github.com/srobinson/fmm/issues/161)) ([4b3fa84](https://github.com/srobinson/fmm/commit/4b3fa84121d6a93cf1b9c6f4b5b7e0a5afe8f280))
+
 ## [0.3.9](https://github.com/srobinson/fmm/compare/v0.3.8...v0.3.9) (2026-06-17)
 
 

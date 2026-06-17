@@ -118,6 +118,7 @@ fn run_command(command: Commands) -> anyhow::Result<()> {
                 &args.mode,
                 args.limit,
                 &args.precision,
+                args.exact,
                 args.no_truncate,
                 args.json,
             )?;
@@ -151,7 +152,14 @@ fn run_command(command: Commands) -> anyhow::Result<()> {
             cli::read_symbol(&args.symbol, args.no_truncate, args.line_numbers, args.json)?;
         }
         Commands::Deps(args) => {
-            cli::deps(&args.file, args.depth, &args.filter, args.json)?;
+            cli::deps(
+                &args.file,
+                args.depth,
+                &args.filter,
+                args.reverse,
+                args.transitive,
+                args.json,
+            )?;
         }
         Commands::Cycles(args) => {
             cli::cycles(

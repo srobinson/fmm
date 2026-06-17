@@ -1,4 +1,4 @@
-use fmm_core::manifest::{ExportLines, GlossaryEntry, GlossaryMode, Manifest};
+use fmm_core::manifest::{ExportLines, GlossaryEntry, GlossaryMode, GlossaryNameMatch, Manifest};
 use serde::Serialize;
 
 pub(crate) const DEFAULT_LIMIT: usize = 10;
@@ -36,6 +36,7 @@ pub(crate) struct GlossaryQuery<'a> {
     pub(crate) mode: GlossaryMode,
     pub(crate) limit: Option<usize>,
     pub(crate) precision: GlossaryPrecision,
+    pub(crate) exact: bool,
 }
 
 pub(crate) struct GlossaryResult {
@@ -62,7 +63,12 @@ pub(crate) fn compute_glossary(
     }
 
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(HARD_CAP);
-    let all_entries = manifest.build_glossary(pattern, query.mode);
+    let name_match = if query.exact {
+        GlossaryNameMatch::Exact
+    } else {
+        GlossaryNameMatch::Substring
+    };
+    let all_entries = manifest.build_glossary_with_match(pattern, query.mode, name_match);
     let total_matched = all_entries.len();
     let mut entries: Vec<_> = all_entries.into_iter().take(limit).collect();
     let mut contextual_message = None;

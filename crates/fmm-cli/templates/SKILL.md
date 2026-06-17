@@ -100,6 +100,7 @@ fmm_glossary("Symbol", truncate: false)         →  bypass 10KB cap for large c
 fmm_dependency_graph(file: "src/injector.ts")   →  upstream deps + downstream blast radius
 fmm_dependency_graph(..., filter: "source")     →  production blast radius (no tests)
 fmm_dependency_graph(..., depth: -1)            →  full transitive closure
+fmm_dependency_graph(..., reverse: true, transitive: true) → reverse dependent closure
 ```
 
 ### Searching
@@ -200,7 +201,7 @@ fmm_search(term: "createServerFn") →
 
 **The dotted pattern is the contract.** `fmm_glossary(pattern: "loadInstance")` returns every file that imports `injector.ts` — a superset. `fmm_glossary(pattern: "Injector.loadInstance")` runs a tree-sitter second pass and returns only files with an actual call site. Use the dotted form for rename safety.
 
-**Dotted substring matching.** Dotted glossary patterns narrow to call sites but still match symbols as substrings of the full dotted name. `fmm_glossary(pattern: "Type.foo")` may return both `Type.foo` and `Type.foo_bar`; increase specificity or filter JSON output when you need a single symbol.
+**Dotted substring matching.** Dotted glossary patterns narrow to call sites but still match symbols as substrings of the full dotted name. `fmm_glossary(pattern: "Type.foo")` may return both `Type.foo` and `Type.foo_bar`; pass `exact: true` when you need exactly one full symbol name.
 
 **Dotted fields.** If the dotted member is an indexed field, `fmm_glossary` emits `kind: field` and explains that field access is not a method call site.
 
@@ -228,6 +229,7 @@ fmm_search(term: "createServerFn") →
    - external: third-party packages
    - downstream: files that import this file (complete and reliable)
 2. Transitive: fmm_dependency_graph(file: "...", depth: 3) or depth: -1 for full closure
+3. Reverse only: fmm_dependency_graph(file: "...", reverse: true, transitive: true)
 ```
 
 ### "Evaluate or audit this codebase"
@@ -270,13 +272,15 @@ Search or list exported symbols across the codebase. Use 'pattern' for fuzzy dis
 
 ### `fmm_dependency_graph`
 
-Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius. Add depth>1 for transitive traversal; depth=-1 for full closure. Use filter='source' to exclude test files from downstream, or filter='tests' to see only test coverage.
+Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius. Add depth>1 for transitive traversal; depth=-1 for full closure. Set reverse=true to return only reverse dependents, and transitive=true for the full reverse-dependent closure with a count. Use filter='source' to exclude test files from downstream, or filter='tests' to see only test coverage.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `file` | string | yes | File path to analyze — returns all upstream dependencies and downstream dependents |
 | `depth` | integer | no | Traversal depth (default: 1 = direct deps only). depth=2 adds transitive deps. depth=-1 computes the full transitive ... |
 | `filter` | enum: all \| source \| tests | no | Filter upstream and downstream lists by file type. 'all' (default): no filtering. 'source': exclude test files (*.spe... |
+| `reverse` | boolean | no | When true, return reverse dependents only instead of the combined upstream/downstream graph. Use with transitive=true... |
+| `transitive` | boolean | no | Return the full transitive closure. For reverse=true, this returns all transitive reverse dependents with reverse_dep... |
 
 ### `fmm_dependency_cycles`
 
@@ -341,14 +345,15 @@ List all indexed files under a directory prefix. The first tool to reach for whe
 
 ### `fmm_glossary`
 
-Symbol-level impact analysis. Given a symbol name or pattern, returns all matching definitions and exactly which files import each one. Three-layer precision: bare names return named-import filtered callers (Layer 2, default); dotted method names (e.g. 'Injector.loadInstance') add call-site precision; dotted patterns use the same case-insensitive substring matching, so 'Type.foo' can match both 'Type.foo' and 'Type.foo_bar'. Dotted field names report kind: field without implying method callers; precision: 'call-site' adds Layer 3 tree-sitter verification to remove dead imports and annotate re-exports. Use before renaming or changing a signature.
+Symbol-level impact analysis. Given a symbol name or pattern, returns all matching definitions and exactly which files import each one. Three-layer precision: bare names return named-import filtered callers (Layer 2, default); dotted method names (e.g. 'Injector.loadInstance') add call-site precision; dotted patterns use the same case-insensitive substring matching, so 'Type.foo' can match both 'Type.foo' and 'Type.foo_bar'. Set exact=true to match only the exact full export name. Dotted field names report kind: field without implying method callers; precision: 'call-site' adds Layer 3 tree-sitter verification to remove dead imports and annotate re-exports. Use before renaming or changing a signature.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `pattern` | string | yes | Required. Case-insensitive substring filter on export name. Bare name (e.g. 'loadInstance') returns named-import filt... |
+| `pattern` | string | yes | Required. Case-insensitive substring filter on export name unless exact=true. Bare name (e.g. 'loadInstance') returns... |
 | `limit` | integer | no | Max entries returned (default 10, hard cap at 50). Use a specific pattern to stay under the default. |
 | `mode` | enum: source \| tests \| all | no | source (default): excludes test symbols and test files. tests: only test exports. all: unfiltered. |
 | `precision` | enum: named \| call-site | no | named (default): Layer 2 only, fast index lookup with no file reads. call-site: adds Layer 3 tree-sitter verification... |
+| `exact` | boolean | no | When true, match only the exact full export name instead of case-insensitive substring matching. Useful for symbols w... |
 | `truncate` | boolean | no | Whether to apply the 10KB response cap (default: true). Set to false to return the full glossary for symbols with man... |
 
 ### `fmm_find_similar`

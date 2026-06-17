@@ -61,7 +61,7 @@ serde_json::from_str(r##"{
     },
     {
       "name": "fmm_dependency_graph",
-      "description": "Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius. Add depth>1 for transitive traversal; depth=-1 for full closure. Use filter='source' to exclude test files from downstream, or filter='tests' to see only test coverage.",
+      "description": "Get a file's dependency graph: upstream dependencies (what it imports) and downstream dependents (what would break if it changes). Use for impact analysis and blast radius. Add depth>1 for transitive traversal; depth=-1 for full closure. Set reverse=true to return only reverse dependents, and transitive=true for the full reverse-dependent closure with a count. Use filter='source' to exclude test files from downstream, or filter='tests' to see only test coverage.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -81,6 +81,14 @@ serde_json::from_str(r##"{
               "source",
               "tests"
             ]
+          },
+          "reverse": {
+            "type": "boolean",
+            "description": "When true, return reverse dependents only instead of the combined upstream/downstream graph. Use with transitive=true for the full reverse-dependent closure."
+          },
+          "transitive": {
+            "type": "boolean",
+            "description": "Return the full transitive closure. For reverse=true, this returns all transitive reverse dependents with reverse_deps_count. Equivalent to depth=-1."
           }
         },
         "required": [
@@ -274,13 +282,13 @@ serde_json::from_str(r##"{
     },
     {
       "name": "fmm_glossary",
-      "description": "Symbol-level impact analysis. Given a symbol name or pattern, returns all matching definitions and exactly which files import each one. Three-layer precision: bare names return named-import filtered callers (Layer 2, default); dotted method names (e.g. 'Injector.loadInstance') add call-site precision; dotted patterns use the same case-insensitive substring matching, so 'Type.foo' can match both 'Type.foo' and 'Type.foo_bar'. Dotted field names report kind: field without implying method callers; precision: 'call-site' adds Layer 3 tree-sitter verification to remove dead imports and annotate re-exports. Use before renaming or changing a signature.",
+      "description": "Symbol-level impact analysis. Given a symbol name or pattern, returns all matching definitions and exactly which files import each one. Three-layer precision: bare names return named-import filtered callers (Layer 2, default); dotted method names (e.g. 'Injector.loadInstance') add call-site precision; dotted patterns use the same case-insensitive substring matching, so 'Type.foo' can match both 'Type.foo' and 'Type.foo_bar'. Set exact=true to match only the exact full export name. Dotted field names report kind: field without implying method callers; precision: 'call-site' adds Layer 3 tree-sitter verification to remove dead imports and annotate re-exports. Use before renaming or changing a signature.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "pattern": {
             "type": "string",
-            "description": "Required. Case-insensitive substring filter on export name. Bare name (e.g. 'loadInstance') returns named-import filtered used_by (Layer 2). Dotted method name (e.g. 'Injector.loadInstance') adds call-site precision, filtered to actual callers, and matches on the full dotted name as a substring, so 'Type.foo' can match 'Type.foo' and 'Type.foo_bar'. Dotted field name emits kind: field and does not imply a method call site."
+            "description": "Required. Case-insensitive substring filter on export name unless exact=true. Bare name (e.g. 'loadInstance') returns named-import filtered used_by (Layer 2). Dotted method name (e.g. 'Injector.loadInstance') adds call-site precision, filtered to actual callers, and matches on the full dotted name as a substring, so 'Type.foo' can match 'Type.foo' and 'Type.foo_bar'. Dotted field name emits kind: field and does not imply a method call site."
           },
           "limit": {
             "type": "integer",
@@ -302,6 +310,10 @@ serde_json::from_str(r##"{
               "named",
               "call-site"
             ]
+          },
+          "exact": {
+            "type": "boolean",
+            "description": "When true, match only the exact full export name instead of case-insensitive substring matching. Useful for symbols whose names are substrings of many others."
           },
           "truncate": {
             "type": "boolean",
