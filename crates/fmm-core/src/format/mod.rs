@@ -18,7 +18,7 @@ pub use search_formatters::{
 pub use yaml_formatters::{
     format_class_redirect, format_dependency_cycle_reports, format_dependency_cycles,
     format_dependency_graph, format_dependency_graph_transitive, format_file_outline,
-    format_lookup_export, format_read_symbol,
+    format_lookup_export, format_read_symbol, format_reverse_dependency_graph,
 };
 
 /// Collapse all runs of whitespace (incl. newlines) to single spaces and trim.

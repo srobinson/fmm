@@ -92,7 +92,7 @@ pub use dependency_cycles::{
     dependency_cycles_with_path_filter,
 };
 pub use dependency_graph::dependency_graph;
-pub use dependency_graph_transitive::dependency_graph_transitive;
+pub use dependency_graph_transitive::{dependency_graph_transitive, reverse_dependency_closure};
 pub use filter_search::filter_search;
 pub use graph_query::DependencyGraphQuery;
 pub use helpers::find_export_matches;

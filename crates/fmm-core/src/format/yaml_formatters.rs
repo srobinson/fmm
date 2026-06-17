@@ -445,6 +445,32 @@ pub fn format_dependency_graph_transitive(
     lines.join("\n")
 }
 
+pub fn format_reverse_dependency_graph(
+    file: &str,
+    reverse_deps: &[(String, i32)],
+    max_depth: i32,
+) -> String {
+    let mut lines = Vec::new();
+    lines.push("---".to_string());
+    lines.push(format!("file: {}", yaml_escape(file)));
+    lines.push("reverse: true".to_string());
+    if max_depth == -1 {
+        lines.push("depth: full (transitive closure)".to_string());
+    } else {
+        lines.push(format!("depth: {}", max_depth));
+    }
+    lines.push(format!("reverse_deps_count: {}", reverse_deps.len()));
+
+    if !reverse_deps.is_empty() {
+        lines.push("reverse_deps:".to_string());
+        for (path, depth) in reverse_deps {
+            lines.push(format!("  - file: {}  depth: {}", yaml_escape(path), depth));
+        }
+    }
+
+    lines.join("\n")
+}
+
 pub fn format_dependency_cycles(cycles: &[Vec<String>]) -> String {
     let mut lines = Vec::new();
     lines.push("---".to_string());

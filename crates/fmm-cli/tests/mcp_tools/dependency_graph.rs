@@ -32,6 +32,21 @@ fn dependency_graph_shows_downstream_dependents() {
 }
 
 #[test]
+fn dependency_graph_reverse_transitive_returns_count() {
+    let (_tmp, server) = setup_mcp_server();
+    let text = call_tool_text(
+        &server,
+        "fmm_dependency_graph",
+        json!({"file": "src/config.ts", "reverse": true, "transitive": true}),
+    );
+
+    assert!(text.contains("reverse: true"), "got: {text}");
+    assert!(text.contains("reverse_deps_count: 2"), "got: {text}");
+    assert!(text.contains("src/auth/session.ts"), "got: {text}");
+    assert!(text.contains("src/db/pool.ts"), "got: {text}");
+}
+
+#[test]
 fn dependency_graph_not_found() {
     let (_tmp, server) = setup_mcp_server();
     let text = call_tool_expect_error(

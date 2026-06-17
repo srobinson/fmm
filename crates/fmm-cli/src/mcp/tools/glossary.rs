@@ -32,6 +32,7 @@ pub(in crate::mcp) fn tool_glossary(
             mode,
             limit: args.limit,
             precision,
+            exact: args.exact.unwrap_or(false),
         },
     )?;
 

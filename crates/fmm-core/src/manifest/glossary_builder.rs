@@ -17,6 +17,21 @@ pub enum GlossaryMode {
     All,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GlossaryNameMatch {
+    Substring,
+    Exact,
+}
+
+impl GlossaryNameMatch {
+    fn matches(self, name: &str, pattern: &str, pattern_lower: &str) -> bool {
+        match self {
+            Self::Substring => name.to_lowercase().contains(pattern_lower),
+            Self::Exact => name == pattern,
+        }
+    }
+}
+
 /// Entry for a single export name in the glossary.
 #[derive(Debug, Clone, Serialize)]
 pub struct GlossaryEntry {
@@ -52,8 +67,8 @@ pub struct GlossarySource {
 }
 
 impl Manifest {
-    /// Build the glossary: for each export name matching `pattern` (case-insensitive
-    /// substring), collect all definitions and their dependents.
+    /// Build the glossary: for each export name containing `pattern` (case-insensitive),
+    /// collect all definitions and their dependents.
     /// Returns entries sorted alphabetically by name (case-insensitive).
     ///
     /// `mode` controls test filtering:
@@ -61,11 +76,21 @@ impl Manifest {
     /// - `Tests`: definitions from non-test files, `used_by` filtered to test callers — shows coverage
     /// - `All`: all definitions, all `used_by` unfiltered
     pub fn build_glossary(&self, pattern: &str, mode: GlossaryMode) -> Vec<GlossaryEntry> {
+        self.build_glossary_with_match(pattern, mode, GlossaryNameMatch::Substring)
+    }
+
+    /// Build the glossary with explicit export-name matching semantics.
+    pub fn build_glossary_with_match(
+        &self,
+        pattern: &str,
+        mode: GlossaryMode,
+        name_match: GlossaryNameMatch,
+    ) -> Vec<GlossaryEntry> {
         let pat_lower = pattern.to_lowercase();
         let mut entries: Vec<GlossaryEntry> = self
             .export_all
             .iter()
-            .filter(|(name, _)| name.to_lowercase().contains(&pat_lower))
+            .filter(|(name, _)| name_match.matches(name, pattern, &pat_lower))
             .filter_map(|(name, locations)| {
                 let sources: Vec<GlossarySource> = locations
                     .iter()
@@ -118,8 +143,7 @@ impl Manifest {
         // Pattern matches on the full dotted name, so both "create" and
         // "NestFactoryStatic.create" substring queries will hit the same entry.
         for (dotted_name, loc) in &self.method_index {
-            let lower = dotted_name.to_lowercase();
-            if !lower.contains(&pat_lower) {
+            if !name_match.matches(dotted_name, pattern, &pat_lower) {
                 continue;
             }
             // For Source/Tests modes, skip methods classified as test artifacts.
@@ -285,6 +309,48 @@ mod tests {
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
         assert!(names.contains(&"AppConfig"));
         assert!(names.contains(&"loadConfig"));
+    }
+
+    #[test]
+    fn build_glossary_exact_matches_only_full_export_name() {
+        let mut manifest = Manifest::new();
+        manifest.add_file(
+            "crates/fmm-core/src/manifest/mod.rs",
+            Metadata {
+                exports: vec![
+                    entry("Manifest", 76, 126),
+                    entry("build_manifest", 130, 160),
+                    entry("candidate_manifest_paths", 162, 190),
+                    entry("crate_name_from_cargo_manifest", 192, 210),
+                ],
+                imports: vec![],
+                dependencies: vec![],
+                loc: 220,
+                ..Default::default()
+            },
+        );
+
+        let fuzzy_entries = manifest.build_glossary("Manifest", GlossaryMode::All);
+        let fuzzy_names: Vec<&str> = fuzzy_entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(fuzzy_names.contains(&"Manifest"));
+        assert!(fuzzy_names.contains(&"build_manifest"));
+        assert!(fuzzy_names.contains(&"candidate_manifest_paths"));
+        assert!(fuzzy_names.contains(&"crate_name_from_cargo_manifest"));
+
+        let exact_entries = manifest.build_glossary_with_match(
+            "Manifest",
+            GlossaryMode::All,
+            GlossaryNameMatch::Exact,
+        );
+        let exact_names: Vec<&str> = exact_entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(exact_names, vec!["Manifest"]);
+
+        let lowercase_exact = manifest.build_glossary_with_match(
+            "manifest",
+            GlossaryMode::All,
+            GlossaryNameMatch::Exact,
+        );
+        assert!(lowercase_exact.is_empty());
     }
 
     #[test]

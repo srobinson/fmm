@@ -22,13 +22,17 @@ pub const EXPORTS_LIMIT_HELP: &str = "Maximum number of results (default: 200)";
 pub const EXPORTS_OFFSET_HELP: &str = "Number of results to skip (default: 0) — use for pagination";
 
 #[rustfmt::skip]
-pub const DEPS_ABOUT: &str = "Show a file's dependency graph: local_deps (resolved local imports), external (packages), and downstream (what would break if this file changes).\n\nUse --depth for transitive traversal. depth=-1 computes the full closure.\nUse --filter=source to exclude test files from downstream for production blast-radius analysis.";
+pub const DEPS_ABOUT: &str = "Show a file's dependency graph: local_deps (resolved local imports), external (packages), and downstream (what would break if this file changes).\n\nUse --depth for transitive traversal. depth=-1 computes the full closure.\nUse --reverse --transitive for reverse dependents only, including the full closure and count.\nUse --filter=source to exclude test files from downstream for production blast-radius analysis.";
 #[rustfmt::skip]
 pub const DEPS_FILE_HELP: &str = "Source file path (relative to project root, as indexed by fmm)";
 #[rustfmt::skip]
 pub const DEPS_DEPTH_HELP: &str = "Traversal depth (1 = direct deps only, -1 = full closure)";
 #[rustfmt::skip]
 pub const DEPS_FILTER_HELP: &str = "Filter upstream/downstream by file type: all (default), source (exclude tests), tests (only tests)";
+#[rustfmt::skip]
+pub const DEPS_REVERSE_HELP: &str = "Show reverse dependents only";
+#[rustfmt::skip]
+pub const DEPS_TRANSITIVE_HELP: &str = "Return the full transitive closure, equivalent to --depth -1";
 
 #[rustfmt::skip]
 pub const CYCLES_ABOUT: &str = "Report strongly connected dependency cycles. Defaults to runtime edges and hides module-hierarchy facades.";
@@ -98,13 +102,15 @@ pub const LS_FILTER_HELP: &str = "File type filter: all (default), source (exclu
 #[rustfmt::skip]
 pub const GLOSSARY_ABOUT: &str = "Symbol-level impact analysis.\n\nGiven a symbol name or pattern, shows every definition and exactly which files import it. Use before renaming a function or changing a signature to know precisely what breaks.";
 #[rustfmt::skip]
-pub const GLOSSARY_PATTERN_HELP: &str = "Symbol name or substring pattern (case-insensitive)";
+pub const GLOSSARY_PATTERN_HELP: &str = "Symbol name or substring pattern (case-insensitive unless --exact is set)";
 #[rustfmt::skip]
 pub const GLOSSARY_LIMIT_HELP: &str = "Maximum number of entries returned (default: 10)";
 #[rustfmt::skip]
 pub const GLOSSARY_MODE_HELP: &str = "Filter mode: source (default, no tests), tests (test coverage only), all (unfiltered)";
 #[rustfmt::skip]
 pub const GLOSSARY_PRECISION_HELP: &str = "Precision level: named (default, fast) or call-site (tree-sitter verification)";
+#[rustfmt::skip]
+pub const GLOSSARY_EXACT_HELP: &str = "Match only the exact export name instead of a substring";
 #[rustfmt::skip]
 pub const GLOSSARY_TRUNCATE_HELP: &str = "Return full glossary output, bypassing the 10KB response cap";
 
