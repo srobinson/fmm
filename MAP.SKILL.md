@@ -94,11 +94,13 @@ For each changed file, re-run `fmm outline <file>` / `fmm deps <file>` and updat
 When the map's health section should flag duplication, fmm surfaces *candidates*; you judge which are real:
 
 ```bash
-fmm similar <Symbol>                              # existing symbols structurally like this one
+fmm dupes                                         # repo-wide near-duplicate clusters (default threshold)
+fmm dupes --dir <path> --kind fn --min-score 0.4  # scope + tune the cluster scan
+fmm similar <Symbol>                              # existing symbols structurally like one probe
 fmm similar <name> --signature "(Path) -> Config" --kind fn   # pre-write probe
 ```
 
-`fmm similar` today is **probe-based** (one symbol at a time). There is no repo-wide duplicate scan yet. If during a real run you find yourself wanting "show me every near-duplicate cluster in the repo" or "every function over 150 lines," **stop and record it** — that is a missing fmm primitive (planned: `fmm dupes`, `fmm symbols`/`body_loc`), and the friction is the signal for what to build next. Do not brute-force it by reading dozens of files.
+`fmm dupes` is the repo-wide scan (it batches the `fmm similar` scorer and union-finds clusters); `fmm similar` remains the single-symbol probe. Treat every cluster as a *candidate*: per-language trait impls and intentionally-divergent constants (e.g. two `VERSION` consts reading different `env!` sources) score high but are usually fine. If during a real run you want a primitive that does not exist yet — e.g. "every function over 150 lines" (`fmm symbols`/`body_loc`) — **stop and record it**; the friction is the signal for what to build next. Do not brute-force it by reading dozens of files.
 
 ## Output
 

@@ -68,14 +68,16 @@ Use native tooling alongside fmm:
 | Command               | Purpose                                                            |
 | --------------------- | ------------------------------------------------------------------ |
 | `fmm init`            | Set up config, Claude skill, and MCP server                        |
-| `fmm generate [path]` | Index source files into `.fmm.db` (exports, imports, deps, LOC)   |
+| `fmm generate [path]` | Index source files into `.fmm.db` (exports, imports, deps, LOC); stamps git metadata (`--no-git` to skip, `--sha` to override) |
 | `fmm watch [path]`    | Watch source files and update the index on change                  |
 | `fmm validate [path]` | Check the index is current (CI-friendly, exit 1 if stale)          |
 | `fmm search`          | Query indexed structure: exports, imports, dependencies, LOC, and file-level matches |
-| `fmm glossary`        | Symbol-level impact analysis — who imports this export?            |
+| `fmm glossary`        | Symbol-level impact analysis — who imports this export? (`--exact` for exact-name match) |
 | `fmm similar`         | Find existing symbols similar to a probe — reuse instead of duplicate |
-| `fmm mcp`             | Start MCP server (10 tools for LLM navigation)                     |
-| `fmm status`          | Show config and workspace stats                                    |
+| `fmm cycles`          | Report runtime dependency cycles; hides module-hierarchy facades by default (`--include-mod-hierarchy`, `--explain`) |
+| `fmm dupes`           | Find repo-wide structural duplicate candidate clusters             |
+| `fmm mcp`             | Start MCP server (11 tools for LLM navigation)                     |
+| `fmm status`          | Show config, workspace stats, and indexed git metadata (SHA/branch/dirty) |
 | `fmm clean [path]`    | Clear the fmm index database                                       |
 
 Run `fmm --help` for workflows and examples, or `fmm <command> --help` for detailed per-command help.
@@ -94,10 +96,11 @@ CLI commands use short terminal names. MCP tools use descriptive agent names. Lo
 | `fmm_list_files`           | `fmm ls`      | `fmm list-files`         |
 | `fmm_glossary`             | `fmm glossary` | none                     |
 | `fmm_find_similar`         | `fmm similar` | `fmm find-similar`       |
+| `fmm_dupe_clusters`        | `fmm dupes`   | none                     |
 
 ## MCP Tools
 
-fmm includes a built-in MCP server with 10 tools. Configure via `fmm init --mcp` or manually:
+fmm includes a built-in MCP server with 11 tools. Configure via `fmm init --mcp` or manually:
 
 ```json
 {
@@ -114,13 +117,15 @@ fmm includes a built-in MCP server with 10 tools. Configure via `fmm init --mcp`
 | ---------------------- | ----------------------------------------------------------------------------- |
 | `fmm_lookup_export`    | Find which file defines a symbol — O(1)                                       |
 | `fmm_read_symbol`      | Extract exact source; `ClassName.member` for methods and indexed fields; `line_numbers: true` to annotate lines; includes declaration `kind` when indexed; follows re-export chains |
-| `fmm_dependency_graph` | Intra-project deps (`local_deps`), external packages, and downstream blast radius. `filter: "source"` excludes test files; `filter: "tests"` shows test coverage |
-| `fmm_file_outline`     | Table of contents with line ranges, size, signature, visibility, kind, and inline freshness for stale queried files |
-| `fmm_list_exports`     | Search exports by pattern — substring (case-insensitive) or regex (auto-detected: `^handle`, `Service$`, `^[A-Z]`) |
+| `fmm_dependency_graph` | Intra-project deps (`local_deps`), external packages, and downstream blast radius. `filter: "source"` excludes test files; `filter: "tests"` shows test coverage; `reverse` + `transitive` returns the full reverse-dependency closure |
+| `fmm_dependency_cycles` | Strongly connected dependency cycles. Defaults to runtime edges and hides module-hierarchy facades; `include_mod_hierarchy` restores them, `explain` shows the edges that close each cycle |
+| `fmm_file_outline`     | Table of contents with line ranges, size, signature (including trait method signatures), visibility, kind, and inline freshness for stale queried files |
+| `fmm_list_exports`     | Search exports by pattern — substring (case-insensitive) or regex (auto-detected: `^handle`, `Service$`, `^[A-Z]`); `filter: "source"`/`"tests"` scopes by file type |
 | `fmm_search`           | Indexed structural queries across exports, files, imports, and dependencies   |
 | `fmm_list_files`       | List indexed files under a directory path; `pattern` uses filename globs; `filter: "tests"` is path/name based, so Rust inline `#[cfg(test)] mod tests` blocks in source files are excluded |
-| `fmm_glossary`         | Symbol-level blast radius; dotted members add call-site precision but use case-insensitive substring matching, so `Type.foo` can also match `Type.foo_bar`; includes declaration `kind` |
+| `fmm_glossary`         | Symbol-level blast radius; dotted members add call-site precision but use case-insensitive substring matching, so `Type.foo` can also match `Type.foo_bar`; `exact: true` restricts to the exact export name; includes declaration `kind` |
 | `fmm_find_similar`     | Find existing symbols structurally similar to a probe (name + signature shape + kind + shared dependencies); probe by an existing name or an explicit `signature`/`kind` before writing new code — reuse instead of duplicate |
+| `fmm_dupe_clusters`    | Repo-wide structural duplicate candidate clusters; runs the `find_similar` ranker in batch mode, blocking by kind, rare name tokens, and signature shape, then union-finds accepted pairs into deterministic clusters |
 
 Bare Rust module names read the `mod foo;` declaration with `kind: module`. They do not follow into `foo.rs` or `foo/mod.rs`.
 
