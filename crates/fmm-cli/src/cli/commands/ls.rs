@@ -1,8 +1,48 @@
 use crate::filename_glob::FilenameGlob;
 use anyhow::Result;
+use clap::Args;
 use fmm_core::search::DependencyGraphQuery;
 
 use super::{load_manifest, warn_no_sidecars};
+
+#[derive(Args)]
+pub struct LsCommandArgs {
+    /// Directory prefix to filter (e.g. crates/fmm-core/src/, crates/fmm-cli/src/)
+    #[arg(value_name = "DIR")]
+    pub directory: Option<String>,
+
+    /// Glob pattern to filter by filename (e.g. '*.ts', '*.rs', 'test_*')
+    #[arg(long)]
+    pub pattern: Option<String>,
+
+    /// Sort field: loc (default), name/path, exports, downstream, modified
+    #[arg(long = "sort-by", default_value = "loc", value_parser = ["name", "path", "loc", "exports", "downstream", "modified"])]
+    pub sort_by: String,
+
+    /// Sort order: asc or desc (default depends on sort-by)
+    #[arg(long, value_parser = ["asc", "desc"])]
+    pub order: Option<String>,
+
+    /// Collapse files into directory buckets (subdir: group by immediate subdirectory)
+    #[arg(long = "group-by", value_parser = ["subdir"])]
+    pub group_by: Option<String>,
+
+    /// File type filter: all (default), source (exclude tests), tests (only tests)
+    #[arg(long, default_value = "all", value_parser = ["all", "source", "tests"])]
+    pub filter: String,
+
+    /// Maximum number of files to return (default: 200)
+    #[arg(long)]
+    pub limit: Option<usize>,
+
+    /// Number of files to skip (default: 0) — use for pagination
+    #[arg(long, default_value = "0")]
+    pub offset: usize,
+
+    /// Output as JSON
+    #[arg(short = 'j', long = "json")]
+    pub json: bool,
+}
 
 type ListEntry<'a> = (&'a str, usize, usize, usize, Option<&'a str>);
 

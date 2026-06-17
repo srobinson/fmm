@@ -1,10 +1,30 @@
 use anyhow::{Context, Result};
+use clap::Args;
 use fmm_core::manifest::ExportLines;
 
 use super::{load_manifest, warn_no_sidecars};
 use crate::read_symbol::{
     ReadMethodHint, ReadSymbolContent, ReadSymbolGuidance, read_symbol_result,
 };
+
+#[derive(Args)]
+pub struct ReadCommandArgs {
+    /// Symbol name, ClassName.method, or path/to/file:symbol to disambiguate
+    #[arg(value_name = "SYMBOL")]
+    pub symbol: String,
+
+    /// Return full source, bypassing the 10KB truncation cap
+    #[arg(long = "no-truncate")]
+    pub no_truncate: bool,
+
+    /// Prepend absolute line numbers to each source line
+    #[arg(long = "line-numbers")]
+    pub line_numbers: bool,
+
+    /// Output as JSON
+    #[arg(short = 'j', long = "json")]
+    pub json: bool,
+}
 
 #[derive(serde::Serialize)]
 struct ReadSymbolJson {

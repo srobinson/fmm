@@ -1,5 +1,4 @@
 use clap::{Parser, Subcommand};
-use clap_complete::Shell;
 use color_print::cstr;
 use std::path::PathBuf;
 
@@ -23,7 +22,13 @@ use help_text::{HELP_TEMPLATE, LONG_ABOUT, LONG_HELP, SHORT_HELP};
 
 mod generated_help;
 
-pub use commands::{cycles, deps, exports, lookup, ls, outline, read_symbol, similar};
+pub use commands::{
+    CleanCommandArgs, CompletionsCommandArgs, CyclesCommandArgs, DepsCommandArgs,
+    ExportsCommandArgs, GenerateCommandArgs, GlossaryCommandArgs, InitCommandArgs,
+    LookupCommandArgs, LsCommandArgs, OutlineCommandArgs, ReadCommandArgs, SearchCommandArgs,
+    SimilarCommandArgs, ValidateCommandArgs, WatchCommandArgs, cycles, deps, exports, lookup, ls,
+    outline, read_symbol, similar,
+};
 pub use glossary::glossary;
 pub use init::init;
 pub use search::{SearchOptions, search};
@@ -88,23 +93,7 @@ pub enum Commands {
   Respects .gitignore and .fmmignore for file exclusion.
   Supports: TypeScript, JavaScript, Python, Rust."#),
     )]
-    Generate {
-        /// Paths to files or directories (defaults to current directory)
-        #[arg(default_value = ".")]
-        paths: Vec<String>,
-
-        /// Show what would be created/updated without writing files
-        #[arg(short = 'n', long)]
-        dry_run: bool,
-
-        /// Re-index all files, bypassing mtime comparison
-        #[arg(short, long)]
-        force: bool,
-
-        /// Suppress progress bars — print only the final summary line
-        #[arg(short = 'q', long)]
-        quiet: bool,
-    },
+    Generate(GenerateCommandArgs),
 
     /// Check the index is current (CI-friendly, exit 1 if stale)
     #[command(
@@ -134,11 +123,7 @@ pub enum Commands {
   Exit code 1: stale or un-indexed files found.
   Run 'fmm generate' to update the index."#),
     )]
-    Validate {
-        /// Paths to files or directories (defaults to current directory)
-        #[arg(default_value = ".")]
-        paths: Vec<String>,
-    },
+    Validate(ValidateCommandArgs),
 
     /// Remove the fmm index database
     #[command(
@@ -160,19 +145,7 @@ pub enum Commands {
   Removes indexed data only — source files are never touched.
   Safe to re-run: 'fmm generate' recreates everything from source."#),
     )]
-    Clean {
-        /// Paths to files or directories (defaults to current directory)
-        #[arg(default_value = ".")]
-        paths: Vec<String>,
-
-        /// Show what would be removed without deleting files
-        #[arg(short = 'n', long)]
-        dry_run: bool,
-
-        /// Delete the .fmm.db file entirely instead of just clearing its contents
-        #[arg(long = "db")]
-        delete_db: bool,
-    },
+    Clean(CleanCommandArgs),
 
     /// Watch source files and update the index on change
     #[command(
@@ -196,15 +169,7 @@ pub enum Commands {
   Respects .gitignore and .fmmignore for file exclusion.
   Press Ctrl+C to stop watching."#),
     )]
-    Watch {
-        /// Path to directory to watch
-        #[arg(default_value = ".")]
-        path: String,
-
-        /// Debounce delay in milliseconds
-        #[arg(long, default_value = "300")]
-        debounce: u64,
-    },
+    Watch(WatchCommandArgs),
 
     /// Set up fmm in the current project
     #[command(
@@ -229,15 +194,7 @@ pub enum Commands {
   Safe to re-run: existing .fmmrc.toml is not overwritten unless --force is used.
   .fmmrc.toml is optional: delete it to use built-in defaults."#),
     )]
-    Init {
-        /// Overwrite existing .fmmrc.toml without prompting
-        #[arg(long)]
-        force: bool,
-
-        /// Skip auto-indexing (config only)
-        #[arg(long)]
-        no_generate: bool,
-    },
+    Init(InitCommandArgs),
 
     /// Show config, supported languages, and workspace stats
     #[command(
@@ -304,53 +261,7 @@ pub enum Commands {
   Flags narrow search to one dimension. Without flags, searches everything.
   Use --json for machine-readable output (piping, scripts, CI)."#),
     )]
-    Search {
-        /// Search term — searches exports, files, and imports (smart ranking)
-        #[arg(value_name = "TERM")]
-        term: Option<String>,
-
-        /// Find file by export name (exact O(1) + fuzzy substring)
-        #[arg(short = 'e', long = "export")]
-        export: Option<String>,
-
-        /// Find files that import a module
-        #[arg(short = 'i', long = "imports")]
-        imports: Option<String>,
-
-        /// Filter by line count (e.g., ">500", "<100", "=200")
-        #[arg(
-            short = 'l',
-            long = "loc",
-            long_help = "Filter files by line count.\n\n\
-                Supports comparison operators: >500, <100, >=50, <=1000, =200.\n\
-                A bare number is treated as exact match (=)."
-        )]
-        loc: Option<String>,
-
-        /// Minimum lines of code
-        #[arg(long = "min-loc", value_name = "MIN_LOC")]
-        min_loc: Option<usize>,
-
-        /// Maximum lines of code
-        #[arg(long = "max-loc", value_name = "MAX_LOC")]
-        max_loc: Option<usize>,
-
-        /// Maximum number of fuzzy export results
-        #[arg(long, value_name = "LIMIT")]
-        limit: Option<usize>,
-
-        /// Find files that depend on a path
-        #[arg(short = 'd', long = "depends-on")]
-        depends_on: Option<String>,
-
-        /// Scope --export results to a directory prefix (e.g. crates/fmm-core/src/)
-        #[arg(long = "dir")]
-        dir: Option<String>,
-
-        /// Output as JSON
-        #[arg(short = 'j', long = "json")]
-        json: bool,
-    },
+    Search(SearchCommandArgs),
 
     /// Show all definitions of an export and which files use it
     #[command(
@@ -366,31 +277,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm glossary config --no-truncate</bold>      <dim># Bypass 10KB cap</dim>
   <dim>$</dim> <bold>fmm glossary config --json</bold>             <dim># JSON output for scripting</dim>"#),
     )]
-    Glossary {
-        /// Symbol name or substring pattern (case-insensitive)
-        #[arg(value_name = "PATTERN")]
-        pattern: Option<String>,
-
-        /// Filter mode: source (default, no tests), tests (test coverage only), all (unfiltered)
-        #[arg(long, value_name = "MODE", default_value = "source", value_parser = ["source", "tests", "all"])]
-        mode: String,
-
-        /// Maximum number of entries returned (default: 10)
-        #[arg(long)]
-        limit: Option<usize>,
-
-        /// Precision level: named (default, fast) or call-site (tree-sitter verification)
-        #[arg(long, value_name = "PRECISION", default_value = "named", value_parser = ["named", "call-site"])]
-        precision: String,
-
-        /// Return full output, bypassing the 10KB truncation cap
-        #[arg(long = "no-truncate")]
-        no_truncate: bool,
-
-        /// Output as JSON
-        #[arg(short = 'j', long = "json")]
-        json: bool,
-    },
+    Glossary(GlossaryCommandArgs),
 
     /// Find where a symbol is defined — O(1) lookup
     #[command(
@@ -402,15 +289,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm lookup ParserRegistry</bold>     <dim># Any exported name</dim>
   <dim>$</dim> <bold>fmm lookup Cli --json</bold>          <dim># JSON output</dim>"#),
     )]
-    Lookup {
-        /// Symbol name to look up (exact match; use 'fmm exports <term>' for fuzzy)
-        #[arg(value_name = "SYMBOL")]
-        symbol: String,
-
-        /// Output as JSON
-        #[arg(short = 'j', long = "json")]
-        json: bool,
-    },
+    Lookup(LookupCommandArgs),
 
     /// Find existing symbols similar to a probe — prevent duplication
     #[command(
@@ -422,35 +301,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm similar parse --signature "(Path) -> Config"</bold>  <dim># Pre-write probe</dim>
   <dim>$</dim> <bold>fmm similar load_config --limit 5 --json</bold>          <dim># JSON output</dim>"#),
     )]
-    Similar {
-        /// Probe symbol name
-        #[arg(value_name = "NAME")]
-        name: String,
-
-        /// Explicit signature to match (pre-write mode), e.g. '(Path) -> Config'
-        #[arg(long)]
-        signature: Option<String>,
-
-        /// Declaration kind to match (fn, struct, trait, ...)
-        #[arg(long)]
-        kind: Option<String>,
-
-        /// Scope candidates to a directory prefix
-        #[arg(long)]
-        directory: Option<String>,
-
-        /// Maximum matches returned (default: 10)
-        #[arg(long)]
-        limit: Option<usize>,
-
-        /// Include test symbols as candidates
-        #[arg(long)]
-        include_tests: bool,
-
-        /// Output as JSON
-        #[arg(short = 'j', long = "json")]
-        json: bool,
-    },
+    Similar(SimilarCommandArgs),
 
     /// Extract exact source for a symbol or method
     #[command(
@@ -465,23 +316,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm read ParserRegistry.get_parser --line-numbers</bold> <dim># With absolute line numbers</dim>
   <dim>$</dim> <bold>fmm read Cli --json</bold>                     <dim># JSON output</dim>"#),
     )]
-    Read {
-        /// Symbol name, ClassName.method, or path/to/file:symbol to disambiguate
-        #[arg(value_name = "SYMBOL")]
-        symbol: String,
-
-        /// Return full source, bypassing the 10KB truncation cap
-        #[arg(long = "no-truncate")]
-        no_truncate: bool,
-
-        /// Prepend absolute line numbers to each source line
-        #[arg(long = "line-numbers")]
-        line_numbers: bool,
-
-        /// Output as JSON
-        #[arg(short = 'j', long = "json")]
-        json: bool,
-    },
+    Read(ReadCommandArgs),
 
     /// Show dependency graph for a file
     #[command(
@@ -496,23 +331,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm deps crates/fmm-core/src/parser/mod.rs --filter tests</bold> <dim># Only test files in downstream</dim>
   <dim>$</dim> <bold>fmm deps crates/fmm-core/src/parser/mod.rs --json</bold> <dim># JSON output</dim>"#),
     )]
-    Deps {
-        /// Source file path (relative to project root, as indexed by fmm)
-        #[arg(value_name = "FILE")]
-        file: String,
-
-        /// Traversal depth (1 = direct deps only, -1 = full closure)
-        #[arg(long, default_value = "1")]
-        depth: i32,
-
-        /// Filter upstream/downstream by file type: all (default), source (exclude tests), tests (only tests)
-        #[arg(long, default_value = "all", value_parser = ["all", "source", "tests"])]
-        filter: String,
-
-        /// Output as JSON
-        #[arg(short = 'j', long = "json")]
-        json: bool,
-    },
+    Deps(DepsCommandArgs),
 
     /// Report dependency cycles
     #[command(
@@ -526,23 +345,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm cycles --filter source</bold>                      <dim># Exclude test files</dim>
   <dim>$</dim> <bold>fmm cycles --json</bold>                               <dim># JSON output</dim>"#),
     )]
-    Cycles {
-        /// Optional source file path to scope cycle reports
-        #[arg(value_name = "FILE")]
-        file: Option<String>,
-
-        /// Filter cycle graph by file type: all (default), source (exclude tests), tests (only tests)
-        #[arg(long, default_value = "all", value_parser = ["all", "source", "tests"])]
-        filter: String,
-
-        /// Edge mode: runtime (default, excludes type-only edges) or all
-        #[arg(long = "edge-mode", default_value = "runtime", value_parser = ["runtime", "all"])]
-        edge_mode: String,
-
-        /// Output as JSON
-        #[arg(short = 'j', long = "json")]
-        json: bool,
-    },
+    Cycles(CyclesCommandArgs),
 
     /// Show file table-of-contents with line ranges and density metadata
     #[command(
@@ -554,19 +357,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm outline crates/fmm-core/src/parser/mod.rs --include-private</bold> <dim># Include private members</dim>
   <dim>$</dim> <bold>fmm outline crates/fmm-core/src/parser/mod.rs --json</bold> <dim># JSON output</dim>"#),
     )]
-    Outline {
-        /// Source file path (relative to project root)
-        #[arg(value_name = "FILE")]
-        file: String,
-
-        /// Include private/protected methods and fields under each class
-        #[arg(long = "include-private")]
-        include_private: bool,
-
-        /// Output as JSON
-        #[arg(short = 'j', long = "json")]
-        json: bool,
-    },
+    Outline(OutlineCommandArgs),
 
     /// List indexed files under a directory
     #[command(
@@ -588,43 +379,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm ls --limit 20 --offset 20</bold>          <dim># Pagination</dim>
   <dim>$</dim> <bold>fmm ls crates/fmm-core/src --json</bold>      <dim># JSON output</dim>"#),
     )]
-    Ls {
-        /// Directory prefix to filter (e.g. crates/fmm-core/src/, crates/fmm-cli/src/)
-        #[arg(value_name = "DIR")]
-        directory: Option<String>,
-
-        /// Glob pattern to filter by filename (e.g. '*.ts', '*.rs', 'test_*')
-        #[arg(long)]
-        pattern: Option<String>,
-
-        /// Sort field: loc (default), name/path, exports, downstream, modified
-        #[arg(long = "sort-by", default_value = "loc", value_parser = ["name", "path", "loc", "exports", "downstream", "modified"])]
-        sort_by: String,
-
-        /// Sort order: asc or desc (default depends on sort-by)
-        #[arg(long, value_parser = ["asc", "desc"])]
-        order: Option<String>,
-
-        /// Collapse files into directory buckets (subdir: group by immediate subdirectory)
-        #[arg(long = "group-by", value_parser = ["subdir"])]
-        group_by: Option<String>,
-
-        /// File type filter: all (default), source (exclude tests), tests (only tests)
-        #[arg(long, default_value = "all", value_parser = ["all", "source", "tests"])]
-        filter: String,
-
-        /// Maximum number of files to return (default: 200)
-        #[arg(long)]
-        limit: Option<usize>,
-
-        /// Number of files to skip (default: 0) — use for pagination
-        #[arg(long, default_value = "0")]
-        offset: usize,
-
-        /// Output as JSON
-        #[arg(short = 'j', long = "json")]
-        json: bool,
-    },
+    Ls(LsCommandArgs),
 
     /// Search exports by pattern (substring or regex, auto-detected)
     #[command(
@@ -643,31 +398,7 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm exports Parser --limit 50 --offset 50</bold> <dim># Pagination</dim>
   <dim>$</dim> <bold>fmm exports Parser --json</bold>                 <dim># JSON output</dim>"#),
     )]
-    Exports {
-        /// Pattern to filter exports — substring (case-insensitive) or regex (auto-detected when metacharacters present)
-        #[arg(value_name = "PATTERN")]
-        pattern: Option<String>,
-
-        /// File path — returns all exports from this file
-        #[arg(long = "file")]
-        file: Option<String>,
-
-        /// Scope results to a directory prefix (e.g. crates/fmm-core/src/parser/)
-        #[arg(long = "dir")]
-        dir: Option<String>,
-
-        /// Maximum number of results (default: 200)
-        #[arg(long)]
-        limit: Option<usize>,
-
-        /// Number of results to skip (default: 0) — use for pagination
-        #[arg(long, default_value = "0")]
-        offset: usize,
-
-        /// Output as JSON
-        #[arg(short = 'j', long = "json")]
-        json: bool,
-    },
+    Exports(ExportsCommandArgs),
 
     /// Start MCP server — 10 tools for LLM code navigation
     #[command(
@@ -712,8 +443,5 @@ pub enum Commands {
   <dim>$</dim> <bold>fmm completions fish</bold> > ~/.config/fish/completions/fmm.fish
   <dim>$</dim> <bold>fmm completions powershell</bold> > _fmm.ps1"#),
     )]
-    Completions {
-        /// Target shell
-        shell: Shell,
-    },
+    Completions(CompletionsCommandArgs),
 }

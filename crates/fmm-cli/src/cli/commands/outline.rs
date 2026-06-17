@@ -1,10 +1,26 @@
 use anyhow::Result;
+use clap::Args;
 use colored::Colorize;
 use fmm_core::manifest::OutlineReExport;
 
 use crate::outline_freshness;
 
 use super::{load_manifest, missing_file_diagnostic, warn_no_sidecars};
+
+#[derive(Args)]
+pub struct OutlineCommandArgs {
+    /// Source file path (relative to project root)
+    #[arg(value_name = "FILE")]
+    pub file: String,
+
+    /// Include private/protected methods and fields under each class
+    #[arg(long = "include-private")]
+    pub include_private: bool,
+
+    /// Output as JSON
+    #[arg(short = 'j', long = "json")]
+    pub json: bool,
+}
 
 #[derive(serde::Serialize)]
 struct OutlineExportJson {

@@ -1,9 +1,41 @@
 use anyhow::Result;
+use clap::Args;
 
 use fmm_core::format::{collapse_ws, format_similar};
 use fmm_core::similarity::{SimilarMatch, SimilarOptions, find_similar, probe_for};
 
 use super::{load_manifest, warn_no_sidecars};
+
+#[derive(Args)]
+pub struct SimilarCommandArgs {
+    /// Probe symbol name
+    #[arg(value_name = "NAME")]
+    pub name: String,
+
+    /// Explicit signature to match (pre-write mode), e.g. '(Path) -> Config'
+    #[arg(long)]
+    pub signature: Option<String>,
+
+    /// Declaration kind to match (fn, struct, trait, ...)
+    #[arg(long)]
+    pub kind: Option<String>,
+
+    /// Scope candidates to a directory prefix
+    #[arg(long)]
+    pub directory: Option<String>,
+
+    /// Maximum matches returned (default: 10)
+    #[arg(long)]
+    pub limit: Option<usize>,
+
+    /// Include test symbols as candidates
+    #[arg(long)]
+    pub include_tests: bool,
+
+    /// Output as JSON
+    #[arg(short = 'j', long = "json")]
+    pub json: bool,
+}
 
 #[derive(serde::Serialize)]
 struct SimilarMatchJson {

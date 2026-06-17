@@ -79,9 +79,7 @@ fn completions_subcommand_parses() {
     let cli = Cli::parse_from(["fmm", "completions", "bash"]);
     assert!(matches!(
         cli.command,
-        Some(Commands::Completions {
-            shell: clap_complete::Shell::Bash
-        })
+        Some(Commands::Completions(args)) if args.shell == clap_complete::Shell::Bash
     ));
 }
 
@@ -193,8 +191,8 @@ fn generate_man_pages_creates_files() {
 fn init_no_generate_flag_is_recognized() {
     let cli = Cli::parse_from(["fmm", "init", "--no-generate"]);
     match cli.command {
-        Some(Commands::Init { no_generate, .. }) => {
-            assert!(no_generate, "--no-generate should be true");
+        Some(Commands::Init(args)) => {
+            assert!(args.no_generate, "--no-generate should be true");
         }
         other => panic!("expected Init command, got {:?}", other.is_some()),
     }
@@ -204,8 +202,8 @@ fn init_no_generate_flag_is_recognized() {
 fn init_without_no_generate_defaults_to_false() {
     let cli = Cli::parse_from(["fmm", "init"]);
     match cli.command {
-        Some(Commands::Init { no_generate, .. }) => {
-            assert!(!no_generate, "--no-generate should default to false");
+        Some(Commands::Init(args)) => {
+            assert!(!args.no_generate, "--no-generate should default to false");
         }
         other => panic!("expected Init command, got {:?}", other.is_some()),
     }

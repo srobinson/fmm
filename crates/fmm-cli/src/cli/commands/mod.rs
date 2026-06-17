@@ -5,23 +5,47 @@ use fmm_core::manifest::Manifest;
 use fmm_core::store::FmmStore;
 use fmm_store::SqliteStore;
 
+mod clean;
+mod completions;
 mod cycles;
 mod deps;
 mod exports;
+mod generate;
+mod glossary;
+mod init;
 mod lookup;
 mod ls;
 mod outline;
 mod read;
+mod search;
 mod similar;
+mod validate;
+mod watch;
 
+pub use clean::CleanCommandArgs;
+pub use completions::CompletionsCommandArgs;
+pub use cycles::CyclesCommandArgs;
 pub use cycles::cycles;
+pub use deps::DepsCommandArgs;
 pub use deps::deps;
+pub use exports::ExportsCommandArgs;
 pub use exports::exports;
+pub use generate::GenerateCommandArgs;
+pub use glossary::GlossaryCommandArgs;
+pub use init::InitCommandArgs;
+pub use lookup::LookupCommandArgs;
 pub use lookup::lookup;
+pub use ls::LsCommandArgs;
 pub use ls::ls;
+pub use outline::OutlineCommandArgs;
 pub use outline::outline;
+pub use read::ReadCommandArgs;
 pub use read::read_symbol;
+pub use search::SearchCommandArgs;
+pub use similar::SimilarCommandArgs;
 pub use similar::similar;
+pub use validate::ValidateCommandArgs;
+pub use watch::WatchCommandArgs;
 
 fn load_manifest() -> Result<(std::path::PathBuf, Manifest)> {
     let root = std::env::current_dir().context("Failed to get current directory")?;

@@ -1,7 +1,27 @@
 use anyhow::Result;
+use clap::Args;
 use colored::Colorize;
 
 use super::{load_manifest, missing_file_diagnostic, warn_no_sidecars};
+
+#[derive(Args)]
+pub struct CyclesCommandArgs {
+    /// Optional source file path to scope cycle reports
+    #[arg(value_name = "FILE")]
+    pub file: Option<String>,
+
+    /// Filter cycle graph by file type: all (default), source (exclude tests), tests (only tests)
+    #[arg(long, default_value = "all", value_parser = ["all", "source", "tests"])]
+    pub filter: String,
+
+    /// Edge mode: runtime (default, excludes type-only edges) or all
+    #[arg(long = "edge-mode", default_value = "runtime", value_parser = ["runtime", "all"])]
+    pub edge_mode: String,
+
+    /// Output as JSON
+    #[arg(short = 'j', long = "json")]
+    pub json: bool,
+}
 
 #[derive(serde::Serialize)]
 struct CyclesJson {
