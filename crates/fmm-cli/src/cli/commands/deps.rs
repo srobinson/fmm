@@ -1,7 +1,27 @@
 use anyhow::Result;
+use clap::Args;
 use colored::Colorize;
 
 use super::{load_manifest, missing_file_diagnostic, warn_no_sidecars};
+
+#[derive(Args)]
+pub struct DepsCommandArgs {
+    /// Source file path (relative to project root, as indexed by fmm)
+    #[arg(value_name = "FILE")]
+    pub file: String,
+
+    /// Traversal depth (1 = direct deps only, -1 = full closure)
+    #[arg(long, default_value = "1")]
+    pub depth: i32,
+
+    /// Filter upstream/downstream by file type: all (default), source (exclude tests), tests (only tests)
+    #[arg(long, default_value = "all", value_parser = ["all", "source", "tests"])]
+    pub filter: String,
+
+    /// Output as JSON
+    #[arg(short = 'j', long = "json")]
+    pub json: bool,
+}
 
 #[derive(serde::Serialize)]
 struct DepsJson {

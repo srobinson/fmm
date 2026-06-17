@@ -1,7 +1,19 @@
 use anyhow::Result;
+use clap::Args;
 use colored::Colorize;
 
 use super::{load_manifest, missing_file_diagnostic, warn_no_sidecars};
+
+#[derive(Args)]
+pub struct LookupCommandArgs {
+    /// Symbol name to look up (exact match; use 'fmm exports <term>' for fuzzy)
+    #[arg(value_name = "SYMBOL")]
+    pub symbol: String,
+
+    /// Output as JSON
+    #[arg(short = 'j', long = "json")]
+    pub json: bool,
+}
 
 #[derive(serde::Serialize)]
 struct LookupExportJson {

@@ -71,169 +71,116 @@ fn run() -> anyhow::Result<()> {
 
 fn run_command(command: Commands) -> anyhow::Result<()> {
     match command {
-        Commands::Generate {
-            paths,
-            dry_run,
-            force,
-            quiet,
-        } => {
-            cli::generate(&paths, dry_run, force, quiet)?;
+        Commands::Generate(args) => {
+            cli::generate(&args.paths, args.dry_run, args.force, args.quiet)?;
         }
-        Commands::Validate { paths } => {
+        Commands::Validate(args) => {
             println!("{}", "Validating index...".green().bold());
-            cli::validate(&paths)?;
+            cli::validate(&args.paths)?;
         }
-        Commands::Clean {
-            paths,
-            dry_run,
-            delete_db,
-        } => {
+        Commands::Clean(args) => {
             println!("{}", "Cleaning index...".green().bold());
-            cli::clean(&paths, dry_run, delete_db)?;
+            cli::clean(&args.paths, args.dry_run, args.delete_db)?;
         }
-        Commands::Watch { path, debounce } => {
-            cli::watch(&path, debounce)?;
+        Commands::Watch(args) => {
+            cli::watch(&args.path, args.debounce)?;
         }
-        Commands::Init { force, no_generate } => {
-            cli::init(force, no_generate)?;
+        Commands::Init(args) => {
+            cli::init(args.force, args.no_generate)?;
         }
         Commands::Status => {
             cli::status()?;
         }
-        Commands::Search {
-            term,
-            export,
-            imports,
-            loc,
-            min_loc,
-            max_loc,
-            limit,
-            depends_on,
-            dir,
-            json,
-        } => {
+        Commands::Search(args) => {
             cli::search(cli::SearchOptions {
-                term,
-                export,
-                imports,
-                loc,
-                min_loc,
-                max_loc,
-                limit,
-                depends_on,
-                directory: dir,
-                json_output: json,
+                term: args.term,
+                export: args.export,
+                imports: args.imports,
+                loc: args.loc,
+                min_loc: args.min_loc,
+                max_loc: args.max_loc,
+                limit: args.limit,
+                depends_on: args.depends_on,
+                directory: args.dir,
+                json_output: args.json,
             })?;
         }
-        Commands::Glossary {
-            pattern,
-            mode,
-            limit,
-            precision,
-            no_truncate,
-            json,
-        } => {
-            cli::glossary(pattern, &mode, limit, &precision, no_truncate, json)?;
+        Commands::Glossary(args) => {
+            cli::glossary(
+                args.pattern,
+                &args.mode,
+                args.limit,
+                &args.precision,
+                args.no_truncate,
+                args.json,
+            )?;
         }
-        Commands::Lookup { symbol, json } => {
-            cli::lookup(&symbol, json)?;
+        Commands::Lookup(args) => {
+            cli::lookup(&args.symbol, args.json)?;
         }
-        Commands::Similar {
-            name,
-            signature,
-            kind,
-            directory,
-            limit,
-            include_tests,
-            json,
-        } => {
+        Commands::Similar(args) => {
+            let name = args.name;
             cli::similar(
                 &name,
-                signature,
-                kind,
-                directory,
-                limit,
-                include_tests,
-                json,
+                args.signature,
+                args.kind,
+                args.directory,
+                args.limit,
+                args.include_tests,
+                args.json,
             )?;
         }
-        Commands::Read {
-            symbol,
-            no_truncate,
-            line_numbers,
-            json,
-        } => {
-            cli::read_symbol(&symbol, no_truncate, line_numbers, json)?;
+        Commands::Read(args) => {
+            cli::read_symbol(&args.symbol, args.no_truncate, args.line_numbers, args.json)?;
         }
-        Commands::Deps {
-            file,
-            depth,
-            filter,
-            json,
-        } => {
-            cli::deps(&file, depth, &filter, json)?;
+        Commands::Deps(args) => {
+            cli::deps(&args.file, args.depth, &args.filter, args.json)?;
         }
-        Commands::Cycles {
-            file,
-            filter,
-            edge_mode,
-            json,
-        } => {
-            cli::cycles(file.as_deref(), &filter, &edge_mode, json)?;
+        Commands::Cycles(args) => {
+            cli::cycles(
+                args.file.as_deref(),
+                &args.filter,
+                &args.edge_mode,
+                args.json,
+            )?;
         }
-        Commands::Outline {
-            file,
-            include_private,
-            json,
-        } => {
-            cli::outline(&file, include_private, json)?;
+        Commands::Outline(args) => {
+            cli::outline(&args.file, args.include_private, args.json)?;
         }
-        Commands::Ls {
-            directory,
-            pattern,
-            sort_by,
-            order,
-            group_by,
-            filter,
-            limit,
-            offset,
-            json,
-        } => {
+        Commands::Ls(args) => {
             cli::ls(
-                directory.as_deref(),
-                pattern.as_deref(),
-                &sort_by,
-                order.as_deref(),
-                group_by.as_deref(),
-                &filter,
-                limit,
-                offset,
-                json,
+                args.directory.as_deref(),
+                args.pattern.as_deref(),
+                &args.sort_by,
+                args.order.as_deref(),
+                args.group_by.as_deref(),
+                &args.filter,
+                args.limit,
+                args.offset,
+                args.json,
             )?;
         }
-        Commands::Exports {
-            pattern,
-            file,
-            dir,
-            limit,
-            offset,
-            json,
-        } => {
+        Commands::Exports(args) => {
             cli::exports(
-                pattern.as_deref(),
-                file.as_deref(),
-                dir.as_deref(),
-                limit,
-                offset,
-                json,
+                args.pattern.as_deref(),
+                args.file.as_deref(),
+                args.dir.as_deref(),
+                args.limit,
+                args.offset,
+                args.json,
             )?;
         }
         Commands::Mcp | Commands::Serve => {
             let mut server = mcp::McpServer::new();
             server.run()?;
         }
-        Commands::Completions { shell } => {
-            clap_complete::generate(shell, &mut Cli::command(), "fmm", &mut std::io::stdout());
+        Commands::Completions(args) => {
+            clap_complete::generate(
+                args.shell,
+                &mut Cli::command(),
+                "fmm",
+                &mut std::io::stdout(),
+            );
         }
     }
 

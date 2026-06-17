@@ -1,8 +1,36 @@
 use anyhow::Result;
+use clap::Args;
 use colored::Colorize;
 use fmm_core::manifest::{FileEntry, Manifest};
 
 use super::{load_manifest, missing_file_diagnostic, warn_no_sidecars};
+
+#[derive(Args)]
+pub struct ExportsCommandArgs {
+    /// Pattern to filter exports — substring (case-insensitive) or regex (auto-detected when metacharacters present)
+    #[arg(value_name = "PATTERN")]
+    pub pattern: Option<String>,
+
+    /// File path — returns all exports from this file
+    #[arg(long = "file")]
+    pub file: Option<String>,
+
+    /// Scope results to a directory prefix (e.g. crates/fmm-core/src/parser/)
+    #[arg(long = "dir")]
+    pub dir: Option<String>,
+
+    /// Maximum number of results (default: 200)
+    #[arg(long)]
+    pub limit: Option<usize>,
+
+    /// Number of results to skip (default: 0) — use for pagination
+    #[arg(long, default_value = "0")]
+    pub offset: usize,
+
+    /// Output as JSON
+    #[arg(short = 'j', long = "json")]
+    pub json: bool,
+}
 
 type ExportMatch = (String, String, Option<[usize; 2]>);
 type ExportMatcher = Box<dyn Fn(&str) -> bool>;
