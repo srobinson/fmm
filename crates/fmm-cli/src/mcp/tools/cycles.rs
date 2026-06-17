@@ -25,14 +25,19 @@ pub(in crate::mcp) fn tool_dependency_cycles(
         crate::cycle_report::CycleFileFilter::parse(args.filter.as_deref().unwrap_or("all"))?;
 
     let edge_mode = crate::cycle_report::parse_edge_mode(args.edge_mode.as_deref())?;
+    let options = fmm_core::search::CycleOptions::new(edge_mode)
+        .include_mod_hierarchy(args.include_mod_hierarchy.unwrap_or(false));
     let config = fmm_core::config::Config::load_from_dir(root).unwrap_or_default();
-    let cycles = fmm_core::search::dependency_cycles_with_path_filter(
+    let cycles = fmm_core::search::dependency_cycle_reports_with_path_filter(
         manifest,
         args.file.as_deref(),
-        edge_mode,
+        options,
         |path| file_filter.keeps(path, |candidate| config.is_test_file(candidate)),
     )
     .map_err(|e| e.to_string())?;
 
-    Ok(fmm_core::format::format_dependency_cycles(&cycles))
+    Ok(fmm_core::format::format_dependency_cycle_reports(
+        &cycles,
+        args.explain.unwrap_or(false),
+    ))
 }

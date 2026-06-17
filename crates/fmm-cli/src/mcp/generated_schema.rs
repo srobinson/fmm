@@ -81,7 +81,7 @@ serde_json::from_str(r##"{
     },
     {
       "name": "fmm_dependency_cycles",
-      "description": "Report strongly connected dependency cycles over the internal graph. Defaults to runtime edges, excluding TypeScript type-only imports. Use edge_mode='all' to include type-only edges. Optional file scopes output to cycles containing that file. filter='source' excludes tests, filter='tests' shows only test files.",
+      "description": "Report strongly connected dependency cycles over the internal graph. Defaults to runtime edges, excluding TypeScript type-only imports and module-hierarchy facade edges. Use edge_mode='all' to include type-only edges. Set include_mod_hierarchy=true to restore facade edges. Set explain=true to include the edges that keep each SCC connected. Optional file scopes output to cycles containing that file. filter='source' excludes tests, filter='tests' shows only test files.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -105,6 +105,14 @@ serde_json::from_str(r##"{
               "runtime",
               "all"
             ]
+          },
+          "include_mod_hierarchy": {
+            "type": "boolean",
+            "description": "When true, include module-hierarchy facade edges. Default false hides barrel, __init__, and Rust module facade cycles."
+          },
+          "explain": {
+            "type": "boolean",
+            "description": "When true, include the resolved edges that keep each reported strongly connected component connected, with edge kind."
           }
         }
       }

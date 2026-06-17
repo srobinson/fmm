@@ -5,7 +5,8 @@ use std::collections::{HashMap, HashSet};
 use crate::format::yaml_escape;
 use crate::manifest::private_members::{PrivateMember, TopLevelFunction};
 use crate::manifest::{ExportLines, FileEntry, OutlineReExport, SymbolMetadata};
-use crate::resolver::is_direct_rust_mod_relative;
+use crate::resolver::is_direct_module_hierarchy_relative;
+use crate::search::DependencyCycle;
 
 use super::helpers::{push_exports_map, push_inline_list};
 
@@ -341,7 +342,7 @@ pub fn format_lookup_export(
 /// Format dependency graph as YAML.
 /// `local` contains resolved intra-project file paths; `external` contains package names.
 fn circular_annotation(file: &str, dep: &str) -> &'static str {
-    if is_direct_rust_mod_relative(file, dep) {
+    if is_direct_module_hierarchy_relative(file, dep) {
         "# mod-hierarchy"
     } else {
         "# circular"
@@ -452,6 +453,30 @@ pub fn format_dependency_cycles(cycles: &[Vec<String>]) -> String {
         lines.push("  - files:".to_string());
         for path in cycle {
             lines.push(format!("      - {}", yaml_escape(path)));
+        }
+    }
+    lines.join("\n")
+}
+
+pub fn format_dependency_cycle_reports(cycles: &[DependencyCycle], explain: bool) -> String {
+    let mut lines = Vec::new();
+    lines.push("---".to_string());
+    lines.push("cycles:".to_string());
+    for cycle in cycles {
+        lines.push("  - files:".to_string());
+        for path in &cycle.files {
+            lines.push(format!("      - {}", yaml_escape(path)));
+        }
+        if explain {
+            lines.push("    edges:".to_string());
+            for edge in &cycle.edges {
+                lines.push(format!(
+                    "      - {} -> {}  # {}",
+                    yaml_escape(&edge.source),
+                    yaml_escape(&edge.target),
+                    edge.kind.as_str()
+                ));
+            }
         }
     }
     lines.join("\n")

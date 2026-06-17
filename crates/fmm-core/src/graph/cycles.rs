@@ -11,9 +11,34 @@ pub enum CycleEdgeMode {
 impl CycleEdgeMode {
     fn keeps(self, kind: EdgeKind) -> bool {
         match self {
-            Self::Runtime => kind == EdgeKind::Runtime,
+            Self::Runtime => kind.is_runtime(),
             Self::All => true,
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CycleOptions {
+    pub edge_mode: CycleEdgeMode,
+    pub include_mod_hierarchy: bool,
+}
+
+impl CycleOptions {
+    pub fn new(edge_mode: CycleEdgeMode) -> Self {
+        Self {
+            edge_mode,
+            include_mod_hierarchy: false,
+        }
+    }
+
+    pub fn include_mod_hierarchy(mut self, include_mod_hierarchy: bool) -> Self {
+        self.include_mod_hierarchy = include_mod_hierarchy;
+        self
+    }
+
+    pub(crate) fn keeps(self, edge: Edge) -> bool {
+        self.edge_mode.keeps(edge.kind)
+            && (self.include_mod_hierarchy || !edge.kind.is_module_hierarchy())
     }
 }
 
@@ -35,12 +60,19 @@ struct TarjanState {
 }
 
 pub fn dependency_cycles(graph: &GraphIndex, edge_mode: CycleEdgeMode) -> Vec<Vec<NodeId>> {
-    dependency_cycles_with_node_filter(graph, edge_mode, |_| true)
+    dependency_cycles_with_options(graph, CycleOptions::new(edge_mode))
+}
+
+pub fn dependency_cycles_with_options(
+    graph: &GraphIndex,
+    options: CycleOptions,
+) -> Vec<Vec<NodeId>> {
+    dependency_cycles_with_node_filter(graph, options, |_| true)
 }
 
 pub(crate) fn dependency_cycles_with_node_filter(
     graph: &GraphIndex,
-    edge_mode: CycleEdgeMode,
+    options: CycleOptions,
     keep_node: impl Fn(NodeId) -> bool,
 ) -> Vec<Vec<NodeId>> {
     let kept_nodes = (0..graph.nodes.len())
@@ -53,7 +85,7 @@ pub(crate) fn dependency_cycles_with_node_filter(
         }
         let start = NodeId(node_index as u32);
         if state.indices[node_index].is_none() {
-            state.traverse_from(graph, edge_mode, &kept_nodes, start);
+            state.traverse_from(graph, options, &kept_nodes, start);
         }
     }
     state.sort_components();
@@ -76,15 +108,15 @@ impl TarjanState {
     fn traverse_from(
         &mut self,
         graph: &GraphIndex,
-        edge_mode: CycleEdgeMode,
+        options: CycleOptions,
         kept_nodes: &[bool],
         start: NodeId,
     ) {
         self.push_node(start);
 
         while !self.frames.is_empty() {
-            let Some(edge) = self.next_edge(graph, edge_mode, kept_nodes) else {
-                self.finish_node(graph, edge_mode);
+            let Some(edge) = self.next_edge(graph, options, kept_nodes) else {
+                self.finish_node(graph, options);
                 continue;
             };
 
@@ -112,7 +144,7 @@ impl TarjanState {
     fn next_edge(
         &mut self,
         graph: &GraphIndex,
-        edge_mode: CycleEdgeMode,
+        options: CycleOptions,
         kept_nodes: &[bool],
     ) -> Option<Edge> {
         let frame = self.frames.last_mut()?;
@@ -120,18 +152,18 @@ impl TarjanState {
         while frame.next_edge < edges.len() {
             let edge = edges[frame.next_edge];
             frame.next_edge += 1;
-            if edge_mode.keeps(edge.kind) && kept_nodes[edge.target.0 as usize] {
+            if options.keeps(edge) && kept_nodes[edge.target.0 as usize] {
                 return Some(edge);
             }
         }
         None
     }
 
-    fn finish_node(&mut self, graph: &GraphIndex, edge_mode: CycleEdgeMode) {
+    fn finish_node(&mut self, graph: &GraphIndex, options: CycleOptions) {
         let frame = self.frames.pop().expect("frame exists");
         let node = frame.node;
         if self.lowlinks[node.0 as usize] == self.indices[node.0 as usize].unwrap() {
-            self.collect_component(graph, edge_mode, node);
+            self.collect_component(graph, options, node);
         }
         if let Some(parent) = self.frames.last() {
             let child_lowlink = self.lowlinks[node.0 as usize];
@@ -139,7 +171,7 @@ impl TarjanState {
         }
     }
 
-    fn collect_component(&mut self, graph: &GraphIndex, edge_mode: CycleEdgeMode, root: NodeId) {
+    fn collect_component(&mut self, graph: &GraphIndex, options: CycleOptions, root: NodeId) {
         let mut component = Vec::new();
         while let Some(node) = self.stack.pop() {
             self.on_stack[node.0 as usize] = false;
@@ -148,7 +180,7 @@ impl TarjanState {
                 break;
             }
         }
-        if component.len() > 1 || has_self_loop(graph, edge_mode, root) {
+        if component.len() > 1 || has_self_loop(graph, options, root) {
             component.sort();
             self.components.push(component);
         }
@@ -165,9 +197,9 @@ impl TarjanState {
     }
 }
 
-fn has_self_loop(graph: &GraphIndex, edge_mode: CycleEdgeMode, node: NodeId) -> bool {
+fn has_self_loop(graph: &GraphIndex, options: CycleOptions, node: NodeId) -> bool {
     graph
         .downstream_edges(node)
         .iter()
-        .any(|edge| edge.target == node && edge_mode.keeps(edge.kind))
+        .any(|edge| edge.target == node && options.keeps(*edge))
 }

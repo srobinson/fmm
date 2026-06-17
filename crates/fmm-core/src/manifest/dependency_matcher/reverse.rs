@@ -3,6 +3,7 @@ use std::path::Path;
 
 use crate::identity::EdgeKind;
 use crate::manifest::Manifest;
+use crate::resolver::is_direct_module_hierarchy_relative;
 
 use super::local::try_resolve_local_dep;
 use super::path::{builtin_source_extensions, is_cargo_workspace_source};
@@ -118,8 +119,15 @@ fn merge_edge(
     target: String,
     kind: EdgeKind,
 ) {
-    let entry = edges.entry((source, target)).or_insert(EdgeKind::TypeOnly);
-    if kind == EdgeKind::Runtime {
-        *entry = EdgeKind::Runtime;
+    let kind = classify_edge_kind(&source, &target, kind);
+    let entry = edges.entry((source, target)).or_insert(kind);
+    *entry = entry.merge(kind);
+}
+
+fn classify_edge_kind(source: &str, target: &str, kind: EdgeKind) -> EdgeKind {
+    if is_direct_module_hierarchy_relative(source, target) {
+        kind.with_module_hierarchy()
+    } else {
+        kind
     }
 }

@@ -5,7 +5,7 @@ use fmm_core::identity::EdgeKind;
 use fmm_core::manifest::Manifest;
 use fmm_core::parser::builtin::typescript::TypeScriptParser;
 use fmm_core::parser::{Metadata, Parser};
-use fmm_core::search::{CycleEdgeMode, dependency_cycles};
+use fmm_core::search::{CycleEdgeMode, CycleOptions, dependency_cycle_reports, dependency_cycles};
 
 fn add_file(
     manifest: &mut Manifest,
@@ -94,6 +94,76 @@ fn dependency_cycles_groups_runtime_scc_paths_deterministically() {
     assert_eq!(
         cycles,
         vec![vec!["src/a.ts".to_string(), "src/b.ts".to_string()]]
+    );
+}
+
+#[test]
+fn dependency_cycles_excludes_module_hierarchy_edges_by_default() {
+    let manifest = runtime_manifest(&[
+        ("src/index.ts", vec!["./widget"]),
+        ("src/widget.ts", vec!["./index"]),
+    ]);
+
+    let cycles = dependency_cycles(&manifest, None, CycleEdgeMode::Runtime).unwrap();
+
+    assert_eq!(cycles, Vec::<Vec<String>>::new());
+}
+
+#[test]
+fn dependency_cycles_include_mod_hierarchy_restores_facade_cycles() {
+    let manifest = runtime_manifest(&[
+        ("src/index.ts", vec!["./widget"]),
+        ("src/widget.ts", vec!["./index"]),
+    ]);
+
+    let cycles = dependency_cycle_reports(
+        &manifest,
+        None,
+        CycleOptions::new(CycleEdgeMode::Runtime).include_mod_hierarchy(true),
+    )
+    .unwrap();
+
+    assert_eq!(
+        cycles[0].files,
+        vec!["src/index.ts".to_string(), "src/widget.ts".to_string()]
+    );
+    assert_eq!(cycles[0].edges.len(), 2);
+    assert!(
+        cycles[0]
+            .edges
+            .iter()
+            .all(|edge| edge.kind == EdgeKind::ModuleHierarchy),
+        "got {:?}",
+        cycles[0].edges
+    );
+}
+
+#[test]
+fn dependency_cycles_explain_edges_are_sorted_with_kind() {
+    let manifest = runtime_manifest(&[
+        ("src/c.ts", vec![]),
+        ("src/b.ts", vec!["./a"]),
+        ("src/a.ts", vec!["./b"]),
+    ]);
+
+    let cycles =
+        dependency_cycle_reports(&manifest, None, CycleOptions::new(CycleEdgeMode::Runtime))
+            .unwrap();
+
+    assert_eq!(
+        cycles[0]
+            .edges
+            .iter()
+            .map(|edge| (
+                edge.source.as_str(),
+                edge.target.as_str(),
+                edge.kind.as_str(),
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            ("src/a.ts", "src/b.ts", "runtime"),
+            ("src/b.ts", "src/a.ts", "runtime"),
+        ]
     );
 }
 
