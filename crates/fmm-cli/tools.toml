@@ -620,8 +620,8 @@ cli_flag        = "--kind"
 [[tools.fmm_dupe_clusters.params]]
 name            = "min_score"
 type            = "number"
-mcp_description = "Minimum pair score required to join a cluster. Defaults to the same threshold as fmm similar."
-cli_help        = "Minimum pair score required to join a cluster"
+mcp_description = "Minimum pair score required to join a cluster. Defaults to 0.90, calibrated separately from fmm similar for repo-wide clustering."
+cli_help        = "Minimum pair score required to join a cluster (default: 0.90)"
 cli_flag        = "--min-score"
 
 [[tools.fmm_dupe_clusters.params]]

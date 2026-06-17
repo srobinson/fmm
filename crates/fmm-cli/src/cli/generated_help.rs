@@ -130,7 +130,7 @@ pub const DUPES_DIRECTORY_HELP: &str = "Scope candidates to a directory prefix";
 #[rustfmt::skip]
 pub const DUPES_KIND_HELP: &str = "Restrict candidates to a declaration kind; repeat to include several kinds";
 #[rustfmt::skip]
-pub const DUPES_MIN_SCORE_HELP: &str = "Minimum pair score required to join a cluster";
+pub const DUPES_MIN_SCORE_HELP: &str = "Minimum pair score required to join a cluster (default: 0.90)";
 #[rustfmt::skip]
 pub const DUPES_LIMIT_HELP: &str = "Maximum clusters returned (default: 10)";
 #[rustfmt::skip]

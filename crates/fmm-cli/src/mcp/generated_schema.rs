@@ -365,7 +365,7 @@ serde_json::from_str(r##"{
           },
           "min_score": {
             "type": "number",
-            "description": "Minimum pair score required to join a cluster. Defaults to the same threshold as fmm similar."
+            "description": "Minimum pair score required to join a cluster. Defaults to 0.90, calibrated separately from fmm similar for repo-wide clustering."
           },
           "limit": {
             "type": "integer",

@@ -21,23 +21,39 @@ fn run_fmm(root: &std::path::Path, args: &[&str]) -> Output {
 
 fn setup_dupes_project() -> TempDir {
     let tmp = TempDir::new().unwrap();
-    write_file(
-        tmp.path(),
-        "src/lib.rs",
-        r#"
-pub fn extract_imports(input: &str) -> Vec<String> {
-    input.lines().map(str::to_string).collect()
-}
-
-pub fn collect_imports(input: &str) -> Vec<String> {
-    input.lines().map(str::to_string).collect()
-}
-
-pub fn is_ready(input: &str) -> bool {
-    !input.is_empty()
-}
-"#,
-    );
+    for (file, name) in [
+        ("src/a.rs", "format_symbol_signature_end_byte"),
+        ("src/b.rs", "format_symbol_signature_end_byte_node"),
+    ] {
+        write_file(
+            tmp.path(),
+            file,
+            &format!(
+                r#"
+pub fn {name}() -> String {{
+    String::new()
+}}
+"#
+            ),
+        );
+    }
+    for (file, name) in [
+        ("src/c.rs", "load_user"),
+        ("src/d.rs", "save_order"),
+        ("src/e.rs", "parse_config"),
+    ] {
+        write_file(
+            tmp.path(),
+            file,
+            &format!(
+                r#"
+pub fn {name}() -> String {{
+    String::new()
+}}
+"#
+            ),
+        );
+    }
 
     let output = run_fmm(tmp.path(), &["generate"]);
     assert!(

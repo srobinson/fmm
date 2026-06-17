@@ -7,13 +7,14 @@ use serde::Serialize;
 
 use crate::manifest::{Manifest, is_test_export};
 use crate::similarity::{
-    Candidate, DEFAULT_THRESHOLD, candidate_shape_key, collect_candidates, score_candidates,
-    tokenize_name,
+    Candidate, candidate_shape_key, collect_candidates, score_candidates, tokenize_name,
 };
 
 pub const DEFAULT_DUPES_LIMIT: usize = 10;
+pub const DEFAULT_DUPES_MIN_SCORE: f64 = 0.90;
 
 const MAX_BLOCK_CANDIDATES: usize = 64;
+const MAX_CLUSTER_MEMBERS: usize = 64;
 
 #[derive(Debug, Clone)]
 pub struct DupeOptions {
@@ -29,7 +30,7 @@ impl Default for DupeOptions {
         Self {
             directory: None,
             kinds: Vec::new(),
-            min_score: DEFAULT_THRESHOLD,
+            min_score: DEFAULT_DUPES_MIN_SCORE,
             limit: DEFAULT_DUPES_LIMIT,
             include_tests: false,
         }
@@ -47,7 +48,7 @@ impl DupeOptions {
         Self {
             directory,
             kinds,
-            min_score: min_score.unwrap_or(DEFAULT_THRESHOLD),
+            min_score: min_score.unwrap_or(DEFAULT_DUPES_MIN_SCORE),
             limit: limit.unwrap_or(DEFAULT_DUPES_LIMIT),
             include_tests,
         }
@@ -137,6 +138,7 @@ pub fn find_dupe_clusters(manifest: &Manifest, opts: &DupeOptions) -> DupeCluste
     }
 
     let mut clusters = clusters_from_edges(&candidates, &edges);
+    clusters = drop_oversized_clusters(clusters, &mut diagnostics);
     clusters.sort_by(compare_clusters);
     clusters.truncate(opts.limit);
 
@@ -380,6 +382,29 @@ fn clusters_from_edges(
         .collect()
 }
 
+fn drop_oversized_clusters(
+    clusters: Vec<DupeCluster>,
+    diagnostics: &mut Vec<DupeDiagnostic>,
+) -> Vec<DupeCluster> {
+    clusters
+        .into_iter()
+        .filter(|cluster| {
+            if cluster.members.len() <= MAX_CLUSTER_MEMBERS {
+                return true;
+            }
+            diagnostics.push(DupeDiagnostic {
+                code: "cluster_overflow".to_string(),
+                message: format!(
+                    "Dropped cluster with {} members because it exceeded the sanity cap of {}",
+                    cluster.members.len(),
+                    MAX_CLUSTER_MEMBERS
+                ),
+            });
+            false
+        })
+        .collect()
+}
+
 fn compare_clusters(left: &DupeCluster, right: &DupeCluster) -> Ordering {
     right
         .score
@@ -534,30 +559,52 @@ mod tests {
     }
 
     #[test]
-    fn near_duplicate_clusters_but_same_shape_coincidence_does_not() {
+    fn default_min_score_clusters_exact_duplicate_without_mega_cluster() {
         let manifest = manifest_with_exports(vec![
-            ("src/extract.rs", "extract_imports", "(&str) -> Vec<String>"),
-            ("src/collect.rs", "collect_imports", "(&str) -> Vec<String>"),
-            ("src/ready.rs", "is_ready", "(&str) -> bool"),
+            (
+                "src/a.rs",
+                "format_symbol_signature_end_byte",
+                "() -> String",
+            ),
+            (
+                "src/b.rs",
+                "format_symbol_signature_end_byte_node",
+                "() -> String",
+            ),
+            ("src/c.rs", "load_user", "() -> String"),
+            ("src/d.rs", "save_order", "() -> String"),
+            ("src/e.rs", "parse_config", "() -> String"),
+            ("src/f.rs", "send_metric", "() -> String"),
         ]);
 
         let result = find_dupe_clusters(&manifest, &DupeOptions::default());
-        let names: BTreeSet<_> = result.clusters[0]
+        assert_eq!(
+            result.clusters.len(),
+            1,
+            "default threshold must not collapse same-shape unrelated symbols"
+        );
+        let files: BTreeSet<_> = result.clusters[0]
             .members
             .iter()
-            .map(|member| member.name.as_str())
+            .map(|member| member.file.as_str())
             .collect();
 
-        assert!(names.contains("extract_imports"));
-        assert!(names.contains("collect_imports"));
-        assert!(!names.contains("is_ready"));
+        assert_eq!(files, BTreeSet::from(["src/a.rs", "src/b.rs"]));
     }
 
     #[test]
     fn json_output_is_byte_stable() {
         let manifest = manifest_with_exports(vec![
-            ("src/extract.rs", "extract_imports", "(&str) -> Vec<String>"),
-            ("src/collect.rs", "collect_imports", "(&str) -> Vec<String>"),
+            (
+                "src/a.rs",
+                "format_symbol_signature_end_byte",
+                "() -> String",
+            ),
+            (
+                "src/b.rs",
+                "format_symbol_signature_end_byte_node",
+                "() -> String",
+            ),
         ]);
         let first = find_dupe_clusters(&manifest, &DupeOptions::default());
         let second = find_dupe_clusters(&manifest, &DupeOptions::default());

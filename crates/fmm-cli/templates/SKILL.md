@@ -372,7 +372,7 @@ Find repo wide structural duplicate candidate clusters by reusing the find simil
 |-----------|------|----------|-------------|
 | `directory` | string | no | Path prefix to scope candidates (e.g. 'crates/fmm-core/'). |
 | `kind` | array | no | Declaration kinds to include. Repeat --kind in the CLI. Typical values: fn, method, struct, trait, enum, type, const. |
-| `min_score` | number | no | Minimum pair score required to join a cluster. Defaults to the same threshold as fmm similar. |
+| `min_score` | number | no | Minimum pair score required to join a cluster. Defaults to 0.90, calibrated separately from fmm similar for repo-wide... |
 | `limit` | integer | no | Maximum clusters to return (default: 10). |
 | `include_tests` | boolean | no | Include test functions and modules as candidates (default: false). |
 

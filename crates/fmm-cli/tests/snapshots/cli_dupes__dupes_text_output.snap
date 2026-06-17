@@ -3,7 +3,7 @@ source: crates/fmm-cli/tests/cli_dupes.rs
 expression: "String::from_utf8(output.stdout).unwrap()"
 ---
 Duplicate candidates (1 cluster):
-stats: candidates=3 blocks=2 comparisons=1 clusters=1
-1. score 0.61 (2 members)
-  collect_imports  src/lib.rs:6-8  fn  pub fn collect_imports(input: &str) -> Vec<String>
-  extract_imports  src/lib.rs:2-4  fn  pub fn extract_imports(input: &str) -> Vec<String>
+stats: candidates=5 blocks=2 comparisons=10 clusters=1
+1. score 0.90 (2 members)
+  format_symbol_signature_end_byte  src/a.rs:2-4  fn  pub fn format_symbol_signature_end_byte() -> String
+  format_symbol_signature_end_byte_node  src/b.rs:2-4  fn  pub fn format_symbol_signature_end_byte_node() -> String
