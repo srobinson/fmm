@@ -24,19 +24,24 @@ pub(crate) fn rust_method_entry(
     source_bytes: &[u8],
     parent_class: String,
 ) -> ExportEntry {
+    let declaration_kind = if is_in_test_context(node, source_bytes) {
+        DeclarationKind::Test
+    } else {
+        DeclarationKind::Method
+    };
     shared_metadata::method_entry(
         name,
         node,
         source_bytes,
         parent_class,
         visibility_for(node, source_bytes),
-        DeclarationKind::Method,
+        declaration_kind,
         signature_end_byte,
     )
 }
 
 pub(super) fn declaration_kind(node: Node, source_bytes: &[u8]) -> Option<DeclarationKind> {
-    match node.kind() {
+    let kind = match node.kind() {
         "function_item" if has_test_attr(node, source_bytes) => Some(DeclarationKind::Test),
         "function_item" => Some(DeclarationKind::Fn),
         "field_declaration" => Some(DeclarationKind::Field),
@@ -50,6 +55,11 @@ pub(super) fn declaration_kind(node: Node, source_bytes: &[u8]) -> Option<Declar
         "macro_definition" => Some(DeclarationKind::Macro),
         "type_item" => Some(DeclarationKind::Type),
         _ => None,
+    };
+    if kind.is_some() && is_in_test_context(node, source_bytes) {
+        Some(DeclarationKind::Test)
+    } else {
+        kind
     }
 }
 
@@ -122,6 +132,44 @@ fn enclosing_modules_are_public(node: Node, source_bytes: &[u8]) -> bool {
 }
 
 fn has_test_attr(node: Node, source_bytes: &[u8]) -> bool {
+    has_leading_attr(node, |attr| attr_item_has_name(attr, source_bytes, "test"))
+}
+
+fn is_in_test_context(node: Node, source_bytes: &[u8]) -> bool {
+    let mut current = Some(node);
+    while let Some(candidate) = current {
+        if candidate.kind() == "mod_item"
+            && (mod_name(candidate, source_bytes).as_deref() == Some("tests")
+                || has_cfg_test_attr(candidate, source_bytes))
+        {
+            return true;
+        }
+        current = candidate.parent();
+    }
+    false
+}
+
+fn mod_name(node: Node, source_bytes: &[u8]) -> Option<String> {
+    node.child_by_field_name("name")
+        .and_then(|name| name.utf8_text(source_bytes).ok())
+        .map(ToOwned::to_owned)
+}
+
+fn has_cfg_test_attr(node: Node, source_bytes: &[u8]) -> bool {
+    has_leading_attr(node, |attr| {
+        attr.utf8_text(source_bytes)
+            .map(|text| {
+                let compact = text
+                    .chars()
+                    .filter(|c| !c.is_whitespace())
+                    .collect::<String>();
+                compact.starts_with("#[cfg(") && compact.contains("test")
+            })
+            .unwrap_or(false)
+    })
+}
+
+fn has_leading_attr(node: Node, mut matches_attr: impl FnMut(Node) -> bool) -> bool {
     let Some(parent) = node.parent() else {
         return false;
     };
@@ -131,7 +179,7 @@ fn has_test_attr(node: Node, source_bytes: &[u8]) -> bool {
             break;
         }
         match sibling.kind() {
-            "attribute_item" if attr_item_has_name(sibling, source_bytes, "test") => return true,
+            "attribute_item" if matches_attr(sibling) => return true,
             "line_comment" | "block_comment" => {}
             _ => break,
         }

@@ -7,13 +7,15 @@ pub const LOOKUP_ABOUT: &str = "Find which file defines a symbol and show its me
 pub const LOOKUP_NAME_HELP: &str = "Symbol name to look up (exact match; use 'fmm exports <term>' for fuzzy)";
 
 #[rustfmt::skip]
-pub const EXPORTS_ABOUT: &str = "List exports matching a pattern across the indexed codebase.\n\nWithout a pattern, lists all exports grouped by file. Use --dir to scope results to a directory. Includes dotted method names (ClassName.method).\n\nPattern matching is auto-detected: plain strings use case-insensitive substring match; patterns with regex metacharacters (^, $, [, (, \\\\, ., *, +, ?, {) are compiled as regex.";
+pub const EXPORTS_ABOUT: &str = "List exports matching a pattern across the indexed codebase.\n\nWithout a pattern, lists all exports grouped by file. Use --dir to scope results to a directory. Use --filter=source to exclude test files, or --filter=tests to show only test exports. Includes dotted method names (ClassName.method).\n\nPattern matching is auto-detected: plain strings use case-insensitive substring match; patterns with regex metacharacters (^, $, [, (, \\\\, ., *, +, ?, {) are compiled as regex.";
 #[rustfmt::skip]
 pub const EXPORTS_PATTERN_HELP: &str = "Pattern to filter exports — substring (case-insensitive) or regex (auto-detected when metacharacters present)";
 #[rustfmt::skip]
 pub const EXPORTS_FILE_HELP: &str = "File path — returns all exports from this file";
 #[rustfmt::skip]
 pub const EXPORTS_DIRECTORY_HELP: &str = "Scope results to a directory prefix (e.g. packages/core/)";
+#[rustfmt::skip]
+pub const EXPORTS_FILTER_HELP: &str = "File type filter: all (default), source (exclude tests), tests (only tests)";
 #[rustfmt::skip]
 pub const EXPORTS_LIMIT_HELP: &str = "Maximum number of results (default: 200)";
 #[rustfmt::skip]

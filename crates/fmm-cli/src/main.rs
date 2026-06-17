@@ -172,6 +172,7 @@ fn run_command(command: Commands) -> anyhow::Result<()> {
                 args.pattern.as_deref(),
                 args.file.as_deref(),
                 args.dir.as_deref(),
+                &args.filter,
                 args.limit,
                 args.offset,
                 args.json,

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
+use crate::config::{Config, FileTypeFilter};
 use crate::identity::{FileId, FileIdentityMap};
 use crate::parser::Metadata;
 use crate::resolver::workspace::{WorkspaceEcosystem, WorkspaceInfo};
@@ -67,6 +68,61 @@ impl Manifest {
                 .declaration_kind
                 .as_deref()
         }
+    }
+
+    pub fn export_matches_filter(
+        &self,
+        symbol: &str,
+        file: &str,
+        filter: FileTypeFilter,
+        config: &Config,
+    ) -> bool {
+        filter.matches_export(
+            symbol,
+            file,
+            self.declaration_kind_for(symbol, file),
+            config,
+        )
+    }
+
+    pub fn filtered_file_entry(
+        &self,
+        file: &str,
+        filter: FileTypeFilter,
+        config: &Config,
+    ) -> Option<FileEntry> {
+        let entry = self.files.get(file)?;
+        if filter == FileTypeFilter::All {
+            return Some(entry.clone());
+        }
+
+        let original_lines = entry.export_lines.as_ref();
+        let mut filtered = entry.clone();
+        filtered.exports.clear();
+        filtered.export_metadata.clear();
+        let mut export_lines = original_lines.map(|_| Vec::new());
+
+        for (index, name) in entry.exports.iter().enumerate() {
+            if !self.export_matches_filter(name, file, filter, config) {
+                continue;
+            }
+            filtered.exports.push(name.clone());
+            if let Some(metadata) = entry.export_metadata.get(name) {
+                filtered
+                    .export_metadata
+                    .insert(name.clone(), metadata.clone());
+            }
+            if let (Some(source_lines), Some(filtered_lines)) =
+                (original_lines, export_lines.as_mut())
+                && let Some(line_range) = source_lines.get(index)
+            {
+                filtered_lines.push(line_range.clone());
+            }
+        }
+
+        filtered.export_lines =
+            export_lines.filter(|lines| lines.iter().any(|line| line.start > 0));
+        Some(filtered)
     }
 }
 

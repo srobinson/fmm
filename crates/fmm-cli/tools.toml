@@ -215,8 +215,8 @@ cli_flag        = "name"
 [tools.fmm_list_exports]
 cli_name        = "exports"
 cli_aliases     = ["list-exports"]
-mcp_description = "Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Patterns with regex metacharacters (^, $, [, (, \\\\, ., *, +, ?, {) are compiled as regex. Use 'directory' to scope results to a path prefix (e.g. 'packages/core/'). Use 'file' to list a specific file's exports. Default limit: 200. Use offset to page through large result sets."
-cli_about       = "List exports matching a pattern across the indexed codebase.\n\nWithout a pattern, lists all exports grouped by file. Use --dir to scope results to a directory. Includes dotted method names (ClassName.method).\n\nPattern matching is auto-detected: plain strings use case-insensitive substring match; patterns with regex metacharacters (^, $, [, (, \\\\, ., *, +, ?, {) are compiled as regex."
+mcp_description = "Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Patterns with regex metacharacters (^, $, [, (, \\\\, ., *, +, ?, {) are compiled as regex. Use 'directory' to scope results to a path prefix (e.g. 'packages/core/'). Use 'file' to list a specific file's exports. Use filter='source' to exclude test files, or filter='tests' to show only test exports. Default limit: 200. Use offset to page through large result sets."
+cli_about       = "List exports matching a pattern across the indexed codebase.\n\nWithout a pattern, lists all exports grouped by file. Use --dir to scope results to a directory. Use --filter=source to exclude test files, or --filter=tests to show only test exports. Includes dotted method names (ClassName.method).\n\nPattern matching is auto-detected: plain strings use case-insensitive substring match; patterns with regex metacharacters (^, $, [, (, \\\\, ., *, +, ?, {) are compiled as regex."
 
 [[tools.fmm_list_exports.params]]
 name            = "pattern"
@@ -238,6 +238,14 @@ type            = "string"
 mcp_description = "Path prefix to scope results (e.g. 'packages/core/'). Only exports from files under this directory are returned."
 cli_help        = "Scope results to a directory prefix (e.g. packages/core/)"
 cli_flag        = "--dir"
+
+[[tools.fmm_list_exports.params]]
+name            = "filter"
+type            = "string"
+enum            = ["all", "source", "tests"]
+mcp_description = "File type filter. 'all' (default): no filtering. 'source': exclude test files using the same path and filename conventions as fmm_list_files. 'tests': return only test files."
+cli_help        = "File type filter: all (default), source (exclude tests), tests (only tests)"
+cli_flag        = "--filter"
 
 [[tools.fmm_list_exports.params]]
 name            = "limit"

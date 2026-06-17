@@ -2,6 +2,7 @@
 
 use crate::filename_glob::FilenameGlob;
 use crate::mcp::args::ListFilesArgs;
+use fmm_core::config::FileTypeFilter;
 use fmm_core::manifest::Manifest;
 use fmm_core::search::DependencyGraphQuery;
 use serde_json::Value;
@@ -67,7 +68,8 @@ pub(in crate::mcp) fn tool_list_files(
         ));
     }
 
-    let mut entries = collect_entries(manifest, root, dir, filename_pattern.as_ref(), filter);
+    let file_filter = FileTypeFilter::parse(filter).unwrap_or(FileTypeFilter::All);
+    let mut entries = collect_entries(manifest, root, dir, filename_pattern.as_ref(), file_filter);
 
     // Rollup mode: group by immediate subdirectory.
     if group_by == Some("subdir") {
@@ -151,7 +153,7 @@ fn collect_entries<'a>(
     root: &std::path::Path,
     dir: Option<&str>,
     pat: Option<&FilenameGlob>,
-    filter: &str,
+    filter: FileTypeFilter,
 ) -> Vec<ListEntry<'a>> {
     let config = fmm_core::config::Config::load_from_dir(root).unwrap_or_default();
     let graph_query = DependencyGraphQuery::new(manifest).ok();
@@ -165,10 +167,8 @@ fn collect_entries<'a>(
             {
                 return false;
             }
-            match filter {
-                "tests" if !config.is_test_file(path) => return false,
-                "source" if config.is_test_file(path) => return false,
-                _ => {}
+            if !filter.matches(path, &config) {
+                return false;
             }
             if let Some(p) = pat {
                 let filename = path.rsplit('/').next().unwrap_or(path.as_str());

@@ -1,4 +1,5 @@
-use crate::convention::{builtin_convention_registry, builtin_is_test_file};
+use crate::config::is_test_export_symbol;
+use crate::convention::builtin_is_test_file;
 
 /// Returns true if a file path is a test file by path conventions only.
 pub(crate) fn is_test_file(file: &str) -> bool {
@@ -7,19 +8,7 @@ pub(crate) fn is_test_file(file: &str) -> bool {
 
 /// Returns true if an export should be classified as a test artifact.
 pub(crate) fn is_test_export(name: &str, file: &str, declaration_kind: Option<&str>) -> bool {
-    if matches!(declaration_kind, Some("test")) || name == "tests" {
-        return true;
-    }
-
-    let registry = builtin_convention_registry();
-    for patterns in registry.language_test_patterns() {
-        for prefix in patterns.test_symbol_prefixes {
-            if name.starts_with(prefix) {
-                return true;
-            }
-        }
-    }
-    is_test_file(file)
+    is_test_export_symbol(name, declaration_kind) || is_test_file(file)
 }
 
 #[cfg(test)]

@@ -23,7 +23,7 @@ serde_json::from_str(r##"{
     },
     {
       "name": "fmm_list_exports",
-      "description": "Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Patterns with regex metacharacters (^, $, [, (, \\\\, ., *, +, ?, {) are compiled as regex. Use 'directory' to scope results to a path prefix (e.g. 'packages/core/'). Use 'file' to list a specific file's exports. Default limit: 200. Use offset to page through large result sets.",
+      "description": "Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Patterns with regex metacharacters (^, $, [, (, \\\\, ., *, +, ?, {) are compiled as regex. Use 'directory' to scope results to a path prefix (e.g. 'packages/core/'). Use 'file' to list a specific file's exports. Use filter='source' to exclude test files, or filter='tests' to show only test exports. Default limit: 200. Use offset to page through large result sets.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -38,6 +38,15 @@ serde_json::from_str(r##"{
           "directory": {
             "type": "string",
             "description": "Path prefix to scope results (e.g. 'packages/core/'). Only exports from files under this directory are returned."
+          },
+          "filter": {
+            "type": "string",
+            "description": "File type filter. 'all' (default): no filtering. 'source': exclude test files using the same path and filename conventions as fmm_list_files. 'tests': return only test files.",
+            "enum": [
+              "all",
+              "source",
+              "tests"
+            ]
           },
           "limit": {
             "type": "integer",

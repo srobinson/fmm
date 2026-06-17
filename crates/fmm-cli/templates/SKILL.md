@@ -256,13 +256,14 @@ Instant O(1) symbol-to-file lookup. Find where a function, class, type, or varia
 
 ### `fmm_list_exports`
 
-Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Patterns with regex metacharacters (^, $, [, (, \\, ., *, +, ?, {) are compiled as regex. Use 'directory' to scope results to a path prefix (e.g. 'packages/core/'). Use 'file' to list a specific file's exports. Default limit: 200. Use offset to page through large result sets.
+Search or list exported symbols across the codebase. Use 'pattern' for fuzzy discovery (e.g. 'auth' matches validateAuth, authMiddleware). Patterns with regex metacharacters (^, $, [, (, \\, ., *, +, ?, {) are compiled as regex. Use 'directory' to scope results to a path prefix (e.g. 'packages/core/'). Use 'file' to list a specific file's exports. Use filter='source' to exclude test files, or filter='tests' to show only test exports. Default limit: 200. Use offset to page through large result sets.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `pattern` | string | no | Pattern to match against export names. Plain strings use case-insensitive substring match (e.g. 'auth' finds validate... |
 | `file` | string | no | File path — returns all exports from this specific file |
 | `directory` | string | no | Path prefix to scope results (e.g. 'packages/core/'). Only exports from files under this directory are returned. |
+| `filter` | enum: all \| source \| tests | no | File type filter. 'all' (default): no filtering. 'source': exclude test files using the same path and filename conven... |
 | `limit` | integer | no | Maximum number of results to return (default: 200). Increase for broader listings. |
 | `offset` | integer | no | Number of results to skip before returning (default: 0). Use for pagination: offset=200 returns results 201–400. |
 

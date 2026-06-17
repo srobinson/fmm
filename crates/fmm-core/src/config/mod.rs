@@ -11,6 +11,7 @@ mod loader;
 #[cfg(test)]
 mod tests;
 
+use crate::convention::builtin_convention_registry;
 use defaults::{
     default_languages, default_max_lines, default_test_filename_suffixes,
     default_test_path_contains,
@@ -33,6 +34,64 @@ pub struct TestPatterns {
     /// preserving the ability to narrow classification.
     #[serde(skip)]
     user_overridden: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileTypeFilter {
+    All,
+    Source,
+    Tests,
+}
+
+impl FileTypeFilter {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "all" => Some(Self::All),
+            "source" => Some(Self::Source),
+            "tests" => Some(Self::Tests),
+            _ => None,
+        }
+    }
+
+    pub fn matches(self, path: &str, config: &Config) -> bool {
+        match self {
+            Self::All => true,
+            Self::Source => !config.is_test_file(path),
+            Self::Tests => config.is_test_file(path),
+        }
+    }
+
+    pub fn matches_export(
+        self,
+        name: &str,
+        path: &str,
+        declaration_kind: Option<&str>,
+        config: &Config,
+    ) -> bool {
+        let is_test = config.is_test_file(path) || is_test_export_symbol(name, declaration_kind);
+        match self {
+            Self::All => true,
+            Self::Source => !is_test,
+            Self::Tests => is_test,
+        }
+    }
+}
+
+pub fn is_test_export_symbol(name: &str, declaration_kind: Option<&str>) -> bool {
+    let symbol = name.rsplit('.').next().unwrap_or(name);
+    if matches!(declaration_kind, Some("test")) || symbol == "tests" {
+        return true;
+    }
+
+    let registry = builtin_convention_registry();
+    for patterns in registry.language_test_patterns() {
+        for prefix in patterns.test_symbol_prefixes {
+            if symbol.starts_with(prefix) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 impl Default for TestPatterns {

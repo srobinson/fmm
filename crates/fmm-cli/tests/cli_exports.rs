@@ -23,6 +23,21 @@ fn setup_export_project() -> TempDir {
         "src/other.ts",
         "export function createOther() {\n  return {};\n}\n",
     );
+    write_file(
+        root,
+        "src/helpers.ts",
+        "export function loadHelper() {\n  return {};\n}\n",
+    );
+    write_file(
+        root,
+        "src/app.test.ts",
+        "export function testHelper() {\n  return {};\n}\n",
+    );
+    write_file(
+        root,
+        "src/inline.rs",
+        "pub fn source_api() {}\n\n#[cfg(test)]\nmod integration_support {\n    pub fn wal_mode_is_active() {}\n}\n",
+    );
 
     fmm::cli::generate(&[root.to_str().unwrap().to_string()], false, false, true).unwrap();
     tmp
@@ -35,6 +50,104 @@ fn run_fmm(root: &std::path::Path, args: &[&str]) -> Output {
         .current_dir(root)
         .output()
         .expect("failed to run fmm")
+}
+
+#[test]
+fn exports_filter_source_excludes_test_exports() {
+    let tmp = setup_export_project();
+    let output = run_fmm(tmp.path(), &["exports", "Helper", "--filter", "source"]);
+
+    assert!(
+        output.status.success(),
+        "fmm exports failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("loadHelper"), "got: {stdout}");
+    assert!(!stdout.contains("testHelper"), "got: {stdout}");
+}
+
+#[test]
+fn exports_filter_tests_includes_only_test_exports() {
+    let tmp = setup_export_project();
+    let output = run_fmm(tmp.path(), &["exports", "Helper", "--filter", "tests"]);
+
+    assert!(
+        output.status.success(),
+        "fmm exports failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("testHelper"), "got: {stdout}");
+    assert!(!stdout.contains("loadHelper"), "got: {stdout}");
+}
+
+#[test]
+fn exports_filter_source_excludes_inline_test_module_exports() {
+    let tmp = setup_export_project();
+    let output = run_fmm(
+        tmp.path(),
+        &["exports", "wal_mode_is_active", "--filter", "source"],
+    );
+
+    assert!(
+        output.status.success(),
+        "fmm exports failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("No exports matching"), "got: {stdout}");
+    assert!(
+        !stdout.contains("src/inline.rs"),
+        "source filter must not return the inline cfg(test) export location; got: {stdout}"
+    );
+}
+
+#[test]
+fn exports_filter_tests_includes_inline_test_module_exports() {
+    let tmp = setup_export_project();
+    let output = run_fmm(
+        tmp.path(),
+        &["exports", "wal_mode_is_active", "--filter", "tests"],
+    );
+
+    assert!(
+        output.status.success(),
+        "fmm exports failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("wal_mode_is_active"), "got: {stdout}");
+    assert!(
+        stdout.contains("src/inline.rs"),
+        "inline test export should keep its source file path; got: {stdout}"
+    );
+}
+
+#[test]
+fn exports_filter_source_excludes_inline_test_module_exports_in_all_mode() {
+    let tmp = setup_export_project();
+    let output = run_fmm(
+        tmp.path(),
+        &["exports", "--dir", "src/", "--filter", "source"],
+    );
+
+    assert!(
+        output.status.success(),
+        "fmm exports failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("source_api"), "got: {stdout}");
+    assert!(
+        !stdout.contains("wal_mode_is_active"),
+        "all-mode source filter must exclude inline cfg(test) exports; got: {stdout}"
+    );
 }
 
 #[test]
