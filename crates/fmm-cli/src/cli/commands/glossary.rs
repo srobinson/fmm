@@ -18,6 +18,10 @@ pub struct GlossaryCommandArgs {
     #[arg(long, value_name = "PRECISION", default_value = "named", value_parser = ["named", "call-site"])]
     pub precision: String,
 
+    /// Match only the exact export name instead of a substring
+    #[arg(long)]
+    pub exact: bool,
+
     /// Return full output, bypassing the 10KB truncation cap
     #[arg(long = "no-truncate")]
     pub no_truncate: bool,

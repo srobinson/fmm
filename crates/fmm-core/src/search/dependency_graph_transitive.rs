@@ -32,6 +32,48 @@ pub fn dependency_graph_transitive(
     (upstream, external, downstream)
 }
 
+pub fn reverse_dependency_closure(
+    manifest: &Manifest,
+    file: &str,
+    depth: i32,
+) -> Vec<(String, i32)> {
+    let graph_query = DependencyGraphQuery::new(manifest).ok();
+    let mut reverse_deps = Vec::new();
+    let mut visited = HashSet::from([file.to_string()]);
+    let mut queue = VecDeque::new();
+
+    queue_reverse_dependents(
+        manifest,
+        graph_query.as_ref(),
+        file,
+        1,
+        &visited,
+        &mut queue,
+    );
+
+    while let Some((current, current_depth)) = queue.pop_front() {
+        if !visited.insert(current.clone()) {
+            continue;
+        }
+
+        reverse_deps.push((current.clone(), current_depth));
+
+        if depth == -1 || current_depth < depth {
+            queue_reverse_dependents(
+                manifest,
+                graph_query.as_ref(),
+                &current,
+                current_depth + 1,
+                &visited,
+                &mut queue,
+            );
+        }
+    }
+
+    reverse_deps.sort_by(|a, b| a.0.cmp(&b.0));
+    reverse_deps
+}
+
 fn transitive_upstream(
     manifest: &Manifest,
     graph_query: Option<&DependencyGraphQuery<'_>>,
@@ -91,6 +133,30 @@ fn transitive_upstream(
     (upstream, external_set.into_iter().collect())
 }
 
+fn queue_reverse_dependents(
+    manifest: &Manifest,
+    graph_query: Option<&DependencyGraphQuery<'_>>,
+    target_file: &str,
+    next_depth: i32,
+    visited: &HashSet<String>,
+    queue: &mut VecDeque<(String, i32)>,
+) {
+    let dependents = graph_query.map_or_else(
+        || manifest.find_dependents(target_file),
+        |graph| {
+            graph
+                .direct_downstream(target_file)
+                .into_iter()
+                .cloned()
+                .collect()
+        },
+    );
+
+    for dependent in dependents {
+        push_if_unvisited(queue, visited, dependent, next_depth);
+    }
+}
+
 struct UpstreamContext<'a> {
     manifest: &'a Manifest,
     graph_query: Option<&'a DependencyGraphQuery<'a>>,
@@ -148,5 +214,55 @@ fn push_if_unvisited(
 ) {
     if !visited.contains(&path) {
         queue.push_back((path, depth));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::manifest::Manifest;
+    use crate::parser::Metadata;
+
+    fn add_file(manifest: &mut Manifest, path: &str, dependencies: &[&str]) {
+        manifest.add_file(
+            path,
+            Metadata {
+                dependencies: dependencies.iter().map(|dep| dep.to_string()).collect(),
+                loc: 1,
+                ..Default::default()
+            },
+        );
+    }
+
+    #[test]
+    fn reverse_dependency_closure_handles_cycles() {
+        let mut manifest = Manifest::new();
+        add_file(&mut manifest, "src/core.ts", &[]);
+        add_file(&mut manifest, "src/a.ts", &["./core", "./c"]);
+        add_file(&mut manifest, "src/b.ts", &["./a"]);
+        add_file(&mut manifest, "src/c.ts", &["./b"]);
+
+        let reverse_deps = reverse_dependency_closure(&manifest, "src/core.ts", -1);
+
+        assert_eq!(
+            reverse_deps,
+            vec![
+                ("src/a.ts".to_string(), 1),
+                ("src/b.ts".to_string(), 2),
+                ("src/c.ts".to_string(), 3),
+            ]
+        );
+    }
+
+    #[test]
+    fn reverse_dependency_closure_respects_depth() {
+        let mut manifest = Manifest::new();
+        add_file(&mut manifest, "src/core.ts", &[]);
+        add_file(&mut manifest, "src/a.ts", &["./core"]);
+        add_file(&mut manifest, "src/b.ts", &["./a"]);
+
+        let reverse_deps = reverse_dependency_closure(&manifest, "src/core.ts", 1);
+
+        assert_eq!(reverse_deps, vec![("src/a.ts".to_string(), 1)]);
     }
 }

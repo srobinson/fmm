@@ -25,7 +25,7 @@ pub(crate) use dependency_matcher::{
 };
 pub use dependency_matcher::{dep_matches, dotted_dep_matches, python_dep_matches};
 pub use file_entry::{FileEntry, SymbolMetadata};
-pub use glossary_builder::{GlossaryEntry, GlossaryMode, GlossarySource};
+pub use glossary_builder::{GlossaryEntry, GlossaryMode, GlossaryNameMatch, GlossarySource};
 pub use reexports::OutlineReExport;
 pub use reverse_index::ReverseDeps;
 pub(crate) use test_classification::{is_test_export, is_test_file};

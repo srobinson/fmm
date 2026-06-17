@@ -24,6 +24,8 @@ pub(super) struct DependencyGraphArgs {
     pub(super) depth: Option<i32>,
     /// source / tests / all (default)
     pub(super) filter: Option<String>,
+    pub(super) reverse: Option<bool>,
+    pub(super) transitive: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -94,6 +96,7 @@ pub(super) struct GlossaryArgs {
     pub(super) mode: Option<String>,
     /// ALP-883: "named" (default) = Layer 2 only; "call-site" = Layer 2 + Layer 3 tree-sitter.
     pub(super) precision: Option<String>,
+    pub(super) exact: Option<bool>,
     /// When false, bypasses the 10KB response cap (default: true).
     /// Read from raw JSON in MCP dispatch; field exists so serde accepts the parameter.
     #[allow(dead_code)]

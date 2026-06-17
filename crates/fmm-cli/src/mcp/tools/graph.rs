@@ -22,7 +22,19 @@ pub(in crate::mcp) fn tool_dependency_graph(
         .ok_or_else(|| missing_file_diagnostic(root, &args.file))?;
 
     let depth = args.depth.unwrap_or(1);
+    let depth = if args.transitive.unwrap_or(false) {
+        -1
+    } else {
+        depth
+    };
     let filter = args.filter.as_deref().unwrap_or("all");
+
+    if depth != -1 && depth < 1 {
+        return Err(format!(
+            "Invalid depth '{}'. Use depth >= 1 or -1 for full closure.",
+            depth
+        ));
+    }
 
     if !matches!(filter, "all" | "source" | "tests") {
         return Err(format!(
@@ -41,6 +53,19 @@ pub(in crate::mcp) fn tool_dependency_graph(
             _ => true,
         }
     };
+
+    if args.reverse.unwrap_or(false) {
+        let reverse_deps: Vec<(String, i32)> =
+            fmm_core::search::reverse_dependency_closure(manifest, &args.file, depth)
+                .into_iter()
+                .filter(|(p, _)| keep(p))
+                .collect();
+        return Ok(fmm_core::format::format_reverse_dependency_graph(
+            &args.file,
+            &reverse_deps,
+            depth,
+        ));
+    }
 
     if depth == 1 {
         // depth=1: use existing single-hop implementation for backward compatibility

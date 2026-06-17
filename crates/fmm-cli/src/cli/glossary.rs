@@ -9,6 +9,7 @@ pub fn glossary(
     mode: &str,
     limit: Option<usize>,
     precision: &str,
+    exact: bool,
     no_truncate: bool,
     json_output: bool,
 ) -> Result<()> {
@@ -42,6 +43,7 @@ pub fn glossary(
             mode,
             limit,
             precision,
+            exact,
         },
     )
     .map_err(anyhow::Error::msg)?;
